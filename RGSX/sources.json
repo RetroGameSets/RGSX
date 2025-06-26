@@ -1,0 +1,692 @@
+[
+    {
+        "platform": "3do",
+        "url": "https://myrient.erista.me/files/Redump/Panasonic%20-%20DO%20Interactive%20Multiplayer/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/3DO%20Multiplayer.png",
+        "nom": "3DO Interactive Multiplayer"
+    },
+    {
+        "platform": "amigacd32",
+        "url": "https://myrient.erista.me/files/Redump/Commodore%20-%20Amiga%20CD32/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Commodore%20Amiga%20CD32.png",
+        "nom": "Commodore Amiga CD32"
+    },
+    {
+        "platform": "32x",
+        "url": "https://myrient.erista.me/files/No-Intro/Sega%20-%2032X/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Sega%2032X.png",
+        "nom": "Sega 32X"
+    },
+    {
+        "platform": "chihiro",
+        "url": "https://myrient.erista.me/files/Redump/Arcade%20-%20Sega%20Chihiro/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/default.png",
+        "nom": "Sega Chihiro"
+    },
+    {
+        "platform": "ps3",
+        "url": "https://myrient.erista.me/files/Redump/Sony%20-%20PlayStation%203/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Sony%20Playstation%203.png",
+        "nom": "Sony Playstation 3"
+    },
+    {
+        "platform": "gamecube",
+        "url": "https://myrient.erista.me/files/Redump/Nintendo%20-%20GameCube%20-%20NKit%20RVZ%20%5Bzstd-19-128k%5D/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Nintendo%20GameCube.png",
+        "nom": "Nintendo GameCube"
+    },
+    {
+        "platform": "zxspectrum",
+        "url": "https://myrient.erista.me/files/No-Intro/Sinclair%20-%20ZX%20Spectrum%20%2B3/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Sinclair%20ZX%20Spectrum.png",
+        "nom": "Sinclair ZX Spectrum"
+    },
+    {
+        "platform": "xbox360",
+        "url": "https://myrient.erista.me/files/Redump/Microsoft%20-%20Xbox%20360/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Microsoft%20Xbox%20360.png",
+        "nom": "Microsoft Xbox 360"
+    },
+    {
+        "platform": "xbox",
+        "url": "https://myrient.erista.me/files/Redump/Microsoft%20-%20Xbox/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Microsoft%20Xbox.png",
+        "nom": "Microsoft Xbox"
+    },
+    {
+        "platform": "x68000",
+        "url": "https://myrient.erista.me/files/Redump/Sharp%20-%20X68000/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Sharp%20X68000.png",
+        "nom": "Sharp X68000"
+    },
+    {
+        "platform": "x1",
+        "url": "https://myrient.erista.me/files/No-Intro/Sharp%20-%20X1%20%28Waveform%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Sharp%20X1.png",
+        "nom": "Sharp X1"
+    },
+    {
+        "platform": "wswanc",
+        "url": "https://myrient.erista.me/files/No-Intro/Bandai%20-%20WonderSwan%20Color/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Wonderswan%20Color.png",
+        "nom": "WonderSwan Color"
+    },
+    {
+        "platform": "wswan",
+        "url": "https://myrient.erista.me/files/No-Intro/Bandai%20-%20WonderSwan/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/WonderSwan.png",
+        "nom": "WonderSwan"
+    },
+    {
+        "platform": "wiiu",
+        "url": "https://myrient.erista.me/files/Redump/Nintendo%20-%20Wii%20U%20-%20WUX/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Nintendo%20Wii%20U.png",
+        "nom": "Nintendo Wii U"
+    },
+    {
+        "platform": "wii",
+        "url": "https://myrient.erista.me/files/Redump/Nintendo%20-%20Wii%20-%20NKit%20RVZ%20%5Bzstd-19-128k%5D/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Nintendo%20Wii.png",
+        "nom": "Nintendo Wii"
+    },
+    {
+        "platform": "vsmile",
+        "url": "https://myrient.erista.me/files/No-Intro/VTech%20-%20V.Smile/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/default.png",
+        "nom": "VTech V.Smile"
+    },
+    {
+        "platform": "virtualboy",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Virtual%20Boy/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Nintendo%20Virtual%20Boy.png",
+        "nom": "Nintendo Virtual Boy"
+    },
+    {
+        "platform": "videopacplus",
+        "url": "https://myrient.erista.me/files/No-Intro/Philips%20-%20Videopac%2B/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Phillips%20Videopac+.png",
+        "nom": "Philips Videopac+"
+    },
+    {
+        "platform": "vectrex",
+        "url": "https://myrient.erista.me/files/No-Intro/GCE%20-%20Vectrex/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/GCE%20Vectrex.png",
+        "nom": "GCE Vectrex"
+    },
+    {
+        "platform": "vc4000",
+        "url": "https://myrient.erista.me/files/No-Intro/Interton%20-%20VC%204000/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/default.png",
+        "nom": "Interton VC 4000"
+    },
+    {
+        "platform": "tutor",
+        "url": "https://myrient.erista.me/files/No-Intro/Tomy%20-%20Tutor/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Tomy%20Tutor.png",
+        "nom": "Tomy Tutor"
+    },
+    {
+        "platform": "triforce",
+        "url": "https://myrient.erista.me/files/Redump/Arcade%20-%20Namco%20-%20Sega%20-%20Nintendo%20-%20Triforce/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Arcade/Sega%20Triforce.png",
+        "nom": "Sega Triforce"
+    },
+    {
+        "platform": "supracan",
+        "url": "https://myrient.erista.me/files/No-Intro/Funtech%20-%20Super%20Acan/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Funtech%20Super%20Acan.png",
+        "nom": "Funtech Super Acan"
+    },
+    {
+        "platform": "supervision",
+        "url": "https://myrient.erista.me/files/No-Intro/Watara%20-%20Supervision/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Watara%20Supervision.png",
+        "nom": "Watara Supervision"
+    },
+    {
+        "platform": "supergrafx",
+        "url": "https://myrient.erista.me/files/No-Intro/NEC%20-%20PC%20Engine%20SuperGrafx/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/NEC%20PC%20Engine%20SuperGrafx.png",
+        "nom": "NEC PC Engine SuperGrafx"
+    },
+    {
+        "platform": "sufami",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Sufami%20Turbo/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Nintendo%20Sufami%20Turbo.png",
+        "nom": "Nintendo Sufami Turbo"
+    },
+    {
+        "platform": "spectravideo",
+        "url": "https://myrient.erista.me/files/No-Intro/SpectraVideo/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/SpectraVideo.png",
+        "nom": "SpectraVideo"
+    },
+    {
+        "platform": "snes",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Super%20Nintendo%20Entertainment%20System/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Super%20Nintendo%20Entertainment%20System.png",
+        "nom": "Super Nintendo Entertainment System"
+    },
+    {
+        "platform": "sg1000",
+        "url": "https://myrient.erista.me/files/No-Intro/Sega%20-%20SG-1000/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Sega%20SG-1000.png",
+        "nom": "Sega SG-1000"
+    },
+    {
+        "platform": "segacd",
+        "url": "https://myrient.erista.me/files/Redump/Sega%20-%20Mega%20CD%20%26%20Sega%20CD/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Sega%20CD.png",
+        "nom": "Sega CD"
+    },
+    {
+        "platform": "sega32x",
+        "url": "https://myrient.erista.me/files/No-Intro/Sega%20-%2032X/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Sega%2032X.png",
+        "nom": "Sega 32X"
+    },
+    {
+        "platform": "scv",
+        "url": "https://myrient.erista.me/files/No-Intro/Epoch%20-%20Super%20Cassette%20Vision/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Epoch%20Super%20Cassette%20Vision.png",
+        "nom": "Epoch Super Cassette Vision"
+    },
+    {
+        "platform": "saturn",
+        "url": "https://myrient.erista.me/files/Redump/Sega%20-%20Saturn/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Sega%20Saturn.png",
+        "nom": "Sega Saturn"
+    },
+    {
+        "platform": "samcoupe",
+        "url": "https://myrient.erista.me/files/No-Intro/SAM%20Coup%C3%A9/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/SAM%20Coup%C3%A9.png",
+        "nom": "SAM Coupé"
+    },
+    {
+        "platform": "pv1000",
+        "url": "https://myrient.erista.me/files/No-Intro/Casio%20-%20PV-1000/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Casio%20PV-1000.png",
+        "nom": "Casio PV-1000"
+    },
+    {
+        "platform": "psx",
+        "url": "https://myrient.erista.me/files/Redump/Sony%20-%20PlayStation/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Sony%20Playstation.png",
+        "nom": "Sony Playstation"
+    },
+    {
+        "platform": "psvita",
+        "url": "https://myrient.erista.me/files/No-Intro/Sony%20-%20PlayStation%20Vita%20%28NoNpDrm%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Sony%20PS%20Vita.png",
+        "nom": "Sony PS Vita"
+    },
+    {
+        "platform": "psp",
+        "url": "https://myrient.erista.me/files/Redump/Sony%20-%20PlayStation%20Portable/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Sony%20PSP.png",
+        "nom": "Sony PSP"
+    },
+    {
+        "platform": "ps2",
+        "url": "https://myrient.erista.me/files/Redump/Sony%20-%20PlayStation%202/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Sony%20Playstation%202.png",
+        "nom": "Sony Playstation 2"
+    },
+    {
+        "platform": "pokemini",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Pokemon%20Mini/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Nintendo%20Pok%C3%A9mon%20Mini.png",
+        "nom": "Nintendo Pokémon Mini"
+    },
+    {
+        "platform": "pico",
+        "url": "https://myrient.erista.me/files/No-Intro/Sega%20-%20PICO/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Sega%20Pico.png",
+        "nom": "Sega Pico"
+    },
+    {
+        "platform": "pet",
+        "url": "https://myrient.erista.me/files/No-Intro/Commodore%20-%20PET/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Commodore%20PET.png",
+        "nom": "Commodore PET"
+    },
+    {
+        "platform": "pcfx",
+        "url": "https://myrient.erista.me/files/Redump/NEC%20-%20PC-FX%20%26%20PC-FXGA/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/NEC%20PC-FX.png",
+        "nom": "NEC PC-FX"
+    },
+    {
+        "platform": "pcenginecd",
+        "url": "https://myrient.erista.me/files/Redump/NEC%20-%20PC%20Engine%20CD%20%26%20TurboGrafx%20CD/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/NEC%20PC%20Engine%20CD.png",
+        "nom": "NEC PC Engine CD"
+    },
+    {
+        "platform": "pcengine",
+        "url": "https://myrient.erista.me/files/No-Intro/NEC%20-%20PC%20Engine%20-%20TurboGrafx-16/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/NEC%20PC%20Engine.png",
+        "nom": "NEC PC Engine"
+    },
+    {
+        "platform": "pc98",
+        "url": "https://myrient.erista.me/files/Redump/NEC%20-%20PC-98%20series/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/NEC%20PC-9801.png",
+        "nom": "NEC PC-9801"
+    },
+    {
+        "platform": "pc88",
+        "url": "https://myrient.erista.me/files/Redump/NEC%20-%20PC-88%20series/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/NEC%20PC-8801.png",
+        "nom": "NEC PC-8801"
+    },
+    {
+        "platform": "ngpc",
+        "url": "https://myrient.erista.me/files/No-Intro/SNK%20-%20NeoGeo%20Pocket%20Color/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/SNK%20Neo%20Geo%20Pocket%20Color.png",
+        "nom": "SNK Neo Geo Pocket Color"
+    },
+    {
+        "platform": "ngp",
+        "url": "https://myrient.erista.me/files/No-Intro/SNK%20-%20NeoGeo%20Pocket/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/SNK%20Neo%20Geo%20Pocket.png",
+        "nom": "SNK Neo Geo Pocket"
+    },
+    {
+        "platform": "nes",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Nintendo%20Entertainment%20System%20%28Headered%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Nintendo%20Entertainment%20System.png",
+        "nom": "Nintendo Entertainment System"
+    },
+    {
+        "platform": "neogeocd",
+        "url": "https://myrient.erista.me/files/Redump/SNK%20-%20Neo%20Geo%20CD/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/SNK%20Neo%20Geo%20CD.png",
+        "nom": "SNK Neo Geo CD"
+    },
+    {
+        "platform": "neogeo",
+        "url": "https://myrient.erista.me/files/No-Intro/SNK%20-%20Neo%20Geo/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/SNK%20Neo%20Geo.png",
+        "nom": "SNK Neo Geo"
+    },
+    {
+        "platform": "nds",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Nintendo%20DS%20%28Decrypted%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Nintendo%20DS.png",
+        "nom": "Nintendo DS"
+    },
+    {
+        "platform": "naomi2",
+        "url": "https://myrient.erista.me/files/Redump/Arcade%20-%20Sega%20-%20Naomi%202/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Arcade/Sega%20Naomi%202.png",
+        "nom": "Sega Naomi 2"
+    },
+    {
+        "platform": "naomi",
+        "url": "https://myrient.erista.me/files/Redump/Arcade%20-%20Sega%20-%20Naomi/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Arcade/Sega%20Naomi.png",
+        "nom": "Sega Naomi"
+    },
+    {
+        "platform": "n64dd",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Nintendo%2064DD/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Nintendo%2064DD.png",
+        "nom": "Nintendo 64DD"
+    },
+    {
+        "platform": "n64",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Nintendo%2064%20%28BigEndian%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Nintendo%2064.png",
+        "nom": "Nintendo 64"
+    },
+    {
+        "platform": "msx2+",
+        "url": "https://myrient.erista.me/files/No-Intro/Microsoft%20-%20MSX2/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Microsoft%20MSX2+.png",
+        "nom": "Microsoft MSX2+"
+    },
+    {
+        "platform": "msx2",
+        "url": "https://myrient.erista.me/files/No-Intro/Microsoft%20-%20MSX2/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Microsoft%20MSX2.png",
+        "nom": "Microsoft MSX2"
+    },
+    {
+        "platform": "msx1",
+        "url": "https://myrient.erista.me/files/No-Intro/Microsoft%20-%20MSX/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Microsoft%20MSX.png",
+        "nom": "Microsoft MSX"
+    },
+    {
+        "platform": "megaduck",
+        "url": "https://myrient.erista.me/files/No-Intro/Welback%20-%20Mega%20Duck/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Mega%20Duck.png",
+        "nom": "Mega Duck"
+    },
+    {
+        "platform": "megadrive",
+        "url": "https://myrient.erista.me/files/No-Intro/Sega%20-%20Mega%20Drive%20-%20Genesis/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Sega%20Mega%20Drive.png",
+        "nom": "Sega Mega Drive"
+    },
+    {
+        "platform": "mastersystem",
+        "url": "https://myrient.erista.me/files/No-Intro/Sega%20-%20Master%20System%20-%20Mark%20III/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Sega%20Master%20System.png",
+        "nom": "Sega Master System"
+    },
+    {
+        "platform": "mame",
+        "url": "https://myrient.erista.me/files/No-Intro/Arcade%20-%20PC-based/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Arcade/MAME.png",
+        "nom": "MAME"
+    },
+    {
+        "platform": "macintosh",
+        "url": "https://myrient.erista.me/files/Redump/Apple%20-%20Macintosh/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Apple%20Mac%20OS.png",
+        "nom": "Apple Mac OS"
+    },
+    {
+        "platform": "lynx",
+        "url": "https://myrient.erista.me/files/No-Intro/Atari%20-%20Lynx%20%28LNX%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Atari%20Lynx.png",
+        "nom": "Atari Lynx"
+    },
+    {
+        "platform": "intellivision",
+        "url": "https://myrient.erista.me/files/No-Intro/Mattel%20-%20Intellivision/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Mattel%20Intellivision.png",
+        "nom": "Mattel Intellivision"
+    },
+    {
+        "platform": "gx4000",
+        "url": "https://myrient.erista.me/files/No-Intro/Amstrad%20-%20GX4000/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Amstrad%20GX4000.png",
+        "nom": "Amstrad GX4000"
+    },
+    {
+        "platform": "gmaster",
+        "url": "https://myrient.erista.me/files/No-Intro/Hartung%20-%20Game%20Master/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Hartung%20Game%20Master.png",
+        "nom": "Hartung Game Master"
+    },
+    {
+        "platform": "gbc",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Game%20Boy%20Color/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Nintendo%20Game%20Boy%20Color.png",
+        "nom": "Nintendo Game Boy Color"
+    },
+    {
+        "platform": "gba",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Game%20Boy%20Advance/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Nintendo%20Game%20Boy%20Advance.png",
+        "nom": "Nintendo Game Boy Advance"
+    },
+    {
+        "platform": "gb",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Game%20Boy/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Nintendo%20Game%20Boy.png",
+        "nom": "Nintendo Game Boy"
+    },
+    {
+        "platform": "gamegear",
+        "url": "https://myrient.erista.me/files/No-Intro/Sega%20-%20Game%20Gear/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Sega%20Game%20Gear.png",
+        "nom": "Sega Game Gear"
+    },
+    {
+        "platform": "gamecom",
+        "url": "https://myrient.erista.me/files/No-Intro/Tiger%20-%20Game.com/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Tiger%20Game.com.png",
+        "nom": "Tiger Game.com"
+    },
+    {
+        "platform": "gameandwatch",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Game%20%26%20Watch/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Nintendo%20Game%20&%20Watch.png",
+        "nom": "Nintendo Game & Watch"
+    },
+    {
+        "platform": "gamate",
+        "url": "https://myrient.erista.me/files/No-Intro/Bit%20Corporation%20-%20Gamate/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Gamate.png",
+        "nom": "Gamate"
+    },
+    {
+        "platform": "fmtowns",
+        "url": "https://myrient.erista.me/files/Redump/Fujitsu%20-%20FM-Towns/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Fujitsu%20FM%20Towns%20Marty.png",
+        "nom": "Fujitsu FM Towns Marty"
+    },
+    {
+        "platform": "fm7",
+        "url": "https://myrient.erista.me/files/No-Intro/Fujitsu%20-%20FM-7%20%28Flux%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Fujitsu%20FM-7.png",
+        "nom": "Fujitsu FM-7"
+    },
+    {
+        "platform": "fds",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Family%20Computer%20Disk%20System%20%28FDS%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Nintendo%20Famicom%20Disk%20System.png",
+        "nom": "Nintendo Famicom Disk System"
+    },
+    {
+        "platform": "dreamcast",
+        "url": "https://myrient.erista.me/files/Redump/Sega%20-%20Dreamcast/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Sega%20Dreamcast.png",
+        "nom": "Sega Dreamcast"
+    },
+    {
+        "platform": "crvision",
+        "url": "https://myrient.erista.me/files/No-Intro/VTech%20-%20CreatiVision/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/VTech%20CreatiVision.png",
+        "nom": "VTech CreatiVision"
+    },
+    {
+        "platform": "cplus4",
+        "url": "https://myrient.erista.me/files/No-Intro/Commodore%20-%20Plus-4/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Commodore%20Plus%204.png",
+        "nom": "Commodore Plus 4"
+    },
+    {
+        "platform": "colecovision",
+        "url": "https://myrient.erista.me/files/No-Intro/Coleco%20-%20ColecoVision/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/ColecoVision.png",
+        "nom": "ColecoVision"
+    },
+    {
+        "platform": "channelf",
+        "url": "https://myrient.erista.me/files/No-Intro/Fairchild%20-%20Channel%20F/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Fairchild%20Channel%20F.png",
+        "nom": "Fairchild Channel F"
+    },
+    {
+        "platform": "cdi",
+        "url": "https://myrient.erista.me/files/Redump/Philips%20-%20CD-i/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Philips%20CD-i.png",
+        "nom": "Philips CD-i"
+    },
+    {
+        "platform": "c64",
+        "url": "https://myrient.erista.me/files/No-Intro/Commodore%20-%20Commodore%2064/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Commodore%2064.png",
+        "nom": "Commodore 64"
+    },
+    {
+        "platform": "c128",
+        "url": "https://myrient.erista.me/files/No-Intro/Commodore%20-%20128/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Commodore%20128.png",
+        "nom": "Commodore 128"
+    },
+    {
+        "platform": "atomiswave",
+        "url": "https://myrient.erista.me/files/No-Intro/Sammy%20Atomiswave/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Arcade/Sammy%20Atomiswave.png",
+        "nom": "Sammy Atomiswave"
+    },
+    {
+        "platform": "atarist",
+        "url": "https://myrient.erista.me/files/No-Intro/Atari%20-%20ST/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Atari%20ST.png",
+        "nom": "Atari ST"
+    },
+    {
+        "platform": "atari800",
+        "url": "https://myrient.erista.me/files/No-Intro/Atari%20-%208-bit%20Family/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Atari%20800.png",
+        "nom": "Atari 800"
+    },
+    {
+        "platform": "atari7800",
+        "url": "https://myrient.erista.me/files/No-Intro/Atari%20-%207800/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Atari%207800.png",
+        "nom": "Atari 7800"
+    },
+    {
+        "platform": "atari5200",
+        "url": "https://myrient.erista.me/files/No-Intro/Atari%20-%205200/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Atari%205200.png",
+        "nom": "Atari 5200"
+    },
+    {
+        "platform": "atari2600",
+        "url": "https://myrient.erista.me/files/No-Intro/Atari%20-%202600/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Atari%202600.png",
+        "nom": "Atari 2600"
+    },
+    {
+        "platform": "astrocde",
+        "url": "https://myrient.erista.me/files/No-Intro/Bally%20-%20Astrocade/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Bally%20Astrocade.png",
+        "nom": "Bally Astrocade"
+    },
+    {
+        "platform": "arduboy",
+        "url": "https://myrient.erista.me/files/No-Intro/Arduboy%20Inc%20-%20Arduboy/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/default.png",
+        "nom": "Arduboy"
+    },
+    {
+        "platform": "archimedes",
+        "url": "https://myrient.erista.me/files/No-Intro/Acorn%20-%20Archimedes/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Acorn%20Archimedes.png",
+        "nom": "Acorn Archimedes"
+    },
+    {
+        "platform": "arcadia",
+        "url": "https://myrient.erista.me/files/No-Intro/Emerson%20-%20Arcadia%202001/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Emerson%20Arcadia%202001.png",
+        "nom": "Emerson Arcadia 2001"
+    },
+    {
+        "platform": "apple2gs",
+        "url": "https://myrient.erista.me/files/No-Intro/Apple%20-%20IIGS%20%28WOZ%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Apple%20IIGS.png",
+        "nom": "Apple IIGS"
+    },
+    {
+        "platform": "apple2",
+        "url": "https://myrient.erista.me/files/No-Intro/Apple%20-%20II%20%28WOZ%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Apple%20II.png",
+        "nom": "Apple II"
+    },
+    {
+        "platform": "apfm1000",
+        "url": "https://myrient.erista.me/files/No-Intro/APF%20-%20MP-1000/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/APF%20Imagination%20Machine-04.png",
+        "nom": "APF Imagination Machine"
+    },
+    {
+        "platform": "amstradcpc",
+        "url": "https://myrient.erista.me/files/No-Intro/Amstrad%20-%20CPC%20%28Flux%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Amstrad%20CPC.png",
+        "nom": "Amstrad CPC"
+    },
+    {
+        "platform": "amigacdtv",
+        "url": "https://myrient.erista.me/files/Redump/Commodore%20-%20Amiga%20CDTV/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Commodore%20CDTV.png",
+        "nom": "Commodore CDTV"
+    },
+    {
+        "platform": "amiga500",
+        "url": "https://myrient.erista.me/files/No-Intro/Commodore%20-%20Amiga/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Commodore%20Amiga%20500.png",
+        "nom": "Commodore Amiga 500"
+    },
+    {
+        "platform": "amiga1200",
+        "url": "https://myrient.erista.me/files/No-Intro/Commodore%20-%20Amiga/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Commodore%20Amiga%201200.png",
+        "nom": "Commodore Amiga 1200"
+    },
+    {
+        "platform": "advision",
+        "url": "https://myrient.erista.me/files/No-Intro/Entex%20-%20Adventure%20Vision/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Entex%20Adventure%20Vision.png",
+        "nom": "Entex Adventure Vision"
+    },
+    {
+        "platform": "adam",
+        "url": "https://myrient.erista.me/files/No-Intro/Coleco%20-%20ADAM/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Coleco%20ADAM.png",
+        "nom": "Coleco ADAM"
+    },
+    {
+        "platform": "3ds",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Nintendo%203DS%20%28Decrypted%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Handhelds/Nintendo%203DS.png",
+        "nom": "Nintendo 3DS"
+    },
+    {
+        "platform": "jaguarcd",
+        "url": "https://myrient.erista.me/files/Redump/Atari%20-%20Jaguar%20CD%20Interactive%20Multimedia%20System/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Atari%20Jaguar%20CD.png",
+        "nom": "Atari Jaguar CD"
+    },
+    {
+        "platform": "jaguar",
+        "url": "https://myrient.erista.me/files/No-Intro/Atari%20-%20Jaguar%20%28ROM%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Atari%20Jaguar.png",
+        "nom": "Atari Jaguar"
+    },
+    {
+        "platform": "vis",
+        "url": "https://myrient.erista.me/files/Redump/Memorex%20-%20Visual%20Information%20System/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/default.png",
+        "nom": "Memorex Visual Information System"
+    },
+    {
+        "platform": "ti99",
+        "url": "https://myrient.erista.me/files/No-Intro/Texas%20Instruments%20-%20TI-99-4A%20%28A2R%29/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Computers/Texas%20Instruments%20TI%2099%204A.png",
+        "nom": "Texas Instruments TI 99 4A"
+    },
+    {
+        "platform": "satellaview",
+        "url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Satellaview/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/Consoles/Nintendo%20Satellaview.png",
+        "nom": "Nintendo Satellaview"
+    },
+    {
+        "platform": "namco2x6",
+        "url": "https://myrient.erista.me/files/Redump/Arcade%20-%20Namco%20-%20System%20246/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/default.png",
+        "nom": "Namco System 246"
+    },
+    {
+        "platform": "gp32",
+        "url": "https://myrient.erista.me/files/No-Intro/GamePlay%20-%20GP32/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/default.png",
+        "nom": "GamePark GP32"
+    },
+    {
+        "platform": "gamepock",
+        "url": "https://myrient.erista.me/files/No-Intro/Epoch%20-%20Game%20Pocket%20Computer/",
+        "system_image": "https://retrogamesets.fr/assets/images/consoles/default.png",
+        "nom": "Epoch Game Pocket Computer"
+    }
+]
