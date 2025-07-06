@@ -3,6 +3,7 @@ import json
 import os
 import logging
 import config
+from config import CONTROLS_CONFIG_PATH
 from display import draw_gradient
 
 logger = logging.getLogger(__name__)
@@ -239,165 +240,185 @@ def get_readable_input_name(event):
         return MOUSE_BUTTON_NAMES.get(event.button, f"Souris Bouton {event.button}")
     return "Inconnu"
 
+ACTIONS = ["start", "confirm", "cancel"]
+
 def map_controls(screen):
-    """Interface de mappage des contrôles avec validation par maintien de 3 secondes."""
-    controls_config = load_controls_config()
-    current_action_index = 0
-    current_input = None
-    input_held_time = 0
-    last_input_name = None
-    last_frame_time = pygame.time.get_ticks()
-    config.needs_redraw = True
-
-    # Initialiser l'état des boutons et axes pour suivre les relâchements
-    held_keys = set()
-    held_buttons = set()
-    held_axes = {}  # {axis: direction}
-    held_hats = {}  # {hat: value}
-    held_mouse_buttons = set()
-
-    while current_action_index < len(ACTIONS):
-        if config.needs_redraw:
-            progress = min(input_held_time / HOLD_DURATION, 1.0) if current_input else 0.0
-            draw_controls_mapping(screen, ACTIONS[current_action_index], last_input_name, current_input is not None, progress)
-            pygame.display.flip()
-            config.needs_redraw = False
-
-        current_time = pygame.time.get_ticks()
-        delta_time = current_time - last_frame_time
-        last_frame_time = current_time
-
-        events = pygame.event.get()
-        for event in events:
-            if event.type == pygame.QUIT:
-                return False
-
-            # Détecter les relâchements pour réinitialiser
-            if event.type == pygame.KEYUP:
-                if event.key in held_keys:
-                    held_keys.remove(event.key)
-                    if current_input and current_input["type"] == "key" and current_input["value"] == event.key:
-                        current_input = None
-                        input_held_time = 0
-                        last_input_name = None
-                        config.needs_redraw = True
-                        logger.debug(f"Touche relâchée: {event.key}")
-            elif event.type == pygame.JOYBUTTONUP:
-                if event.button in held_buttons:
-                    held_buttons.remove(event.button)
-                    if current_input and current_input["type"] == "button" and current_input["value"] == event.button:
-                        current_input = None
-                        input_held_time = 0
-                        last_input_name = None
-                        config.needs_redraw = True
-                        logger.debug(f"Bouton relâché: {event.button}")
-            elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button in held_mouse_buttons:
-                    held_mouse_buttons.remove(event.button)
-                    if current_input and current_input["type"] == "mouse" and current_input["value"] == event.button:
-                        current_input = None
-                        input_held_time = 0
-                        last_input_name = None
-                        config.needs_redraw = True
-                        logger.debug(f"Bouton souris relâché: {event.button}")
-            elif event.type == pygame.JOYAXISMOTION:
-                if abs(event.value) < 0.5:  # Axe revenu à la position neutre
-                    if event.axis in held_axes:
-                        del held_axes[event.axis]
-                        if current_input and current_input["type"] == "axis" and current_input["value"][0] == event.axis:
-                            current_input = None
-                            input_held_time = 0
-                            last_input_name = None
-                            config.needs_redraw = True
-                            logger.debug(f"Axe relâché: {event.axis}")
-            elif event.type == pygame.JOYHATMOTION:
-                if event.value == (0, 0):  # D-Pad revenu à la position neutre
-                    if event.hat in held_hats:
-                        del held_hats[event.hat]
-                        if current_input and current_input["type"] == "hat" and current_input["value"] == event.value:
-                            current_input = None
-                            input_held_time = 0
-                            last_input_name = None
-                            config.needs_redraw = True
-                            logger.debug(f"D-Pad relâché: {event.hat}")
-
-            # Détecter les nouvelles entrées
-            if event.type in (pygame.KEYDOWN, pygame.JOYBUTTONDOWN, pygame.JOYAXISMOTION, pygame.JOYHATMOTION, pygame.MOUSEBUTTONDOWN):
-                input_name = get_readable_input_name(event)
-                if input_name != "Inconnu":
-                    input_type = {
-                        pygame.KEYDOWN: "key",
-                        pygame.JOYBUTTONDOWN: "button",
-                        pygame.JOYAXISMOTION: "axis",
-                        pygame.JOYHATMOTION: "hat",
-                        pygame.MOUSEBUTTONDOWN: "mouse",
-                    }[event.type]
-                    input_value = (
-                        SDL_TO_PYGAME_KEY.get(event.key, event.key) if event.type == pygame.KEYDOWN else
-                        event.button if event.type == pygame.JOYBUTTONDOWN else
-                        (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION and abs(event.value) > 0.5 else
-                        event.value if event.type == pygame.JOYHATMOTION else
-                        event.button
-                    )
-
-                    # Vérifier si l'entrée est nouvelle ou différente
-                    if (current_input is None or
-                        (input_type == "key" and current_input["value"] != input_value) or
-                        (input_type == "button" and current_input["value"] != input_value) or
-                        (input_type == "axis" and current_input["value"] != input_value) or
-                        (input_type == "hat" and current_input["value"] != input_value) or
-                        (input_type == "mouse" and current_input["value"] != input_value)):
-                        current_input = {"type": input_type, "value": input_value}
-                        input_held_time = 0
-                        last_input_name = input_name
-                        config.needs_redraw = True
-                        logger.debug(f"Nouvelle entrée détectée: {input_type}:{input_value} ({input_name})")
-
-                    # Mettre à jour les entrées maintenues
-                    if input_type == "key":
-                        held_keys.add(input_value)
-                    elif input_type == "button":
-                        held_buttons.add(input_value)
-                    elif input_type == "axis":
-                        held_axes[input_value[0]] = input_value[1]
-                    elif input_type == "hat":
-                        held_hats[event.hat] = input_value
-                    elif input_type == "mouse":
-                        held_mouse_buttons.add(input_value)
-
-            # Sauter à l'action suivante avec Échap
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                action_name = ACTIONS[current_action_index]["name"]
-                controls_config[action_name] = {}  # Marquer comme non mappé
-                current_action_index += 1
-                current_input = None
-                input_held_time = 0
-                last_input_name = None
-                config.needs_redraw = True
-                logger.debug(f"Action {action_name} ignorée avec Échap, passage à l'action suivante: {ACTIONS[current_action_index]['name'] if current_action_index < len(ACTIONS) else 'fin'}")
-
-        # Mettre à jour le temps de maintien
-        if current_input:
-            input_held_time += delta_time
-            if input_held_time >= HOLD_DURATION:
-                action_name = ACTIONS[current_action_index]["name"]
-                logger.debug(f"Entrée validée pour {action_name}: {current_input['type']}:{current_input['value']} ({last_input_name})")
-                controls_config[action_name] = {
-                    "type": current_input["type"],
-                    "value": current_input["value"],
-                    "display": last_input_name
-                }
-                current_action_index += 1
-                current_input = None
-                input_held_time = 0
-                last_input_name = None
-                config.needs_redraw = True
+    mapping = True
+    current_action = 0
+    clock = pygame.time.Clock()
+    while mapping:
+        clock.tick(100)  # 100 FPS
+        for event in pygame.event.get():
+            """Interface de mappage des contrôles avec validation par maintien de 3 secondes."""
+            controls_config = load_controls_config()
+            current_action_index = 0
+            current_input = None
+            input_held_time = 0
+            last_input_name = None
+            last_frame_time = pygame.time.get_ticks()
             config.needs_redraw = True
 
-        pygame.time.wait(10)
+            # Initialiser l'état des boutons et axes pour suivre les relâchements
+            held_keys = set()
+            held_buttons = set()
+            held_axes = {}  # {axis: direction}
+            held_hats = {}  # {hat: value}
+            held_mouse_buttons = set()
 
-    save_controls_config(controls_config)
-    config.controls_config = controls_config
+            while current_action_index < len(ACTIONS):
+                if config.needs_redraw:
+                    progress = min(input_held_time / HOLD_DURATION, 1.0) if current_input else 0.0
+                    draw_controls_mapping(screen, ACTIONS[current_action_index], last_input_name, current_input is not None, progress)
+                    pygame.display.flip()
+                    config.needs_redraw = False
+
+                current_time = pygame.time.get_ticks()
+                delta_time = current_time - last_frame_time
+                last_frame_time = current_time
+
+                events = pygame.event.get()
+                for event in events:
+                    if event.type == pygame.QUIT:
+                        return False
+
+                    # Détecter les relâchements pour réinitialiser
+                    if event.type == pygame.KEYUP:
+                        if event.key in held_keys:
+                            held_keys.remove(event.key)
+                            if current_input and current_input["type"] == "key" and current_input["value"] == event.key:
+                                current_input = None
+                                input_held_time = 0
+                                last_input_name = None
+                                config.needs_redraw = True
+                                logger.debug(f"Touche relâchée: {event.key}")
+                    elif event.type == pygame.JOYBUTTONUP:
+                        if event.button in held_buttons:
+                            held_buttons.remove(event.button)
+                            if current_input and current_input["type"] == "button" and current_input["value"] == event.button:
+                                current_input = None
+                                input_held_time = 0
+                                last_input_name = None
+                                config.needs_redraw = True
+                                logger.debug(f"Bouton relâché: {event.button}")
+                    elif event.type == pygame.MOUSEBUTTONUP:
+                        if event.button in held_mouse_buttons:
+                            held_mouse_buttons.remove(event.button)
+                            if current_input and current_input["type"] == "mouse" and current_input["value"] == event.button:
+                                current_input = None
+                                input_held_time = 0
+                                last_input_name = None
+                                config.needs_redraw = True
+                                logger.debug(f"Bouton souris relâché: {event.button}")
+                    elif event.type == pygame.JOYAXISMOTION:
+                        if abs(event.value) < 0.5:  # Axe revenu à la position neutre
+                            if event.axis in held_axes:
+                                del held_axes[event.axis]
+                                if current_input and current_input["type"] == "axis" and current_input["value"][0] == event.axis:
+                                    current_input = None
+                                    input_held_time = 0
+                                    last_input_name = None
+                                    config.needs_redraw = True
+                                    logger.debug(f"Axe relâché: {event.axis}")
+                    elif event.type == pygame.JOYHATMOTION:
+                        if event.value == (0, 0):  # D-Pad revenu à la position neutre
+                            if event.hat in held_hats:
+                                del held_hats[event.hat]
+                                if current_input and current_input["type"] == "hat" and current_input["value"] == event.value:
+                                    current_input = None
+                                    input_held_time = 0
+                                    last_input_name = None
+                                    config.needs_redraw = True
+                                    logger.debug(f"D-Pad relâché: {event.hat}")
+
+                    # Détecter les nouvelles entrées
+                    if event.type in (pygame.KEYDOWN, pygame.JOYBUTTONDOWN, pygame.JOYAXISMOTION, pygame.JOYHATMOTION, pygame.MOUSEBUTTONDOWN):
+                        input_name = get_readable_input_name(event)
+                        if input_name != "Inconnu":
+                            input_type = {
+                                pygame.KEYDOWN: "key",
+                                pygame.JOYBUTTONDOWN: "button",
+                                pygame.JOYAXISMOTION: "axis",
+                                pygame.JOYHATMOTION: "hat",
+                                pygame.MOUSEBUTTONDOWN: "mouse",
+                            }[event.type]
+                            input_value = (
+                                SDL_TO_PYGAME_KEY.get(event.key, event.key) if event.type == pygame.KEYDOWN else
+                                event.button if event.type == pygame.JOYBUTTONDOWN else
+                                (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION and abs(event.value) > 0.5 else
+                                event.value if event.type == pygame.JOYHATMOTION else
+                                event.button
+                            )
+
+                            # Vérifier si l'entrée est nouvelle ou différente
+                            if (current_input is None or
+                                (input_type == "key" and current_input["value"] != input_value) or
+                                (input_type == "button" and current_input["value"] != input_value) or
+                                (input_type == "axis" and current_input["value"] != input_value) or
+                                (input_type == "hat" and current_input["value"] != input_value) or
+                                (input_type == "mouse" and current_input["value"] != input_value)):
+                                current_input = {"type": input_type, "value": input_value}
+                                input_held_time = 0
+                                last_input_name = input_name
+                                config.needs_redraw = True
+                                logger.debug(f"Nouvelle entrée détectée: {input_type}:{input_value} ({input_name})")
+
+                            # Mettre à jour les entrées maintenues
+                            if input_type == "key":
+                                held_keys.add(input_value)
+                            elif input_type == "button":
+                                held_buttons.add(input_value)
+                            elif input_type == "axis":
+                                held_axes[input_value[0]] = input_value[1]
+                            elif input_type == "hat":
+                                held_hats[event.hat] = input_value
+                            elif input_type == "mouse":
+                                held_mouse_buttons.add(input_value)
+
+                    # Sauter à l'action suivante avec Échap
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                        action_name = ACTIONS[current_action_index]["name"]
+                        controls_config[action_name] = {}  # Marquer comme non mappé
+                        current_action_index += 1
+                        current_input = None
+                        input_held_time = 0
+                        last_input_name = None
+                        config.needs_redraw = True
+                        logger.debug(f"Action {action_name} ignorée avec Échap, passage à l'action suivante: {ACTIONS[current_action_index]['name'] if current_action_index < len(ACTIONS) else 'fin'}")
+
+                # Mettre à jour le temps de maintien
+                if current_input:
+                    input_held_time += delta_time
+                    if input_held_time >= HOLD_DURATION:
+                        action_name = ACTIONS[current_action_index]["name"]
+                        logger.debug(f"Entrée validée pour {action_name}: {current_input['type']}:{current_input['value']} ({last_input_name})")
+                        controls_config[action_name] = {
+                            "type": current_input["type"],
+                            "value": current_input["value"],
+                            "display": last_input_name
+                        }
+                        current_action_index += 1
+                        current_input = None
+                        input_held_time = 0
+                        last_input_name = None
+                        config.needs_redraw = True
+                    config.needs_redraw = True
+
+                pygame.time.wait(10)
+
+            save_controls_config(controls_config)
+            config.controls_config = controls_config
+            return True
+            pass
+
+def save_controls_config(config):
+    """Enregistre la configuration des contrôles dans un fichier JSON."""
+    try:
+        with open(CONTROLS_CONFIG_PATH, "w") as f:
+            json.dump(config, f, indent=4)
+        logging.debug("Configuration des contrôles enregistrée")
+    except Exception as e:
+        logging.error(f"Erreur lors de l'enregistrement de controls.json : {e}")
+        return False
     return True
 
 def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_progress):
