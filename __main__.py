@@ -46,8 +46,9 @@ REPEAT_DELAY = 300  # Délai initial avant répétition (ms)
 REPEAT_INTERVAL = 100  # Intervalle entre répétitions (ms)
 REPEAT_ACTION_DEBOUNCE = 50  # Délai anti-rebond pour répétitions (ms)
 
-# Initialisation de Pygame
+# Initialisation de Pygame et des polices
 pygame.init()
+config.init_font()
 pygame.joystick.init()
 pygame.mouse.set_visible(True)
 
