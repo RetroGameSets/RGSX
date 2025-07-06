@@ -7,19 +7,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Cache global pour l'overlay semi-transparent
-OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
-OVERLAY.fill((0, 0, 0, 180))
+OVERLAY = None  # Initialisé dans init_display()
 
 def init_display():
-    """Initialise l’écran Pygame."""
+    """Initialise l’écran Pygame et met à jour la résolution."""
     screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
     config.screen_width, config.screen_height = screen.get_size()
-    # Redimensionner l'overlay pour correspondre à la résolution réelle
+    logger.debug(f"Résolution réelle : {config.screen_width}x{config.screen_height}")
     global OVERLAY
     OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
     OVERLAY.fill((0, 0, 0, 180))
     return screen
-    
+
 def draw_gradient(screen, top_color, bottom_color):
     """Dessine un fond dégradé vertical."""
     height = screen.get_height()
@@ -39,9 +38,9 @@ def draw_loading_screen(screen):
         "dont vous possédez les originaux !"
     ]
 
-    margin_horizontal = 20
-    padding_vertical = 20
-    padding_between = 8
+    margin_horizontal = int(config.screen_width * 0.025)  # 2.5% de la largeur
+    padding_vertical = int(config.screen_height * 0.0185)  # ~20px pour 1080p
+    padding_between = int(config.screen_height * 0.0074)  # ~8px pour 1080p
     border_radius = 16
     border_width = 3
     shadow_offset = 6
@@ -51,7 +50,7 @@ def draw_loading_screen(screen):
     rect_width = config.screen_width - 2 * margin_horizontal
     rect_height = total_height + 2 * padding_vertical
     rect_x = margin_horizontal
-    rect_y = 20
+    rect_y = int(config.screen_height * 0.0185)  # ~20px pour 1080p
 
     shadow_rect = pygame.Rect(rect_x + shadow_offset, rect_y + shadow_offset, rect_width, rect_height)
     shadow_surface = pygame.Surface((rect_width, rect_height), pygame.SRCALPHA)
@@ -65,45 +64,51 @@ def draw_loading_screen(screen):
 
     pygame.draw.rect(screen, (255, 255, 255), disclaimer_rect, border_width, border_radius=border_radius)
 
+    max_text_width = rect_width - 2 * padding_vertical
     for i, line in enumerate(disclaimer_lines):
-        text_surface = config.font.render(line, True, (255, 255, 255))
-        text_rect = text_surface.get_rect(center=(
-            config.screen_width // 2,
-            rect_y + padding_vertical + (i + 0.5) * line_height - padding_between // 2
-        ))
-        screen.blit(text_surface, text_rect)
+        wrapped_lines = wrap_text(line, config.font, max_text_width)
+        for j, wrapped_line in enumerate(wrapped_lines):
+            text_surface = config.font.render(wrapped_line, True, (255, 255, 255))
+            text_rect = text_surface.get_rect(center=(
+                config.screen_width // 2,
+                rect_y + padding_vertical + (i * len(wrapped_lines) + j + 0.5) * line_height - padding_between // 2
+            ))
+            screen.blit(text_surface, text_rect)
 
-    loading_y = rect_y + rect_height + 100
-    text = config.font.render(f"{config.current_loading_system}", True, (255, 255, 255))
+    loading_y = rect_y + rect_height + int(config.screen_height * 0.0926)  # ~100px pour 1080p
+    text = config.font.render(truncate_text_end(f"{config.current_loading_system}", config.font, config.screen_width - 2 * margin_horizontal), True, (255, 255, 255))
     text_rect = text.get_rect(center=(config.screen_width // 2, loading_y))
     screen.blit(text, text_rect)
 
     progress_text = config.font.render(f"Progression : {int(config.loading_progress)}%", True, (255, 255, 255))
-    progress_rect = progress_text.get_rect(center=(config.screen_width // 2, loading_y + 50))
+    progress_rect = progress_text.get_rect(center=(config.screen_width // 2, loading_y + int(config.screen_height * 0.0463)))  # ~50px pour 1080p
     screen.blit(progress_text, progress_rect)
 
-    bar_width = 400
-    bar_height = 40
+    bar_width = int(config.screen_width * 0.2083)  # ~400px pour 1920p
+    bar_height = int(config.screen_height * 0.037)  # ~40px pour 1080p
     progress_width = (bar_width * config.loading_progress) / 100
-    pygame.draw.rect(screen, (100, 100, 100), (config.screen_width // 2 - bar_width // 2, loading_y + 100, bar_width, bar_height))
-    pygame.draw.rect(screen, (0, 255, 0), (config.screen_width // 2 - bar_width // 2, loading_y + 100, progress_width, bar_height))
+    pygame.draw.rect(screen, (100, 100, 100), (config.screen_width // 2 - bar_width // 2, loading_y + int(config.screen_height * 0.0926), bar_width, bar_height))
+    pygame.draw.rect(screen, (0, 255, 0), (config.screen_width // 2 - bar_width // 2, loading_y + int(config.screen_height * 0.0926), progress_width, bar_height))
 
 def draw_error_screen(screen):
     """Affiche l’écran d’erreur."""
     error_font = pygame.font.SysFont("arial", 28)
-    text = error_font.render(config.error_message, True, (255, 0, 0))
-    text_rect = text.get_rect(center=(config.screen_width // 2, config.screen_height // 2))
-    screen.blit(text, text_rect)
+    wrapped_message = wrap_text(config.error_message, error_font, config.screen_width - 80)
+    line_height = error_font.get_height() + 5
+    for i, line in enumerate(wrapped_message):
+        text = error_font.render(line, True, (255, 0, 0))
+        text_rect = text.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - (len(wrapped_message) // 2 - i) * line_height))
+        screen.blit(text, text_rect)
     retry_text = config.font.render(f"{get_control_display('confirm', 'Entrée/A')} : retenter, {get_control_display('cancel', 'Échap/B')} : quitter", True, (255, 255, 255))
-    retry_rect = retry_text.get_rect(center=(config.screen_width // 2, config.screen_height // 2 + 100))
+    retry_rect = retry_text.get_rect(center=(config.screen_width // 2, config.screen_height // 2 + int(config.screen_height * 0.0926)))  # ~100px pour 1080p
     screen.blit(retry_text, retry_rect)
 
 def draw_platform_grid(screen):
     """Affiche la grille des plateformes."""
-    margin_left = 50
-    margin_right = 50
-    margin_top = 120
-    margin_bottom = 70
+    margin_left = int(config.screen_width * 0.026)  # ~50px pour 1920p
+    margin_right = int(config.screen_width * 0.026)
+    margin_top = int(config.screen_height * 0.111)  # ~120px pour 1080p
+    margin_bottom = int(config.screen_height * 0.0648)  # ~70px pour 1080p
     num_cols = 3
     num_rows = 3
     systems_per_page = num_cols * num_rows
@@ -132,7 +137,6 @@ def draw_platform_grid(screen):
         platform_dict = config.platform_dicts[idx]
         image = load_system_image(platform_dict)
         if image:
-            # Calculer la taille en respectant le ratio d'origine
             orig_width, orig_height = image.get_width(), image.get_height()
             max_size = int(min(col_width, row_height) * scale * 0.9)
             ratio = min(max_size / orig_width, max_size / orig_height)
@@ -174,14 +178,14 @@ def draw_virtual_keyboard(screen):
         ['Q', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M'],
         ['W', 'X', 'C', 'V', 'B', 'N']
     ]
-    key_width = 60
-    key_height = 60
-    key_spacing = 10
+    key_width = int(config.screen_width * 0.03125)  # ~60px pour 1920p
+    key_height = int(config.screen_height * 0.0556)  # ~60px pour 1080p
+    key_spacing = int(config.screen_width * 0.0052)  # ~10px pour 1920p
     keyboard_width = len(keyboard_layout[0]) * (key_width + key_spacing) - key_spacing
     keyboard_height = len(keyboard_layout) * (key_height + key_spacing) - key_spacing
     start_x = (config.screen_width - keyboard_width) // 2
-    search_bottom_y = 120 + (config.search_font.get_height() + 40) // 2
-    controls_y = config.screen_height - 20
+    search_bottom_y = int(config.screen_height * 0.111) + (config.search_font.get_height() + 40) // 2  # ~120px pour 1080p
+    controls_y = config.screen_height - int(config.screen_height * 0.0185)  # ~20px pour 1080p
     available_height = controls_y - search_bottom_y
     start_y = search_bottom_y + (available_height - keyboard_height - 40) // 2
 
@@ -227,23 +231,25 @@ def draw_progress_screen(screen):
         title_text = f"Converting : {truncate_text_end(game_name, config.font, config.screen_width - 200)}"
     else:
         title_text = f"{status} : {truncate_text_end(game_name, config.font, config.screen_width - 200)}"
-    title_render = config.font.render(title_text, True, (255, 255, 255))
-    title_rect = title_render.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - 100))
-    pygame.draw.rect(screen, (50, 50, 50, 200), title_rect.inflate(40, 20))
-    pygame.draw.rect(screen, (255, 255, 255), title_rect.inflate(40, 20), 2)
-    screen.blit(title_render, title_rect)
-    logger.debug(f"Titre affiché : texte={title_text}, position={title_rect}, taille={title_render.get_size()}")
+    title_lines = wrap_text(title_text, config.font, config.screen_width - 80)
+    line_height = config.font.get_height() + 5
+    for i, line in enumerate(title_lines):
+        title_render = config.font.render(line, True, (255, 255, 255))
+        title_rect = title_render.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - 100 - (len(title_lines) // 2 - i) * line_height))
+        screen.blit(title_render, title_rect)
+        logger.debug(f"Titre affiché : texte={line}, position={title_rect}, taille={title_render.get_size()}")
 
     if status == "Converting ISO":
-        conversion_text = config.font.render("Conversion de l'ISO en dossier .ps3 en cours...", True, (255, 255, 255))
-        conversion_rect = conversion_text.get_rect(center=(config.screen_width // 2, config.screen_height // 2))
-        pygame.draw.rect(screen, (50, 50, 50, 200), conversion_rect.inflate(40, 20))
-        pygame.draw.rect(screen, (255, 255, 255), conversion_rect.inflate(40, 20), 2)
-        screen.blit(conversion_text, conversion_rect)
-        logger.debug(f"Message de conversion affiché : position={conversion_rect}, taille={conversion_text.get_size()}")
+        conversion_text = "Conversion de l'ISO en dossier .ps3 en cours..."
+        conversion_lines = wrap_text(conversion_text, config.font, config.screen_width - 80)
+        for i, line in enumerate(conversion_lines):
+            conversion_render = config.font.render(line, True, (255, 255, 255))
+            conversion_rect = conversion_render.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - (len(conversion_lines) // 2 - i) * line_height))
+            screen.blit(conversion_render, conversion_rect)
+            logger.debug(f"Message de conversion affiché : texte={line}, position={conversion_rect}, taille={conversion_render.get_size()}")
     else:
         bar_width = config.screen_width // 2
-        bar_height = 30
+        bar_height = int(config.screen_height * 0.0278)  # ~30px pour 1080p
         bar_x = (config.screen_width - bar_width) // 2
         bar_y = config.screen_height // 2
         progress_width = 0
@@ -258,13 +264,13 @@ def draw_progress_screen(screen):
         total_mb = total_size / (1024 * 1024)
         size_text = f"{downloaded_mb:.1f} Mo / {total_mb:.1f} Mo"
         percent_text = f"{int(progress_percent)}%  {size_text}"
-        percent_render = config.font.render(percent_text, True, (255, 255, 255))
+        percent_lines = wrap_text(percent_text, config.font, config.screen_width - 80)
         text_y = bar_y + bar_height // 2 + config.font.get_height() + 20
-        percent_rect = percent_render.get_rect(center=(config.screen_width // 2, text_y))
-        pygame.draw.rect(screen, (50, 50, 50, 200), percent_rect.inflate(20, 10))
-        pygame.draw.rect(screen, (255, 255, 255), percent_rect.inflate(20, 10), 2)
-        screen.blit(percent_render, percent_rect)
-        logger.debug(f"Texte de progression affiché : texte={percent_text}, position={percent_rect}, taille={percent_render.get_size()}")
+        for i, line in enumerate(percent_lines):
+            percent_render = config.font.render(line, True, (255, 255, 255))
+            percent_rect = percent_render.get_rect(center=(config.screen_width // 2, text_y + i * line_height))
+            screen.blit(percent_render, percent_rect)
+            logger.debug(f"Texte de progression affiché : texte={line}, position={percent_rect}, taille={percent_render.get_size()}")
 
 def draw_scrollbar(screen):
     """Affiche la barre de défilement à droite de l’écran."""
@@ -281,11 +287,12 @@ def draw_confirm_dialog(screen):
     screen.blit(OVERLAY, (0, 0))
 
     message = "Voulez-vous vraiment quitter ?"
-    text = config.font.render(message, True, (255, 255, 255))
-    text_rect = text.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - 50))
-    pygame.draw.rect(screen, (50, 50, 50, 200), text_rect.inflate(40, 20))
-    pygame.draw.rect(screen, (255, 255, 255), text_rect.inflate(40, 20), 2)
-    screen.blit(text, text_rect)
+    wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
+    line_height = config.font.get_height() + 5
+    for i, line in enumerate(wrapped_message):
+        text = config.font.render(line, True, (255, 255, 255))
+        text_rect = text.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - 50 - (len(wrapped_message) // 2 - i) * line_height))
+        screen.blit(text, text_rect)
 
     yes_text = config.font.render("Oui", True, (255, 255, 255))
     no_text = config.font.render("Non", True, (255, 255, 255))
@@ -297,8 +304,6 @@ def draw_confirm_dialog(screen):
     else:
         pygame.draw.rect(screen, (0, 150, 255, 150), no_rect.inflate(40, 20))
 
-    pygame.draw.rect(screen, (255, 255, 255), yes_rect.inflate(40, 20), 2)
-    pygame.draw.rect(screen, (255, 255, 255), no_rect.inflate(40, 20), 2)
     screen.blit(yes_text, yes_rect)
     screen.blit(no_text, no_rect)
 
@@ -306,11 +311,12 @@ def draw_popup_message(screen, message, is_error):
     """Affiche une popup avec un message de résultat."""
     screen.blit(OVERLAY, (0, 0))
 
-    text = config.font.render(message, True, (255, 0, 0) if is_error else (0, 255, 0))
-    text_rect = text.get_rect(center=(config.screen_width // 2, config.screen_height // 2))
-    pygame.draw.rect(screen, (50, 50, 50, 200), text_rect.inflate(40, 20))
-    pygame.draw.rect(screen, (255, 255, 255), text_rect.inflate(40, 20), 2)
-    screen.blit(text, text_rect)
+    wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
+    line_height = config.font.get_height() + 5
+    for i, line in enumerate(wrapped_message):
+        text = config.font.render(line, True, (255, 0, 0) if is_error else (0, 255, 0))
+        text_rect = text.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - (len(wrapped_message) // 2 - i) * line_height))
+        screen.blit(text, text_rect)
 
 def draw_extension_warning(screen):
     """Affiche un avertissement pour une extension non reconnue ou un fichier ZIP."""
@@ -339,30 +345,18 @@ def draw_extension_warning(screen):
     logger.debug(f"Lignes générées : {lines}")
 
     try:
-        # Calcul de la hauteur de ligne
         line_height = config.font.get_height() + 5
-        # Hauteur pour les lignes de texte
         text_height = len(lines) * line_height
-        # Hauteur pour les boutons (1 ligne + marges)
         button_height = line_height + 20
-        # Marges en haut et en bas
         margin_top_bottom = 20
-        # Hauteur totale du rectangle
         rect_height = text_height + button_height + 2 * margin_top_bottom
-        # Largeur du rectangle
         max_text_width = max([config.font.size(line)[0] for line in lines], default=300)
         rect_width = max_text_width + 40
-        # Position du rectangle
         rect_x = (config.screen_width - rect_width) // 2
         rect_y = (config.screen_height - rect_height) // 2
 
         screen.blit(OVERLAY, (0, 0))
 
-        # Dessiner le rectangle de fond
-        pygame.draw.rect(screen, (50, 50, 50, 200), (rect_x, rect_y, rect_width, rect_height), border_radius=10)
-        pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, rect_width, rect_height), 2, border_radius=10)
-
-        # Afficher les lignes de texte
         text_surfaces = [config.font.render(line, True, (255, 255, 255)) for line in lines]
         text_rects = [
             surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
@@ -372,7 +366,6 @@ def draw_extension_warning(screen):
             screen.blit(surface, rect)
         logger.debug(f"Lignes affichées : {[(rect.center, surface.get_size()) for rect, surface in zip(text_rects, text_surfaces)]}")
 
-        # Afficher les boutons Oui/Non
         yes_text = "[Oui]" if config.extension_confirm_selection == 1 else "Oui"
         no_text = "[Non]" if config.extension_confirm_selection == 0 else "Non"
         yes_surface = config.font.render(yes_text, True, (0, 150, 255) if config.extension_confirm_selection == 1 else (255, 255, 255))
@@ -389,40 +382,35 @@ def draw_extension_warning(screen):
     except Exception as e:
         logger.error(f"Erreur lors du rendu de extension_warning : {str(e)}")
         error_message = "Erreur d'affichage de l'avertissement."
-        error_surface = config.font.render(error_message, True, (255, 0, 0))
-        error_rect = error_surface.get_rect(center=(config.screen_width // 2, config.screen_height // 2))
-        pygame.draw.rect(screen, (50, 50, 50, 200), error_rect.inflate(40, 20), border_radius=10)
-        pygame.draw.rect(screen, (255, 255, 255), error_rect.inflate(40, 20), 2, border_radius=10)
-        screen.blit(error_surface, error_rect)
+        wrapped_error = wrap_text(error_message, config.font, config.screen_width - 80)
+        for i, line in enumerate(wrapped_error):
+            error_surface = config.font.render(line, True, (255, 0, 0))
+            error_rect = error_surface.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - (len(wrapped_error) // 2 - i) * line_height))
+            screen.blit(error_surface, error_rect)
 
 def draw_controls(screen, menu_state):
     """Affiche les contrôles sur une seule ligne en bas de l’écran pour tous les états du menu."""
     start_button = get_control_display('start', 'START')
     control_text = f"{start_button} : Menu - Controls"
     max_width = config.screen_width - 40
-    control_text = truncate_text_end(control_text, config.font, max_width)
-    text_surface = config.font.render(control_text, True, (255, 255, 255))
-    text_width, text_height = text_surface.get_size()
-
-    rect_width = text_width + 40
-    rect_height = text_height + 20
-    rect_x = (config.screen_width - rect_width) // 2
+    wrapped_controls = wrap_text(control_text, config.font, max_width)
+    line_height = config.font.get_height() + 5
+    rect_height = len(wrapped_controls) * line_height + 20
     rect_y = config.screen_height - rect_height - 20
 
-    pygame.draw.rect(screen, (50, 50, 50, 200), (rect_x, rect_y, rect_width, rect_height), border_radius=10)
-    pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, rect_width, rect_height), 2, border_radius=10)
+    for i, line in enumerate(wrapped_controls):
+        text_surface = config.font.render(line, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + 10 + i * line_height + line_height // 2))
+        screen.blit(text_surface, text_rect)
 
-    text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + rect_height // 2))
-    screen.blit(text_surface, text_rect)
-    
 def draw_validation_transition(screen, platform_index):
     """Affiche une animation de transition pour la sélection d’une plateforme."""
-    platform_dict = config.platform_dicts[platform_index]  # Use platform dictionary
+    platform_dict = config.platform_dicts[platform_index]
     image = load_system_image(platform_dict)
     if not image:
         return
     orig_width, orig_height = image.get_width(), image.get_height()
-    base_size = 150
+    base_size = int(config.screen_width * 0.0781)  # ~150px pour 1920p
     start_time = pygame.time.get_ticks()
     duration = 500
     while pygame.time.get_ticks() - start_time < duration:
@@ -447,18 +435,16 @@ def draw_pause_menu(screen, selected_option):
         "Quit"
     ]
     
-    menu_width = 400
-    menu_height = len(options) * 60 + 40
+    menu_width = int(config.screen_width * 0.2083)  # ~400px pour 1920p
+    line_height = config.font.get_height() + 10
+    menu_height = len(options) * line_height + 40
     menu_x = (config.screen_width - menu_width) // 2
     menu_y = (config.screen_height - menu_height) // 2
-
-    pygame.draw.rect(screen, (50, 50, 50, 200), (menu_x, menu_y, menu_width, menu_height))
-    pygame.draw.rect(screen, (255, 255, 255), (menu_x, menu_y, menu_width, menu_height), 2)
 
     for i, option in enumerate(options):
         color = (0, 150, 255) if i == selected_option else (255, 255, 255)
         text_surface = config.font.render(option, True, color)
-        text_rect = text_surface.get_rect(center=(config.screen_width // 2, menu_y + 30 + i * 60))
+        text_rect = text_surface.get_rect(center=(config.screen_width // 2, menu_y + 20 + i * line_height))
         screen.blit(text_surface, text_rect)
 
 def get_control_display(action, default):
@@ -470,7 +456,6 @@ def get_control_display(action, default):
 
 def draw_controls_help(screen, previous_state):
     """Affiche la liste des contrôles pour l'état précédent du menu."""
-    # Dictionnaire des contrôles communs pour réduire la duplication
     common_controls = {
         "confirm": lambda action: f"{get_control_display('confirm', 'Entrée/A')} : {action}",
         "cancel": lambda action: f"{get_control_display('cancel', 'Échap/B')} : {action}",
@@ -485,7 +470,6 @@ def draw_controls_help(screen, previous_state):
         "space": lambda: f"{get_control_display('space', 'Espace')} : Espace"
     }
 
-    # Dictionnaire des contrôles par état
     state_controls = {
         "error": [
             common_controls["confirm"]("Retenter"),
@@ -529,15 +513,12 @@ def draw_controls_help(screen, previous_state):
         ]
     }
 
-    # Récupérer les contrôles pour l'état donné
     controls = state_controls.get(previous_state, [])
     if not controls:
         return
 
-    # Créer l'overlay semi-transparent
     screen.blit(OVERLAY, (0, 0))
 
-    # Envelopper les textes pour respecter la largeur maximale
     max_width = config.screen_width - 80
     wrapped_controls = []
     current_line = ""
@@ -551,18 +532,12 @@ def draw_controls_help(screen, previous_state):
     if current_line:
         wrapped_controls.append(current_line)
 
-    # Calculer les dimensions de la popup
     line_height = config.font.get_height() + 10
     popup_width = max_width + 40
     popup_height = len(wrapped_controls) * line_height + 60
     popup_x = (config.screen_width - popup_width) // 2
     popup_y = (config.screen_height - popup_height) // 2
 
-    # Dessiner la popup
-    pygame.draw.rect(screen, (50, 50, 50, 200), (popup_x, popup_y, popup_width, popup_height), border_radius=16)
-    pygame.draw.rect(screen, (255, 255, 255), (popup_x, popup_y, popup_width, popup_height), 2, border_radius=16)
-
-    # Afficher les textes
     for i, line in enumerate(wrapped_controls):
         text = config.font.render(line, True, (255, 255, 255))
         text_rect = text.get_rect(center=(config.screen_width // 2, popup_y + 40 + i * line_height))
