@@ -6,6 +6,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Cache global pour l'overlay semi-transparent
+OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
+OVERLAY.fill((0, 0, 0, 180))
+
 def init_display():
     """Initialise l’écran Pygame."""
     screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
@@ -85,7 +89,7 @@ def draw_error_screen(screen):
     text = error_font.render(config.error_message, True, (255, 0, 0))
     text_rect = text.get_rect(center=(config.screen_width // 2, config.screen_height // 2))
     screen.blit(text, text_rect)
-    retry_text = config.font.render(f"{config.controls_config.get('confirm', {}).get('display', 'Entrée/A')} : retenter, {config.controls_config.get('cancel', {}).get('display', 'Échap/B')} : quitter", True, (255, 255, 255))
+    retry_text = config.font.render(f"{get_control_display('confirm', 'Entrée/A')} : retenter, {get_control_display('cancel', 'Échap/B')} : quitter", True, (255, 255, 255))
     retry_rect = retry_text.get_rect(center=(config.screen_width // 2, config.screen_height // 2 + 100))
     screen.blit(retry_text, retry_rect)
 
@@ -212,9 +216,7 @@ def draw_progress_screen(screen):
     progress_percent = progress["progress_percent"]
     logger.debug(f"Progression : game_name={game_name}, url={url}, status={status}, progress_percent={progress_percent}, downloaded_size={downloaded_size}, total_size={total_size}")
 
-    overlay = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 180))
-    screen.blit(overlay, (0, 0))
+    screen.blit(OVERLAY, (0, 0))
 
     if status == "Converting ISO":
         title_text = f"Converting : {truncate_text_end(game_name, config.font, config.screen_width - 200)}"
@@ -271,9 +273,7 @@ def draw_scrollbar(screen):
 
 def draw_confirm_dialog(screen):
     """Affiche la boîte de dialogue de confirmation pour quitter."""
-    overlay = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 180))
-    screen.blit(overlay, (0, 0))
+    screen.blit(OVERLAY, (0, 0))
 
     message = "Voulez-vous vraiment quitter ?"
     text = config.font.render(message, True, (255, 255, 255))
@@ -299,9 +299,7 @@ def draw_confirm_dialog(screen):
 
 def draw_popup_message(screen, message, is_error):
     """Affiche une popup avec un message de résultat."""
-    overlay = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 180))
-    screen.blit(overlay, (0, 0))
+    screen.blit(OVERLAY, (0, 0))
 
     text = config.font.render(message, True, (255, 0, 0) if is_error else (0, 255, 0))
     text_rect = text.get_rect(center=(config.screen_width // 2, config.screen_height // 2))
@@ -311,16 +309,16 @@ def draw_popup_message(screen, message, is_error):
 
 def draw_extension_warning(screen):
     """Affiche un avertissement pour une extension non reconnue ou un fichier ZIP."""
-    #logger.debug("Début de draw_extension_warning")
+    logger.debug("Début de draw_extension_warning")
     
     if not config.pending_download:
-        #logger.error("config.pending_download est None ou vide dans extension_warning")
+        logger.error("config.pending_download est None ou vide dans extension_warning")
         message = "Erreur : Aucun téléchargement en attente."
         is_zip = False
         game_name = "Inconnu"
     else:
         url, platform, game_name, is_zip_non_supported = config.pending_download
-       # logger.debug(f"config.pending_download: url={url}, platform={platform}, game_name={game_name}, is_zip_non_supported={is_zip_non_supported}")
+        logger.debug(f"config.pending_download: url={url}, platform={platform}, game_name={game_name}, is_zip_non_supported={is_zip_non_supported}")
         is_zip = is_zip_non_supported
         if not game_name:
             game_name = "Inconnu"
@@ -333,7 +331,7 @@ def draw_extension_warning(screen):
 
     max_width = config.screen_width - 80
     lines = wrap_text(message, config.font, max_width)
-    #logger.debug(f"Lignes générées : {lines}")
+    logger.debug(f"Lignes générées : {lines}")
 
     try:
         # Calcul de la hauteur de ligne
@@ -353,6 +351,8 @@ def draw_extension_warning(screen):
         rect_x = (config.screen_width - rect_width) // 2
         rect_y = (config.screen_height - rect_height) // 2
 
+        screen.blit(OVERLAY, (0, 0))
+
         # Dessiner le rectangle de fond
         pygame.draw.rect(screen, (50, 50, 50, 200), (rect_x, rect_y, rect_width, rect_height), border_radius=10)
         pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, rect_width, rect_height), 2, border_radius=10)
@@ -365,7 +365,7 @@ def draw_extension_warning(screen):
         ]
         for surface, rect in zip(text_surfaces, text_rects):
             screen.blit(surface, rect)
-        #logger.debug(f"Lignes affichées : {[(rect.center, surface.get_size()) for rect, surface in zip(text_rects, text_surfaces)]}")
+        logger.debug(f"Lignes affichées : {[(rect.center, surface.get_size()) for rect, surface in zip(text_rects, text_surfaces)]}")
 
         # Afficher les boutons Oui/Non
         yes_text = "[Oui]" if config.extension_confirm_selection == 1 else "Oui"
@@ -379,7 +379,7 @@ def draw_extension_warning(screen):
         
         screen.blit(yes_surface, yes_rect)
         screen.blit(no_surface, no_rect)
-        #logger.debug(f"Boutons affichés : Oui={yes_rect}, Non={no_rect}, selection={config.extension_confirm_selection}")
+        logger.debug(f"Boutons affichés : Oui={yes_rect}, Non={no_rect}, selection={config.extension_confirm_selection}")
 
     except Exception as e:
         logger.error(f"Erreur lors du rendu de extension_warning : {str(e)}")
@@ -392,8 +392,8 @@ def draw_extension_warning(screen):
 
 def draw_controls(screen, menu_state):
     """Affiche les contrôles sur une seule ligne en bas de l’écran pour tous les états du menu."""
-    start_button = config.controls_config.get('start', {}).get('display', 'START')
-    control_text = f"{start_button} : Menu - Controls
+    start_button = get_control_display('start', 'START')
+    control_text = f"{start_button} : Menu - Controls"
     max_width = config.screen_width - 40
     control_text = truncate_text_end(control_text, config.font, max_width)
     text_surface = config.font.render(control_text, True, (255, 255, 255))
@@ -434,9 +434,7 @@ def draw_validation_transition(screen, platform_index):
 
 def draw_pause_menu(screen, selected_option):
     """Dessine le menu pause avec les options Aide, Configurer contrôles, Quitter."""
-    overlay = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 180))
-    screen.blit(overlay, (0, 0))
+    screen.blit(OVERLAY, (0, 0))
 
     options = [
         "Controls",
@@ -460,61 +458,79 @@ def draw_pause_menu(screen, selected_option):
 
 def get_control_display(action, default):
     """Récupère le nom d'affichage d'une action depuis controls_config."""
+    if not config.controls_config:
+        logger.warning(f"controls_config vide pour l'action {action}, utilisation de la valeur par défaut")
+        return default
     return config.controls_config.get(action, {}).get('display', default)
 
 def draw_controls_help(screen, previous_state):
     """Affiche la liste des contrôles pour l'état précédent du menu."""
+    # Dictionnaire des contrôles communs pour réduire la duplication
+    common_controls = {
+        "confirm": lambda action: f"{get_control_display('confirm', 'Entrée/A')} : {action}",
+        "cancel": lambda action: f"{get_control_display('cancel', 'Échap/B')} : {action}",
+        "start": lambda: f"{get_control_display('start', 'Start')} : Menu",
+        "progress": lambda action: f"{get_control_display('progress', 'X')} : {action}",
+        "up": lambda action: f"{get_control_display('up', 'Flèche Haut')} : {action}",
+        "down": lambda action: f"{get_control_display('down', 'Flèche Bas')} : {action}",
+        "page_up": lambda action: f"{get_control_display('page_up', 'Q/LB')} : {action}",
+        "page_down": lambda action: f"{get_control_display('page_down', 'E/RB')} : {action}",
+        "filter": lambda action: f"{get_control_display('filter', 'Select')} : {action}",
+        "delete": lambda: f"{get_control_display('delete', 'Retour Arrière')} : Supprimer",
+        "space": lambda: f"{get_control_display('space', 'Espace')} : Espace"
+    }
+
     # Dictionnaire des contrôles par état
     state_controls = {
         "error": [
-            f"{get_control_display('confirm', 'A')} : Retenter",
-            f"{get_control_display('cancel', 'Échap/B')} : Quitter"
+            common_controls["confirm"]("Retenter"),
+            common_controls["cancel"]("Quitter")
         ],
         "platform": [
-            f"{get_control_display('confirm', 'Entrée/A')} : Sélectionner",
-            f"{get_control_display('cancel', 'Échap/B')} : Quitter",
-            f"{get_control_display('start', 'Start')} : Menu",
-            *( [f"{get_control_display('progress', 'X')} : Progression"] if config.download_tasks else [])
+            common_controls["confirm"]("Sélectionner"),
+            common_controls["cancel"]("Quitter"),
+            common_controls["start"](),
+            *( [common_controls["progress"]("Progression")] if config.download_tasks else [])
         ],
         "game": [
-            f"{get_control_display('confirm', 'Entrée/A')} : {'Valider' if config.search_mode else 'Télécharger'}",
-            f"{get_control_display('cancel', 'Échap/B')} : {'Annuler' if config.search_mode else 'Retour'}",
+            common_controls["confirm"](f"{'Valider' if config.search_mode else 'Télécharger'}"),
+            common_controls["cancel"](f"{'Annuler' if config.search_mode else 'Retour'}"),
             *( [
-                f"{get_control_display('delete', 'Retour Arrière')} : Supprimer" if config.controls_config.get('delete', {}) else [],
-                f"{get_control_display('space', 'Espace')} : Espace" if config.controls_config.get('space', {}) else []
+                common_controls["delete"](),
+                common_controls["space"]()
             ] if config.search_mode and config.is_non_pc else []),
             *( [
-                "Saisir texte : Filtrer" if config.search_mode else
-                f"{get_control_display('up', 'Flèche Haut')} / {get_control_display('down', 'Flèche Bas')} : Naviguer",
-                f"{get_control_display('page_up', 'Q/LB')} / {get_control_display('page_down', 'E/RB')} : Page",
-                f"{get_control_display('filter', 'Select')} : Filtrer"
+                f"Saisir texte : Filtrer" if config.search_mode else
+                f"{common_controls['up']('Naviguer')} / {common_controls['down']('Naviguer')}",
+                f"{common_controls['page_up']('Page')} / {common_controls['page_down']('Page')}",
+                common_controls["filter"]("Filtrer")
             ] if not config.is_non_pc or not config.search_mode else []),
-            f"{get_control_display('start', 'Start')} : Menu",
-            *( [f"{get_control_display('progress', 'X')} : Progression"] if config.download_tasks and not config.search_mode else [])
+            common_controls["start"](),
+            *( [common_controls["progress"]("Progression")] if config.download_tasks and not config.search_mode else [])
         ],
         "download_progress": [
-            f"{get_control_display('cancel', 'Échap/B')} : Annuler le téléchargement",
-            f"{get_control_display('progress', 'X')} : Arrière plan",
-            f"{get_control_display('start', 'Start')} : Menu"
+            common_controls["cancel"]("Annuler le téléchargement"),
+            common_controls["progress"]("Arrière plan"),
+            common_controls["start"]()
         ],
         "download_result": [
-            f"{get_control_display('confirm', 'Entrée/A')} : Retour"
+            common_controls["confirm"]("Retour")
         ],
         "confirm_exit": [
-            f"{get_control_display('confirm', 'Entrée/A')} : Confirmer"
+            common_controls["confirm"]("Confirmer")
         ],
         "extension_warning": [
-            f"{get_control_display('confirm', 'Entrée/A')} : Confirmer"
+            common_controls["confirm"]("Confirmer")
         ]
     }
 
     # Récupérer les contrôles pour l'état donné
     controls = state_controls.get(previous_state, [])
+    if not controls:
+        return
 
-    # Créer un overlay semi-transparent
-    overlay = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 180))
-    screen.blit(overlay, (0, 0))
+    # Créer l'overlay semi-transparent
+    screen.blit(OVERLAY, (0, 0))
 
     # Envelopper les textes pour respecter la largeur maximale
     max_width = config.screen_width - 80
