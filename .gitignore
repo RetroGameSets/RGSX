@@ -1,7 +1,7 @@
 logs/ 
 images/ 
 games/ 
-_pycache_/ 
+__pycache__/ 
 sources.json 
 gamelist.xml
 *.log
