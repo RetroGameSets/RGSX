@@ -1,0 +1,40 @@
+#!/bin/bash
+# Script wrapper pour exécuter rgsx-update.sh et quitter RGSX
+RGSX_UPDATE_SCRIPT="/userdata/roms/ports/rgsx-update.sh"
+LOG_DIR="/userdata/roms/ports/logs"
+LOG_FILE="$LOG_DIR/rgsx_update.log"
+
+# Créer le répertoire de logs s'il n'existe pas
+mkdir -p "$LOG_DIR"
+if [ ! -d "$LOG_DIR" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Erreur : Impossible de créer $LOG_DIR" >&2
+    exit 1
+fi
+
+# Journaliser l'exécution
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Exécution de run-update.sh" >> "$LOG_FILE"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Vérification de l'existence de $RGSX_UPDATE_SCRIPT" >> "$LOG_FILE"
+if [ ! -f "$RGSX_UPDATE_SCRIPT" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Erreur : $RGSX_UPDATE_SCRIPT n'existe pas" >> "$LOG_FILE"
+    exit 1
+fi
+if [ ! -x "$RGSX_UPDATE_SCRIPT" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Rendre $RGSX_UPDATE_SCRIPT exécutable" >> "$LOG_FILE"
+    chmod +x "$RGSX_UPDATE_SCRIPT"
+fi
+
+# Tuer les processus RGSX existants
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Terminaison des processus RGSX" >> "$LOG_FILE"
+ps aux | grep '[p]ython3.*RGSX' | awk '{print $2}' >> "$LOG_FILE"
+ps aux | grep '[p]ython3.*RGSX' | awk '{print $2}' | xargs kill -15 2>> "$LOG_FILE"
+sleep 1
+ps aux | grep '[p]ython3.*RGSX' | awk '{print $2}' >> "$LOG_FILE"
+ps aux | grep '[p]ython3.*RGSX' | awk '{print $2}' | xargs kill -9 2>> "$LOG_FILE"
+
+# Exécuter rgsx-update.sh
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Exécution de $RGSX_UPDATE_SCRIPT" >> "$LOG_FILE"
+bash "$RGSX_UPDATE_SCRIPT" CONSOLE >> "$LOG_FILE" 2>&1
+exit_code=$?
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Code de retour de $RGSX_UPDATE_SCRIPT : $exit_code" >> "$LOG_FILE"
+
+exit $exit_code

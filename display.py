@@ -104,10 +104,26 @@ def draw_error_screen(screen):
     screen.blit(retry_text, retry_rect)
 
 def draw_platform_grid(screen):
-    """Affiche la grille des plateformes."""
+    """Affiche la grille des plateformes avec un titre en haut."""
+    # Configuration du titre
+    platform = config.platforms[config.current_platform]
+    platform_name = config.platform_names.get(platform, platform)
+    
+    title_text = f"{platform_name}"
+    title_surface = config.title_font.render(title_text, True, (255, 255, 255))
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 10))
+    title_rect_inflated = title_rect.inflate(40, 20)
+    title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 0)
+    
+    # Dessiner le rectangle de fond du titre
+    pygame.draw.rect(screen, (50, 50, 50, 200), title_rect_inflated, border_radius=10)
+    pygame.draw.rect(screen, (255, 255, 255), title_rect_inflated, 2, border_radius=10)
+    screen.blit(title_surface, title_rect)
+
+    # Configuration de la grille
     margin_left = int(config.screen_width * 0.026)  # ~50px pour 1920p
     margin_right = int(config.screen_width * 0.026)
-    margin_top = int(config.screen_height * 0.111)  # ~120px pour 1080p
+    margin_top = int(config.screen_height * 0.140)  # ~120px pour 1080p
     margin_bottom = int(config.screen_height * 0.0648)  # ~70px pour 1080p
     num_cols = 3
     num_rows = 3
@@ -170,6 +186,106 @@ def draw_platform_grid(screen):
 
             screen.blit(image, image_rect)
 
+def draw_game_list(screen):
+    """Affiche la liste des jeux avec défilement et rectangle de fond."""
+    logger.debug("Début de draw_game_list")
+    
+    platform = config.platforms[config.current_platform]
+    platform_name = config.platform_names.get(platform, platform)
+    games = config.filtered_games if config.filter_active or config.search_mode else config.games
+    game_count = len(games)
+
+    if not games:
+        logger.debug("Aucune liste de jeux disponible")
+        message = "Aucun jeu disponible"
+        lines = wrap_text(message, config.font, config.screen_width - 80)
+        line_height = config.font.get_height() + 5
+        text_height = len(lines) * line_height
+        margin_top_bottom = 20
+        rect_height = text_height + 2 * margin_top_bottom
+        max_text_width = max([config.font.size(line)[0] for line in lines], default=300)
+        rect_width = max_text_width + 40
+        rect_x = (config.screen_width - rect_width) // 2
+        rect_y = (config.screen_height - rect_height) // 2
+
+        screen.blit(OVERLAY, (0, 0))
+        pygame.draw.rect(screen, (50, 50, 50, 200), (rect_x, rect_y, rect_width, rect_height), border_radius=10)
+        pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, rect_width, rect_height), 2, border_radius=10)
+
+        for i, line in enumerate(lines):
+            text_surface = config.small_font.render(line, True, (255, 255, 255))
+            text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
+            screen.blit(text_surface, text_rect)
+        return
+
+    line_height = config.small_font.get_height() + 10
+    margin_top_bottom = 10
+    extra_margin_top = 5  # Marge supplémentaire pour éviter le chevauchement avec le titre
+    extra_margin_bottom = 40  # Marge supplémentaire en bas pour éloigner du texte des contrôles
+    title_height = max(config.title_font.get_height(), config.search_font.get_height(), config.small_font.get_height()) + 20  # Hauteur du titre avec padding réduit
+    available_height = config.screen_height - title_height - extra_margin_top - extra_margin_bottom - 2 * margin_top_bottom
+    games_per_page = available_height // line_height
+    max_text_width = max([config.font.size(truncate_text_end(game[0] if isinstance(game, (list, tuple)) else game, config.font, config.screen_width - 80))[0] for game in games], default=300)
+    rect_width = max_text_width + 40
+    rect_height = games_per_page * line_height + 2 * margin_top_bottom
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = title_height + extra_margin_top + (config.screen_height - title_height - extra_margin_top - extra_margin_bottom - rect_height) // 2
+
+    # Limiter scroll_offset pour éviter l'espace vide
+    config.scroll_offset = max(0, min(config.scroll_offset, max(0, len(games) - games_per_page)))
+    if config.current_game < config.scroll_offset:
+        config.scroll_offset = config.current_game
+    elif config.current_game >= config.scroll_offset + games_per_page:
+        config.scroll_offset = config.current_game - games_per_page + 1
+
+    screen.blit(OVERLAY, (0, 0))
+
+    # Afficher le titre ou le texte de recherche/filtre
+    if config.search_mode:
+        search_text = f"Filtrer : {config.search_query}_"
+        title_surface = config.search_font.render(search_text, True, (255, 255, 255))
+        title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 10))
+        title_rect_inflated = title_rect.inflate(40, 20)
+        title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 0)
+        pygame.draw.rect(screen, (50, 50, 50, 200), title_rect_inflated, border_radius=10)
+        pygame.draw.rect(screen, (255, 255, 255), title_rect_inflated, 2, border_radius=10)
+        screen.blit(title_surface, title_rect)
+    elif config.filter_active:
+        filter_text = f"Filtre actif : {config.search_query}"
+        title_surface = config.small_font.render(filter_text, True, (255, 255, 255))
+        title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 10))
+        title_rect_inflated = title_rect.inflate(40, 20)
+        title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 0)
+        pygame.draw.rect(screen, (50, 50, 50, 200), title_rect_inflated, border_radius=10)
+        pygame.draw.rect(screen, (255, 255, 255), title_rect_inflated, 2, border_radius=10)
+        screen.blit(title_surface, title_rect)
+    else:
+        title_text = f"{platform_name} ({game_count} jeux)"
+        title_surface = config.title_font.render(title_text, True, (255, 255, 255))
+        title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 10))
+        title_rect_inflated = title_rect.inflate(40, 20)
+        title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 0)
+        pygame.draw.rect(screen, (50, 50, 50, 200), title_rect_inflated, border_radius=10)
+        pygame.draw.rect(screen, (255, 255, 255), title_rect_inflated, 2, border_radius=10)
+        screen.blit(title_surface, title_rect)
+
+    # Afficher le rectangle de fond et la liste des jeux
+    pygame.draw.rect(screen, (50, 50, 50, 200), (rect_x, rect_y, rect_width, rect_height), border_radius=10)
+    pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, rect_width, rect_height), 2, border_radius=10)
+
+    for i in range(config.scroll_offset, min(config.scroll_offset + games_per_page, len(games))):
+        game_name = games[i][0] if isinstance(games[i], (list, tuple)) else games[i]
+        color = (0, 150, 255) if i == config.current_game else (255, 255, 255)
+        game_text = truncate_text_end(game_name, config.small_font, config.screen_width - 80)
+        text_surface = config.small_font.render(game_text, True, color)
+        text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + (i - config.scroll_offset) * line_height + line_height // 2))
+        screen.blit(text_surface, text_rect)
+        logger.debug(f"Jeu affiché : texte={game_text}, position={text_rect}, selected={i == config.current_game}")
+
+    draw_scrollbar(screen)
+    if config.search_mode and config.is_non_pc:
+        draw_virtual_keyboard(screen)     
+        
 def draw_virtual_keyboard(screen):
     """Affiche un clavier virtuel pour la saisie dans search_mode, centré verticalement."""
     keyboard_layout = [
@@ -185,7 +301,7 @@ def draw_virtual_keyboard(screen):
     keyboard_height = len(keyboard_layout) * (key_height + key_spacing) - key_spacing
     start_x = (config.screen_width - keyboard_width) // 2
     search_bottom_y = int(config.screen_height * 0.111) + (config.search_font.get_height() + 40) // 2  # ~120px pour 1080p
-    controls_y = config.screen_height - int(config.screen_height * 0.0185)  # ~20px pour 1080p
+    controls_y = config.screen_height - int(config.screen_height * 0.037)  # ~40px pour 1080p
     available_height = controls_y - search_bottom_y
     start_y = search_bottom_y + (available_height - keyboard_height - 40) // 2
 
@@ -208,7 +324,7 @@ def draw_virtual_keyboard(screen):
             screen.blit(text, text_rect)
 
 def draw_progress_screen(screen):
-    """Affiche l'écran de progression des téléchargements avec taille en Mo, et un message spécifique pour la conversion ISO."""
+    """Affiche l'écran de progression des téléchargements avec taille en Mo."""
     logger.debug("Début de draw_progress_screen")
     
     if not config.download_tasks:
@@ -227,51 +343,50 @@ def draw_progress_screen(screen):
 
     screen.blit(OVERLAY, (0, 0))
 
-    if status == "Converting ISO":
-        title_text = f"Converting : {truncate_text_end(game_name, config.font, config.screen_width - 200)}"
-    else:
-        title_text = f"{status} : {truncate_text_end(game_name, config.font, config.screen_width - 200)}"
+    title_text = f"{status} : {truncate_text_end(game_name, config.font, config.screen_width - 200)}"
     title_lines = wrap_text(title_text, config.font, config.screen_width - 80)
     line_height = config.font.get_height() + 5
+    text_height = len(title_lines) * line_height
+    margin_top_bottom = 20
+    bar_height = int(config.screen_height * 0.0278)  # ~30px pour 1080p
+    percent_height = line_height  # Hauteur pour le texte de progression
+    rect_height = text_height + bar_height + percent_height + 3 * margin_top_bottom
+    max_text_width = max([config.font.size(line)[0] for line in title_lines], default=300)
+    bar_width = max_text_width  # Ajuster la barre à la largeur du texte
+    rect_width = max_text_width + 40
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+
+    pygame.draw.rect(screen, (50, 50, 50, 200), (rect_x, rect_y, rect_width, rect_height), border_radius=10)
+    pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, rect_width, rect_height), 2, border_radius=10)
+
     for i, line in enumerate(title_lines):
         title_render = config.font.render(line, True, (255, 255, 255))
-        title_rect = title_render.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - 100 - (len(title_lines) // 2 - i) * line_height))
+        title_rect = title_render.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
         screen.blit(title_render, title_rect)
         logger.debug(f"Titre affiché : texte={line}, position={title_rect}, taille={title_render.get_size()}")
 
-    if status == "Converting ISO":
-        conversion_text = "Conversion de l'ISO en dossier .ps3 en cours..."
-        conversion_lines = wrap_text(conversion_text, config.font, config.screen_width - 80)
-        for i, line in enumerate(conversion_lines):
-            conversion_render = config.font.render(line, True, (255, 255, 255))
-            conversion_rect = conversion_render.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - (len(conversion_lines) // 2 - i) * line_height))
-            screen.blit(conversion_render, conversion_rect)
-            logger.debug(f"Message de conversion affiché : texte={line}, position={conversion_rect}, taille={conversion_render.get_size()}")
-    else:
-        bar_width = config.screen_width // 2
-        bar_height = int(config.screen_height * 0.0278)  # ~30px pour 1080p
-        bar_x = (config.screen_width - bar_width) // 2
-        bar_y = config.screen_height // 2
-        progress_width = 0
-        pygame.draw.rect(screen, (100, 100, 100), (bar_x, bar_y, bar_width, bar_height))
-        if total_size > 0:
-            progress_width = int(bar_width * (progress_percent / 100))
-            pygame.draw.rect(screen, (0, 150, 255), (bar_x, bar_y, progress_width, bar_height))
-        pygame.draw.rect(screen, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 2)
-        logger.debug(f"Barre de progression affichée : position=({bar_x}, {bar_y}), taille=({bar_width}, {bar_height}), progress_width={progress_width}")
+    bar_y = rect_y + text_height + margin_top_bottom
+    progress_width = 0
+    pygame.draw.rect(screen, (100, 100, 100), (rect_x + 20, bar_y, bar_width, bar_height))
+    if total_size > 0:
+        progress_width = int(bar_width * (progress_percent / 100))
+        pygame.draw.rect(screen, (0, 150, 255), (rect_x + 20, bar_y, progress_width, bar_height))
+    pygame.draw.rect(screen, (255, 255, 255), (rect_x + 20, bar_y, bar_width, bar_height), 2)
+    logger.debug(f"Barre de progression affichée : position=({rect_x + 20}, {bar_y}), taille=({bar_width}, {bar_height}), progress_width={progress_width}")
 
-        downloaded_mb = downloaded_size / (1024 * 1024)
-        total_mb = total_size / (1024 * 1024)
-        size_text = f"{downloaded_mb:.1f} Mo / {total_mb:.1f} Mo"
-        percent_text = f"{int(progress_percent)}%  {size_text}"
-        percent_lines = wrap_text(percent_text, config.font, config.screen_width - 80)
-        text_y = bar_y + bar_height // 2 + config.font.get_height() + 20
-        for i, line in enumerate(percent_lines):
-            percent_render = config.font.render(line, True, (255, 255, 255))
-            percent_rect = percent_render.get_rect(center=(config.screen_width // 2, text_y + i * line_height))
-            screen.blit(percent_render, percent_rect)
-            logger.debug(f"Texte de progression affiché : texte={line}, position={percent_rect}, taille={percent_render.get_size()}")
-
+    downloaded_mb = downloaded_size / (1024 * 1024)
+    total_mb = total_size / (1024 * 1024)
+    size_text = f"{downloaded_mb:.1f} Mo / {total_mb:.1f} Mo"
+    percent_text = f"{int(progress_percent)}%  {size_text}"
+    percent_lines = wrap_text(percent_text, config.font, config.screen_width - 80)
+    text_y = bar_y + bar_height + margin_top_bottom
+    for i, line in enumerate(percent_lines):
+        percent_render = config.font.render(line, True, (255, 255, 255))
+        percent_rect = percent_render.get_rect(center=(config.screen_width // 2, text_y + i * line_height + line_height // 2))
+        screen.blit(percent_render, percent_rect)
+        logger.debug(f"Texte de progression affiché : texte={line}, position={percent_rect}, taille={percent_render.get_size()}")
+        
 def draw_scrollbar(screen):
     """Affiche la barre de défilement à droite de l’écran."""
     if len(config.filtered_games) <= config.visible_games:
@@ -289,20 +404,27 @@ def draw_confirm_dialog(screen):
     message = "Voulez-vous vraiment quitter ?"
     wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
     line_height = config.font.get_height() + 5
+    text_height = len(wrapped_message) * line_height
+    button_height = line_height + 20
+    margin_top_bottom = 20
+    rect_height = text_height + button_height + 2 * margin_top_bottom
+    max_text_width = max([config.font.size(line)[0] for line in wrapped_message], default=300)
+    rect_width = max_text_width + 40
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+
+    pygame.draw.rect(screen, (50, 50, 50, 200), (rect_x, rect_y, rect_width, rect_height), border_radius=10)
+    pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, rect_width, rect_height), 2, border_radius=10)
+
     for i, line in enumerate(wrapped_message):
         text = config.font.render(line, True, (255, 255, 255))
-        text_rect = text.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - 50 - (len(wrapped_message) // 2 - i) * line_height))
+        text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
         screen.blit(text, text_rect)
 
-    yes_text = config.font.render("Oui", True, (255, 255, 255))
-    no_text = config.font.render("Non", True, (255, 255, 255))
-    yes_rect = yes_text.get_rect(center=(config.screen_width // 2 - 100, config.screen_height // 2 + 50))
-    no_rect = no_text.get_rect(center=(config.screen_width // 2 + 100, config.screen_height // 2 + 50))
-
-    if config.confirm_selection == 1:
-        pygame.draw.rect(screen, (0, 150, 255, 150), yes_rect.inflate(40, 20))
-    else:
-        pygame.draw.rect(screen, (0, 150, 255, 150), no_rect.inflate(40, 20))
+    yes_text = config.font.render("Oui", True, (0, 150, 255) if config.confirm_selection == 1 else (255, 255, 255))
+    no_text = config.font.render("Non", True, (0, 150, 255) if config.confirm_selection == 0 else (255, 255, 255))
+    yes_rect = yes_text.get_rect(center=(config.screen_width // 2 - 100, rect_y + text_height + margin_top_bottom + line_height // 2))
+    no_rect = no_text.get_rect(center=(config.screen_width // 2 + 100, rect_y + text_height + margin_top_bottom + line_height // 2))
 
     screen.blit(yes_text, yes_rect)
     screen.blit(no_text, no_rect)
@@ -356,15 +478,14 @@ def draw_extension_warning(screen):
         rect_y = (config.screen_height - rect_height) // 2
 
         screen.blit(OVERLAY, (0, 0))
+        pygame.draw.rect(screen, (50, 50, 50, 200), (rect_x, rect_y, rect_width, rect_height), border_radius=10)
+        pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, rect_width, rect_height), 2, border_radius=10)
 
-        text_surfaces = [config.font.render(line, True, (255, 255, 255)) for line in lines]
-        text_rects = [
-            surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
-            for i, surface in enumerate(text_surfaces)
-        ]
-        for surface, rect in zip(text_surfaces, text_rects):
-            screen.blit(surface, rect)
-        logger.debug(f"Lignes affichées : {[(rect.center, surface.get_size()) for rect, surface in zip(text_rects, text_surfaces)]}")
+        for i, line in enumerate(lines):
+            text_surface = config.font.render(line, True, (255, 255, 255))
+            text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
+            screen.blit(text_surface, text_rect)
+        logger.debug(f"Lignes affichées : {[(rect.center, text_surface.get_size()) for rect, text_surface in zip([text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2)) for i in range(len(lines))], [config.font.render(line, True, (255, 255, 255)) for line in lines])]}")
 
         yes_text = "[Oui]" if config.extension_confirm_selection == 1 else "Oui"
         no_text = "[Non]" if config.extension_confirm_selection == 0 else "Non"
@@ -383,23 +504,34 @@ def draw_extension_warning(screen):
         logger.error(f"Erreur lors du rendu de extension_warning : {str(e)}")
         error_message = "Erreur d'affichage de l'avertissement."
         wrapped_error = wrap_text(error_message, config.font, config.screen_width - 80)
+        line_height = config.font.get_height() + 5
+        rect_height = len(wrapped_error) * line_height + 2 * 20
+        max_text_width = max([config.font.size(line)[0] for line in wrapped_error], default=300)
+        rect_width = max_text_width + 40
+        rect_x = (config.screen_width - rect_width) // 2
+        rect_y = (config.screen_height - rect_height) // 2
+
+        screen.blit(OVERLAY, (0, 0))
+        pygame.draw.rect(screen, (50, 50, 50, 200), (rect_x, rect_y, rect_width, rect_height), border_radius=10)
+        pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, rect_width, rect_height), 2, border_radius=10)
+
         for i, line in enumerate(wrapped_error):
             error_surface = config.font.render(line, True, (255, 0, 0))
-            error_rect = error_surface.get_rect(center=(config.screen_width // 2, config.screen_height // 2 - (len(wrapped_error) // 2 - i) * line_height))
+            error_rect = error_surface.get_rect(center=(config.screen_width // 2, rect_y + 20 + i * line_height + line_height // 2))
             screen.blit(error_surface, error_rect)
 
 def draw_controls(screen, menu_state):
     """Affiche les contrôles sur une seule ligne en bas de l’écran pour tous les états du menu."""
     start_button = get_control_display('start', 'START')
-    control_text = f"{start_button} : Menu - Controls"
+    control_text = f"Menu {config.menu_state} - {start_button} : Options - Controls"
     max_width = config.screen_width - 40
-    wrapped_controls = wrap_text(control_text, config.font, max_width)
-    line_height = config.font.get_height() + 5
+    wrapped_controls = wrap_text(control_text, config.small_font, max_width)
+    line_height = config.small_font.get_height() + 5
     rect_height = len(wrapped_controls) * line_height + 20
-    rect_y = config.screen_height - rect_height - 20
+    rect_y = config.screen_height - rect_height - 5  # Augmenter la marge inférieure de 20px à 40px
 
     for i, line in enumerate(wrapped_controls):
-        text_surface = config.font.render(line, True, (255, 255, 255))
+        text_surface = config.small_font.render(line, True, (255, 255, 255))
         text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + 10 + i * line_height + line_height // 2))
         screen.blit(text_surface, text_rect)
 
@@ -437,14 +569,19 @@ def draw_pause_menu(screen, selected_option):
     
     menu_width = int(config.screen_width * 0.2083)  # ~400px pour 1920p
     line_height = config.font.get_height() + 10
-    menu_height = len(options) * line_height + 40
+    text_height = len(options) * line_height
+    margin_top_bottom = 20
+    menu_height = text_height + 2 * margin_top_bottom
     menu_x = (config.screen_width - menu_width) // 2
     menu_y = (config.screen_height - menu_height) // 2
+
+    pygame.draw.rect(screen, (50, 50, 50, 200), (menu_x, menu_y, menu_width, menu_height), border_radius=10)
+    pygame.draw.rect(screen, (255, 255, 255), (menu_x, menu_y, menu_width, menu_height), 2, border_radius=10)
 
     for i, option in enumerate(options):
         color = (0, 150, 255) if i == selected_option else (255, 255, 255)
         text_surface = config.font.render(option, True, color)
-        text_rect = text_surface.get_rect(center=(config.screen_width // 2, menu_y + 20 + i * line_height))
+        text_rect = text_surface.get_rect(center=(config.screen_width // 2, menu_y + margin_top_bottom + i * line_height + line_height // 2))
         screen.blit(text_surface, text_rect)
 
 def get_control_display(action, default):

@@ -9,7 +9,7 @@ import logging
 import requests
 import sys
 import json
-from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_scrollbar, draw_confirm_dialog, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_message, draw_extension_warning, draw_pause_menu, draw_controls_help
+from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_scrollbar, draw_confirm_dialog, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_message, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list
 from network import test_internet, download_rom, check_extension_before_download, extract_zip
 from controls import handle_controls
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
@@ -158,6 +158,7 @@ def load_sources():
     except Exception as e:
         logger.error(f"Erreur lors du chargement de sources.json : {str(e)}")
         return []
+
 # Fonction pour vérifier et appliquer les mises à jour OTA
 async def check_for_updates():
     try:
@@ -245,7 +246,6 @@ async def check_for_updates():
         return False, f"Erreur lors de la vérification des mises à jour : {str(e)}"
 
 # Boucle principale
-
 async def main():
     logger.debug("Début main")
     running = True
@@ -477,54 +477,11 @@ async def main():
                 draw_error_screen(screen)
                 logger.debug("Rendu de draw_error_screen")
             elif config.menu_state == "platform":
-                platform = config.platforms[config.selected_platform]
-                platform_name = config.platform_names.get(platform, platform)
-                game_count = config.games_count.get(platform, 0)
-                title_text = f"{platform_name} ({game_count} jeux)"
-                title_surface = config.title_font.render(title_text, True, (255, 255, 255))
-                title_rect = title_surface.get_rect(center=(config.screen_width // 2, 60))
-                pygame.draw.rect(screen, (50, 50, 50, 200), title_rect.inflate(40, 20))
-                pygame.draw.rect(screen, (255, 255, 255), title_rect.inflate(40, 20), 2)
-                screen.blit(title_surface, title_rect)
                 draw_platform_grid(screen)
+                logger.debug("Rendu de draw_platform_grid")
             elif config.menu_state == "game":
-                platform = config.platforms[config.current_platform]
-                platform_name = config.platform_names.get(platform, platform)
-                games = config.filtered_games if config.filter_active or config.search_mode else config.games
-                game_count = len(games)
-                if not config.search_mode:
-                    title_text = f"{platform_name} ({game_count} jeux)"
-                    title_surface = config.title_font.render(title_text, True, (255, 255, 255))
-                    title_rect = title_surface.get_rect(center=(config.screen_width // 2, 60))
-                    pygame.draw.rect(screen, (50, 50, 50, 200), title_rect.inflate(40, 20))
-                    pygame.draw.rect(screen, (255, 255, 255), title_rect.inflate(40, 20), 2)
-                    screen.blit(title_surface, title_rect)
-                margin_top = 150
-                line_height = config.font.get_height() + 10
-                for i in range(config.scroll_offset, min(config.scroll_offset + config.visible_games, len(games))):
-                    game_name = games[i][0] if isinstance(games[i], (list, tuple)) else games[i]
-                    color = (0, 150, 255) if i == config.current_game else (255, 255, 255)
-                    game_text = truncate_text_end(game_name, config.font, config.screen_width - 40)
-                    text_surface = config.font.render(game_text, True, color)
-                    text_rect = text_surface.get_rect(center=(config.screen_width // 2, margin_top + (i - config.scroll_offset) * line_height))
-                    screen.blit(text_surface, text_rect)
-                draw_scrollbar(screen)
-                if config.search_mode:
-                    search_text = f"Filtrer : {config.search_query}_"
-                    search_surface = config.search_font.render(search_text, True, (255, 255, 255))
-                    search_rect = search_surface.get_rect(center=(config.screen_width // 2, 60))
-                    pygame.draw.rect(screen, (50, 50, 50, 200), search_rect.inflate(40, 20))
-                    pygame.draw.rect(screen, (255, 255, 255), search_rect.inflate(40, 20), 2)
-                    screen.blit(search_surface, search_rect)
-                    if config.is_non_pc:
-                        draw_virtual_keyboard(screen)
-                elif config.filter_active:
-                    filter_text = f"Filtre actif : {config.search_query}"
-                    filter_surface = config.small_font.render(filter_text, True, (255, 255, 255))
-                    filter_rect = filter_surface.get_rect(center=(config.screen_width // 2, 100))
-                    pygame.draw.rect(screen, (50, 50, 50, 200), filter_rect.inflate(40, 20))
-                    pygame.draw.rect(screen, (255, 255, 255), filter_rect.inflate(40, 20), 2)
-                    screen.blit(filter_surface, filter_rect)
+                draw_game_list(screen)
+                logger.debug("Rendu de draw_game_list")
             elif config.menu_state == "download_progress":
                 draw_progress_screen(screen)
                 logger.debug("Rendu de draw_progress_screen")
@@ -710,7 +667,6 @@ async def main():
     pygame.mixer.music.stop()
     pygame.quit()
     logger.debug("Application terminée")
-
 
 # Fonction pour vérifier si un événement correspond à une action
 def is_input_matched(event, action_name):

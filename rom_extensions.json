@@ -1,0 +1,2317 @@
+[
+  {
+    "system": "3DO INTERACTIVE MULTIPLAYER",
+    "folder": "/userdata/roms/3do",
+    "extensions": [
+      ".iso",
+      ".chd",
+      ".cue"
+    ]
+  },
+  {
+    "system": "3DS",
+    "folder": "/userdata/roms/3ds",
+    "extensions": [
+      ".3ds",
+      ".3dsx",
+      ".cxi",
+      ".axf",
+      ".elf",
+      ".app",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "ABUSE",
+    "folder": "/userdata/roms/abuse",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "ADAM",
+    "folder": "/userdata/roms/adam",
+    "extensions": [
+      ".wav",
+      ".ddp",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".rom",
+      ".col",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ADVENTURE VISION",
+    "folder": "/userdata/roms/advision",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "AMIGA AGA",
+    "folder": "/userdata/roms/amiga1200",
+    "extensions": [
+      ".adf",
+      ".uae",
+      ".ipf",
+      ".dms",
+      ".dmz",
+      ".adz",
+      ".lha",
+      ".hdf",
+      ".exe",
+      ".m3u",
+      ".zip",
+      ".raw",
+      ".scp"
+    ]
+  },
+  {
+    "system": "AMIGA OCS/ECS",
+    "folder": "/userdata/roms/amiga500",
+    "extensions": [
+      ".adf",
+      ".uae",
+      ".ipf",
+      ".dms",
+      ".dmz",
+      ".adz",
+      ".lha",
+      ".hdf",
+      ".exe",
+      ".m3u",
+      ".zip",
+      ".raw",
+      ".scp"
+    ]
+  },
+  {
+    "system": "AMIGA CD32",
+    "folder": "/userdata/roms/amigacd32",
+    "extensions": [
+      ".bin",
+      ".cue",
+      ".iso",
+      ".chd"
+    ]
+  },
+  {
+    "system": "AMIGA CDTV",
+    "folder": "/userdata/roms/amigacdtv",
+    "extensions": [
+      ".bin",
+      ".cue",
+      ".iso",
+      ".chd",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "AMSTRAD CPC",
+    "folder": "/userdata/roms/amstradcpc",
+    "extensions": [
+      ".dsk",
+      ".sna",
+      ".tap",
+      ".cdt",
+      ".voc",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "M-1000",
+    "folder": "/userdata/roms/apfm1000",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "APPLE II",
+    "folder": "/userdata/roms/apple2",
+    "extensions": [
+      ".nib",
+      ".do",
+      ".po",
+      ".dsk",
+      ".mfi",
+      ".dfi",
+      ".rti",
+      ".edd",
+      ".woz",
+      ".wav",
+      ".zip",
+      ".7z",
+      ".chd",
+      ".hdv",
+      ".2mg"
+    ]
+  },
+  {
+    "system": "APPLE IIGS",
+    "folder": "/userdata/roms/apple2gs",
+    "extensions": [
+      ".2mg",
+      ".do",
+      ".nib",
+      ".po",
+      ".dsk",
+      ".mfi",
+      ".dfi",
+      ".rti",
+      ".edd",
+      ".woz",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqui",
+      ".ima",
+      ".img",
+      ".ufi",
+      ".360",
+      ".ipf",
+      ".dc42",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ARCADIA 2001",
+    "folder": "/userdata/roms/arcadia",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ARCHIMEDES",
+    "folder": "/userdata/roms/archimedes",
+    "extensions": [
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".ima",
+      ".img",
+      ".ufi",
+      ".360",
+      ".ipf",
+      ".adf",
+      ".apd",
+      ".jfd",
+      ".ads",
+      ".adm",
+      ".adl",
+      ".ssd",
+      ".bbc",
+      ".dsd",
+      ".st",
+      ".msa",
+      ".chd",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ARDUBOY",
+    "folder": "/userdata/roms/arduboy",
+    "extensions": [
+      ".hex",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ASTROCADE",
+    "folder": "/userdata/roms/astrocde",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATARI 2600",
+    "folder": "/userdata/roms/atari2600",
+    "extensions": [
+      ".a26",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATARI 5200",
+    "folder": "/userdata/roms/atari5200",
+    "extensions": [
+      ".rom",
+      ".xfd",
+      ".atr",
+      ".atx",
+      ".cdm",
+      ".cas",
+      ".car",
+      ".bin",
+      ".a52",
+      ".xex",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATARI 7800",
+    "folder": "/userdata/roms/atari7800",
+    "extensions": [
+      ".a78",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATARI 800",
+    "folder": "/userdata/roms/atari800",
+    "extensions": [
+      ".rom",
+      ".xfd",
+      ".atr",
+      ".atx",
+      ".cdm",
+      ".cas",
+      ".car",
+      ".bin",
+      ".a52",
+      ".xex",
+      ".zip",
+      ".7z",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "ATARI ST",
+    "folder": "/userdata/roms/atarist",
+    "extensions": [
+      ".st",
+      ".msa",
+      ".stx",
+      ".dim",
+      ".ipf",
+      ".m3u",
+      ".zip",
+      ".7z",
+      ".hd",
+      ".gemdos"
+    ]
+  },
+  {
+    "system": "ATOM",
+    "folder": "/userdata/roms/atom",
+    "extensions": [
+      ".wav",
+      ".tap",
+      ".csw",
+      ".uef",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".40t",
+      ".atm",
+      ".bin",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATOMISWAVE",
+    "folder": "/userdata/roms/atomiswave",
+    "extensions": [
+      ".lst",
+      ".bin",
+      ".dat",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "BBC MICRO",
+    "folder": "/userdata/roms/bbc",
+    "extensions": [
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".ima",
+      ".img",
+      ".ufi",
+      ".360",
+      ".ipf",
+      ".ssd",
+      ".bbc",
+      ".dsd",
+      ".adf",
+      ".ads",
+      ".adm",
+      ".adl",
+      ".fsd",
+      ".wav",
+      ".tap",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "COMMODORE 128",
+    "folder": "/userdata/roms/c128",
+    "extensions": [
+      ".d64",
+      ".d81",
+      ".prg",
+      ".lnx",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "COMMODORE VIC-20",
+    "folder": "/userdata/roms/c20",
+    "extensions": [
+      ".20",
+      ".40",
+      ".60",
+      ".rom",
+      ".a0",
+      ".b0",
+      ".crt",
+      ".d64",
+      ".d81",
+      ".prg",
+      ".tap",
+      ".t64",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "COMMODORE 64",
+    "folder": "/userdata/roms/c64",
+    "extensions": [
+      ".d64",
+      ".d71",
+      ".d81",
+      ".crt",
+      ".prg",
+      ".tap",
+      ".t64",
+      ".m3u",
+      ".zip",
+      ".7z",
+      ".nib",
+      ".g64"
+    ]
+  },
+  {
+    "system": "CAMPUTERS LYNX",
+    "folder": "/userdata/roms/camplynx",
+    "extensions": [
+      ".wav",
+      ".tap",
+      ".ldf",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "CANNONBALL",
+    "folder": "/userdata/roms/cannonball",
+    "extensions": [
+      ".cannonball"
+    ]
+  },
+  {
+    "system": "CAVE STORY",
+    "folder": "/userdata/roms/cavestory",
+    "extensions": [
+      ".exe"
+    ]
+  },
+  {
+    "system": "CD-I",
+    "folder": "/userdata/roms/cdi",
+    "extensions": [
+      ".chd",
+      ".cue",
+      ".toc",
+      ".nrg",
+      ".gdi",
+      ".iso",
+      ".cdr"
+    ]
+  },
+  {
+    "system": "C-DOGS SDL",
+    "folder": "/userdata/roms/cdogs",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "COMMANDER GENIUS",
+    "folder": "/userdata/roms/cgenius",
+    "extensions": [
+      ".cgenius"
+    ]
+  },
+  {
+    "system": "CHANNEL-F",
+    "folder": "/userdata/roms/channelf",
+    "extensions": [
+      ".zip",
+      ".rom",
+      ".bin",
+      ".chf"
+    ]
+  },
+  {
+    "system": "SEGA CHIHIRO",
+    "folder": "/userdata/roms/chihiro",
+    "extensions": [
+      ".iso"
+    ]
+  },
+  {
+    "system": "COLOR COMPUTER",
+    "folder": "/userdata/roms/coco",
+    "extensions": [
+      ".wav",
+      ".cas",
+      ".dsk",
+      ".ccc",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "COLECOVISION",
+    "folder": "/userdata/roms/colecovision",
+    "extensions": [
+      ".bin",
+      ".col",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "COMMANDER X16",
+    "folder": "/userdata/roms/commanderx16",
+    "extensions": [
+      ".bas",
+      ".img",
+      ".prg"
+    ]
+  },
+  {
+    "system": "CORSIXTH",
+    "folder": "/userdata/roms/corsixth",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "COMMODORE PLUS4",
+    "folder": "/userdata/roms/cplus4",
+    "extensions": [
+      ".d64",
+      ".prg",
+      ".tap",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "CREATIVISION",
+    "folder": "/userdata/roms/crvision",
+    "extensions": [
+      ".bin",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "DAPHNE",
+    "folder": "/userdata/roms/daphne",
+    "extensions": [
+      ".daphne",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "DIABLO",
+    "folder": "/userdata/roms/devilutionx",
+    "extensions": [
+      ".mpq"
+    ]
+  },
+  {
+    "system": "DOOM 3",
+    "folder": "/userdata/roms/doom3",
+    "extensions": [
+      ".d3"
+    ]
+  },
+  {
+    "system": "DOS (X86)",
+    "folder": "/userdata/roms/dos",
+    "extensions": [
+      ".pc",
+      ".dos",
+      ".zip",
+      ".squashfs",
+      ".dosz",
+      ".m3u",
+      ".iso",
+      ".cue"
+    ]
+  },
+  {
+    "system": "DREAMCAST",
+    "folder": "/userdata/roms/dreamcast",
+    "extensions": [
+      ".cdi",
+      ".cue",
+      ".gdi",
+      ".chd",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "DXX REBIRTH",
+    "folder": "/userdata/roms/dxx-rebirth",
+    "extensions": [
+      ".d1x",
+      ".d2x"
+    ]
+  },
+  {
+    "system": "EASYRPG",
+    "folder": "/userdata/roms/easyrpg",
+    "extensions": [
+      ".easyrpg",
+      ".squashfs",
+      ".zip"
+    ]
+  },
+  {
+    "system": "ECWOLF",
+    "folder": "/userdata/roms/ecwolf",
+    "extensions": [
+      ".ecwolf",
+      ".pk3",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "EDUKE32",
+    "folder": "/userdata/roms/eduke32",
+    "extensions": [
+      ".eduke32"
+    ]
+  },
+  {
+    "system": "ELECTRON",
+    "folder": "/userdata/roms/electron",
+    "extensions": [
+      ".wav",
+      ".csw",
+      ".uef",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".ssd",
+      ".bbc",
+      ".img",
+      ".dsd",
+      ".adf",
+      ".ads",
+      ".adm",
+      ".adl",
+      ".rom",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "WOLFENSTEIN - ENEMY TERRITORY",
+    "folder": "/userdata/roms/etlegacy",
+    "extensions": [
+      ".etl"
+    ]
+  },
+  {
+    "system": "FALLOUT COMMUNITY EDITION",
+    "folder": "/userdata/roms/fallout1-ce",
+    "extensions": [
+      ".f1ce"
+    ]
+  },
+  {
+    "system": "FALLOUT 2 COMMUNITY EDITION",
+    "folder": "/userdata/roms/fallout2-ce",
+    "extensions": [
+      ".f2ce"
+    ]
+  },
+  {
+    "system": "FINAL BURN NEO",
+    "folder": "/userdata/roms/fbneo",
+    "extensions": [
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "FAMILY COMPUTER DISK SYSTEM",
+    "folder": "/userdata/roms/fds",
+    "extensions": [
+      ".fds",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "FLASH PLAYER",
+    "folder": "/userdata/roms/flash",
+    "extensions": [
+      ".swf"
+    ]
+  },
+  {
+    "system": "APPLICATIONS",
+    "folder": "/userdata/roms/flatpak",
+    "extensions": [
+      ".flatpak"
+    ]
+  },
+  {
+    "system": "FM-7",
+    "folder": "/userdata/roms/fm7",
+    "extensions": [
+      ".wav",
+      ".t77",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "FM-TOWNS",
+    "folder": "/userdata/roms/fmtowns",
+    "extensions": [
+      ".bin",
+      ".m3u",
+      ".cue",
+      ".d88",
+      ".d77",
+      ".xdf",
+      ".iso",
+      ".chd",
+      ".toc",
+      ".nrg",
+      ".gdi",
+      ".cdr",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "FUTURE PINBALL",
+    "folder": "/userdata/roms/fpinball",
+    "extensions": [
+      ".fpt"
+    ]
+  },
+  {
+    "system": "ION FURY",
+    "folder": "/userdata/roms/fury",
+    "extensions": [
+      ".grp"
+    ]
+  },
+  {
+    "system": "GAMATE",
+    "folder": "/userdata/roms/gamate",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME AND WATCH",
+    "folder": "/userdata/roms/gameandwatch",
+    "extensions": [
+      ".mgw",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME.COM",
+    "folder": "/userdata/roms/gamecom",
+    "extensions": [
+      ".bin",
+      ".tgc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAMECUBE",
+    "folder": "/userdata/roms/gamecube",
+    "extensions": [
+      ".gcm",
+      ".iso",
+      ".gcz",
+      ".ciso",
+      ".wbfs",
+      ".rvz",
+      ".elf",
+      ".dol",
+      ".m3u",
+      ".json"
+    ]
+  },
+  {
+    "system": "GAME GEAR",
+    "folder": "/userdata/roms/gamegear",
+    "extensions": [
+      ".bin",
+      ".gg",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME POCKET COMPUTER",
+    "folder": "/userdata/roms/gamepock",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME BOY",
+    "folder": "/userdata/roms/gb",
+    "extensions": [
+      ".gb",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME BOY (2 PLAYERS)",
+    "folder": "/userdata/roms/gb2players",
+    "extensions": [
+      ".gb",
+      ".gb2",
+      ".gbc2",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME BOY ADVANCE",
+    "folder": "/userdata/roms/gba",
+    "extensions": [
+      ".gba",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME BOY COLOR",
+    "folder": "/userdata/roms/gbc",
+    "extensions": [
+      ".gbc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME BOY COLOR (2 PLAYERS)",
+    "folder": "/userdata/roms/gbc2players",
+    "extensions": [
+      ".gbc",
+      ".gb2",
+      ".gbc2",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME MASTER",
+    "folder": "/userdata/roms/gmaster",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GP32",
+    "folder": "/userdata/roms/gp32",
+    "extensions": [
+      ".smc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GX4000",
+    "folder": "/userdata/roms/gx4000",
+    "extensions": [
+      ".dsk",
+      ".m3u",
+      ".cpr",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GZDOOM",
+    "folder": "/userdata/roms/gzdoom",
+    "extensions": [
+      ".wad",
+      ".iwad",
+      ".pwad",
+      ".gzdoom"
+    ]
+  },
+  {
+    "system": "HYDRA CASTLE LABYRINTH",
+    "folder": "/userdata/roms/hcl",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "HURRICAN",
+    "folder": "/userdata/roms/hurrican",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "IKEMEN",
+    "folder": "/userdata/roms/ikemen",
+    "extensions": [
+      ".ikemen",
+      ".pc"
+    ]
+  },
+  {
+    "system": "MATTEL INTELLIVISION",
+    "folder": "/userdata/roms/intellivision",
+    "extensions": [
+      ".int",
+      ".bin",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "RETURN TO CASTLE WOLFENSTEIN",
+    "folder": "/userdata/roms/iortcw",
+    "extensions": [
+      ".rtcw"
+    ]
+  },
+  {
+    "system": "JAGUAR",
+    "folder": "/userdata/roms/jaguar",
+    "extensions": [
+      ".j64",
+      ".jag",
+      ".cof",
+      ".abs",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "JAGUAR CD",
+    "folder": "/userdata/roms/jaguarcd",
+    "extensions": [
+      ".cue",
+      ".cdi"
+    ]
+  },
+  {
+    "system": "JAZZ JACKRABBIT 2",
+    "folder": "/userdata/roms/jazz2",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "LASER 310",
+    "folder": "/userdata/roms/laser310",
+    "extensions": [
+      ".vz",
+      ".wav",
+      ".cas",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "LCD GAMES",
+    "folder": "/userdata/roms/lcdgames",
+    "extensions": [
+      ".mgw",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "LOWRES NX",
+    "folder": "/userdata/roms/lowresnx",
+    "extensions": [
+      ".nx",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "LUTRO",
+    "folder": "/userdata/roms/lutro",
+    "extensions": [
+      ".lutro",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATARI LYNX",
+    "folder": "/userdata/roms/lynx",
+    "extensions": [
+      ".bll",
+      ".lnx",
+      ".lyx",
+      ".o",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "MACINTOSH",
+    "folder": "/userdata/roms/macintosh",
+    "extensions": [
+      ".dsk",
+      ".zip",
+      ".7z",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".ima",
+      ".img",
+      ".ufi",
+      ".ipf",
+      ".dc42",
+      ".woz",
+      ".2mg",
+      ".360",
+      ".chd",
+      ".cue",
+      ".toc",
+      ".nrg",
+      ".gdi",
+      ".iso",
+      ".cdr",
+      ".hd",
+      ".hdv",
+      ".2mg",
+      ".hdi"
+    ]
+  },
+  {
+    "system": "MAME",
+    "folder": "/userdata/roms/mame",
+    "extensions": [
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "MASTER SYSTEM",
+    "folder": "/userdata/roms/mastersystem",
+    "extensions": [
+      ".bin",
+      ".sms",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "MEGA DRIVE",
+    "folder": "/userdata/roms/megadrive",
+    "extensions": [
+      ".bin",
+      ".gen",
+      ".md",
+      ".sg",
+      ".smd",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "MEGA DUCK / COUGAR BOY",
+    "folder": "/userdata/roms/megaduck",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "MODEL 2",
+    "folder": "/userdata/roms/model2",
+    "extensions": [
+      ".zip"
+    ]
+  },
+  {
+    "system": "MODEL 3",
+    "folder": "/userdata/roms/model3",
+    "extensions": [
+      ".zip"
+    ]
+  },
+  {
+    "system": "MOONLIGHT EMBEDDED",
+    "folder": "/userdata/roms/moonlight",
+    "extensions": [
+      ".moonlight"
+    ]
+  },
+  {
+    "system": "MRBOOM",
+    "folder": "/userdata/roms/mrboom",
+    "extensions": [
+      ".libretro"
+    ]
+  },
+  {
+    "system": "MSU-MD",
+    "folder": "/userdata/roms/msu-md",
+    "extensions": [
+      ".md",
+      ".zip",
+      ".7z",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "MSX1",
+    "folder": "/userdata/roms/msx1",
+    "extensions": [
+      ".dsk",
+      ".mx1",
+      ".rom",
+      ".zip",
+      ".7z",
+      ".cas",
+      ".m3u",
+      ".ogv",
+      ".openmsx"
+    ]
+  },
+  {
+    "system": "MSX2",
+    "folder": "/userdata/roms/msx2",
+    "extensions": [
+      ".dsk",
+      ".mx2",
+      ".rom",
+      ".zip",
+      ".7z",
+      ".cas",
+      ".m3u",
+      ".ogv",
+      ".openmsx"
+    ]
+  },
+  {
+    "system": "MSX2+",
+    "folder": "/userdata/roms/msx2+",
+    "extensions": [
+      ".dsk",
+      ".mx2",
+      ".rom",
+      ".zip",
+      ".7z",
+      ".cas",
+      ".m3u",
+      ".openmsx"
+    ]
+  },
+  {
+    "system": "MSX TURBO-R",
+    "folder": "/userdata/roms/msxturbor",
+    "extensions": [
+      ".dsk",
+      ".mx2",
+      ".rom",
+      ".zip",
+      ".7z",
+      ".openmsx",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "MUGEN",
+    "folder": "/userdata/roms/mugen",
+    "extensions": [
+      ".pc"
+    ]
+  },
+  {
+    "system": "OTHELLO MULTIVISION",
+    "folder": "/userdata/roms/multivision",
+    "extensions": [
+      ".bin",
+      ".sg",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NINTENDO 64",
+    "folder": "/userdata/roms/n64",
+    "extensions": [
+      ".z64",
+      ".n64",
+      ".v64",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NINTENDO 64 DISK DRIVE",
+    "folder": "/userdata/roms/n64dd",
+    "extensions": [
+      ".z64",
+      ".n64",
+      ".ndd",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NAMCO 246/256",
+    "folder": "/userdata/roms/namco2x6",
+    "extensions": [
+      ".zip"
+    ]
+  },
+  {
+    "system": "NAOMI",
+    "folder": "/userdata/roms/naomi",
+    "extensions": [
+      ".lst",
+      ".bin",
+      ".dat",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NAOMI 2",
+    "folder": "/userdata/roms/naomi2",
+    "extensions": [
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NINTENDO DS",
+    "folder": "/userdata/roms/nds",
+    "extensions": [
+      ".nds",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NEO-GEO",
+    "folder": "/userdata/roms/neogeo",
+    "extensions": [
+      ".7z",
+      ".zip"
+    ]
+  },
+  {
+    "system": "NEO-GEO CD",
+    "folder": "/userdata/roms/neogeocd",
+    "extensions": [
+      ".cue",
+      ".iso",
+      ".chd"
+    ]
+  },
+  {
+    "system": "NINTENDO ENTERTAINMENT SYSTEM",
+    "folder": "/userdata/roms/nes",
+    "extensions": [
+      ".nes",
+      ".unif",
+      ".unf",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NEO-GEO POCKET",
+    "folder": "/userdata/roms/ngp",
+    "extensions": [
+      ".ngp",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NEO-GEO POCKET COLOR",
+    "folder": "/userdata/roms/ngpc",
+    "extensions": [
+      ".ngc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ODYSSEY2",
+    "folder": "/userdata/roms/o2em",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "OD-COMMANDER",
+    "folder": "/userdata/roms/odcommander",
+    "extensions": [
+      ".odc"
+    ]
+  },
+  {
+    "system": "OPENBOR",
+    "folder": "/userdata/roms/openbor",
+    "extensions": [
+      ".pak"
+    ]
+  },
+  {
+    "system": "JAZZ JACKRABBIT",
+    "folder": "/userdata/roms/openjazz",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "OPENLARA",
+    "folder": "/userdata/roms/openlara",
+    "extensions": [
+      ".croft"
+    ]
+  },
+  {
+    "system": "PC-8800",
+    "folder": "/userdata/roms/pc88",
+    "extensions": [
+      ".cmt",
+      ".d88",
+      ".u88",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "PC-9800",
+    "folder": "/userdata/roms/pc98",
+    "extensions": [
+      ".d98",
+      ".zip",
+      ".98d",
+      ".fdi",
+      ".fdd",
+      ".2hd",
+      ".tfd",
+      ".d88",
+      ".88d",
+      ".hdm",
+      ".xdf",
+      ".dup",
+      ".cmd",
+      ".hdi",
+      ".thd",
+      ".nhd",
+      ".hdd",
+      ".hdn",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "PC ENGINE",
+    "folder": "/userdata/roms/pcengine",
+    "extensions": [
+      ".pce",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "PC ENGINE CD",
+    "folder": "/userdata/roms/pcenginecd",
+    "extensions": [
+      ".pce",
+      ".cue",
+      ".ccd",
+      ".iso",
+      ".img",
+      ".chd"
+    ]
+  },
+  {
+    "system": "PC-FX",
+    "folder": "/userdata/roms/pcfx",
+    "extensions": [
+      ".cue",
+      ".ccd",
+      ".toc",
+      ".chd",
+      ".zip",
+      ".7z",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "PDP-1",
+    "folder": "/userdata/roms/pdp1",
+    "extensions": [
+      ".zip",
+      ".7z",
+      ".tap",
+      ".rim",
+      ".drm"
+    ]
+  },
+  {
+    "system": "COMMODORE PET",
+    "folder": "/userdata/roms/pet",
+    "extensions": [
+      ".a0",
+      ".b0",
+      ".crt",
+      ".d64",
+      ".d81",
+      ".prg",
+      ".tap",
+      ".t64",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SEGA PICO",
+    "folder": "/userdata/roms/pico",
+    "extensions": [
+      ".bin",
+      ".md",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "PICO-8",
+    "folder": "/userdata/roms/pico8",
+    "extensions": [
+      ".p8",
+      ".png",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "PLUG AND PLAY TV GAMES",
+    "folder": "/userdata/roms/plugnplay",
+    "extensions": [
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "POKEMON MINI",
+    "folder": "/userdata/roms/pokemini",
+    "extensions": [
+      ".min",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "PRBOOM",
+    "folder": "/userdata/roms/prboom",
+    "extensions": [
+      ".wad",
+      ".iwad",
+      ".pwad"
+    ]
+  },
+  {
+    "system": "PLAYSTATION 2",
+    "folder": "/userdata/roms/ps2",
+    "extensions": [
+      ".iso",
+      ".mdf",
+      ".nrg",
+      ".bin",
+      ".img",
+      ".dump",
+      ".gz",
+      ".cso",
+      ".chd",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "PLAYSTATION 3",
+    "folder": "/userdata/roms/ps3",
+    "extensions": [
+      ".ps3",
+      ".psn",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "PLAYSTATION PORTABLE",
+    "folder": "/userdata/roms/psp",
+    "extensions": [
+      ".iso",
+      ".cso",
+      ".pbp",
+      ".chd"
+    ]
+  },
+  {
+    "system": "PLAYSTATION VITA",
+    "folder": "/userdata/roms/psvita",
+    "extensions": [
+      ".zip",
+      ".psvita"
+    ]
+  },
+  {
+    "system": "PLAYSTATION",
+    "folder": "/userdata/roms/psx",
+    "extensions": [
+      ".cue",
+      ".img",
+      ".mdf",
+      ".pbp",
+      ".toc",
+      ".cbn",
+      ".m3u",
+      ".ccd",
+      ".chd",
+      ".iso"
+    ]
+  },
+  {
+    "system": "PV-1000",
+    "folder": "/userdata/roms/pv1000",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "PYGAME",
+    "folder": "/userdata/roms/pygame",
+    "extensions": [
+      ".pygame"
+    ]
+  },
+  {
+    "system": "PYXEL",
+    "folder": "/userdata/roms/pyxel",
+    "extensions": [
+      ".py",
+      ".pyxapp"
+    ]
+  },
+  {
+    "system": "QUAKE III",
+    "folder": "/userdata/roms/quake3",
+    "extensions": [
+      ".quake3"
+    ]
+  },
+  {
+    "system": "RAZE",
+    "folder": "/userdata/roms/raze",
+    "extensions": [
+      ".raze"
+    ]
+  },
+  {
+    "system": "REMINISCENCE",
+    "folder": "/userdata/roms/reminiscence",
+    "extensions": [
+      ".rem"
+    ]
+  },
+  {
+    "system": "RISE OF THE TRIAD",
+    "folder": "/userdata/roms/rott",
+    "extensions": [
+      ".rott"
+    ]
+  },
+  {
+    "system": "SAM COUPÉ",
+    "folder": "/userdata/roms/samcoupe",
+    "extensions": [
+      ".cpm",
+      ".dsk",
+      ".sad",
+      ".mgt",
+      ".sdf",
+      ".td0",
+      ".sbt",
+      ".zip"
+    ]
+  },
+  {
+    "system": "SATELLAVIEW",
+    "folder": "/userdata/roms/satellaview",
+    "extensions": [
+      ".bs",
+      ".smc",
+      ".sfc",
+      ".zip",
+      ".7z",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "SATURN",
+    "folder": "/userdata/roms/saturn",
+    "extensions": [
+      ".cue",
+      ".ccd",
+      ".m3u",
+      ".chd",
+      ".iso",
+      ".zip",
+      ".mds"
+    ]
+  },
+  {
+    "system": "SCUMMVM",
+    "folder": "/userdata/roms/scummvm",
+    "extensions": [
+      ".scummvm",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "SUPER CASSETTE VISION",
+    "folder": "/userdata/roms/scv",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".0"
+    ]
+  },
+  {
+    "system": "SDLPOP",
+    "folder": "/userdata/roms/sdlpop",
+    "extensions": [
+      ".sdlpop"
+    ]
+  },
+  {
+    "system": "32X",
+    "folder": "/userdata/roms/sega32x",
+    "extensions": [
+      ".32x",
+      ".chd",
+      ".smd",
+      ".bin",
+      ".md",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SEGA CD",
+    "folder": "/userdata/roms/segacd",
+    "extensions": [
+      ".cue",
+      ".iso",
+      ".chd",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "SG-1000",
+    "folder": "/userdata/roms/sg1000",
+    "extensions": [
+      ".bin",
+      ".sg",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SUPER GAME BOY",
+    "folder": "/userdata/roms/sgb",
+    "extensions": [
+      ".gb",
+      ".gbc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SINGE",
+    "folder": "/userdata/roms/singe",
+    "extensions": [
+      ".daphne",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "SUPER NINTENDO ENTERTAINMENT SYSTEM",
+    "folder": "/userdata/roms/snes",
+    "extensions": [
+      ".smc",
+      ".fig",
+      ".sfc",
+      ".gd3",
+      ".gd7",
+      ".dx2",
+      ".bsx",
+      ".swc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SUPER DISC (MSU1)",
+    "folder": "/userdata/roms/snes-msu1",
+    "extensions": [
+      ".smc",
+      ".sfc",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "SOCRATES",
+    "folder": "/userdata/roms/socrates",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SOLARUS",
+    "folder": "/userdata/roms/solarus",
+    "extensions": [
+      ".zip",
+      ".solarus"
+    ]
+  },
+  {
+    "system": "SONIC MANIA",
+    "folder": "/userdata/roms/sonic-mania",
+    "extensions": [
+      ".sman"
+    ]
+  },
+  {
+    "system": "SONIC 3 A.I.R.",
+    "folder": "/userdata/roms/sonic3-air",
+    "extensions": [
+      ".s3air"
+    ]
+  },
+  {
+    "system": "SONIC RETRO ENGINE",
+    "folder": "/userdata/roms/sonicretro",
+    "extensions": [
+      ".son",
+      ".scd"
+    ]
+  },
+  {
+    "system": "SPECTRAVIDEO SV-328",
+    "folder": "/userdata/roms/spectravideo",
+    "extensions": [
+      ".zip",
+      ".7z",
+      ".cas"
+    ]
+  },
+  {
+    "system": "STEAM",
+    "folder": "/userdata/roms/steam",
+    "extensions": [
+      ".steam"
+    ]
+  },
+  {
+    "system": "SUFAMI TURBO",
+    "folder": "/userdata/roms/sufami",
+    "extensions": [
+      ".st",
+      ".fig",
+      ".bs",
+      ".smc",
+      ".sfc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SUPER MARIO WAR",
+    "folder": "/userdata/roms/superbroswar",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "SUPERGRAFX",
+    "folder": "/userdata/roms/supergrafx",
+    "extensions": [
+      ".pce",
+      ".sgx",
+      ".cue",
+      ".ccd",
+      ".chd",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SUPERVISION",
+    "folder": "/userdata/roms/supervision",
+    "extensions": [
+      ".sv",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SUPER A'CAN",
+    "folder": "/userdata/roms/supracan",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SEGA SP",
+    "folder": "/userdata/roms/systemsp",
+    "extensions": [
+      ".lst",
+      ".bin",
+      ".dat",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "THE FORCE ENGINE",
+    "folder": "/userdata/roms/theforceengine",
+    "extensions": [
+      ".tfe"
+    ]
+  },
+  {
+    "system": "THEXTECH",
+    "folder": "/userdata/roms/thextech",
+    "extensions": [
+      ".smbx",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "THOMSON - MO/TO (THEODORE)",
+    "folder": "/userdata/roms/thomson",
+    "extensions": [
+      ".fd",
+      ".sap",
+      ".k7",
+      ".m7",
+      ".m5",
+      ".rom",
+      ".zip"
+    ]
+  },
+  {
+    "system": "TI-99",
+    "folder": "/userdata/roms/ti99",
+    "extensions": [
+      ".rpk",
+      ".wav",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "TIC-80",
+    "folder": "/userdata/roms/tic80",
+    "extensions": [
+      ".tic"
+    ]
+  },
+  {
+    "system": "TRIFORCE",
+    "folder": "/userdata/roms/triforce",
+    "extensions": [
+      ".gcm",
+      ".iso",
+      ".gcz",
+      ".ciso",
+      ".wbfs",
+      ".elf",
+      ".dol",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "TUTOR",
+    "folder": "/userdata/roms/tutor",
+    "extensions": [
+      ".bin",
+      ".wav",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "TYRIAN",
+    "folder": "/userdata/roms/tyrian",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "TYRQUAKE",
+    "folder": "/userdata/roms/tyrquake",
+    "extensions": [
+      ".pak"
+    ]
+  },
+  {
+    "system": "UZEBOX",
+    "folder": "/userdata/roms/uzebox",
+    "extensions": [
+      ".uze"
+    ]
+  },
+  {
+    "system": "VC 4000",
+    "folder": "/userdata/roms/vc4000",
+    "extensions": [
+      ".bin",
+      ".rom",
+      ".pgm",
+      ".tvc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "VECTREX",
+    "folder": "/userdata/roms/vectrex",
+    "extensions": [
+      ".bin",
+      ".gam",
+      ".vec",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "VIDEO GAME MUSIC PLAYER",
+    "folder": "/userdata/roms/vgmplay",
+    "extensions": [
+      ".vgm",
+      ".vgz",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "VIDEOPAC+ G7400",
+    "folder": "/userdata/roms/videopacplus",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "VIRCON32",
+    "folder": "/userdata/roms/vircon32",
+    "extensions": [
+      ".v32",
+      ".zip"
+    ]
+  },
+  {
+    "system": "VIRTUAL BOY",
+    "folder": "/userdata/roms/virtualboy",
+    "extensions": [
+      ".vb",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "TANDY VIDEO INFORMATION SYSTEM",
+    "folder": "/userdata/roms/vis",
+    "extensions": [
+      ".chd",
+      ".cue",
+      ".toc",
+      ".nrg",
+      ".gdi",
+      ".iso",
+      ".cdr"
+    ]
+  },
+  {
+    "system": "QUAKE II",
+    "folder": "/userdata/roms/vitaquake2",
+    "extensions": [
+      ".pak",
+      ".zip",
+      ".7zip"
+    ]
+  },
+  {
+    "system": "VISUAL PINBALL X",
+    "folder": "/userdata/roms/vpinball",
+    "extensions": [
+      ".vpx"
+    ]
+  },
+  {
+    "system": "V.SMILE",
+    "folder": "/userdata/roms/vsmile",
+    "extensions": [
+      ".u1",
+      ".u3",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "WASM4",
+    "folder": "/userdata/roms/wasm4",
+    "extensions": [
+      ".wasm"
+    ]
+  },
+  {
+    "system": "WII",
+    "folder": "/userdata/roms/wii",
+    "extensions": [
+      ".gcm",
+      ".iso",
+      ".gcz",
+      ".ciso",
+      ".wbfs",
+      ".wad",
+      ".rvz",
+      ".elf",
+      ".dol",
+      ".m3u",
+      ".json"
+    ]
+  },
+  {
+    "system": "WII U",
+    "folder": "/userdata/roms/wiiu",
+    "extensions": [
+      ".wua",
+      ".wup",
+      ".wud",
+      ".wux",
+      ".rpx",
+      ".squashfs",
+      ".wuhb"
+    ]
+  },
+  {
+    "system": "WINDOWS",
+    "folder": "/userdata/roms/windows",
+    "extensions": [
+      ".pc",
+      ".exe",
+      ".wine",
+      ".wsquashfs",
+      ".wtgz"
+    ]
+  },
+  {
+    "system": "INSTALL A NEW WINDOWS GAME",
+    "folder": "/userdata/roms/windows_installers",
+    "extensions": [
+      ".exe",
+      ".iso"
+    ]
+  },
+  {
+    "system": "WONDERSWAN",
+    "folder": "/userdata/roms/wswan",
+    "extensions": [
+      ".ws",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "WONDERSWAN COLOR",
+    "folder": "/userdata/roms/wswanc",
+    "extensions": [
+      ".wsc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SHARP X1",
+    "folder": "/userdata/roms/x1",
+    "extensions": [
+      ".dx1",
+      ".zip",
+      ".2d",
+      ".2hd",
+      ".tfd",
+      ".d88",
+      ".88d",
+      ".hdm",
+      ".xdf",
+      ".dup",
+      ".cmd",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SHARP X68000",
+    "folder": "/userdata/roms/x68000",
+    "extensions": [
+      ".dim",
+      ".img",
+      ".d88",
+      ".88d",
+      ".hdm",
+      ".dup",
+      ".2hd",
+      ".xdf",
+      ".hdf",
+      ".cmd",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "HALF-LIFE 1",
+    "folder": "/userdata/roms/xash3d_fwgs",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "XBOX",
+    "folder": "/userdata/roms/xbox",
+    "extensions": [
+      ".iso",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "XBOX 360",
+    "folder": "/userdata/roms/xbox360",
+    "extensions": [
+      ".iso",
+      ".xex",
+      ".xbox360",
+      ".zar"
+    ]
+  },
+  {
+    "system": "ATARI XE GAME SYSTEM",
+    "folder": "/userdata/roms/xegs",
+    "extensions": [
+      ".atr",
+      ".dsk",
+      ".xfd",
+      ".bin",
+      ".rom",
+      ".car",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "XRICK",
+    "folder": "/userdata/roms/xrick",
+    "extensions": [
+      ".zip"
+    ]
+  },
+  {
+    "system": "ZELDA CLASSIC",
+    "folder": "/userdata/roms/zc210",
+    "extensions": [
+      ".qst"
+    ]
+  },
+  {
+    "system": "ZX81",
+    "folder": "/userdata/roms/zx81",
+    "extensions": [
+      ".tzx",
+      ".p",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ZX SPECTRUM",
+    "folder": "/userdata/roms/zxspectrum",
+    "extensions": [
+      ".tzx",
+      ".tap",
+      ".z80",
+      ".rzx",
+      ".scl",
+      ".trd",
+      ".dsk",
+      ".zip",
+      ".7z"
+    ]
+  }
+]

@@ -181,7 +181,7 @@ def extract_rar(rar_path, dest_dir, url):
             config.download_progress[url]["total_size"] = total_size
             config.download_progress[url]["status"] = "Extracting"
             config.download_progress[url]["progress_percent"] = 0
-            config.needs_redraw = True  # Forcer le redraw
+            config.needs_redraw = True
 
         escaped_rar_path = rar_path.replace(" ", "\\ ")
         escaped_dest_dir = dest_dir.replace(" ", "\\ ")
@@ -195,29 +195,26 @@ def extract_rar(rar_path, dest_dir, url):
 
         extracted_size = 0
         extracted_files = []
-        for root, _, files in os.walk(dest_dir):
-            for file in files:
-                file_path = os.path.join(root, file)
-                rel_path = os.path.relpath(file_path, dest_dir).replace(os.sep, '/')
-                for expected_file, file_size in files_to_extract:
-                    if rel_path == expected_file:
-                        extracted_size += file_size
-                        extracted_files.append(expected_file)
-                        os.chmod(file_path, 0o644)
-                        logger.debug(f"Fichier extrait: {expected_file}, taille: {file_size}, chemin: {file_path}")
-                        break
+        total_files = len(files_to_extract)
+        for i, (expected_file, file_size) in enumerate(files_to_extract):
+            file_path = os.path.join(dest_dir, expected_file)
+            if os.path.exists(file_path):
+                extracted_size += file_size
+                extracted_files.append(expected_file)
+                os.chmod(file_path, 0o644)
+                logger.debug(f"Fichier extrait: {expected_file}, taille: {file_size}, chemin: {file_path}")
+                with lock:
+                    config.download_progress[url]["downloaded_size"] = extracted_size
+                    config.download_progress[url]["status"] = "Extracting"
+                    config.download_progress[url]["progress_percent"] = ((i + 1) / total_files * 100) if total_files > 0 else 0
+                    config.needs_redraw = True
+            else:
+                logger.warning(f"Fichier non trouvé après extraction: {expected_file}")
 
         missing_files = [f for f, _ in files_to_extract if f not in extracted_files]
         if missing_files:
             logger.warning(f"Fichiers non extraits: {', '.join(missing_files)}")
             return False, f"Fichiers non extraits: {', '.join(missing_files)}"
-
-        with lock:
-            config.download_progress[url]["downloaded_size"] = extracted_size
-            config.download_progress[url]["total_size"] = total_size
-            config.download_progress[url]["status"] = "Extracting"
-            config.download_progress[url]["progress_percent"] = 100 if total_size > 0 else 0
-            config.needs_redraw = True  # Forcer le redraw
 
         if dest_dir == "/userdata/roms/ps3" and len(root_dirs) == 1:
             root_dir = root_dirs.pop()
