@@ -1,5 +1,6 @@
 import pygame
 import config
+from config import CONTROLS_CONFIG_PATH
 import asyncio
 import math
 from display import draw_validation_transition
@@ -17,6 +18,15 @@ JOYHAT_DEBOUNCE = 200  # Délai anti-rebond pour JOYHATMOTION (ms)
 JOYAXIS_DEBOUNCE = 50  # Délai anti-rebond pour JOYAXISMOTION (ms)
 REPEAT_ACTION_DEBOUNCE = 50  # Délai anti-rebond pour répétitions up/down/left/right (ms)
 
+def load_controls_config(path=CONTROLS_CONFIG_PATH):
+    """Charge la configuration des contrôles depuis un fichier JSON."""
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logging.error(f"Erreur lors de la lecture de {path} : {e}")
+        return {}
+        
 def is_input_matched(event, action_name):
     """Vérifie si l'événement correspond à l'action configurée."""
     if not config.controls_config.get(action_name):
