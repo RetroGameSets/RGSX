@@ -259,6 +259,7 @@ async def main():
     clock = pygame.time.Clock()
 
     while running:
+        clock.tick(60)  # Limite à 60 FPS
         if config.update_triggered:
             logger.debug("Mise à jour déclenchée, arrêt de la boucle principale")
             break
