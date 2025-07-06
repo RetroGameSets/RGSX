@@ -110,3 +110,12 @@ def load_games(platform_id):
     except Exception as e:
         logger.error(f"Erreur lors du chargement des jeux pour {platform_id} : {str(e)}")
         return []
+        
+def load_json_file(path, default=None):
+    """Charge un fichier JSON avec gestion d'erreur."""
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logging.error(f"Erreur lors de la lecture de {path} : {e}")
+        return default if default is not None else {}
