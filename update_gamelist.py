@@ -73,6 +73,15 @@ def update_gamelist():
     except Exception as e:
         logger.error(f"Erreur lors de la mise à jour de {GAMELIST_FILE}: {e}")
         raise
+        
+def load_gamelist(path):
+    """Charge le fichier gamelist.xml."""
+    try:
+        tree = ET.parse(path)
+        return tree.getroot()
+    except (FileNotFoundError, ET.ParseError) as e:
+        logging.error(f"Erreur lors de la lecture de {path} : {e}")
+        return None
 
 if __name__ == "__main__":
     update_gamelist()
