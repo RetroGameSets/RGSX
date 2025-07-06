@@ -106,9 +106,12 @@ def draw_error_screen(screen):
 def draw_platform_grid(screen):
     """Affiche la grille des plateformes avec un titre en haut."""
     # Configuration du titre
-    platform = config.platforms[config.current_platform]
-    platform_name = config.platform_names.get(platform, platform)
-    
+    if not config.platforms or config.selected_platform >= len(config.platforms):
+        platform_name = "Aucune plateforme"
+        logger.warning("Aucune plateforme ou selected_platform hors limites")
+    else:
+        platform = config.platforms[config.selected_platform]
+        platform_name = config.platform_names.get(platform, platform)
     title_text = f"{platform_name}"
     title_surface = config.title_font.render(title_text, True, (255, 255, 255))
     title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 10))
@@ -213,13 +216,13 @@ def draw_game_list(screen):
         pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, rect_width, rect_height), 2, border_radius=10)
 
         for i, line in enumerate(lines):
-            text_surface = config.small_font.render(line, True, (255, 255, 255))
+            text_surface = config.font.render(line, True, (255, 255, 255))
             text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
             screen.blit(text_surface, text_rect)
         return
 
-    line_height = config.small_font.get_height() + 10
-    margin_top_bottom = 10
+    line_height = config.font.get_height() + 10
+    margin_top_bottom = 20
     extra_margin_top = 5  # Marge supplémentaire pour éviter le chevauchement avec le titre
     extra_margin_bottom = 40  # Marge supplémentaire en bas pour éloigner du texte des contrôles
     title_height = max(config.title_font.get_height(), config.search_font.get_height(), config.small_font.get_height()) + 20  # Hauteur du titre avec padding réduit
@@ -276,8 +279,8 @@ def draw_game_list(screen):
     for i in range(config.scroll_offset, min(config.scroll_offset + games_per_page, len(games))):
         game_name = games[i][0] if isinstance(games[i], (list, tuple)) else games[i]
         color = (0, 150, 255) if i == config.current_game else (255, 255, 255)
-        game_text = truncate_text_end(game_name, config.small_font, config.screen_width - 80)
-        text_surface = config.small_font.render(game_text, True, color)
+        game_text = truncate_text_end(game_name, config.font, config.screen_width - 80)
+        text_surface = config.font.render(game_text, True, color)
         text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + (i - config.scroll_offset) * line_height + line_height // 2))
         screen.blit(text_surface, text_rect)
         logger.debug(f"Jeu affiché : texte={game_text}, position={text_rect}, selected={i == config.current_game}")
@@ -523,12 +526,12 @@ def draw_extension_warning(screen):
 def draw_controls(screen, menu_state):
     """Affiche les contrôles sur une seule ligne en bas de l’écran pour tous les états du menu."""
     start_button = get_control_display('start', 'START')
-    control_text = f"Menu {config.menu_state} - {start_button} : Options - Controls"
+    control_text = f"Menu {menu_state} - {start_button} : Options - Controls"
     max_width = config.screen_width - 40
     wrapped_controls = wrap_text(control_text, config.small_font, max_width)
     line_height = config.small_font.get_height() + 5
     rect_height = len(wrapped_controls) * line_height + 20
-    rect_y = config.screen_height - rect_height - 5  # Augmenter la marge inférieure de 20px à 40px
+    rect_y = config.screen_height - rect_height - 40  # Marge inférieure de 40px
 
     for i, line in enumerate(wrapped_controls):
         text_surface = config.small_font.render(line, True, (255, 255, 255))
