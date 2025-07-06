@@ -13,8 +13,13 @@ OVERLAY.fill((0, 0, 0, 180))
 def init_display():
     """Initialise l’écran Pygame."""
     screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    config.screen_width, config.screen_height = screen.get_size()
+    # Redimensionner l'overlay pour correspondre à la résolution réelle
+    global OVERLAY
+    OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
+    OVERLAY.fill((0, 0, 0, 180))
     return screen
-
+    
 def draw_gradient(screen, top_color, bottom_color):
     """Dessine un fond dégradé vertical."""
     height = screen.get_height()
