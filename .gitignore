@@ -1,0 +1,6 @@
+logs/ 
+images/ 
+games/ 
+_pycache_/ 
+sources.json 
+gamelist.xml
