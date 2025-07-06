@@ -15,7 +15,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 JSON_EXTENSIONS = "/userdata/roms/ports/RGSX/rom_extensions.json"
+cache = {}
+CACHE_TTL = 3600  # 1 heure
 
+def fetch_data(url):
+    """Récupère des données depuis une URL avec mise en cache."""
+    current_time = time.time()
+    if url in cache and current_time - cache[url]["timestamp"] < CACHE_TTL:
+        return cache[url]["data"]
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        cache[url] = {"data": data, "timestamp": current_time}
+        return data
+    except requests.RequestException as e:
+        logging.error(f"Erreur lors de la requête {url} : {e}")
+        return None
+        
 def test_internet():
     logger.debug("Test de connexion Internet")
     try:
