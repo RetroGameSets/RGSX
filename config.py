@@ -52,8 +52,25 @@ screen_width = 800
 screen_height = 600
 
 # Polices
-font = None
 progress_font = None
 title_font = None
 search_font = None
 small_font = None
+
+
+SCREEN_WIDTH = 800
+"""Largeur de l'écran en pixels."""
+SCREEN_HEIGHT = 600
+"""Hauteur de l'écran en pixels."""
+FONT = pygame.font.Font(None, 36)
+"""Police par défaut pour l'affichage."""
+CONTROLS_CONFIG_PATH = "/userdata/saves/ports/rgsx/controls.json"
+"""Chemin du fichier de configuration des contrôles."""
+
+def validate_resolution():
+    """Valide la résolution de l'écran par rapport aux capacités du matériel."""
+    display_info = pygame.display.Info()
+    if SCREEN_WIDTH > display_info.current_w or SCREEN_HEIGHT > display_info.current_h:
+        logging.warning(f"Résolution {SCREEN_WIDTH}x{SCREEN_HEIGHT} dépasse les limites de l'écran")
+        return display_info.current_w, display_info.current_h
+    return SCREEN_WIDTH, SCREEN_HEIGHT
