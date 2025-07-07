@@ -11,13 +11,19 @@ logger = logging.getLogger(__name__)
 OVERLAY = None  # Initialisé dans init_display()
 
 def init_display():
-    """Initialise l’écran Pygame et met à jour la résolution."""
-    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-    config.screen_width, config.screen_height = screen.get_size()
-    logger.debug(f"Résolution réelle : {config.screen_width}x{config.screen_height}")
+    """Initialise l'écran et les ressources globales."""
     global OVERLAY
-    OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
-    OVERLAY.fill((0, 0, 0, 180))
+    logger.debug("Initialisation de l'écran")
+    display_info = pygame.display.Info()
+    screen_width = display_info.current_w
+    screen_height = display_info.current_h
+    screen = pygame.display.set_mode((screen_width, screen_height))
+    config.screen_width = screen_width
+    config.screen_height = screen_height
+    # Initialisation de OVERLAY
+    OVERLAY = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+    OVERLAY.fill((0, 0, 0, 128))  # Semi-transparent (noir avec alpha 128)
+    logger.debug(f"Écran initialisé avec résolution : {screen_width}x{screen_height}")
     return screen
 
 def draw_gradient(screen, top_color, bottom_color):
@@ -863,9 +869,16 @@ def draw_history(screen):
 
 def draw_confirm_dialog(screen):
     """Affiche la boîte de dialogue de confirmation pour quitter."""
+    global OVERLAY
+    logger.debug("Rendu de draw_confirm_dialog")
+    # Vérifier si OVERLAY est valide, sinon le recréer
+    if OVERLAY is None or OVERLAY.get_size() != (config.screen_width, config.screen_height):
+        OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
+        OVERLAY.fill((0, 0, 0, 128))
+        logger.debug("OVERLAY recréé dans draw_confirm_dialog")
+    
     screen.blit(OVERLAY, (0, 0))
-
-    message = "Voulez-vous vraiment quitter ?"
+    message = "Quitter l'application ?"
     wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
     line_height = config.font.get_height() + 5
     text_height = len(wrapped_message) * line_height
@@ -876,20 +889,16 @@ def draw_confirm_dialog(screen):
     rect_width = max_text_width + 40
     rect_x = (config.screen_width - rect_width) // 2
     rect_y = (config.screen_height - rect_height) // 2
-
     pygame.draw.rect(screen, (50, 50, 50, 200), (rect_x, rect_y, rect_width, rect_height), border_radius=10)
     pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, rect_width, rect_height), 2, border_radius=10)
-
     for i, line in enumerate(wrapped_message):
         text = config.font.render(line, True, (255, 255, 255))
         text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
         screen.blit(text, text_rect)
-
     yes_text = config.font.render("Oui", True, (0, 150, 255) if config.confirm_selection == 1 else (255, 255, 255))
     no_text = config.font.render("Non", True, (0, 150, 255) if config.confirm_selection == 0 else (255, 255, 255))
     yes_rect = yes_text.get_rect(center=(config.screen_width // 2 - 100, rect_y + text_height + margin_top_bottom + line_height // 2))
     no_rect = no_text.get_rect(center=(config.screen_width // 2 + 100, rect_y + text_height + margin_top_bottom + line_height // 2))
-
     screen.blit(yes_text, yes_rect)
     screen.blit(no_text, no_rect)
 

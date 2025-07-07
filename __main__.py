@@ -261,7 +261,7 @@ async def main():
     config.update_triggered = False
     last_redraw_time = pygame.time.get_ticks()
     
-    screen = pygame.display.set_mode((1280, 720))  # Initialiser l'écran
+    screen = init_display()
     clock = pygame.time.Clock()
 
     while running:
@@ -604,8 +604,8 @@ async def main():
                 logger.debug("Exécution de test_internet()")
                 if test_internet():
                     loading_step = "check_ota"
-                    config.current_loading_system = "Mise à jour en cours..."
-                    config.loading_progress = 5.0
+                    config.current_loading_system = "Mise à jour en cours... Patientez l'ecran reste figé.. Puis relancer l'application"
+                    config.loading_progress = 100
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
                 else:
