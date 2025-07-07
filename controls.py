@@ -3,10 +3,12 @@ import config
 from config import CONTROLS_CONFIG_PATH
 import asyncio
 import math
+import json
 from display import draw_validation_transition
 from network import download_rom, check_extension_before_download
 from controls_mapper import get_readable_input_name
-from utils import load_games  # Ajout de l'import
+from utils import load_games
+from history import load_history, clear_history
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,15 +20,57 @@ JOYHAT_DEBOUNCE = 200  # Délai anti-rebond pour JOYHATMOTION (ms)
 JOYAXIS_DEBOUNCE = 50  # Délai anti-rebond pour JOYAXISMOTION (ms)
 REPEAT_ACTION_DEBOUNCE = 50  # Délai anti-rebond pour répétitions up/down/left/right (ms)
 
+# Liste des états valides (mise à jour)
+VALID_STATES = [
+    "platform", "game", "download_progress", "download_result", "confirm_exit",
+    "extension_warning", "pause_menu", "controls_help", "history", "remap_controls",
+    "error", "loading", "confirm_clear_history"  # Ajout du nouvel état
+]
+
+def validate_menu_state(state):
+    """Valide l'état du menu et retourne un état par défaut si non valide."""
+    return state if state in VALID_STATES else "platform"
+
+
+
 def load_controls_config(path=CONTROLS_CONFIG_PATH):
     """Charge la configuration des contrôles depuis un fichier JSON."""
     try:
         with open(path, "r") as f:
-            return json.load(f)
+            config_data = json.load(f)
+            # Vérifier les actions nécessaires
+            required_actions = ["confirm", "cancel", "left", "right"]
+            for action in required_actions:
+                if action not in config_data:
+                    logger.warning(f"Action {action} manquante dans {path}, utilisation de la valeur par défaut")
+                    config_data[action] = {
+                        "type": "key",
+                        "value": {
+                            "confirm": pygame.K_RETURN,
+                            "cancel": pygame.K_ESCAPE,
+                            "left": pygame.K_LEFT,
+                            "right": pygame.K_RIGHT
+                        }[action]
+                    }
+            return config_data
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        logging.error(f"Erreur lors de la lecture de {path} : {e}")
-        return {}
-        
+        logger.error(f"Erreur lors de la lecture de {path} : {e}, utilisation de la configuration par défaut")
+        return {
+            "confirm": {"type": "key", "value": pygame.K_RETURN},
+            "cancel": {"type": "key", "value": pygame.K_ESCAPE},
+            "left": {"type": "key", "value": pygame.K_LEFT},
+            "right": {"type": "key", "value": pygame.K_RIGHT},
+            "up": {"type": "key", "value": pygame.K_UP},
+            "down": {"type": "key", "value": pygame.K_DOWN},
+            "start": {"type": "key", "value": pygame.K_p},
+            "progress": {"type": "key", "value": pygame.K_t},
+            "page_up": {"type": "key", "value": pygame.K_PAGEUP},
+            "page_down": {"type": "key", "value": pygame.K_PAGEDOWN},
+            "filter": {"type": "key", "value": pygame.K_f},
+            "delete": {"type": "key", "value": pygame.K_BACKSPACE},
+            "space": {"type": "key", "value": pygame.K_SPACE}
+        }
+
 def is_input_matched(event, action_name):
     """Vérifie si l'événement correspond à l'action configurée."""
     if not config.controls_config.get(action_name):
@@ -53,7 +97,6 @@ def is_input_matched(event, action_name):
         logger.debug(f"Vérification axis: event_axis={event_axis}, event_value={event_value}, input_value={input_value}, result={result}")
         return result
     elif input_type == "hat" and event_type == pygame.JOYHATMOTION:
-        # Convertir input_value en tuple pour comparaison
         input_value_tuple = tuple(input_value) if isinstance(input_value, list) else input_value
         logger.debug(f"Vérification hat: event_value={event_value}, input_value={input_value_tuple}")
         return event_value == input_value_tuple
@@ -64,10 +107,14 @@ def is_input_matched(event, action_name):
 
 def handle_controls(event, sources, joystick, screen):
     """Gère un événement clavier/joystick/souris et la répétition automatique.
-    Retourne 'quit', 'download', ou None.
+    Retourne 'quit', 'download', 'redownload', ou None.
     """
     action = None
     current_time = pygame.time.get_ticks()
+
+    # Valider previous_menu_state avant tout traitement
+    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+    logger.debug(f"Validation initiale: previous_menu_state={config.previous_menu_state}")
 
     # Debounce général
     if current_time - config.last_state_change_time < config.debounce_delay:
@@ -100,14 +147,25 @@ def handle_controls(event, sources, joystick, screen):
             if is_input_matched(event, action_name):
                 logger.debug(f"Action mappée détectée: {action_name}, input={get_readable_input_name(event)}")
 
+        # Menu pause
+        if is_input_matched(event, "start") and config.menu_state not in ("pause_menu", "controls_help", "history", "remap_controls"):
+            config.previous_menu_state = config.menu_state
+            config.menu_state = "pause_menu"
+            config.selected_option = 0
+            config.needs_redraw = True
+            logger.debug(f"Passage à pause_menu depuis {config.previous_menu_state}")
+            return action
+
         # Erreur
         if config.menu_state == "error":
             if is_input_matched(event, "confirm"):
                 config.menu_state = "loading"
+                config.needs_redraw = True
                 logger.debug("Sortie erreur avec Confirm")
             elif is_input_matched(event, "cancel"):
                 config.menu_state = "confirm_exit"
                 config.confirm_selection = 0
+                config.needs_redraw = True
 
         # Plateformes
         elif config.menu_state == "platform":
@@ -167,17 +225,29 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
             elif is_input_matched(event, "page_down"):
-                    if (config.current_page + 1) * 9 < len(config.platforms):
-                        config.current_page += 1
-                        config.selected_platform = config.current_page * 9 + row * 3
-                        if config.selected_platform >= len(config.platforms):
-                            config.selected_platform = len(config.platforms) - 1
-                        config.repeat_action = None  # Réinitialiser la répétition
-                        config.repeat_key = None
-                        config.repeat_start_time = 0
-                        config.repeat_last_action = current_time
-                        config.needs_redraw = True
-                        logger.debug("Page suivante, répétition réinitialisée")
+                if (config.current_page + 1) * 9 < len(config.platforms):
+                    config.current_page += 1
+                    config.selected_platform = config.current_page * 9 + row * 3
+                    if config.selected_platform >= len(config.platforms):
+                        config.selected_platform = len(config.platforms) - 1
+                    config.repeat_action = None
+                    config.repeat_key = None
+                    config.repeat_start_time = 0
+                    config.repeat_last_action = current_time
+                    config.needs_redraw = True
+                    logger.debug("Page suivante, répétition réinitialisée")
+            elif is_input_matched(event, "page_up"):
+                if config.current_page > 0:
+                    config.current_page -= 1
+                    config.selected_platform = config.current_page * 9 + row * 3
+                    if config.selected_platform >= len(config.platforms):
+                        config.selected_platform = len(config.platforms) - 1
+                    config.repeat_action = None
+                    config.repeat_key = None
+                    config.repeat_start_time = 0
+                    config.repeat_last_action = current_time
+                    config.needs_redraw = True
+                    logger.debug("Page précédente, répétition réinitialisée")
             elif is_input_matched(event, "progress"):
                 if config.download_tasks:
                     config.menu_state = "download_progress"
@@ -186,352 +256,445 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "confirm"):
                 if config.platforms:
                     config.current_platform = config.selected_platform
-                    config.games = load_games(config.platforms[config.current_platform])  # Appel à load_games depuis utils
+                    config.games = load_games(config.platforms[config.current_platform])
                     config.filtered_games = config.games
                     config.filter_active = False
                     config.current_game = 0
                     config.scroll_offset = 0
-                    draw_validation_transition(screen, config.current_platform)  # Animation de transition
+                    draw_validation_transition(screen, config.current_platform)
                     config.menu_state = "game"
                     config.needs_redraw = True
                     logger.debug(f"Plateforme sélectionnée: {config.platforms[config.current_platform]}, {len(config.games)} jeux chargés")
             elif is_input_matched(event, "cancel"):
                 config.menu_state = "confirm_exit"
                 config.confirm_selection = 0
+                config.needs_redraw = True
 
         # Jeux
         elif config.menu_state == "game":
-            if config.search_mode:
-                if config.is_non_pc:
-                    keyboard_layout = [
-                        ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
-                        ['A', 'Z', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
-                        ['Q', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M'],
-                        ['W', 'X', 'C', 'V', 'B', 'N']
-                    ]
-                    row, col = config.selected_key
-                    max_row = len(keyboard_layout) - 1
-                    max_col = len(keyboard_layout[row]) - 1
-                    if is_input_matched(event, "up"):
-                        if row > 0:
-                            config.selected_key = (row - 1, min(col, len(keyboard_layout[row - 1]) - 1))
-                            config.repeat_action = "up"
-                            config.repeat_start_time = current_time + REPEAT_DELAY
-                            config.repeat_last_action = current_time
-                            config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
-                            config.needs_redraw = True
-                    elif is_input_matched(event, "down"):
-                        if row < max_row:
-                            config.selected_key = (row + 1, min(col, len(keyboard_layout[row + 1]) - 1))
-                            config.repeat_action = "down"
-                            config.repeat_start_time = current_time + REPEAT_DELAY
-                            config.repeat_last_action = current_time
-                            config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
-                            config.needs_redraw = True
-                    elif is_input_matched(event, "left"):
-                        if col > 0:
-                            config.selected_key = (row, col - 1)
-                            config.repeat_action = "left"
-                            config.repeat_start_time = current_time + REPEAT_DELAY
-                            config.repeat_last_action = current_time
-                            config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
-                            config.needs_redraw = True
-                    elif is_input_matched(event, "right"):
-                        if col < max_col:
-                            config.selected_key = (row, col + 1)
-                            config.repeat_action = "right"
-                            config.repeat_start_time = current_time + REPEAT_DELAY
-                            config.repeat_last_action = current_time
-                            config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
-                            config.needs_redraw = True
-                    elif is_input_matched(event, "confirm"):
-                        key = keyboard_layout[row][col]
-                        if len(config.search_query) < 50:
-                            config.search_query += key.lower()
-                            config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()] if config.search_query else config.games
-                            config.current_game = 0
-                            config.scroll_offset = 0
-                            config.needs_redraw = True
-                    elif is_input_matched(event, "delete"):
-                        config.search_query = config.search_query[:-1]
-                        config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()] if config.search_query else config.games
-                        config.current_game = 0
-                        config.scroll_offset = 0
+            games = config.filtered_games if config.filter_active or config.search_mode else config.games
+            if config.search_mode and config.is_non_pc:
+                keyboard_layout = [
+                    ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+                    ['A', 'Z', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+                    ['Q', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M'],
+                    ['W', 'X', 'C', 'V', 'B', 'N']
+                ]
+                row, col = config.selected_key
+                max_row = len(keyboard_layout) - 1
+                max_col = len(keyboard_layout[row]) - 1
+                if is_input_matched(event, "up"):
+                    if row > 0:
+                        config.selected_key = (row - 1, min(col, len(keyboard_layout[row - 1]) - 1))
+                        config.repeat_action = "up"
+                        config.repeat_start_time = current_time + REPEAT_DELAY
+                        config.repeat_last_action = current_time
+                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                         config.needs_redraw = True
-                    elif is_input_matched(event, "space"):
-                        config.search_query += " "
-                        config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()] if config.search_query else config.games
-                        config.current_game = 0
-                        config.scroll_offset = 0
+                elif is_input_matched(event, "down"):
+                    if row < max_row:
+                        config.selected_key = (row + 1, min(col, len(keyboard_layout[row + 1]) - 1))
+                        config.repeat_action = "down"
+                        config.repeat_start_time = current_time + REPEAT_DELAY
+                        config.repeat_last_action = current_time
+                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                         config.needs_redraw = True
-                    elif is_input_matched(event, "cancel"):
-                        config.search_mode = False
-                        config.search_query = ""
-                        config.filtered_games = config.games
-                        config.filter_active = False
-                        config.current_game = 0
-                        config.scroll_offset = 0
+                elif is_input_matched(event, "left"):
+                    if col > 0:
+                        config.selected_key = (row, col - 1)
+                        config.repeat_action = "left"
+                        config.repeat_start_time = current_time + REPEAT_DELAY
+                        config.repeat_last_action = current_time
+                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                         config.needs_redraw = True
-                        logger.debug("Filtre annulé")
-                    elif is_input_matched(event, "filter"):
-                        config.search_mode = False
-                        config.filter_active = bool(config.search_query)
+                elif is_input_matched(event, "right"):
+                    if col < max_col:
+                        config.selected_key = (row, col + 1)
+                        config.repeat_action = "right"
+                        config.repeat_start_time = current_time + REPEAT_DELAY
+                        config.repeat_last_action = current_time
+                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                         config.needs_redraw = True
-                else:
-                    if is_input_matched(event, "confirm"):
-                        config.search_mode = False
-                        config.filter_active = bool(config.search_query)
-                        config.needs_redraw = True
-                    elif is_input_matched(event, "cancel"):
-                        config.search_mode = False
-                        config.search_query = ""
-                        config.filtered_games = config.games
-                        config.filter_active = False
-                        config.current_game = 0
-                        config.scroll_offset = 0
-                        config.needs_redraw = True
-                        logger.debug("Filtre annulé")
-                    elif event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_BACKSPACE:
-                            config.search_query = config.search_query[:-1]
-                            config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()] if config.search_query else config.games
-                            config.current_game = 0
-                            config.scroll_offset = 0
-                            config.needs_redraw = True
-                        elif event.key == pygame.K_SPACE:
-                            config.search_query += " "
-                            config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()] if config.search_query else config.games
-                            config.current_game = 0
-                            config.scroll_offset = 0
-                            config.needs_redraw = True
-                        elif event.unicode.isprintable() and len(config.search_query) < 50:
-                            config.search_query += event.unicode
-                            config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()] if config.search_query else config.games
-                            config.current_game = 0
-                            config.scroll_offset = 0
-                            config.needs_redraw = True
-            else:
-                if is_input_matched(event, "down"):
-                    config.current_game = min(config.current_game + 1, len(config.filtered_games) - 1)
-                    if config.current_game >= config.scroll_offset + config.visible_games:
-                        config.scroll_offset += 1
-                    config.repeat_action = "down"
-                    config.repeat_start_time = current_time + REPEAT_DELAY
-                    config.repeat_last_action = current_time
-                    config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
-                    config.needs_redraw = True
-                elif is_input_matched(event, "up"):
-                    config.current_game = max(config.current_game - 1, 0)
-                    if config.current_game < config.scroll_offset:
-                        config.scroll_offset -= 1
-                    config.repeat_action = "up"
-                    config.repeat_start_time = current_time + REPEAT_DELAY
-                    config.repeat_last_action = current_time
-                    config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
-                    config.needs_redraw = True
-                elif is_input_matched(event, "page_up"):
-                    config.current_game = max(config.current_game - config.visible_games, 0)
-                    config.scroll_offset = max(config.scroll_offset - config.visible_games, 0)
-                    config.repeat_action = "page_up"
-                    config.repeat_start_time = current_time + REPEAT_DELAY
-                    config.repeat_last_action = current_time
-                    config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
-                    config.needs_redraw = True
-                elif is_input_matched(event, "page_down"):
-                    config.current_game = min(config.current_game + config.visible_games, len(config.filtered_games) - 1)
-                    config.scroll_offset = min(config.scroll_offset + config.visible_games, len(config.filtered_games) - config.visible_games)
-                    config.repeat_action = "page_down"
-                    config.repeat_start_time = current_time + REPEAT_DELAY
-                    config.repeat_last_action = current_time
-                    config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
-                    config.needs_redraw = True
                 elif is_input_matched(event, "confirm"):
-                    if config.filtered_games:
-                        action = "download"
+                    config.search_query += keyboard_layout[row][col]
+                    config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()]
+                    config.current_game = 0
+                    config.scroll_offset = 0
+                    config.needs_redraw = True
+                    logger.debug(f"Recherche mise à jour: query={config.search_query}, jeux filtrés={len(config.filtered_games)}")
+                elif is_input_matched(event, "delete"):
+                    if config.search_query:
+                        config.search_query = config.search_query[:-1]
+                        config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()]
+                        config.current_game = 0
+                        config.scroll_offset = 0
+                        config.needs_redraw = True
+                        logger.debug(f"Suppression caractère: query={config.search_query}, jeux filtrés={len(config.filtered_games)}")
+                elif is_input_matched(event, "space"):
+                    config.search_query += " "
+                    config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()]
+                    config.current_game = 0
+                    config.scroll_offset = 0
+                    config.needs_redraw = True
+                    logger.debug(f"Espace ajouté: query={config.search_query}, jeux filtrés={len(config.filtered_games)}")
+                elif is_input_matched(event, "cancel"):
+                    config.search_mode = False
+                    config.search_query = ""
+                    config.selected_key = (0, 0)
+                    config.filtered_games = config.games
+                    config.current_game = 0
+                    config.scroll_offset = 0
+                    config.needs_redraw = True
+                    logger.debug("Sortie du mode recherche")
+            else:
+                if is_input_matched(event, "up"):
+                    if config.current_game > 0:
+                        config.current_game -= 1
+                        config.repeat_action = "up"
+                        config.repeat_start_time = current_time + REPEAT_DELAY
+                        config.repeat_last_action = current_time
+                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
+                        config.needs_redraw = True
+                elif is_input_matched(event, "down"):
+                    if config.current_game < len(games) - 1:
+                        config.current_game += 1
+                        config.repeat_action = "down"
+                        config.repeat_start_time = current_time + REPEAT_DELAY
+                        config.repeat_last_action = current_time
+                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
+                        config.needs_redraw = True
+                elif is_input_matched(event, "page_up"):
+                    config.current_game = max(0, config.current_game - config.visible_games)
+                    config.repeat_action = None
+                    config.repeat_key = None
+                    config.repeat_start_time = 0
+                    config.repeat_last_action = current_time
+                    config.needs_redraw = True
+                    logger.debug("Page précédente dans la liste des jeux")
+                elif is_input_matched(event, "page_down"):
+                    config.current_game = min(len(games) - 1, config.current_game + config.visible_games)
+                    config.repeat_action = None
+                    config.repeat_key = None
+                    config.repeat_start_time = 0
+                    config.repeat_last_action = current_time
+                    config.needs_redraw = True
+                    logger.debug("Page suivante dans la liste des jeux")
                 elif is_input_matched(event, "filter"):
                     config.search_mode = True
                     config.search_query = ""
                     config.filtered_games = config.games
+                    config.current_game = 0
+                    config.scroll_offset = 0
                     config.selected_key = (0, 0)
                     config.needs_redraw = True
                     logger.debug("Entrée en mode recherche")
-                elif is_input_matched(event, "cancel"):
-                    config.menu_state = "platform"
-                    config.current_game = 0
-                    config.scroll_offset = 0
-                    config.filter_active = False
-                    config.filtered_games = config.games
-                    config.needs_redraw = True
-                    logger.debug("Retour à platform, filtre réinitialisé")
                 elif is_input_matched(event, "progress"):
                     if config.download_tasks:
                         config.menu_state = "download_progress"
                         config.needs_redraw = True
                         logger.debug("Retour à download_progress depuis game")
+                elif is_input_matched(event, "confirm"):
+                    if games:
+                        config.pending_download = check_extension_before_download(games[config.current_game][0], config.platforms[config.current_platform], games[config.current_game][1])
+                        if config.pending_download:
+                            url, platform, game_name, is_zip_non_supported = config.pending_download
+                            if is_zip_non_supported:
+                                config.menu_state = "extension_warning"
+                                config.extension_confirm_selection = 0
+                                config.needs_redraw = True
+                                logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
+                            else:
+                                task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
+                                config.download_tasks[task] = (task, url, game_name, platform)  # Stocker tuple de 4 éléments
+                                config.menu_state = "download_progress"
+                                config.needs_redraw = True
+                                logger.debug(f"Début du téléchargement: {game_name} pour {platform} depuis {url}")
+                                config.pending_download = None  # Réinitialiser après démarrage
+                                action = "download"
+                        else:
+                            config.menu_state = "error"
+                            config.error_message = "Extension non supportée ou erreur de téléchargement"
+                            config.pending_download = None
+                            config.needs_redraw = True
+                            logger.error(f"config.pending_download est None pour {games[config.current_game][0]}")
+                elif is_input_matched(event, "cancel"):
+                    config.menu_state = "platform"
+                    config.current_game = 0
+                    config.scroll_offset = 0
+                    config.needs_redraw = True
+                    logger.debug("Retour à platform")
 
-        # Download progress
+        elif config.menu_state == "history":
+            history = config.history
+            if is_input_matched(event, "up"):
+                if config.current_history_item > 0:
+                    config.current_history_item -= 1
+                    config.repeat_action = "up"
+                    config.repeat_start_time = current_time + REPEAT_DELAY
+                    config.repeat_last_action = current_time
+                    config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
+                    config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                if config.current_history_item < len(history) - 1:
+                    config.current_history_item += 1
+                    config.repeat_action = "down"
+                    config.repeat_start_time = current_time + REPEAT_DELAY
+                    config.repeat_last_action = current_time
+                    config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
+                    config.needs_redraw = True
+            elif is_input_matched(event, "page_up"):
+                config.current_history_item = max(0, config.current_history_item - config.visible_history_items)
+                config.repeat_action = None
+                config.repeat_key = None
+                config.repeat_start_time = 0
+                config.repeat_last_action = current_time
+                config.needs_redraw = True
+                logger.debug("Page précédente dans l'historique")
+            elif is_input_matched(event, "page_down"):
+                config.current_history_item = min(len(history) - 1, config.current_history_item + config.visible_history_items)
+                config.repeat_action = None
+                config.repeat_key = None
+                config.repeat_start_time = 0
+                config.repeat_last_action = current_time
+                config.needs_redraw = True
+                logger.debug("Page suivante dans l'historique")
+            elif is_input_matched(event, "progress"):
+                config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                config.menu_state = "confirm_clear_history"
+                config.confirm_clear_selection = 0  # 0 pour "Non", 1 pour "Oui"
+                config.needs_redraw = True
+                logger.debug("Passage à confirm_clear_history depuis history")
+            elif is_input_matched(event, "confirm"):
+                if history:
+                    entry = history[config.current_history_item]
+                    platform = entry["platform"]
+                    game_name = entry["game_name"]
+                    # Rechercher l'URL dans config.games
+                    for game in config.games:
+                        if game[0] == game_name and config.platforms[config.current_platform] == platform:
+                            config.pending_download = check_extension_before_download(game_name, platform, game[1])
+                            if config.pending_download:
+                                url, platform, game_name, is_zip_non_supported = config.pending_download
+                                if is_zip_non_supported:
+                                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                                    config.menu_state = "extension_warning"
+                                    config.extension_confirm_selection = 0
+                                    config.needs_redraw = True
+                                    logger.debug(f"Extension non supportée pour retéléchargement, passage à extension_warning pour {game_name}")
+                                else:
+                                    task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
+                                    config.download_tasks[task] = (task, url, game_name, platform)
+                                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                                    config.menu_state = "download_progress"
+                                    config.needs_redraw = True
+                                    logger.debug(f"Retéléchargement: {game_name} pour {platform} depuis {url}")
+                                    config.pending_download = None
+                                    action = "redownload"
+                            else:
+                                config.menu_state = "error"
+                                config.error_message = "Extension non supportée ou erreur de retéléchargement"
+                                config.pending_download = None
+                                config.needs_redraw = True
+                                logger.error(f"config.pending_download est None pour {game_name}")
+                            break
+            elif is_input_matched(event, "cancel"):
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.current_history_item = 0
+                config.history_scroll_offset = 0
+                config.needs_redraw = True
+                logger.debug(f"Retour à {config.menu_state} depuis history")
+        # Ajouter un nouvel état "confirm_clear_history" après l'état "confirm_exit"
+        elif config.menu_state == "confirm_clear_history":
+            logger.debug(f"État confirm_clear_history, confirm_clear_selection={config.confirm_clear_selection}, événement={event.type}, valeur={getattr(event, 'value', None)}")
+            if is_input_matched(event, "confirm"):
+                logger.debug(f"Action confirm détectée dans confirm_clear_history")
+                if config.confirm_clear_selection == 1:  # Oui
+                    clear_history()
+                    config.history = []
+                    config.current_history_item = 0
+                    config.history_scroll_offset = 0
+                    config.menu_state = "history"
+                    config.needs_redraw = True
+                    logger.info("Historique vidé après confirmation")
+                else:  # Non
+                    config.menu_state = "history"
+                    config.needs_redraw = True
+                    logger.debug("Annulation du vidage de l'historique, retour à history")
+            elif is_input_matched(event, "left"):
+                logger.debug(f"Action left détectée dans confirm_clear_history")
+                config.confirm_clear_selection = 1  # Sélectionner "Non"
+                config.needs_redraw = True
+                logger.debug(f"Changement sélection confirm_clear_history: {config.confirm_clear_selection}")
+            elif is_input_matched(event, "right"):
+                logger.debug(f"Action right détectée dans confirm_clear_history")
+                config.confirm_clear_selection = 0  # Sélectionner "Oui"
+                config.needs_redraw = True
+                logger.debug(f"Changement sélection confirm_clear_history: {config.confirm_clear_selection}")
+            elif is_input_matched(event, "cancel"):
+                logger.debug(f"Action cancel détectée dans confirm_clear_history")
+                config.menu_state = "history"
+                config.needs_redraw = True
+                logger.debug("Annulation du vidage de l'historique, retour à history")
+         # Progression téléchargement
         elif config.menu_state == "download_progress":
             if is_input_matched(event, "cancel"):
-                if config.download_tasks:
-                    task = list(config.download_tasks.keys())[0]
-                    config.download_tasks[task][0].cancel()
-                    url = config.download_tasks[task][1]
-                    game_name = config.download_tasks[task][2]
-                    if url in config.download_progress:
-                        del config.download_progress[url]
-                    del config.download_tasks[task]
-                    config.download_result_message = f"Téléchargement annulé : {game_name}"
-                    config.download_result_error = True
-                    config.download_result_start_time = pygame.time.get_ticks()
-                    config.menu_state = "download_result"
-            elif is_input_matched(event, "progress"):
-                config.menu_state = "game"
-                config.needs_redraw = True
-                logger.debug("Retour à game depuis download_progress")
-
-        # Confirmation de sortie
-        elif config.menu_state == "confirm_exit":
-            if is_input_matched(event, "left"):
-                config.confirm_selection = 1
-                config.needs_redraw = True
-                logger.debug("Sélection Oui")
-            elif is_input_matched(event, "right"):
-                config.confirm_selection = 0
-                config.needs_redraw = True
-                logger.debug("Sélection Non")
-            elif is_input_matched(event, "confirm"):
-                if config.confirm_selection == 1:
-                    logger.debug("Retour de 'quit' pour fermer l'application")
-                    return "quit"
-                else:
-                    config.menu_state = "platform"
-                    config.needs_redraw = True
-                    logger.debug("Retour à platform depuis confirm_exit")
-            elif is_input_matched(event, "cancel"):
-                config.menu_state = "platform"
-                config.needs_redraw = True
-                logger.debug("Annulation confirm_exit")
-                
-        # Avertissement d'extension
-        elif config.menu_state == "extension_warning":
-            if is_input_matched(event, "left"):
-                config.extension_confirm_selection = 1
-                config.needs_redraw = True
-                logger.debug("Sélection Oui (extension_warning)")
-            elif is_input_matched(event, "right"):
-                config.extension_confirm_selection = 0
-                config.needs_redraw = True
-                logger.debug("Sélection Non (extension_warning)")
-            elif is_input_matched(event, "confirm"):
-                if config.extension_confirm_selection == 1:
-                    if config.pending_download:
-                        url, platform, game_name, is_zip_non_supported = config.pending_download
-                        task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported=is_zip_non_supported))
-                        config.download_tasks[task] = (task, url, game_name, platform)
-                        config.menu_state = "download_progress"
-                        config.pending_download = None
-                        config.needs_redraw = True
-                    else:
-                        config.menu_state = "game"
-                        config.needs_redraw = True
-                else:
-                    config.menu_state = "game"
-                    config.pending_download = None
-                    config.needs_redraw = True
-                    logger.debug("Téléchargement annulé (extension_warning)")
-            elif is_input_matched(event, "cancel"):
-                config.menu_state = "game"
+                for task in config.download_tasks:
+                    task.cancel()
+                config.download_tasks.clear()
+                config.download_progress.clear()
                 config.pending_download = None
+                config.menu_state = validate_menu_state(config.previous_menu_state)
                 config.needs_redraw = True
-                logger.debug("Annulation extension_warning")
+                logger.debug(f"Téléchargement annulé, retour à {config.menu_state}")
+            elif is_input_matched(event, "progress"):
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.needs_redraw = True
+                logger.debug(f"Retour à {config.menu_state} depuis download_progress")
 
         # Résultat téléchargement
         elif config.menu_state == "download_result":
             if is_input_matched(event, "confirm"):
-                config.menu_state = "game"
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.popup_timer = 0
+                config.pending_download = None
                 config.needs_redraw = True
-                logger.debug("Retour à game depuis download_result")
+                logger.debug(f"Retour à {config.menu_state} depuis download_result")
 
-        # Enregistrer la touche pour la répétition
-        if config.repeat_action in ["up", "down", "page_up", "page_down", "left", "right"]:
-            if event.type == pygame.KEYDOWN:
-                config.repeat_key = event.key
-            elif event.type == pygame.JOYBUTTONDOWN:
-                config.repeat_key = event.button
-            elif event.type == pygame.JOYAXISMOTION:
-                config.repeat_key = (event.axis, 1 if event.value > 0 else -1)
-            elif event.type == pygame.JOYHATMOTION:
-                config.repeat_key = event.value
+        # Confirmation quitter
+        elif config.menu_state == "confirm_exit":
+            if is_input_matched(event, "confirm"):
+                if config.confirm_selection == 1:
+                    return "quit"
+                else:
+                    config.menu_state = validate_menu_state(config.previous_menu_state)
+                    config.needs_redraw = True
+                    logger.debug(f"Retour à {config.menu_state} depuis confirm_exit")
+            elif is_input_matched(event, "left") or is_input_matched(event, "right"):
+                config.confirm_selection = 1 - config.confirm_selection
+                config.needs_redraw = True
+                logger.debug(f"Changement sélection confirm_exit: {config.confirm_selection}")
+
+        # Avertissement extension
+        elif config.menu_state == "extension_warning":
+            if is_input_matched(event, "confirm"):
+                if config.extension_confirm_selection == 1:
+                    if config.pending_download and len(config.pending_download) == 4:
+                        url, platform, game_name, is_zip_non_supported = config.pending_download
+                        task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
+                        config.download_tasks[task] = (task, url, game_name, platform)
+                        config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                        config.menu_state = "download_progress"
+                        config.needs_redraw = True
+                        logger.debug(f"Téléchargement confirmé après avertissement: {game_name} pour {platform} depuis {url}")
+                        config.pending_download = None
+                        action = "download"
+                    else:
+                        config.menu_state = "error"
+                        config.error_message = "Données de téléchargement invalides"
+                        config.pending_download = None
+                        config.needs_redraw = True
+                        logger.error("config.pending_download invalide")
+                else:
+                    config.pending_download = None
+                    config.menu_state = validate_menu_state(config.previous_menu_state)
+                    config.needs_redraw = True
+                    logger.debug(f"Retour à {config.menu_state} depuis extension_warning")
+            elif is_input_matched(event, "left") or is_input_matched(event, "right"):
+                config.extension_confirm_selection = 1 - config.extension_confirm_selection
+                config.needs_redraw = True
+                logger.debug(f"Changement sélection extension_warning: {config.extension_confirm_selection}")
+            elif is_input_matched(event, "cancel"):
+                config.pending_download = None
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.needs_redraw = True
+                logger.debug(f"Retour à {config.menu_state} depuis extension_warning")
+
+        # Menu pause
+        elif config.menu_state == "pause_menu":
+            if is_input_matched(event, "up"):
+                config.selected_option = max(0, config.selected_option - 1)
+                config.repeat_action = "up"
+                config.repeat_start_time = current_time + REPEAT_DELAY
                 config.repeat_last_action = current_time
+                config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                config.selected_option = min(3, config.selected_option + 1)
+                config.repeat_action = "down"
+                config.repeat_start_time = current_time + REPEAT_DELAY
+                config.repeat_last_action = current_time
+                config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                if config.selected_option == 0:  # Controls
+                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                    config.menu_state = "controls_help"
+                    config.needs_redraw = True
+                    logger.debug(f"Passage à controls_help depuis pause_menu")
+                elif config.selected_option == 1:  # Remap controls
+                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                    config.menu_state = "remap_controls"
+                    config.needs_redraw = True
+                    logger.debug(f"Passage à remap_controls depuis pause_menu")
+                elif config.selected_option == 2:  # History
+                    config.history = load_history()
+                    config.current_history_item = 0
+                    config.history_scroll_offset = 0
+                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                    config.menu_state = "history"
+                    config.needs_redraw = True
+                    logger.debug(f"Passage à history depuis pause_menu")
+                elif config.selected_option == 3:  # Quit
+                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                    config.menu_state = "confirm_exit"
+                    config.confirm_selection = 0
+                    config.needs_redraw = True
+                    logger.debug(f"Passage à confirm_exit depuis pause_menu")
+            elif is_input_matched(event, "cancel"):
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.needs_redraw = True
+                logger.debug(f"Retour à {config.menu_state} depuis pause_menu")
 
-    elif event.type in (pygame.KEYUP, pygame.JOYBUTTONUP):
-        if config.menu_state in ("game", "platform") and is_input_matched(event, config.repeat_action):
-            config.repeat_action = None
-            config.repeat_key = None
-            config.repeat_start_time = 0
-            config.needs_redraw = True
+        # Aide contrôles
+        elif config.menu_state == "controls_help":
+            if is_input_matched(event, "cancel"):
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.needs_redraw = True
+                logger.debug(f"Retour à {config.menu_state} depuis controls_help")
 
-    # Gestion de la répétition automatique
-    if config.menu_state in ("game", "platform") and config.repeat_action:
-        if current_time >= config.repeat_start_time:
-            if config.repeat_action in ["up", "down", "left", "right"] and current_time - config.repeat_last_action < REPEAT_ACTION_DEBOUNCE:
-                return action
+        # Remap controls
+        elif config.menu_state == "remap_controls":
+            if is_input_matched(event, "cancel"):
+                config.menu_state = "pause_menu"
+                config.needs_redraw = True
+                logger.debug("Retour à pause_menu depuis remap_controls")
 
-            last_repeat_time = config.repeat_start_time - REPEAT_INTERVAL
-            config.repeat_last_action = current_time
-            if config.menu_state == "game":
-                if config.repeat_action == "down":
-                    config.current_game = min(config.current_game + 1, len(config.filtered_games) - 1)
-                    if config.current_game >= config.scroll_offset + config.visible_games:
-                        config.scroll_offset += 1
-                    config.needs_redraw = True
-                elif config.repeat_action == "up":
-                    config.current_game = max(config.current_game - 1, 0)
-                    if config.current_game < config.scroll_offset:
-                        config.scroll_offset -= 1
-                    config.needs_redraw = True
-                elif config.repeat_action == "page_down":
-                    config.current_game = min(config.current_game + config.visible_games, len(config.filtered_games) - 1)
-                    config.scroll_offset = min(config.scroll_offset + config.visible_games, len(config.filtered_games) - config.visible_games)
-                    config.needs_redraw = True
-                elif config.repeat_action == "page_up":
-                    config.current_game = max(config.current_game - config.visible_games, 0)
-                    config.scroll_offset = max(config.scroll_offset - config.visible_games, 0)
-                    config.needs_redraw = True
-            elif config.menu_state == "platform":
-                max_index = min(9, len(config.platforms) - config.current_page * 9) - 1
-                current_grid_index = config.selected_platform - config.current_page * 9
-                row = current_grid_index // 3
-                if config.repeat_action == "down":
-                    if current_grid_index + 3 <= max_index:
-                        config.selected_platform += 3
-                        config.needs_redraw = True
-                elif config.repeat_action == "up":
-                    if current_grid_index - 3 >= 0:
-                        config.selected_platform -= 3
-                        config.needs_redraw = True
-                elif config.repeat_action == "left":
-                    if current_grid_index % 3 != 0:
-                        config.selected_platform -= 1
-                        config.needs_redraw = True
-                    elif config.current_page > 0:
-                        config.current_page -= 1
-                        config.selected_platform = config.current_page * 9 + row * 3 + 2
-                        if config.selected_platform >= len(config.platforms):
-                            config.selected_platform = len(config.platforms) - 1
-                        config.needs_redraw = True
-                elif config.repeat_action == "right":
-                    if current_grid_index % 3 != 2 and current_grid_index < max_index:
-                        config.selected_platform += 1
-                        config.needs_redraw = True
-                    elif (config.current_page + 1) * 9 < len(config.platforms):
-                        config.current_page += 1
-                        config.selected_platform = config.current_page * 9 + row * 3
-                        if config.selected_platform >= len(config.platforms):
-                            config.selected_platform = len(config.platforms) - 1
-                        config.needs_redraw = True
-            config.repeat_start_time = last_repeat_time + REPEAT_INTERVAL
-            if config.repeat_start_time < current_time:
-                config.repeat_start_time = current_time + REPEAT_INTERVAL
+    # Gestion de la répétition automatique (relâchement)
+    if event.type in (pygame.KEYUP, pygame.JOYBUTTONUP, pygame.JOYAXISMOTION, pygame.JOYHATMOTION):
+        if event.type == pygame.JOYAXISMOTION and abs(event.value) > 0.5:
+            return action
+        if event.type == pygame.JOYHATMOTION and event.value != (0, 0):
+            return action
+        config.repeat_action = None
+        config.repeat_key = None
+        config.repeat_start_time = 0
+        logger.debug("Répétition arrêtée")
 
     return action
+
+async def handle_repeat_actions():
+    """Gère la répétition automatique des actions."""
+    current_time = pygame.time.get_ticks()
+    if config.repeat_action and config.repeat_key and current_time > config.repeat_start_time:
+        if current_time - config.repeat_last_action > REPEAT_ACTION_DEBOUNCE:
+            logger.debug(f"Répétition action: {config.repeat_action}")
+            event_dict = {
+                "type": pygame.KEYDOWN if isinstance(config.repeat_key, int) and config.repeat_key < 1000 else pygame.JOYBUTTONDOWN if isinstance(config.repeat_key, int) else pygame.JOYAXISMOTION if isinstance(config.repeat_key, tuple) and len(config.repeat_key) == 2 else pygame.JOYHATMOTION,
+                "key": config.repeat_key if isinstance(config.repeat_key, int) and config.repeat_key < 1000 else None,
+                "button": config.repeat_key if isinstance(config.repeat_key, int) and config.repeat_key >= 1000 else None,
+                "axis": config.repeat_key[0] if isinstance(config.repeat_key, tuple) and len(config.repeat_key) == 2 else None,
+                "value": config.repeat_key[1] if isinstance(config.repeat_key, tuple) and len(config.repeat_key) == 2 else config.repeat_key if isinstance(config.repeat_key, tuple) else None
+            }
+            handle_controls(event_dict, None, None, None)
+            config.repeat_last_action = current_time
+            config.repeat_start_time = current_time + REPEAT_INTERVAL

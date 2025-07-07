@@ -1,7 +1,8 @@
 import json
 import os
 import logging
-from config import HISTORY_FILE_PATH
+import config
+from config import HISTORY_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +11,7 @@ DEFAULT_HISTORY_PATH = "/userdata/saves/ports/rgsx/history.json"
 
 def init_history():
     """Initialise le fichier history.json s'il n'existe pas."""
-    history_path = getattr(config, 'HISTORY_FILE_PATH', DEFAULT_HISTORY_PATH)
+    history_path = getattr(config, 'HISTORY_PATH', DEFAULT_HISTORY_PATH)
     if not os.path.exists(history_path):
         try:
             os.makedirs(os.path.dirname(history_path), exist_ok=True)
@@ -24,7 +25,7 @@ def init_history():
 
 def load_history():
     """Charge l'historique depuis history.json."""
-    history_path = getattr(config, 'HISTORY_FILE_PATH', DEFAULT_HISTORY_PATH)
+    history_path = getattr(config, 'HISTORY_PATH', DEFAULT_HISTORY_PATH)
     try:
         with open(history_path, "r") as f:
             history = json.load(f)
@@ -40,7 +41,7 @@ def load_history():
 
 def save_history(history):
     """Sauvegarde l'historique dans history.json."""
-    history_path = getattr(config, 'HISTORY_FILE_PATH', DEFAULT_HISTORY_PATH)
+    history_path = getattr(config, 'HISTORY_PATH', DEFAULT_HISTORY_PATH)
     try:
         with open(history_path, "w") as f:
             json.dump(history, f, indent=2)
@@ -48,7 +49,7 @@ def save_history(history):
     except Exception as e:
         logger.error(f"Erreur lors de l'écriture de {history_path} : {e}")
 
-def add_download_to_history(platform, game_name, status):
+def add_to_history(platform, game_name, status):
     """Ajoute une entrée à l'historique."""
     history = load_history()
     history.append({
@@ -61,7 +62,7 @@ def add_download_to_history(platform, game_name, status):
 
 def clear_history():
     """Vide l'historique."""
-    history_path = getattr(config, 'HISTORY_FILE_PATH', DEFAULT_HISTORY_PATH)
+    history_path = getattr(config, 'HISTORY_PATH', DEFAULT_HISTORY_PATH)
     try:
         with open(history_path, "w") as f:
             json.dump([], f)

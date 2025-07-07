@@ -6,10 +6,12 @@ import threading
 import pygame
 import zipfile
 import json
+import time
 from urllib.parse import urljoin, unquote
 import asyncio
 import config
 from utils import sanitize_filename
+from history import add_to_history, load_history
 import logging
 
 logger = logging.getLogger(__name__)
@@ -330,12 +332,12 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False):
                 if not success:
                     raise Exception(f"Échec de l'extraction de l'archive: {msg}")
                 result[0] = True
-                result[1] = f"Téléchargé et extrait : {game_name}"
+                result[1] = f"Downloaded / extracted : {game_name}"
             else:
                 os.chmod(dest_path, 0o644)
                 logger.debug(f"Téléchargement terminé: {dest_path}")
                 result[0] = True
-                result[1] = f"Téléchargé : {game_name}"
+                result[1] = f"Download_OK : {game_name}"
         except Exception as e:
             logger.error(f"Erreur téléchargement {url}: {str(e)}")
             if url in config.download_progress:
@@ -348,7 +350,15 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False):
         finally:
             logger.debug(f"Thread téléchargement terminé pour {url}")
             with lock:
+                config.download_result_message = result[1]
+                config.download_result_error = not result[0]
+                config.download_result_start_time = pygame.time.get_ticks()
+                config.menu_state = "download_result"
                 config.needs_redraw = True  # Forcer le redraw
+                # Enregistrement dans l'historique
+                add_to_history(platform, game_name, "Download_OK" if result[0] else "Erreur")
+                config.history = load_history()  # Recharger l'historique
+                logger.debug(f"Enregistrement dans l'historique: platform={platform}, game_name={game_name}, status={'Download_OK' if result[0] else 'Erreur'}")
 
     thread = threading.Thread(target=download_thread)
     logger.debug(f"Démarrage thread pour {url}")
@@ -359,37 +369,30 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False):
     thread.join()
     logger.debug(f"Thread rejoint pour {url}")
     
-    with threading.Lock():
-        config.download_result_message = result[1]
-        config.download_result_error = not result[0]
-        config.download_result_start_time = pygame.time.get_ticks()
-        config.menu_state = "download_result"
-        config.needs_redraw = True  # Forcer le redraw
-    logger.debug(f"Transition vers download_result, message={result[1]}, erreur={not result[0]}")
     return result[0], result[1]
 
-def check_extension_before_download(url, platform, game_name):
-    """Vérifie l'extension avant de lancer le téléchargement."""
+def check_extension_before_download(game_name, platform, url):
+    """Vérifie l'extension avant de lancer le téléchargement et retourne un tuple de 4 éléments."""
     try:
         sanitized_name = sanitize_filename(game_name)
         extensions_data = load_extensions_json()
         if not extensions_data:
             logger.error(f"Fichier {JSON_EXTENSIONS} vide ou introuvable")
-            return False, "Fichier de configuration des extensions introuvable", False
-        
+            return None
+
         is_supported = is_extension_supported(sanitized_name, platform, extensions_data)
         extension = os.path.splitext(sanitized_name)[1].lower()
         is_archive = extension in (".zip", ".rar")
-        
+
         if is_supported:
             logger.debug(f"L'extension de {sanitized_name} est supportée pour {platform}")
-            return True, "", False
+            return (url, platform, game_name, False)
         else:
             if is_archive:
                 logger.debug(f"Fichier {extension.upper()} détecté pour {sanitized_name}, extraction automatique prévue")
-                return False, f"Fichiers {extension.upper()} non supportés par cette plateforme, extraction automatique après le téléchargement.", True
+                return (url, platform, game_name, True)
             logger.debug(f"L'extension de {sanitized_name} n'est pas supportée pour {platform}")
-            return False, f"L'extension de {sanitized_name} n'est pas supportée pour {platform}", False
+            return None
     except Exception as e:
         logger.error(f"Erreur vérification extension {url}: {str(e)}")
-        return False, str(e), False
+        return None

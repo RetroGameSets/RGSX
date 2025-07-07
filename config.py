@@ -45,6 +45,16 @@ pending_download = None
 controls_config = {}
 selected_pause_option = 0
 previous_menu_state = None
+history = []  # Liste des entrées de l'historique
+current_history_item = 0  # Index de l'élément sélectionné dans l'historique
+history_scroll_offset = 0  # Offset pour le défilement de l'historique
+visible_history_items = 15  # Nombre d'éléments d'historique visibles (ajusté dynamiquement)
+confirm_clear_selection = 0  # confirmation clear historique
+last_state_change_time = 0  # Temps du dernier changement d'état pour debounce
+debounce_delay = 200  # Délai de debounce en millisecondes
+platform_dicts = []  # Liste des dictionnaires de plateformes
+selected_key = (0, 0)  # Position du curseur dans le clavier virtuel
+is_non_pc = True  # Indicateur pour plateforme non-PC (par exemple, console)
 
 # Résolution de l'écran
 screen_width = 800
@@ -68,6 +78,8 @@ small_font = None
 
 CONTROLS_CONFIG_PATH = "/userdata/saves/ports/rgsx/controls.json"
 """Chemin du fichier de configuration des contrôles."""
+HISTORY_PATH = "/userdata/saves/ports/rgsx/history.json"
+"""Chemin du fichier de l'historique des téléchargements."""
 
 def init_font():
     """Initialise les polices après pygame.init()."""

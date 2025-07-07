@@ -9,11 +9,12 @@ import logging
 import requests
 import sys
 import json
-from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_scrollbar, draw_confirm_dialog, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_message, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list
+from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_scrollbar, draw_confirm_dialog, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_message, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history, draw_clear_history_dialog
 from network import test_internet, download_rom, check_extension_before_download, extract_zip
-from controls import handle_controls
+from controls import handle_controls, validate_menu_state
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
 from utils import truncate_text_end, load_system_image, load_games
+from history import load_history
 import config
 
 # Configuration du logging
@@ -103,6 +104,10 @@ config.repeat_action = None
 config.repeat_key = None
 config.repeat_start_time = 0
 config.repeat_last_action = 0
+
+# Chargement de l'historique
+config.history = load_history()
+logger.debug(f"Historique chargé: {len(config.history)} entrées")
 
 # Vérification et chargement de la configuration des contrôles
 config.controls_config = load_controls_config()
@@ -287,10 +292,10 @@ async def main():
                 (event.type == pygame.KEYDOWN and start_config.get("type") == "key" and event.key == start_config.get("value")) or
                 (event.type == pygame.JOYBUTTONDOWN and start_config.get("type") == "button" and event.button == start_config.get("value")) or
                 (event.type == pygame.JOYAXISMOTION and start_config.get("type") == "axis" and event.axis == start_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == start_config.get("value")[1]) or
-                (event.type == pygame.JOYHATMOTION and start_config.get("type") == "hat" and event.value == start_config.get("value")) or
+                (event.type == pygame.JOYHATMOTION and start_config.get("type") == "hat" and event.value == tuple(start_config.get("value"))) or
                 (event.type == pygame.MOUSEBUTTONDOWN and start_config.get("type") == "mouse" and event.button == start_config.get("value"))
             ):
-                if config.menu_state not in ["pause_menu", "controls_help", "controls_mapping"]:
+                if config.menu_state not in ["pause_menu", "controls_help", "controls_mapping", "history", "confirm_clear_history"]:
                     config.previous_menu_state = config.menu_state
                     config.menu_state = "pause_menu"
                     config.selected_pause_option = 0
@@ -313,7 +318,7 @@ async def main():
                         (event.type == pygame.KEYDOWN and up_config and event.key == up_config.get("value")) or
                         (event.type == pygame.JOYBUTTONDOWN and up_config and up_config.get("type") == "button" and event.button == up_config.get("value")) or
                         (event.type == pygame.JOYAXISMOTION and up_config and up_config.get("type") == "axis" and event.axis == up_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == up_config.get("value")[1]) or
-                        (event.type == pygame.JOYHATMOTION and up_config and up_config.get("type") == "hat" and event.value == up_config.get("value"))
+                        (event.type == pygame.JOYHATMOTION and up_config and up_config.get("type") == "hat" and event.value == tuple(up_config.get("value")))
                     ):
                         config.selected_pause_option = max(0, config.selected_pause_option - 1)
                         config.repeat_action = "up"
@@ -326,9 +331,9 @@ async def main():
                         (event.type == pygame.KEYDOWN and down_config and event.key == down_config.get("value")) or
                         (event.type == pygame.JOYBUTTONDOWN and down_config and down_config.get("type") == "button" and event.button == down_config.get("value")) or
                         (event.type == pygame.JOYAXISMOTION and down_config and down_config.get("type") == "axis" and event.axis == down_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == down_config.get("value")[1]) or
-                        (event.type == pygame.JOYHATMOTION and down_config and down_config.get("type") == "hat" and event.value == down_config.get("value"))
+                        (event.type == pygame.JOYHATMOTION and down_config and down_config.get("type") == "hat" and event.value == tuple(down_config.get("value")))
                     ):
-                        config.selected_pause_option = min(2, config.selected_pause_option + 1)
+                        config.selected_pause_option = min(3, config.selected_pause_option + 1)
                         config.repeat_action = "down"
                         config.repeat_start_time = current_time + REPEAT_DELAY
                         config.repeat_last_action = current_time
@@ -339,15 +344,17 @@ async def main():
                         (event.type == pygame.KEYDOWN and confirm_config and event.key == confirm_config.get("value")) or
                         (event.type == pygame.JOYBUTTONDOWN and confirm_config and confirm_config.get("type") == "button" and event.button == confirm_config.get("value")) or
                         (event.type == pygame.JOYAXISMOTION and confirm_config and confirm_config.get("type") == "axis" and event.axis == confirm_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == confirm_config.get("value")[1]) or
-                        (event.type == pygame.JOYHATMOTION and confirm_config and confirm_config.get("type") == "hat" and event.value == confirm_config.get("value"))
+                        (event.type == pygame.JOYHATMOTION and confirm_config and confirm_config.get("type") == "hat" and event.value == tuple(confirm_config.get("value")))
                     ):
                         if config.selected_pause_option == 0:
+                            config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                             config.menu_state = "controls_help"
                             config.needs_redraw = True
                             logger.debug("Menu pause: Aide sélectionnée")
                         elif config.selected_pause_option == 1:
+                            config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                             if map_controls(screen):
-                                config.menu_state = config.previous_menu_state if config.previous_menu_state in ["platform", "game", "download_progress", "download_result", "confirm_exit", "extension_warning"] else "platform"
+                                config.menu_state = config.previous_menu_state if config.previous_menu_state in ["platform", "game", "download_progress", "download_result", "confirm_exit", "extension_warning", "history"] else "platform"
                                 config.controls_config = load_controls_config()
                                 logger.debug(f"Mappage des contrôles terminé, retour à {config.menu_state}")
                             else:
@@ -356,15 +363,25 @@ async def main():
                                 config.needs_redraw = True
                                 logger.debug("Échec du mappage des contrôles")
                         elif config.selected_pause_option == 2:
-                            running = False
+                            config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                            config.menu_state = "history"
+                            config.current_history_item = 0
+                            config.history_scroll_offset = 0
+                            config.needs_redraw = True
+                            logger.debug("Menu pause: Historique sélectionné")
+                        elif config.selected_pause_option == 3:
+                            config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                            config.menu_state = "confirm_exit"
+                            config.confirm_selection = 0
+                            config.needs_redraw = True
                             logger.debug("Menu pause: Quitter sélectionné")
                     elif (
                         (event.type == pygame.KEYDOWN and cancel_config and event.key == cancel_config.get("value")) or
                         (event.type == pygame.JOYBUTTONDOWN and cancel_config and cancel_config.get("type") == "button" and event.button == cancel_config.get("value")) or
                         (event.type == pygame.JOYAXISMOTION and cancel_config and cancel_config.get("type") == "axis" and event.axis == cancel_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == cancel_config.get("value")[1]) or
-                        (event.type == pygame.JOYHATMOTION and cancel_config and cancel_config.get("type") == "hat" and event.value == cancel_config.get("value"))
+                        (event.type == pygame.JOYHATMOTION and cancel_config and cancel_config.get("type") == "hat" and event.value == tuple(cancel_config.get("value")))
                     ):
-                        config.menu_state = config.previous_menu_state if config.previous_menu_state in ["platform", "game", "download_progress", "download_result", "confirm_exit", "extension_warning"] else "platform"
+                        config.menu_state = config.previous_menu_state if config.previous_menu_state in ["platform", "game", "download_progress", "download_result", "confirm_exit", "extension_warning", "history"] else "platform"
                         config.needs_redraw = True
                         logger.debug(f"Menu pause: Annulation, retour à {config.menu_state}")
 
@@ -388,7 +405,7 @@ async def main():
                         config.needs_redraw = True
                         logger.debug(f"Menu pause: Répétition haut, selected_option={config.selected_pause_option}")
                     elif config.repeat_action == "down":
-                        config.selected_pause_option = min(2, config.selected_pause_option + 1)
+                        config.selected_pause_option = min(3, config.selected_pause_option + 1)
                         config.needs_redraw = True
                         logger.debug(f"Menu pause: Répétition bas, selected_option={config.selected_pause_option}")
                     config.repeat_start_time = current_time + REPEAT_INTERVAL
@@ -399,14 +416,24 @@ async def main():
                 cancel_config = config.controls_config.get("cancel", {})
                 if (
                     (event.type == pygame.KEYDOWN and cancel_config and event.key == cancel_config.get("value")) or
-                    (event.type == pygame.JOYBUTTONDOWN and cancel_config and cancel_config.get("type") == "button" and event.button == cancel_config.get("value"))
+                    (event.type == pygame.JOYBUTTONDOWN and cancel_config and cancel_config.get("type") == "button" and event.button == cancel_config.get("value")) or
+                    (event.type == pygame.JOYAXISMOTION and cancel_config and cancel_config.get("type") == "axis" and event.axis == cancel_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == cancel_config.get("value")[1]) or
+                    (event.type == pygame.JOYHATMOTION and cancel_config and cancel_config.get("type") == "hat" and event.value == tuple(cancel_config.get("value")))
                 ):
+                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "pause_menu"
                     config.needs_redraw = True
                     logger.debug("Controls_help: Annulation, retour à pause_menu")
                 continue
 
-            if config.menu_state in ["platform", "game", "error", "confirm_exit", "download_progress", "download_result", "extension_warning"]:
+            # Gérer confirm_clear_history explicitement
+            if config.menu_state == "confirm_clear_history":
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
+                logger.debug(f"Événement transmis à handle_controls dans confirm_clear_history: {event.type}")
+                continue
+
+            if config.menu_state in ["platform", "game", "error", "confirm_exit", "download_progress", "download_result", "extension_warning", "history"]:
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 if action == "quit":
@@ -430,8 +457,31 @@ async def main():
                             task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
                             config.download_tasks[task] = (task, url, game_name, platform)
                             config.menu_state = "download_progress"
+                            config.pending_download = None  # Réinitialiser après démarrage du téléchargement
                             config.needs_redraw = True
                             logger.debug(f"Téléchargement démarré pour {game_name}, passage à download_progress")
+                elif action == "redownload" and config.menu_state == "history" and config.history:
+                    entry = config.history[config.current_history_item]
+                    platform = entry["platform"]
+                    game_name = entry["game_name"]
+                    for game in config.games:
+                        if game[0] == game_name and config.platforms[config.current_platform] == platform:
+                            url = game[1]
+                            is_supported, message, is_zip_non_supported = check_extension_before_download(url, platform, game_name)
+                            if not is_supported:
+                                config.pending_download = (url, platform, game_name, is_zip_non_supported)
+                                config.menu_state = "extension_warning"
+                                config.extension_confirm_selection = 0
+                                config.needs_redraw = True
+                                logger.debug(f"Extension non reconnue pour retéléchargement, passage à extension_warning pour {game_name}")
+                            else:
+                                task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
+                                config.download_tasks[task] = (task, url, game_name, platform)
+                                config.menu_state = "download_progress"
+                                config.pending_download = None  # Réinitialiser après démarrage du téléchargement
+                                config.needs_redraw = True
+                                logger.debug(f"Retéléchargement démarré pour {game_name}, passage à download_progress")
+                            break
 
         # Gestion des téléchargements
         if config.download_tasks:
@@ -444,6 +494,7 @@ async def main():
                         config.download_result_start_time = pygame.time.get_ticks()
                         config.menu_state = "download_result"
                         config.download_progress.clear()  # Réinitialiser download_progress
+                        config.pending_download = None  # Réinitialiser après téléchargement
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
                         logger.debug(f"Téléchargement terminé: {game_name}, succès={success}, message={message}")
@@ -453,14 +504,16 @@ async def main():
                         config.download_result_start_time = pygame.time.get_ticks()
                         config.menu_state = "download_result"
                         config.download_progress.clear()  # Réinitialiser download_progress
+                        config.pending_download = None  # Réinitialiser après téléchargement
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
                         logger.error(f"Erreur dans tâche de téléchargement: {str(e)}")
 
         # Gestion de la fin du popup download_result
         if config.menu_state == "download_result" and current_time - config.download_result_start_time > 3000:
-            config.menu_state = "game"
+            config.menu_state = config.previous_menu_state if config.previous_menu_state in ["platform", "game", "history"] else "game"
             config.download_progress.clear()  # Réinitialiser download_progress
+            config.pending_download = None  # Réinitialiser après affichage du résultat
             config.needs_redraw = True
             logger.debug(f"Fin popup download_result, retour à {config.menu_state}")
 
@@ -500,7 +553,18 @@ async def main():
             elif config.menu_state == "controls_help":
                 draw_controls_help(screen, config.previous_menu_state)
                 logger.debug("Rendu de draw_controls_help")
-
+            elif config.menu_state == "history":
+                draw_history(screen)
+                logger.debug("Rendu de draw_history")
+            elif config.menu_state == "confirm_clear_history":
+                draw_clear_history_dialog(screen)
+                logger.debug("Rendu de confirm_clear_history")
+            else:
+                # Gestion des états non valides
+                config.menu_state = "platform"
+                draw_platform_grid(screen)
+                config.needs_redraw = True
+                logger.error(f"État de menu non valide détecté: {config.menu_state}, retour à platform")
             draw_controls(screen, config.menu_state)
             pygame.display.flip()
             config.needs_redraw = False
