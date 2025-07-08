@@ -1,6 +1,6 @@
 import os
 os.environ["SDL_FBDEV"] = "/dev/fb0"
-import pygame
+import pygame # type: ignore
 import asyncio
 import platform
 import subprocess
@@ -9,7 +9,7 @@ import logging
 import requests
 import sys
 import json
-from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_scrollbar, draw_confirm_dialog, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_message, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history, draw_clear_history_dialog
+from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_message, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup
 from network import test_internet, download_rom, check_extension_before_download, extract_zip
 from controls import handle_controls, validate_menu_state
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
@@ -44,8 +44,8 @@ OTA_data_ZIP = f"{OTA_SERVER_URL}/rgsx-data.zip"
 
 # Constantes pour la répétition automatique dans pause_menu
 REPEAT_DELAY = 300  # Délai initial avant répétition (ms)
-REPEAT_INTERVAL = 100  # Intervalle entre répétitions (ms)
-REPEAT_ACTION_DEBOUNCE = 50  # Délai anti-rebond pour répétitions (ms)
+REPEAT_INTERVAL = 150  # Intervalle entre répétitions (ms), augmenté pour réduire la fréquence
+REPEAT_ACTION_DEBOUNCE = 100  # Délai anti-rebond pour répétitions (ms), augmenté pour éviter les répétitions excessives
 
 # Initialisation de Pygame et des polices
 pygame.init()
@@ -276,6 +276,20 @@ async def main():
         if config.menu_state == "download_progress" and current_time - last_redraw_time >= 100:
             config.needs_redraw = True
             last_redraw_time = current_time
+        
+        # Dans __main__.py, dans la boucle principale
+        current_time = pygame.time.get_ticks()
+        delta_time = current_time - config.last_frame_time
+        config.last_frame_time = current_time
+        if config.menu_state == "restart_popup" and config.popup_timer > 0:
+            config.popup_timer -= delta_time
+            config.needs_redraw = True
+            if config.popup_timer <= 0:
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.popup_message = ""
+                config.popup_timer = 0
+                config.needs_redraw = True
+                logger.debug(f"Fermeture automatique du popup, retour à {config.menu_state}")
 
         # Gestion des événements
         events = pygame.event.get()
@@ -298,117 +312,15 @@ async def main():
                 if config.menu_state not in ["pause_menu", "controls_help", "controls_mapping", "history", "confirm_clear_history"]:
                     config.previous_menu_state = config.menu_state
                     config.menu_state = "pause_menu"
-                    config.selected_pause_option = 0
+                    config.selected_option = 0
                     config.needs_redraw = True
                     logger.debug(f"Ouverture menu pause depuis {config.previous_menu_state}")
                     continue
-
+         
             if config.menu_state == "pause_menu":
-                current_time = pygame.time.get_ticks()
-                if event.type in (pygame.KEYDOWN, pygame.JOYBUTTONDOWN, pygame.JOYAXISMOTION, pygame.JOYHATMOTION):
-                    up_config = config.controls_config.get("up", {})
-                    down_config = config.controls_config.get("down", {})
-                    confirm_config = config.controls_config.get("confirm", {})
-                    cancel_config = config.controls_config.get("cancel", {})
-
-                    if current_time - config.last_state_change_time < config.debounce_delay:
-                        continue
-
-                    if (
-                        (event.type == pygame.KEYDOWN and up_config and event.key == up_config.get("value")) or
-                        (event.type == pygame.JOYBUTTONDOWN and up_config and up_config.get("type") == "button" and event.button == up_config.get("value")) or
-                        (event.type == pygame.JOYAXISMOTION and up_config and up_config.get("type") == "axis" and event.axis == up_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == up_config.get("value")[1]) or
-                        (event.type == pygame.JOYHATMOTION and up_config and up_config.get("type") == "hat" and event.value == tuple(up_config.get("value")))
-                    ):
-                        config.selected_pause_option = max(0, config.selected_pause_option - 1)
-                        config.repeat_action = "up"
-                        config.repeat_start_time = current_time + REPEAT_DELAY
-                        config.repeat_last_action = current_time
-                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
-                        config.needs_redraw = True
-                        logger.debug(f"Menu pause: Haut, selected_option={config.selected_pause_option}, repeat_action={config.repeat_action}")
-                    elif (
-                        (event.type == pygame.KEYDOWN and down_config and event.key == down_config.get("value")) or
-                        (event.type == pygame.JOYBUTTONDOWN and down_config and down_config.get("type") == "button" and event.button == down_config.get("value")) or
-                        (event.type == pygame.JOYAXISMOTION and down_config and down_config.get("type") == "axis" and event.axis == down_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == down_config.get("value")[1]) or
-                        (event.type == pygame.JOYHATMOTION and down_config and down_config.get("type") == "hat" and event.value == tuple(down_config.get("value")))
-                    ):
-                        config.selected_pause_option = min(3, config.selected_pause_option + 1)
-                        config.repeat_action = "down"
-                        config.repeat_start_time = current_time + REPEAT_DELAY
-                        config.repeat_last_action = current_time
-                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
-                        config.needs_redraw = True
-                        logger.debug(f"Menu pause: Bas, selected_option={config.selected_pause_option}, repeat_action={config.repeat_action}")
-                    elif (
-                        (event.type == pygame.KEYDOWN and confirm_config and event.key == confirm_config.get("value")) or
-                        (event.type == pygame.JOYBUTTONDOWN and confirm_config and confirm_config.get("type") == "button" and event.button == confirm_config.get("value")) or
-                        (event.type == pygame.JOYAXISMOTION and confirm_config and confirm_config.get("type") == "axis" and event.axis == confirm_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == confirm_config.get("value")[1]) or
-                        (event.type == pygame.JOYHATMOTION and confirm_config and confirm_config.get("type") == "hat" and event.value == tuple(confirm_config.get("value")))
-                    ):
-                        if config.selected_pause_option == 0:
-                            config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                            config.menu_state = "controls_help"
-                            config.needs_redraw = True
-                            logger.debug("Menu pause: Aide sélectionnée")
-                        elif config.selected_pause_option == 1:
-                            config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                            if map_controls(screen):
-                                config.menu_state = config.previous_menu_state if config.previous_menu_state in ["platform", "game", "download_progress", "download_result", "confirm_exit", "extension_warning", "history"] else "platform"
-                                config.controls_config = load_controls_config()
-                                logger.debug(f"Mappage des contrôles terminé, retour à {config.menu_state}")
-                            else:
-                                config.menu_state = "error"
-                                config.error_message = "Échec du mappage des contrôles"
-                                config.needs_redraw = True
-                                logger.debug("Échec du mappage des contrôles")
-                        elif config.selected_pause_option == 2:
-                            config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                            config.menu_state = "history"
-                            config.current_history_item = 0
-                            config.history_scroll_offset = 0
-                            config.needs_redraw = True
-                            logger.debug("Menu pause: Historique sélectionné")
-                        elif config.selected_pause_option == 3:
-                            config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                            config.menu_state = "confirm_exit"
-                            config.confirm_selection = 0
-                            config.needs_redraw = True
-                            logger.debug("Menu pause: Quitter sélectionné")
-                    elif (
-                        (event.type == pygame.KEYDOWN and cancel_config and event.key == cancel_config.get("value")) or
-                        (event.type == pygame.JOYBUTTONDOWN and cancel_config and cancel_config.get("type") == "button" and event.button == cancel_config.get("value")) or
-                        (event.type == pygame.JOYAXISMOTION and cancel_config and cancel_config.get("type") == "axis" and event.axis == cancel_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == cancel_config.get("value")[1]) or
-                        (event.type == pygame.JOYHATMOTION and cancel_config and cancel_config.get("type") == "hat" and event.value == tuple(cancel_config.get("value")))
-                    ):
-                        config.menu_state = config.previous_menu_state if config.previous_menu_state in ["platform", "game", "download_progress", "download_result", "confirm_exit", "extension_warning", "history"] else "platform"
-                        config.needs_redraw = True
-                        logger.debug(f"Menu pause: Annulation, retour à {config.menu_state}")
-
-                elif event.type in (pygame.KEYUP, pygame.JOYBUTTONUP):
-                    if (
-                        (event.type == pygame.KEYUP and is_input_matched(event, "up") or is_input_matched(event, "down")) or
-                        (event.type == pygame.JOYBUTTONUP and is_input_matched(event, "up") or is_input_matched(event, "down"))
-                    ):
-                        config.repeat_action = None
-                        config.repeat_key = None
-                        config.repeat_start_time = 0
-                        config.needs_redraw = True
-                        logger.debug("Menu pause: Touche relâchée, répétition arrêtée")
-
-                if config.repeat_action in ["up", "down"] and current_time >= config.repeat_start_time:
-                    if current_time - config.repeat_last_action < REPEAT_ACTION_DEBOUNCE:
-                        continue
-                    config.repeat_last_action = current_time
-                    if config.repeat_action == "up":
-                        config.selected_pause_option = max(0, config.selected_pause_option - 1)
-                        config.needs_redraw = True
-                        logger.debug(f"Menu pause: Répétition haut, selected_option={config.selected_pause_option}")
-                    elif config.repeat_action == "down":
-                        config.selected_pause_option = min(3, config.selected_pause_option + 1)
-                        config.needs_redraw = True
-                        logger.debug(f"Menu pause: Répétition bas, selected_option={config.selected_pause_option}")
-                    config.repeat_start_time = current_time + REPEAT_INTERVAL
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
+                logger.debug(f"Événement transmis à handle_controls dans pause_menu: {event.type}")
 
                 continue
 
@@ -431,6 +343,11 @@ async def main():
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 logger.debug(f"Événement transmis à handle_controls dans confirm_clear_history: {event.type}")
+                continue
+            if config.menu_state == "redownload_game_cache":
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
+                logger.debug(f"Événement transmis à handle_controls dans redownload_game_cache: {event.type}")
                 continue
 
             if config.menu_state in ["platform", "game", "error", "confirm_exit", "download_progress", "download_result", "extension_warning", "history"]:
@@ -522,43 +439,50 @@ async def main():
             draw_gradient(screen, (28, 37, 38), (47, 59, 61))
             if config.menu_state == "controls_mapping":
                 draw_controls_mapping(screen, ACTIONS[0], None, False, 0.0)
-                logger.debug("Rendu initial de draw_controls_mapping")
+               # logger.debug("Rendu initial de draw_controls_mapping")
             elif config.menu_state == "loading":
                 draw_loading_screen(screen)
-                logger.debug("Rendu de draw_loading_screen")
+               # logger.debug("Rendu de draw_loading_screen")
             elif config.menu_state == "error":
                 draw_error_screen(screen)
-                logger.debug("Rendu de draw_error_screen")
+               # logger.debug("Rendu de draw_error_screen")
             elif config.menu_state == "platform":
                 draw_platform_grid(screen)
-                logger.debug("Rendu de draw_platform_grid")
+               # logger.debug("Rendu de draw_platform_grid")
             elif config.menu_state == "game":
                 draw_game_list(screen)
-                logger.debug("Rendu de draw_game_list")
+               # logger.debug("Rendu de draw_game_list")
             elif config.menu_state == "download_progress":
                 draw_progress_screen(screen)
-                logger.debug("Rendu de draw_progress_screen")
+               # logger.debug("Rendu de draw_progress_screen")
             elif config.menu_state == "download_result":
                 draw_popup_message(screen, config.download_result_message, config.download_result_error)
-                logger.debug("Rendu de draw_popup_message")
+               # logger.debug("Rendu de draw_popup_message")
             elif config.menu_state == "confirm_exit":
                 draw_confirm_dialog(screen)
-                logger.debug("Rendu de draw_confirm_dialog")
+               # logger.debug("Rendu de draw_confirm_dialog")
             elif config.menu_state == "extension_warning":
                 draw_extension_warning(screen)
-                logger.debug("Rendu de draw_extension_warning")
+               # logger.debug("Rendu de draw_extension_warning")
             elif config.menu_state == "pause_menu":
-                draw_pause_menu(screen, config.selected_pause_option)
+                draw_pause_menu(screen, config.selected_option)
                 logger.debug("Rendu de draw_pause_menu")
             elif config.menu_state == "controls_help":
                 draw_controls_help(screen, config.previous_menu_state)
-                logger.debug("Rendu de draw_controls_help")
+               # logger.debug("Rendu de draw_controls_help")
             elif config.menu_state == "history":
-                draw_history(screen)
-                logger.debug("Rendu de draw_history")
+                draw_history_list(screen)
+               # logger.debug("Rendu de draw_history_list")
             elif config.menu_state == "confirm_clear_history":
                 draw_clear_history_dialog(screen)
-                logger.debug("Rendu de confirm_clear_history")
+               # logger.debug("Rendu de confirm_clear_history")
+            elif config.menu_state == "redownload_game_cache":
+                draw_redownload_game_cache_dialog(screen)  # Fonction existante
+            elif config.menu_state == "restart_popup":
+                draw_popup(screen)  # Nouvelle fonction
+            elif config.menu_state == "confirm_clear_history":
+                draw_clear_history_dialog(screen)  # Fonction existante
+
             else:
                 # Gestion des états non valides
                 config.menu_state = "platform"
@@ -624,14 +548,14 @@ async def main():
                     logger.debug(f"Erreur OTA : {message}")
                 else:
                     loading_step = "check_data"
-                    config.current_loading_system = "Téléchargement des données ..."
+                    config.current_loading_system = "Téléchargement des jeux et images ..."
                     config.loading_progress = 10.0
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
             elif loading_step == "check_data":
                 games_data_dir = "/userdata/roms/ports/RGSX/games"
                 is_data_empty = not os.path.exists(games_data_dir) or not any(os.scandir(games_data_dir))
-                logger.debug(f"Dossier Data directory {games_data_dir} is {'empty' if is_data_empty else 'not empty'}")
+                #logger.debug(f"Dossier Data directory {games_data_dir} is {'empty' if is_data_empty else 'not empty'}")
                 
                 if is_data_empty:
                     config.current_loading_system = "Téléchargement du Dossier Data initial..."

@@ -1,4 +1,4 @@
-import pygame
+import pygame # type: ignore
 import re
 import json
 import os
@@ -25,18 +25,52 @@ def create_placeholder(width=400):
     return placeholder
 
 def truncate_text_middle(text, font, max_width):
-    """Tronque le texte en insérant '...' au milieu."""
+    """Tronque le texte en insérant '...' au milieu, en préservant le début et la fin, sans extension de fichier."""
+    # Supprimer l'extension de fichier
+    text = text.rsplit('.', 1)[0] if '.' in text else text
     text_width = font.size(text)[0]
     if text_width <= max_width:
         return text
     ellipsis = "..."
     ellipsis_width = font.size(ellipsis)[0]
     max_text_width = max_width - ellipsis_width
-    while text_width > max_text_width and len(text) > 0:
-        text = text[:-1]
-        text_width = font.size(text)[0]
-    mid = len(text) // 2
-    return text[:mid] + ellipsis + text[mid:]
+    if max_text_width <= 0:
+        return ellipsis
+
+    # Diviser la largeur disponible entre début et fin
+    chars = list(text)
+    left = []
+    right = []
+    left_width = 0
+    right_width = 0
+    left_idx = 0
+    right_idx = len(chars) - 1
+
+    while left_idx <= right_idx and (left_width + right_width) < max_text_width:
+        if left_idx < right_idx:
+            left.append(chars[left_idx])
+            left_width = font.size(''.join(left))[0]
+            if left_width + right_width > max_text_width:
+                left.pop()
+                break
+            left_idx += 1
+        if left_idx <= right_idx:
+            right.insert(0, chars[right_idx])
+            right_width = font.size(''.join(right))[0]
+            if left_width + right_width > max_text_width:
+                right.pop(0)
+                break
+            right_idx -= 1
+
+    # Reculer jusqu'à un espace pour éviter de couper un mot
+    while left and left[-1] != ' ' and left_width + right_width > max_text_width:
+        left.pop()
+        left_width = font.size(''.join(left))[0] if left else 0
+    while right and right[0] != ' ' and left_width + right_width > max_text_width:
+        right.pop(0)
+        right_width = font.size(''.join(right))[0] if right else 0
+
+    return ''.join(left).rstrip() + ellipsis + ''.join(right).lstrip()
 
 def truncate_text_end(text, font, max_width):
     """Tronque le texte à la fin pour qu'il tienne dans max_width avec la police donnée."""
@@ -65,6 +99,9 @@ def sanitize_filename(name):
     
 def wrap_text(text, font, max_width):
     """Divise le texte en lignes pour respecter la largeur maximale."""
+    if not isinstance(text, str):
+        text = str(text) if text is not None else ""
+    
     words = text.split(' ')
     lines = []
     current_line = ''

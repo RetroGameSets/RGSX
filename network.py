@@ -3,7 +3,7 @@ import subprocess
 import re
 import os
 import threading
-import pygame
+import pygame # type: ignore
 import zipfile
 import json
 import time
@@ -313,7 +313,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False):
                             config.download_progress[url]["status"] = "Téléchargement"
                             config.download_progress[url]["progress_percent"] = (downloaded / total_size * 100) if total_size > 0 else 0
                             config.needs_redraw = True  # Forcer le redraw
-                        logger.debug(f"Progression: {downloaded}/{total_size} octets, {config.download_progress[url]['progress_percent']:.1f}%")
+                        #logger.debug(f"Progression: {downloaded}/{total_size} octets, {config.download_progress[url]['progress_percent']:.1f}%")
             
             if is_zip_non_supported:
                 with lock:
@@ -356,7 +356,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False):
                 config.menu_state = "download_result"
                 config.needs_redraw = True  # Forcer le redraw
                 # Enregistrement dans l'historique
-                add_to_history(platform, game_name, "Download_OK" if result[0] else "Erreur")
+                add_to_history(platform, game_name, "OK" if result[0] else "Error")
                 config.history = load_history()  # Recharger l'historique
                 logger.debug(f"Enregistrement dans l'historique: platform={platform}, game_name={game_name}, status={'Download_OK' if result[0] else 'Erreur'}")
 
@@ -387,12 +387,196 @@ def check_extension_before_download(game_name, platform, url):
         if is_supported:
             logger.debug(f"L'extension de {sanitized_name} est supportée pour {platform}")
             return (url, platform, game_name, False)
+        elif is_archive:
+            logger.debug(f"Archive {extension.upper()} détectée pour {sanitized_name}, extraction automatique prévue")
+            return (url, platform, game_name, True)
         else:
-            if is_archive:
-                logger.debug(f"Fichier {extension.upper()} détecté pour {sanitized_name}, extraction automatique prévue")
-                return (url, platform, game_name, True)
-            logger.debug(f"L'extension de {sanitized_name} n'est pas supportée pour {platform}")
-            return None
+            logger.debug(f"Extension non supportée ({extension}) pour {sanitized_name}, avertissement affiché")
+            return (url, platform, game_name, False)
     except Exception as e:
         logger.error(f"Erreur vérification extension {url}: {str(e)}")
         return None
+
+def is_1fichier_url(url):
+    """Détecte si l'URL est un lien 1fichier."""
+    return "1fichier.com" in url
+
+
+def download_from_1fichier(url, platform, game_name, is_zip_non_supported=False):
+    """Télécharge un fichier depuis 1fichier en utilisant l'API officielle."""
+    logger.debug(f"Début téléchargement 1fichier: {game_name} depuis {url}, is_zip_non_supported={is_zip_non_supported}")
+    result = [None, None]
+
+    def download_thread():
+        logger.debug(f"Thread téléchargement 1fichier démarré pour {url}")
+        try:
+            # Nettoyer l'URL
+            link = url.split('&af=')[0]
+
+            # Déterminer le répertoire de destination
+            dest_dir = None
+            for platform_dict in config.platform_dicts:
+                if platform_dict["platform"] == platform:
+                    dest_dir = platform_dict.get("folder")
+                    break
+            if not dest_dir:
+                logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform}")
+                dest_dir = os.path.join("/userdata/roms", platform)
+
+            logger.debug(f"Vérification répertoire destination: {dest_dir}")
+            os.makedirs(dest_dir, exist_ok=True)
+            if not os.access(dest_dir, os.W_OK):
+                raise PermissionError(f"Pas de permission d'écriture dans {dest_dir}")
+
+            # Préparer les en-têtes et le payload
+            headers = {
+                "Authorization": f"Bearer {config.API_KEY_1FICHIER}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "url": link,
+                "pretty": 1
+            }
+
+            # Étape 1 : Obtenir les informations du fichier
+            logger.debug(f"Envoi requête POST à https://api.1fichier.com/v1/file/info.cgi pour {url}")
+            response = requests.post("https://api.1fichier.com/v1/file/info.cgi", headers=headers, json=payload, timeout=30)
+            logger.debug(f"Réponse reçue, status: {response.status_code}")
+            response.raise_for_status()
+            file_info = response.json()
+
+            if "error" in file_info and file_info["error"] == "Resource not found":
+                logger.error(f"Le fichier {game_name} n'existe pas sur 1fichier")
+                result[0] = False
+                result[1] = f"Le fichier {game_name} n'existe pas"
+                return
+
+            filename = file_info.get("filename", "").strip()
+            if not filename:
+                logger.error("Impossible de récupérer le nom du fichier")
+                result[0] = False
+                result[1] = "Impossible de récupérer le nom du fichier"
+                return
+
+            sanitized_filename = sanitize_filename(filename)
+            dest_path = os.path.join(dest_dir, sanitized_filename)
+            logger.debug(f"Chemin destination: {dest_path}")
+
+            # Étape 2 : Obtenir le jeton de téléchargement
+            logger.debug(f"Envoi requête POST à https://api.1fichier.com/v1/download/get_token.cgi pour {url}")
+            response = requests.post("https://api.1fichier.com/v1/download/get_token.cgi", headers=headers, json=payload, timeout=30)
+            logger.debug(f"Réponse reçue, status: {response.status_code}")
+            response.raise_for_status()
+            download_info = response.json()
+
+            final_url = download_info.get("url")
+            if not final_url:
+                logger.error("Impossible de récupérer l'URL de téléchargement")
+                result[0] = False
+                result[1] = "Impossible de récupérer l'URL de téléchargement"
+                return
+
+            # Étape 3 : Initialiser la progression
+            lock = threading.Lock()
+            with lock:
+                config.download_progress[url] = {
+                    "downloaded_size": 0,
+                    "total_size": 0,
+                    "status": "Téléchargement",
+                    "progress_percent": 0,
+                    "game_name": game_name
+                }
+                config.needs_redraw = True
+            logger.debug(f"Progression initialisée pour {url}")
+
+            # Étape 4 : Télécharger le fichier
+            retries = 10
+            retry_delay = 10
+            for attempt in range(retries):
+                try:
+                    logger.debug(f"Tentative {attempt + 1} : Envoi requête GET à {final_url}")
+                    with requests.get(final_url, stream=True, headers={'User-Agent': 'Mozilla/5.0'}, timeout=30) as response:
+                        logger.debug(f"Réponse reçue, status: {response.status_code}")
+                        response.raise_for_status()
+                        total_size = int(response.headers.get('content-length', 0))
+                        logger.debug(f"Taille totale: {total_size} octets")
+                        with lock:
+                            config.download_progress[url]["total_size"] = total_size
+                            config.needs_redraw = True
+
+                        downloaded = 0
+                        with open(dest_path, 'wb') as f:
+                            logger.debug(f"Ouverture fichier: {dest_path}")
+                            for chunk in response.iter_content(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    with lock:
+                                        config.download_progress[url]["downloaded_size"] = downloaded
+                                        config.download_progress[url]["status"] = "Téléchargement"
+                                        config.download_progress[url]["progress_percent"] = (downloaded / total_size * 100) if total_size > 0 else 0
+                                        config.needs_redraw = True
+                                    #logger.debug(f"Progression: {downloaded}/{total_size} octets, {config.download_progress[url]['progress_percent']:.1f}%")
+
+                    # Étape 5 : Extraire si nécessaire
+                    if is_zip_non_supported:
+                        with lock:
+                            config.download_progress[url]["downloaded_size"] = 0
+                            config.download_progress[url]["total_size"] = 0
+                            config.download_progress[url]["status"] = "Extracting"
+                            config.download_progress[url]["progress_percent"] = 0
+                            config.needs_redraw = True
+                        extension = os.path.splitext(dest_path)[1].lower()
+                        if extension == ".zip":
+                            success, msg = extract_zip(dest_path, dest_dir, url)
+                        elif extension == ".rar":
+                            success, msg = extract_rar(dest_path, dest_dir, url)
+                        else:
+                            raise Exception(f"Type d'archive non supporté: {extension}")
+                        if not success:
+                            raise Exception(f"Échec de l'extraction de l'archive: {msg}")
+                        result[0] = True
+                        result[1] = f"Downloaded / extracted : {game_name}"
+                    else:
+                        os.chmod(dest_path, 0o644)
+                        logger.debug(f"Téléchargement terminé: {dest_path}")
+                        result[0] = True
+                        result[1] = f"Download_OK : {game_name}"
+                    return
+
+                except requests.exceptions.RequestException as e:
+                    logger.error(f"Tentative {attempt + 1} échouée : {e}")
+                    if attempt < retries - 1:
+                        import time
+                        time.sleep(retry_delay)
+                    else:
+                        logger.error("Nombre maximum de tentatives atteint")
+                        result[0] = False
+                        result[1] = f"Échec du téléchargement après {retries} tentatives"
+                        return
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erreur API 1fichier : {e}")
+            result[0] = False
+            result[1] = f"Erreur lors de la requête API, la clé est peut etre incorrecte: {str(e)}"
+
+        finally:
+            logger.debug(f"Thread téléchargement 1fichier terminé pour {url}")
+            with lock:
+                config.download_result_message = result[1]
+                config.download_result_error = not result[0]
+                config.download_result_start_time = pygame.time.get_ticks()
+                config.menu_state = "download_result"
+                config.needs_redraw = True
+                # Enregistrement dans l'historique
+                add_to_history(platform, game_name, "Download_OK" if result[0] else "Erreur")
+                config.history = load_history()
+                logger.debug(f"Enregistrement dans l'historique: platform={platform}, game_name={game_name}, status={'Download_OK' if result[0] else 'Erreur'}")
+
+    thread = threading.Thread(target=download_thread)
+    logger.debug(f"Démarrage thread pour {url}")
+    thread.start()
+    thread.join()
+    logger.debug(f"Thread rejoint pour {url}")
+
+    return result[0], result[1]

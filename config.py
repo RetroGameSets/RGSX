@@ -1,11 +1,11 @@
-import pygame
+import pygame # type: ignore
 import os
 import logging
 
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.5.0"
+app_version = "1.7.0"
 
 # Variables d'état
 platforms = []
@@ -43,7 +43,7 @@ filter_active = False
 extension_confirm_selection = 0
 pending_download = None
 controls_config = {}
-selected_pause_option = 0
+selected_option = 0
 previous_menu_state = None
 history = []  # Liste des entrées de l'historique
 current_history_item = 0  # Index de l'élément sélectionné dans l'historique
@@ -55,10 +55,13 @@ debounce_delay = 200  # Délai de debounce en millisecondes
 platform_dicts = []  # Liste des dictionnaires de plateformes
 selected_key = (0, 0)  # Position du curseur dans le clavier virtuel
 is_non_pc = True  # Indicateur pour plateforme non-PC (par exemple, console)
+redownload_confirm_selection = 0  # Sélection pour la confirmation de redownload
+popup_message = ""  # Message à afficher dans les popups
+popup_timer = 0  # Temps restant pour le popup en millisecondes (0 = inactif)
+last_frame_time = pygame.time.get_ticks()
 
-# Résolution de l'écran
-screen_width = 800
-screen_height = 600
+# Résolution de l'écran fallback
+# Utilisée si la résolution définie dépasse les capacités de l'écran
 SCREEN_WIDTH = 800
 """Largeur de l'écran en pixels."""
 SCREEN_HEIGHT = 600
@@ -100,9 +103,24 @@ def init_font():
         small_font = None
 
 def validate_resolution():
-    """Valide la résolution de l'écran par rapport aux capacités du matériel."""
+    """Valide la résolution de l'écran par rapport aux capacités de l'écran."""
     display_info = pygame.display.Info()
     if SCREEN_WIDTH > display_info.current_w or SCREEN_HEIGHT > display_info.current_h:
         logger.warning(f"Résolution {SCREEN_WIDTH}x{SCREEN_HEIGHT} dépasse les limites de l'écran")
         return display_info.current_w, display_info.current_h
     return SCREEN_WIDTH, SCREEN_HEIGHT
+
+
+def load_api_key_1fichier():
+    """Charge la clé API 1fichier depuis /userdata/saves/ports/rgsx/1fichierAPI.txt, crée le fichier si absent."""
+    api_path = "/userdata/saves/ports/rgsx/1fichierAPI.txt"
+    if not os.path.exists(api_path):
+        # Crée le fichier vide si absent
+        with open(api_path, "w") as f:
+            f.write("")
+        return ""
+    with open(api_path, "r") as f:
+        key = f.read().strip()
+    return key
+
+API_KEY_1FICHIER = load_api_key_1fichier()

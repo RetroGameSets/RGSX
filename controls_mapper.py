@@ -1,4 +1,4 @@
-import pygame
+import pygame # type: ignore
 import json
 import os
 import logging
@@ -19,9 +19,10 @@ ACTIONS = [
     {"name": "down", "display": "Bas", "description": "Naviguer vers le bas"},
     {"name": "left", "display": "Gauche", "description": "Naviguer à gauche"},
     {"name": "right", "display": "Droite", "description": "Naviguer à droite"},
-    {"name": "page_up", "display": "Page Précédente", "description": "Page précédente (ex: PageUp, LB)"},
-    {"name": "page_down", "display": "Page Suivante", "description": "Page suivante (ex: PageDown, RB)"},
+    {"name": "page_up", "display": "Page Précédente", "description": "Page précédente/Défilement Rapide Haut (ex: PageUp, LB)"},
+    {"name": "page_down", "display": "Page Suivante", "description": "Page suivante/Défilement Rapide Bas (ex: PageDown, RB)"},
     {"name": "progress", "display": "Progression", "description": "Voir progression (ex: X)"},
+    {"name": "history", "display": "Historique", "description": "Ouvrir l'historique (ex: H, Y)"},
     {"name": "filter", "display": "Filtrer", "description": "Ouvrir filtre (ex: F, Select)"},
     {"name": "delete", "display": "Supprimer", "description": "Supprimer caractère (ex: LT, Suppr)"},
     {"name": "space", "display": "Espace", "description": "Ajouter espace (ex: RT, Espace)"},
@@ -200,7 +201,7 @@ MOUSE_BUTTON_NAMES = {
 HOLD_DURATION = 1000
 
 def load_controls_config():
-    """Charge la configuration des contrôles depuis controls.json."""
+    #Charge la configuration des contrôles depuis controls.json
     try:
         if os.path.exists(CONTROLS_CONFIG_PATH):
             with open(CONTROLS_CONFIG_PATH, "r") as f:
@@ -215,7 +216,7 @@ def load_controls_config():
         return {}
 
 def save_controls_config(controls_config):
-    """Enregistre la configuration des contrôles dans controls.json."""
+    #Enregistre la configuration des contrôles dans controls.json
     try:
         os.makedirs(os.path.dirname(CONTROLS_CONFIG_PATH), exist_ok=True)
         with open(CONTROLS_CONFIG_PATH, "w") as f:
@@ -225,7 +226,7 @@ def save_controls_config(controls_config):
         logger.error(f"Erreur lors de l'enregistrement de controls.json : {e}")
 
 def get_readable_input_name(event):
-    """Retourne un nom lisible pour une entrée (touche, bouton, axe, hat, ou souris)."""
+    #Retourne un nom lisible pour une entrée (touche, bouton, axe, hat, ou souris)
     if event.type == pygame.KEYDOWN:
         key_value = SDL_TO_PYGAME_KEY.get(event.key, event.key)
         return KEY_NAMES.get(key_value, pygame.key.name(key_value) or f"Touche {key_value}")
@@ -240,7 +241,6 @@ def get_readable_input_name(event):
         return MOUSE_BUTTON_NAMES.get(event.button, f"Souris Bouton {event.button}")
     return "Inconnu"
 
-ACTIONS = ["start", "confirm", "cancel"]
 
 def map_controls(screen):
     mapping = True
@@ -249,7 +249,7 @@ def map_controls(screen):
     while mapping:
         clock.tick(100)  # 100 FPS
         for event in pygame.event.get():
-            """Interface de mappage des contrôles avec validation par maintien de 3 secondes."""
+            #Interface de mappage des contrôles avec validation par maintien de 3 secondes
             controls_config = load_controls_config()
             current_action_index = 0
             current_input = None
@@ -411,21 +411,21 @@ def map_controls(screen):
             pass
 
 def save_controls_config(config):
-    """Enregistre la configuration des contrôles dans un fichier JSON."""
+    #Enregistre la configuration des contrôles dans un fichier JSON
     try:
         with open(CONTROLS_CONFIG_PATH, "w") as f:
             json.dump(config, f, indent=4)
-        logging.debug("Configuration des contrôles enregistrée")
+        logger.debug("Configuration des contrôles enregistrée")
     except Exception as e:
-        logging.error(f"Erreur lors de l'enregistrement de controls.json : {e}")
+        logger.error(f"Erreur lors de l'enregistrement de controls.json : {e}")
         return False
     return True
 
 def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_progress):
-    """Affiche l'interface de mappage des contrôles avec une barre de progression pour le maintien."""
+    #Affiche l'interface de mappage des contrôles avec une barre de progression pour le maintien
     draw_gradient(screen, (28, 37, 38), (47, 59, 61))
 
-    max_width = config.screen_width // 1.2
+    max_width = config.screen_width // 1.2 
     padding_horizontal = 40
     padding_vertical = 30
     padding_between = 10
@@ -434,18 +434,18 @@ def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_pr
     shadow_offset = 8
 
     # Instructions
-    instruction_text = f"Maintenez une touche/bouton pendant 3s pour '{action['display']}'"
+    instruction_text = f"Maintenez pendant 3s pour : '{action['display']}'"
     description_text = action['description']
-    skip_text = "Appuyez sur Échap pour passer"
-    instruction_surface = config.font.render(instruction_text, True, (255, 255, 255))
-    description_surface = config.font.render(description_text, True, (200, 200, 200))
+    skip_text = "Appuyez sur Échap pour passer(Pc only)"
+    instruction_surface = config.small_font.render(instruction_text, True, (255, 255, 255))
+    description_surface = config.small_font.render(description_text, True, (200, 200, 200))
     skip_surface = config.font.render(skip_text, True, (255, 255, 255))
     instruction_width, instruction_height = instruction_surface.get_size()
     description_width, description_height = description_surface.get_size()
     skip_width, skip_height = skip_surface.get_size()
 
     # Input détecté
-    input_text = last_input or (f"En attente d'une entrée..." if waiting_for_input else "Maintenez une touche/bouton")
+    input_text = last_input or (f"Attente..." if waiting_for_input else "Maintenez 3s")
     input_surface = config.font.render(input_text, True, (0, 255, 0) if last_input else (255, 255, 255))
     input_width, input_height = input_surface.get_size()
 
@@ -483,7 +483,7 @@ def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_pr
     input_rect = input_surface.get_rect(center=(config.screen_width // 2, start_y + input_height // 2))
     screen.blit(input_surface, input_rect)
     start_y += input_height + padding_between
-    skip_rect = skip_surface.get_rect(center=(config.screen_width // 2, start_y + skip_height // 2))
+    skip_rect = skip_surface.get_rect(center=(config.screen_width // 2, start_y + skip_height // 2)) 
     screen.blit(skip_surface, skip_rect)
 
     # Barre de progression pour le maintien
@@ -491,7 +491,7 @@ def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_pr
     bar_height = 20
     bar_x = (config.screen_width - bar_width) // 2
     bar_y = start_y + skip_height + 20
-    pygame.draw.rect(screen, (100, 100, 100), (bar_x, bar_y, bar_width, bar_height))
+    pygame.draw.rect(screen, (100, 100, 100), (bar_x, bar_y, bar_width, bar_height)) 
     progress_width = bar_width * hold_progress
-    pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, progress_width, bar_height))
+    pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, progress_width, bar_height)) 
     pygame.draw.rect(screen, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 2)
