@@ -25,14 +25,19 @@ REPEAT_ACTION_DEBOUNCE = 50  # Délai anti-rebond pour répétitions up/down/lef
 # Liste des états valides (mise à jour)
 VALID_STATES = [
     "platform", "game", "download_progress", "download_result", "confirm_exit",
-    "extension_warning", "pause_menu", "controls_help", "history", "remap_controls",
+    "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
     "redownload_game_cache", "restart_popup", "error", "loading", "confirm_clear_history"
 ]
 
 def validate_menu_state(state):
-    """Valide l'état du menu et retourne un état par défaut si non valide."""
-    return state if state in VALID_STATES else "platform"
-
+    valid_states = ["platform", "game", "download_progress", "download_result", "confirm_exit", "extension_warning", "pause_menu", "controls_help", "controls_mapping", "redownload_game_cache", "restart_popup", "confirm_clear_history"]
+    if state not in VALID_STATES:
+        logger.debug(f"État invalide {state}, retour à platform")
+        return "platform"
+    if state == "history":  # Éviter de revenir à history
+        logger.debug(f"État history non autorisé comme previous_menu_state, retour à platform")
+        return "platform"
+    return state
 
 
 def load_controls_config(path=CONTROLS_CONFIG_PATH):
@@ -151,7 +156,7 @@ def handle_controls(event, sources, joystick, screen):
                 #logger.debug(f"Action mappée détectée: {action_name}, input={get_readable_input_name(event)}")
 
         # Menu pause
-        if is_input_matched(event, "start") and config.menu_state not in ("pause_menu", "controls_help", "remap_controls", "redownload_game_cache"):
+        if is_input_matched(event, "start") and config.menu_state not in ("pause_menu", "controls_help", "controls_mapping", "redownload_game_cache"):
             config.previous_menu_state = config.menu_state
             config.menu_state = "pause_menu"
             config.selected_option = 0
@@ -349,6 +354,10 @@ def handle_controls(event, sources, joystick, screen):
                     config.scroll_offset = 0
                     config.needs_redraw = True
                     logger.debug("Sortie du mode recherche")
+                elif is_input_matched(event, "filter"):
+                    config.search_mode = False
+                    config.filter_active = bool(config.search_query)
+                    config.needs_redraw = True  
             elif config.search_mode and not config.is_non_pc:
                 # Gestion de la recherche sur PC
                 if event.type == pygame.KEYDOWN:
@@ -370,7 +379,7 @@ def handle_controls(event, sources, joystick, screen):
                             config.needs_redraw = True
                             logger.debug(f"Suppression caractère: query={config.search_query}, jeux filtrés={len(config.filtered_games)}")
                    # Gestion de la validation
-                    elif is_input_matched(event, "confirm"):
+                    elif is_input_matched(event, "select"):
                         config.search_mode = False
                         config.filter_active = True  # Conserver le filtre actif
                         config.current_game = 0
@@ -385,7 +394,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.current_game = 0
                         config.scroll_offset = 0
                         config.needs_redraw = True
-                        logger.debug("Sortie du mode recherche")       
+                        logger.debug("Sortie du mode recherche")
+     
             else:
                 
                 if is_input_matched(event, "up"):
@@ -499,6 +509,8 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "redownload_game_cache"
                     config.needs_redraw = True
                     logger.debug("Passage à redownload_game_cache depuis game")
+
+        #Historique            
         elif config.menu_state == "history":
             history = config.history
             if is_input_matched(event, "up"):
@@ -578,7 +590,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 logger.debug(f"Retour à {config.menu_state} depuis history")
        
-        # Ajouter un nouvel état "confirm_clear_history" après l'état "confirm_exit"
+        # Confirmation vider l'historique"
         elif config.menu_state == "confirm_clear_history":
             logger.debug(f"État confirm_clear_history, confirm_clear_selection={config.confirm_clear_selection}, événement={event.type}, valeur={getattr(event, 'value', None)}")
             if is_input_matched(event, "confirm"):
@@ -611,7 +623,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 logger.debug("Annulation du vidage de l'historique, retour à history")
         
-         # Progression téléchargement
+        # Progression téléchargement
         elif config.menu_state == "download_progress":
             if is_input_matched(event, "cancel"):
                 for task in config.download_tasks:
@@ -685,6 +697,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 logger.debug(f"Retour à {config.menu_state} depuis extension_warning")
 
+        # Menu pause
         elif config.menu_state == "pause_menu":
             logger.debug(f"État pause_menu, selected_option={config.selected_option}, événement={event.type}, valeur={getattr(event, 'value', None)}")
             if is_input_matched(event, "up"):
@@ -712,9 +725,10 @@ def handle_controls(event, sources, joystick, screen):
                     logger.debug(f"Passage à controls_help depuis pause_menu")
                 elif config.selected_option == 1:  # Remap controls
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                    config.menu_state = "remap_controls"
+                    logger.debug(f"Previous menu state avant controls_mapping: {config.previous_menu_state}")
+                    config.menu_state = "controls_mapping"
                     config.needs_redraw = True
-                    logger.debug(f"Passage à remap_controls depuis pause_menu")
+                    logger.debug(f"Passage à controls_mapping depuis pause_menu")
                 elif config.selected_option == 2:  # History
                     config.history = load_history()
                     config.current_history_item = 0
@@ -748,12 +762,13 @@ def handle_controls(event, sources, joystick, screen):
                 logger.debug(f"Retour à {config.menu_state} depuis controls_help")
 
         # Remap controls
-        elif config.menu_state == "remap_controls":
+        elif config.menu_state == "controls_mapping":
             if is_input_matched(event, "cancel"):
                 config.menu_state = "pause_menu"
                 config.needs_redraw = True
-                logger.debug("Retour à pause_menu depuis remap_controls")
+                logger.debug("Retour à pause_menu depuis controls_mapping")
         
+        # Redownload game cache
         elif config.menu_state == "redownload_game_cache":
             if is_input_matched(event, "left") or is_input_matched(event, "right"):
                 config.redownload_confirm_selection = 1 - config.redownload_confirm_selection
@@ -827,6 +842,7 @@ def handle_controls(event, sources, joystick, screen):
 
     return action
 
+#Gestion de la répétition automatique des actions
 async def handle_repeat_actions():
     """Gère la répétition automatique des actions."""
     current_time = pygame.time.get_ticks()

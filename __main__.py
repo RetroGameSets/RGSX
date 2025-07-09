@@ -276,7 +276,7 @@ async def main():
         if config.menu_state == "download_progress" and current_time - last_redraw_time >= 100:
             config.needs_redraw = True
             last_redraw_time = current_time
-        
+
         # Dans __main__.py, dans la boucle principale
         current_time = pygame.time.get_ticks()
         delta_time = current_time - config.last_frame_time
@@ -450,7 +450,11 @@ async def main():
                 draw_platform_grid(screen)
                # logger.debug("Rendu de draw_platform_grid")
             elif config.menu_state == "game":
-                draw_game_list(screen)
+                if not config.search_mode:
+                   draw_game_list(screen)
+                if config.search_mode:
+                    draw_game_list(screen)
+                    draw_virtual_keyboard(screen)
                # logger.debug("Rendu de draw_game_list")
             elif config.menu_state == "download_progress":
                 draw_progress_screen(screen)

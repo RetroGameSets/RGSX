@@ -801,7 +801,8 @@ def draw_controls_help(screen, previous_state):
             *( [common_controls["progress"]("Progression")] if config.download_tasks else [])
         ],
         "game": [
-            common_controls["confirm"](f"{'Valider' if config.search_mode else 'Télécharger'}"),
+            common_controls["confirm"](f"{'Selectionner' if config.search_mode else 'Télécharger'}"),
+            common_controls["filter"]("Filtrer"),
             common_controls["cancel"](f"{'Annuler' if config.search_mode else 'Retour'}"),
             common_controls["history"]("Historique"),
             *( [
