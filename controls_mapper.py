@@ -200,6 +200,8 @@ MOUSE_BUTTON_NAMES = {
 # Durée de maintien pour valider une entrée (en millisecondes)
 HOLD_DURATION = 1000
 
+JOYHAT_DEBOUNCE = 200  # Délai anti-rebond pour JOYHATMOTION (ms)
+
 def load_controls_config():
     #Charge la configuration des contrôles depuis controls.json
     try:
@@ -249,7 +251,7 @@ def map_controls(screen):
     while mapping:
         clock.tick(100)  # 100 FPS
         for event in pygame.event.get():
-            #Interface de mappage des contrôles avec validation par maintien de 3 secondes
+            # Initialisation des variables de contrôle
             controls_config = load_controls_config()
             current_action_index = 0
             current_input = None
@@ -257,6 +259,7 @@ def map_controls(screen):
             last_input_name = None
             last_frame_time = pygame.time.get_ticks()
             config.needs_redraw = True
+            last_joyhat_time = 0  # Pour le débouncing des événements JOYHATMOTION
 
             # Initialiser l'état des boutons et axes pour suivre les relâchements
             held_keys = set()
@@ -320,6 +323,7 @@ def map_controls(screen):
                                     config.needs_redraw = True
                                     logger.debug(f"Axe relâché: {event.axis}")
                     elif event.type == pygame.JOYHATMOTION:
+                        logger.debug(f"JOYHATMOTION détecté: hat={event.hat}, value={event.value}")
                         if event.value == (0, 0):  # D-Pad revenu à la position neutre
                             if event.hat in held_hats:
                                 del held_hats[event.hat]
@@ -329,9 +333,18 @@ def map_controls(screen):
                                     last_input_name = None
                                     config.needs_redraw = True
                                     logger.debug(f"D-Pad relâché: {event.hat}")
+                            continue  # Ignorer les événements (0, 0) pour la détection des nouvelles entrées
 
                     # Détecter les nouvelles entrées
                     if event.type in (pygame.KEYDOWN, pygame.JOYBUTTONDOWN, pygame.JOYAXISMOTION, pygame.JOYHATMOTION, pygame.MOUSEBUTTONDOWN):
+                        # Appliquer le débouncing pour JOYHATMOTION
+                        if event.type == pygame.JOYHATMOTION and (current_time - last_joyhat_time) < JOYHAT_DEBOUNCE:
+                            logger.debug(f"Événement JOYHATMOTION ignoré (debounce): hat={event.hat}, value={event.value}")
+                            continue
+                        if event.type == pygame.JOYHATMOTION:
+                            last_joyhat_time = current_time
+
+
                         input_name = get_readable_input_name(event)
                         if input_name != "Inconnu":
                             input_type = {
@@ -401,6 +414,12 @@ def map_controls(screen):
                         input_held_time = 0
                         last_input_name = None
                         config.needs_redraw = True
+                        # Réinitialiser les entrées maintenues pour éviter les interférences
+                        held_keys.clear()
+                        held_buttons.clear()
+                        held_axes.clear()
+                        held_hats.clear()
+                        held_mouse_buttons.clear()
                     config.needs_redraw = True
 
                 pygame.time.wait(10)
