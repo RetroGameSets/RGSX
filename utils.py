@@ -98,7 +98,7 @@ def sanitize_filename(name):
     return re.sub(r'[<>:"/\/\\|?*]', '_', name).strip()
     
 def wrap_text(text, font, max_width):
-    """Divise le texte en lignes pour respecter la largeur maximale."""
+    """Divise le texte en lignes pour respecter la largeur maximale, en coupant les mots longs si nécessaire."""
     if not isinstance(text, str):
         text = str(text) if text is not None else ""
     
@@ -107,15 +107,29 @@ def wrap_text(text, font, max_width):
     current_line = ''
     
     for word in words:
-        # Tester si ajouter le mot dépasse la largeur
-        test_line = current_line + (' ' if current_line else '') + word
-        test_surface = font.render(test_line, True, (255, 255, 255))
-        if test_surface.get_width() <= max_width:
-            current_line = test_line
+        # Si le mot seul dépasse max_width, le couper caractère par caractère
+        if font.render(word, True, (255, 255, 255)).get_width() > max_width:
+            temp_line = current_line
+            for char in word:
+                test_line = temp_line + (' ' if temp_line else '') + char
+                test_surface = font.render(test_line, True, (255, 255, 255))
+                if test_surface.get_width() <= max_width:
+                    temp_line = test_line
+                else:
+                    if temp_line:
+                        lines.append(temp_line)
+                    temp_line = char
+            current_line = temp_line
         else:
-            if current_line:
-                lines.append(current_line)
-            current_line = word
+            # Comportement standard pour les mots normaux
+            test_line = current_line + (' ' if current_line else '') + word
+            test_surface = font.render(test_line, True, (255, 255, 255))
+            if test_surface.get_width() <= max_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
     
     if current_line:
         lines.append(current_line)

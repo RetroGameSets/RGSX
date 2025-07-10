@@ -1,14 +1,13 @@
 import shutil
 import pygame # type: ignore
 import config
-from config import CONTROLS_CONFIG_PATH
+from config import CONTROLS_CONFIG_PATH , GRID_COLS, GRID_ROWS
 import asyncio
 import math
 import json
 import os
 from display import draw_validation_transition
 from network import download_rom, check_extension_before_download, download_from_1fichier, is_1fichier_url, is_extension_supported,load_extensions_json,sanitize_filename
-from controls_mapper import get_readable_input_name
 from utils import load_games
 from history import load_history, clear_history
 import logging
@@ -22,7 +21,7 @@ JOYHAT_DEBOUNCE = 200  # Délai anti-rebond pour JOYHATMOTION (ms)
 JOYAXIS_DEBOUNCE = 50  # Délai anti-rebond pour JOYAXISMOTION (ms)
 REPEAT_ACTION_DEBOUNCE = 50  # Délai anti-rebond pour répétitions up/down/left/right (ms)
 
-# Liste des états valides (mise à jour)
+# Liste des états valides
 VALID_STATES = [
     "platform", "game", "download_progress", "download_result", "confirm_exit",
     "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
@@ -46,17 +45,27 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
         with open(path, "r") as f:
             config_data = json.load(f)
             # Vérifier les actions nécessaires
-            required_actions = ["confirm", "cancel", "left", "right"]
+            required_actions = ["confirm", "cancel", "up", "down"]
             for action in required_actions:
                 if action not in config_data:
                     logger.warning(f"Action {action} manquante dans {path}, utilisation de la valeur par défaut")
                     config_data[action] = {
                         "type": "key",
                         "value": {
-                            "confirm": pygame.K_RETURN,
-                            "cancel": pygame.K_ESCAPE,
-                            "left": pygame.K_LEFT,
-                            "right": pygame.K_RIGHT
+                            "confirm": {"type": "key", "value": pygame.K_RETURN},
+                            "cancel": {"type": "key", "value": pygame.K_ESCAPE},
+                            "left": {"type": "key", "value": pygame.K_LEFT},
+                            "right": {"type": "key", "value": pygame.K_RIGHT},
+                            "up": {"type": "key", "value": pygame.K_UP},
+                            "down": {"type": "key", "value": pygame.K_DOWN},
+                            "start": {"type": "key", "value": pygame.K_p},
+                            "progress": {"type": "key", "value": pygame.K_x},
+                            "history": {"type": "key", "value": pygame.K_h},
+                            "page_up": {"type": "key", "value": pygame.K_PAGEUP},
+                            "page_down": {"type": "key", "value": pygame.K_PAGEDOWN},
+                            "filter": {"type": "key", "value": pygame.K_f},
+                            "delete": {"type": "key", "value": pygame.K_BACKSPACE},
+                            "space": {"type": "key", "value": pygame.K_SPACE}
                         }[action]
                     }
             return config_data
@@ -79,38 +88,25 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
             "space": {"type": "key", "value": pygame.K_SPACE}
         }
 
+# Fonction pour vérifier si un événement correspond à une action
 def is_input_matched(event, action_name):
-    """Vérifie si l'événement correspond à l'action configurée."""
     if not config.controls_config.get(action_name):
         return False
     mapping = config.controls_config[action_name]
     input_type = mapping["type"]
     input_value = mapping["value"]
 
-    event_type = event["type"] if isinstance(event, dict) else event.type
-    event_key = event.get("key") if isinstance(event, dict) else getattr(event, "key", None)
-    event_button = event.get("button") if isinstance(event, dict) else getattr(event, "button", None)
-    event_axis = event.get("axis") if isinstance(event, dict) else getattr(event, "axis", None)
-    event_value = event.get("value") if isinstance(event, dict) else getattr(event, "value", None)
-
-    if input_type == "key" and event_type in (pygame.KEYDOWN, pygame.KEYUP):
-        #logger.debug(f"Vérification key: event_key={event_key}, input_value={input_value}")
-        return event_key == input_value
-    elif input_type == "button" and event_type in (pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP):
-        #logger.debug(f"Vérification button: event_button={event_button}, input_value={input_value}")
-        return event_button == input_value
-    elif input_type == "axis" and event_type == pygame.JOYAXISMOTION:
+    if input_type == "key" and event.type == pygame.KEYDOWN:
+        return event.key == input_value
+    elif input_type == "button" and event.type == pygame.JOYBUTTONDOWN:
+        return event.button == input_value
+    elif input_type == "axis" and event.type == pygame.JOYAXISMOTION:
         axis, direction = input_value
-        result = event_axis == axis and abs(event_value) > 0.5 and (1 if event_value > 0 else -1) == direction
-        #logger.debug(f"Vérification axis: event_axis={event_axis}, event_value={event_value}, input_value={input_value}, result={result}")
-        return result
-    elif input_type == "hat" and event_type == pygame.JOYHATMOTION:
-        input_value_tuple = tuple(input_value) if isinstance(input_value, list) else input_value
-        #logger.debug(f"Vérification hat: event_value={event_value}, input_value={input_value_tuple}")
-        return event_value == input_value_tuple
-    elif input_type == "mouse" and event_type == pygame.MOUSEBUTTONDOWN:
-        #logger.debug(f"Vérification mouse: event_button={event_button}, input_value={input_value}")
-        return event_button == input_value
+        return event.axis == axis and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == direction
+    elif input_type == "hat" and event.type == pygame.JOYHATMOTION:
+        return event.value == input_value
+    elif input_type == "mouse" and event.type == pygame.MOUSEBUTTONDOWN:
+        return event.button == input_value
     return False
 
 def handle_controls(event, sources, joystick, screen):
@@ -122,14 +118,10 @@ def handle_controls(event, sources, joystick, screen):
 
     # Valider previous_menu_state avant tout traitement
     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-    #logger.debug(f"Validation initiale: previous_menu_state={config.previous_menu_state}")
 
     # Debounce général
     if current_time - config.last_state_change_time < config.debounce_delay:
         return action
-
-    # Log des événements reçus
-    #logger.debug(f"Événement reçu: type={event.type}, value={getattr(event, 'value', None)}")
 
     # --- CLAVIER, MANETTE, SOURIS ---
     if event.type in (pygame.KEYDOWN, pygame.JOYBUTTONDOWN, pygame.JOYAXISMOTION, pygame.JOYHATMOTION, pygame.MOUSEBUTTONDOWN):
@@ -149,12 +141,7 @@ def handle_controls(event, sources, joystick, screen):
         if event.type == pygame.QUIT:
             logger.debug("Événement pygame.QUIT détecté")
             return "quit"
-
-        # Vérification des actions mappées
-        #for action_name in ["up", "down", "left", "right"]:
-            #if is_input_matched(event, action_name):
-                #logger.debug(f"Action mappée détectée: {action_name}, input={get_readable_input_name(event)}")
-
+        
         # Menu pause
         if is_input_matched(event, "start") and config.menu_state not in ("pause_menu", "controls_help", "controls_mapping", "redownload_game_cache"):
             config.previous_menu_state = config.menu_state
@@ -170,30 +157,33 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = validate_menu_state(config.previous_menu_state)
                 config.needs_redraw = True
                 logger.debug("Sortie du menu erreur avec Confirm")
-
-        # Plateformes
+                
+        #Plateformes
         elif config.menu_state == "platform":
-            max_index = min(9, len(config.platforms) - config.current_page * 9) - 1
-            current_grid_index = config.selected_platform - config.current_page * 9
-            row = current_grid_index // 3
+            systems_per_page = GRID_COLS * GRID_ROWS
+            max_index = min(systems_per_page, len(config.platforms) - config.current_page * systems_per_page) - 1
+            current_grid_index = config.selected_platform - config.current_page * systems_per_page
+            row = current_grid_index // GRID_COLS
+            col = current_grid_index % GRID_COLS
+
             if is_input_matched(event, "down"):
-                if current_grid_index + 3 <= max_index:
-                    config.selected_platform += 3
+                if current_grid_index + GRID_COLS <= max_index:
+                    config.selected_platform += GRID_COLS
                     config.repeat_action = "down"
                     config.repeat_start_time = current_time + REPEAT_DELAY
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
             elif is_input_matched(event, "up"):
-                if current_grid_index - 3 >= 0:
-                    config.selected_platform -= 3
+                if current_grid_index - GRID_COLS >= 0:
+                    config.selected_platform -= GRID_COLS
                     config.repeat_action = "up"
                     config.repeat_start_time = current_time + REPEAT_DELAY
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
             elif is_input_matched(event, "left"):
-                if current_grid_index % 3 != 0:
+                if col > 0:
                     config.selected_platform -= 1
                     config.repeat_action = "left"
                     config.repeat_start_time = current_time + REPEAT_DELAY
@@ -202,7 +192,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.needs_redraw = True
                 elif config.current_page > 0:
                     config.current_page -= 1
-                    config.selected_platform = config.current_page * 9 + row * 3 + 2
+                    config.selected_platform = config.current_page * systems_per_page + row * GRID_COLS + (GRID_COLS - 1)
                     if config.selected_platform >= len(config.platforms):
                         config.selected_platform = len(config.platforms) - 1
                     config.repeat_action = "left"
@@ -211,16 +201,16 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
             elif is_input_matched(event, "right"):
-                if current_grid_index % 3 != 2 and current_grid_index < max_index:
+                if col < GRID_COLS - 1 and current_grid_index < max_index:
                     config.selected_platform += 1
                     config.repeat_action = "right"
                     config.repeat_start_time = current_time + REPEAT_DELAY
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
-                elif (config.current_page + 1) * 9 < len(config.platforms):
+                elif (config.current_page + 1) * systems_per_page < len(config.platforms):
                     config.current_page += 1
-                    config.selected_platform = config.current_page * 9 + row * 3
+                    config.selected_platform = config.current_page * systems_per_page + row * GRID_COLS
                     if config.selected_platform >= len(config.platforms):
                         config.selected_platform = len(config.platforms) - 1
                     config.repeat_action = "right"
@@ -229,9 +219,9 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
             elif is_input_matched(event, "page_down"):
-                if (config.current_page + 1) * 9 < len(config.platforms):
+                if (config.current_page + 1) * systems_per_page < len(config.platforms):
                     config.current_page += 1
-                    config.selected_platform = config.current_page * 9 + row * 3
+                    config.selected_platform = config.current_page * systems_per_page + row * GRID_COLS + col
                     if config.selected_platform >= len(config.platforms):
                         config.selected_platform = len(config.platforms) - 1
                     config.repeat_action = None
@@ -243,7 +233,19 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "page_up"):
                 if config.current_page > 0:
                     config.current_page -= 1
-                    config.selected_platform = config.current_page * 9 + row * 3
+                    config.selected_platform = config.current_page * systems_per_page + row * GRID_COLS - col
+                    if config.selected_platform >= len(config.platforms):
+                        config.selected_platform = len(config.platforms) - 1
+                    config.repeat_action = None
+                    config.repeat_key = None
+                    config.repeat_start_time = 0
+                    config.repeat_last_action = current_time
+                    config.needs_redraw = True
+                    #logger.debug("Page précédente, répétition réinitialisée")
+            elif is_input_matched(event, "page_up"):
+                if config.current_page > 0:
+                    config.current_page -= 1
+                    config.selected_platform = config.current_page * systems_per_page + row * GRID_COLS + col
                     if config.selected_platform >= len(config.platforms):
                         config.selected_platform = len(config.platforms) - 1
                     config.repeat_action = None

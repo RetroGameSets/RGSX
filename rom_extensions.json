@@ -2146,15 +2146,7 @@
       ".elf",
       ".dol",
       ".m3u",
-      ".xci"
-    ]
-  },
-    {
-    "system": "switch",
-    "folder": "/userdata/roms/switch",
-    "extensions": [
-      ".nsp",
-      ".xci"
+      ".json"
     ]
   },
   {

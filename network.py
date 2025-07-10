@@ -7,7 +7,6 @@ import pygame # type: ignore
 import zipfile
 import json
 import time
-from urllib.parse import urljoin, unquote
 import asyncio
 import config
 from utils import sanitize_filename
@@ -346,7 +345,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False):
             if os.path.exists(dest_path):
                 os.remove(dest_path)
             result[0] = False
-            result[1] = str(e)
+            result[1] = f"Erreur téléchargement {game_name}"
         finally:
             logger.debug(f"Thread téléchargement terminé pour {url}")
             with lock:

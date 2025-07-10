@@ -4,16 +4,15 @@ import pygame # type: ignore
 import asyncio
 import platform
 import subprocess
-import math
 import logging
 import requests
 import sys
 import json
-from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_message, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup
+from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_result_download, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, THEME_COLORS
 from network import test_internet, download_rom, check_extension_before_download, extract_zip
 from controls import handle_controls, validate_menu_state
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
-from utils import truncate_text_end, load_system_image, load_games
+from utils import  load_games
 from history import load_history
 import config
 
@@ -77,17 +76,19 @@ clock = pygame.time.Clock()
 
 # Initialisation des polices
 try:
-    config.font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 48)
-    config.title_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 60)
-    config.search_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 60)
+    config.font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 36)
+    config.title_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 48)
+    config.search_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 48)
+    config.progress_font = pygame.font.SysFont("arial", 36) # Police pour l'affichage de la progression
+    config.small_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 28)  # Police pour les petits textes
     logger.debug("Police Pixel-UniCode chargée")
 except:
-    config.font = pygame.font.SysFont("arial", 48)
-    config.title_font = pygame.font.SysFont("arial", 60)
-    config.search_font = pygame.font.SysFont("arial", 60)
+    config.font = pygame.font.SysFont("arial", 48) # Police fallback
+    config.title_font = pygame.font.SysFont("arial", 60) # Police fallback pour les titres
+    config.search_font = pygame.font.SysFont("arial", 60)   # Police fallback pour la recherche
+    config.progress_font = pygame.font.SysFont("arial", 36)  # Police fallback pour l'affichage de la progression
+    config.small_font = pygame.font.SysFont("arial", 28)  # Police fallback pour les petits textes
     logger.debug("Police Arial chargée")
-config.progress_font = pygame.font.SysFont("arial", 36)
-config.small_font = pygame.font.SysFont("arial", 24)
 
 # Mise à jour de la résolution dans config
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
@@ -436,7 +437,7 @@ async def main():
 
         # Affichage
         if config.needs_redraw:
-            draw_gradient(screen, (28, 37, 38), (47, 59, 61))
+            draw_gradient(screen, THEME_COLORS["background_top"], THEME_COLORS["background_bottom"])
             if config.menu_state == "controls_mapping":
                 draw_controls_mapping(screen, ACTIONS[0], None, False, 0.0)
                # logger.debug("Rendu initial de draw_controls_mapping")
@@ -460,7 +461,7 @@ async def main():
                 draw_progress_screen(screen)
                # logger.debug("Rendu de draw_progress_screen")
             elif config.menu_state == "download_result":
-                draw_popup_message(screen, config.download_result_message, config.download_result_error)
+                draw_popup_result_download(screen, config.download_result_message, config.download_result_error)
                # logger.debug("Rendu de draw_popup_message")
             elif config.menu_state == "confirm_exit":
                 draw_confirm_dialog(screen)
@@ -660,26 +661,6 @@ async def main():
     pygame.quit()
     logger.debug("Application terminée")
 
-# Fonction pour vérifier si un événement correspond à une action
-def is_input_matched(event, action_name):
-    if not config.controls_config.get(action_name):
-        return False
-    mapping = config.controls_config[action_name]
-    input_type = mapping["type"]
-    input_value = mapping["value"]
-
-    if input_type == "key" and event.type == pygame.KEYDOWN:
-        return event.key == input_value
-    elif input_type == "button" and event.type == pygame.JOYBUTTONDOWN:
-        return event.button == input_value
-    elif input_type == "axis" and event.type == pygame.JOYAXISMOTION:
-        axis, direction = input_value
-        return event.axis == axis and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == direction
-    elif input_type == "hat" and event.type == pygame.JOYHATMOTION:
-        return event.value == input_value
-    elif input_type == "mouse" and event.type == pygame.MOUSEBUTTONDOWN:
-        return event.button == input_value
-    return False
 
 if platform.system() == "Emscripten":
     asyncio.ensure_future(main())

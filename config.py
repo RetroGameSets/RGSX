@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.8.0"
+app_version = "1.9.0"
 
 # Variables d'état
 platforms = []
@@ -59,6 +59,9 @@ redownload_confirm_selection = 0  # Sélection pour la confirmation de redownloa
 popup_message = ""  # Message à afficher dans les popups
 popup_timer = 0  # Temps restant pour le popup en millisecondes (0 = inactif)
 last_frame_time = pygame.time.get_ticks()
+
+GRID_COLS = 3  # Number of columns in the platform grid
+GRID_ROWS = 4  # Number of rows in the platform grid
 
 # Résolution de l'écran fallback
 # Utilisée si la résolution définie dépasse les capacités de l'écran
