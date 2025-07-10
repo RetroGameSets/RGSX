@@ -2,28 +2,69 @@ import pygame # type: ignore
 import re
 import json
 import os
-import config
 import logging
+import requests
+
+from datetime import datetime
+
 
 logger = logging.getLogger(__name__)
 
-def create_placeholder(width=400):
-    """Crée une image de substitution pour les jeux sans vignette."""
-    logger.debug(f"Création placeholder: largeur={width}")
-    if config.font is None:
-        # Police de secours si config.font n’est pas initialisé
-        fallback_font = pygame.font.SysFont("arial", 24)
-        text = fallback_font.render("No Image", True, (255, 255, 255))
-    else:
-        text = config.font.render("No Image", True, (255, 255, 255))
-    
-    height = int(150 * (width / 200))
-    placeholder = pygame.Surface((width, height))
-    placeholder.fill((50, 50, 50))
-    text_rect = text.get_rect(center=(width // 2, height // 2))
-    placeholder.blit(text, text_rect)
-    return placeholder
+# Liste globale pour stocker les systèmes avec une erreur 404
+unavailable_systems = []
 
+def load_games(platform_id):
+    """Charge les jeux pour une plateforme donnée en utilisant platform_id et teste la première URL."""
+    games_path = f"/userdata/roms/ports/RGSX/games/{platform_id}.json"
+    try:
+        with open(games_path, 'r', encoding='utf-8') as f:
+            games = json.load(f)
+        
+        # Tester la première URL si la liste n'est pas vide
+        if games and len(games) > 0 and len(games[0]) > 1:
+            first_url = games[0][1]
+            try:
+                response = requests.head(first_url, timeout=5, allow_redirects=True)
+                if response.status_code == 404:
+                    logger.error(f"URL non accessible pour {platform_id} : {first_url} (code 404)")
+                    unavailable_systems.append(platform_id)  # Ajouter à la liste globale
+            except requests.RequestException as e:
+                logger.error(f"Erreur lors du test de l'URL pour {platform_id} : {first_url} ({str(e)})")
+        else:
+            logger.debug(f"Aucune URL à tester pour {platform_id} (liste vide ou mal formée)")
+        
+        logger.debug(f"Jeux chargés pour {platform_id}: {len(games)} jeux")
+        return games
+    except Exception as e:
+        logger.error(f"Erreur lors du chargement des jeux pour {platform_id} : {str(e)}")
+        return []
+
+def write_unavailable_systems():
+    """Écrit la liste des systèmes avec une erreur 404 dans un fichier texte."""
+    if not unavailable_systems:
+        logger.debug("Aucun système avec une erreur 404, aucun fichier écrit")
+        return
+    
+    # Formater la date et l'heure pour le nom du fichier
+    current_time = datetime.now()
+    timestamp = current_time.strftime("%d-%m-%Y-%H-%M")
+    log_dir = "/userdata/roms/ports/logs/RGSX"
+    log_file = f"{log_dir}/systemes_unavailable_{timestamp}.txt"
+    
+    try:
+        # Créer le répertoire s'il n'existe pas
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Écrire les systèmes dans le fichier
+        with open(log_file, 'w', encoding='utf-8') as f:
+            f.write("Systèmes avec une erreur 404 :\n")
+            for system in unavailable_systems:
+                f.write(f"{system}\n")
+        logger.debug(f"Fichier écrit : {log_file} avec {len(unavailable_systems)} systèmes")
+    except Exception as e:
+        logger.error(f"Erreur lors de l'écriture du fichier {log_file} : {str(e)}")
+
+        
 def truncate_text_middle(text, font, max_width):
     """Tronque le texte en insérant '...' au milieu, en préservant le début et la fin, sans extension de fichier."""
     # Supprimer l'extension de fichier
@@ -149,24 +190,3 @@ def load_system_image(platform_dict):
     except Exception as e:
         logger.error(f"Erreur lors du chargement de l'image pour {platform_name} : {str(e)}")
         return None
-
-def load_games(platform_id):
-    """Charge les jeux pour une plateforme donnée en utilisant platform_id."""
-    games_path = f"/userdata/roms/ports/RGSX/games/{platform_id}.json"
-    #logger.debug(f"Chargement des jeux pour {platform_id} depuis {games_path}")
-    try:
-        with open(games_path, 'r', encoding='utf-8') as f:
-            games = json.load(f)
-        return games
-    except Exception as e:
-        logger.error(f"Erreur lors du chargement des jeux pour {platform_id} : {str(e)}")
-        return []
-        
-def load_json_file(path, default=None):
-    """Charge un fichier JSON avec gestion d'erreur."""
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logging.error(f"Erreur lors de la lecture de {path} : {e}")
-        return default if default is not None else {}

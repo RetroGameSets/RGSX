@@ -12,7 +12,7 @@ from display import init_display, draw_loading_screen, draw_error_screen, draw_p
 from network import test_internet, download_rom, check_extension_before_download, extract_zip
 from controls import handle_controls, validate_menu_state
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
-from utils import  load_games
+from utils import  load_games, write_unavailable_systems
 from history import load_history
 import config
 
@@ -159,6 +159,7 @@ def load_sources():
             games = load_games(platform)
             config.games_count[platform] = len(games)
             logger.debug(f"Jeux chargés pour {platform}: {len(games)} jeux")
+            write_unavailable_systems()
         logger.debug(f"load_sources: platforms={config.platforms}, platform_names={config.platform_names}, games_count={config.games_count}")
         return sources
     except Exception as e:

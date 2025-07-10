@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.9.0"
+app_version = "1.9.1"
 
 # Variables d'état
 platforms = []
