@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.9.1"
+app_version = "1.9.2"
 
 # Variables d'état
 platforms = []
@@ -117,13 +117,32 @@ def validate_resolution():
 def load_api_key_1fichier():
     """Charge la clé API 1fichier depuis /userdata/saves/ports/rgsx/1fichierAPI.txt, crée le fichier si absent."""
     api_path = "/userdata/saves/ports/rgsx/1fichierAPI.txt"
-    if not os.path.exists(api_path):
-        # Crée le fichier vide si absent
-        with open(api_path, "w") as f:
-            f.write("")
+    # Vérifie si le fichier existe, sinon le crée
+    try:
+        os.makedirs(os.path.dirname(api_path), exist_ok=True)
+    except OSError as e:
+        logger.error(f"Erreur lors de la création du répertoire pour la clé API : {e}")
         return ""
-    with open(api_path, "r") as f:
-        key = f.read().strip()
-    return key
+    try:
+        # Vérifie si le fichier existe déjà 
+        if not os.path.exists(api_path):
+            # Crée le fichier vide si absent
+            with open(api_path, "w") as f:
+                f.write("")
+            logger.info(f"Fichier de clé API créé : {api_path}")
+    except OSError as e:
+        logger.error(f"Erreur lors de la création du fichier de clé API : {e}")
+        return ""
+    # Lit la clé API depuis le fichier
+    try:
+        with open(api_path, "r", encoding="utf-8") as f:
+            api_key = f.read().strip()
+        if not api_key:
+            logger.warning("Clé API 1fichier vide, veuillez la renseigner dans le fichier pour pouvoir utiliser les fonctionnalités de téléchargement sur 1fichier.")
+        return api_key
+    except OSError as e:
+        logger.error(f"Erreur lors de la lecture de la clé API : {e}")
+        return ""
+    
 
 API_KEY_1FICHIER = load_api_key_1fichier()
