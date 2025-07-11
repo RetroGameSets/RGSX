@@ -1,5 +1,6 @@
 import pygame  # type: ignore
 import config
+import os
 from utils import truncate_text_middle, wrap_text, load_system_image
 import logging
 import math
@@ -1041,3 +1042,51 @@ def draw_popup(screen):
     countdown_surface = config.small_font.render(countdown_text, True, THEME_COLORS["text"])
     countdown_rect = countdown_surface.get_rect(center=(config.screen_width // 2, popup_y + margin_top_bottom + len(text_lines) * line_height + line_height // 2))
     screen.blit(countdown_surface, countdown_rect)
+
+
+# Variables globales pour la popup de musique
+current_music_name = None
+music_popup_start_time = None
+MUSIC_POPUP_DURATION = 5  # Durée d'affichage en secondes
+
+def draw_music_popup(screen):
+    """Affiche une popup discrète en bas à droite avec le nom de la musique en cours."""
+    global current_music_name, music_popup_start_time
+    
+    if current_music_name is None or music_popup_start_time is None:
+        return
+    
+    # Vérifier si la popup doit encore être affichée
+    current_time = pygame.time.get_ticks() / 1000  # Temps en secondes
+    if current_time - music_popup_start_time > MUSIC_POPUP_DURATION:
+        current_music_name = None
+        music_popup_start_time = None
+        return
+    
+    # Paramètres de la popup
+    font = config.small_font
+    text = font.render(current_music_name, True, THEME_COLORS["text"])
+    text_width, text_height = font.size(current_music_name)
+    padding = 10
+    rect_width = text_width + 2 * padding
+    rect_height = text_height + 2 * padding
+    rect_x = config.screen_width - rect_width - 22 # 20 pixels de marge à droite
+    rect_y = config.screen_height - rect_height - 8 # 20 pixels de marge en bas
+    
+    # Créer une surface semi-transparente
+    popup_surface = pygame.Surface((rect_width, rect_height), pygame.SRCALPHA)
+    pygame.draw.rect(popup_surface, THEME_COLORS["fond_image"] + (180,), (0, 0, rect_width, rect_height), border_radius=8)
+    pygame.draw.rect(popup_surface, THEME_COLORS["border"] + (200,), (0, 0, rect_width, rect_height), 1, border_radius=8)
+    
+    # Ajouter le texte
+    text_rect = text.get_rect(center=(rect_width // 2, rect_height // 2))
+    popup_surface.blit(text, text_rect)
+    
+    # Afficher la popup
+    screen.blit(popup_surface, (rect_x, rect_y))
+
+def set_music_popup(music_name):
+    """Définit le nom de la musique à afficher dans la popup."""
+    global current_music_name, music_popup_start_time
+    current_music_name = f"♬ {os.path.splitext(music_name)[0]}"  # Utilise l'emoji ♬ directement
+    music_popup_start_time = pygame.time.get_ticks() / 1000  # Temps actuel en secondes

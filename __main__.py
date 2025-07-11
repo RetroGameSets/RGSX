@@ -8,7 +8,8 @@ import logging
 import requests
 import sys
 import json
-from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_result_download, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, THEME_COLORS
+import random
+from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_result_download, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, THEME_COLORS, set_music_popup, draw_music_popup
 from network import test_internet, download_rom, check_extension_before_download, extract_zip
 from controls import handle_controls, validate_menu_state
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
@@ -124,23 +125,36 @@ if pygame.joystick.get_count() > 0:
     joystick.init()
     logger.debug("Gamepad initialisé")
 
-# Initialisation du mixer Pygame
-pygame.mixer.pre_init(44100, -16, 2, 4096)
+# Initialisation de pygame.mixer
 pygame.mixer.init()
 
 # Dossier musique Batocera
 music_folder = "/userdata/roms/ports/RGSX/assets/music"
 music_files = [f for f in os.listdir(music_folder) if f.lower().endswith(('.ogg', '.mp3'))]
-if music_files:
-    import random
-    music_file = random.choice(music_files)
-    music_path = os.path.join(music_folder, music_file)
-    logger.debug(f"Lecture de la musique : {music_path}")
-    pygame.mixer.music.load(music_path)
-    pygame.mixer.music.set_volume(0.5)
-    pygame.mixer.music.play(-1)
-else:
-    logger.debug("Aucune musique trouvée dans /userdata/roms/ports/RGSX/assets/music")
+current_music = None  # Suivre la musique en cours
+
+def play_random_music():
+    """Joue une musique aléatoire et configure l'événement de fin."""
+    global current_music
+    if music_files:
+        # Éviter de rejouer la même musique consécutivement
+        available_music = [f for f in music_files if f != current_music]
+        if not available_music:  # Si une seule musique, on la reprend
+            available_music = music_files
+        music_file = random.choice(available_music)
+        music_path = os.path.join(music_folder, music_file)
+        logger.debug(f"Lecture de la musique : {music_path}")
+        pygame.mixer.music.load(music_path)
+        pygame.mixer.music.set_volume(0.5)
+        pygame.mixer.music.play(loops=0)  # Jouer une seule fois
+        pygame.mixer.music.set_endevent(pygame.USEREVENT + 1)  # Événement de fin
+        current_music = music_file  # Mettre à jour la musique en cours
+        set_music_popup(music_file)  # Afficher le nom de la musique dans la popup
+    else:
+        logger.debug("Aucune musique trouvée dans /userdata/roms/ports/RGSX/assets/music")
+
+# Jouer la première musique au démarrage
+play_random_music()
 
 # Fonction pour charger sources.json
 def load_sources():
@@ -302,7 +316,9 @@ async def main():
                 config.needs_redraw = True
                 logger.debug("Événement QUIT détecté, passage à confirm_exit")
                 continue
-
+            elif event.type == pygame.USEREVENT + 1:  # Fin de la musique
+                logger.debug("Fin de la musique actuelle, passage à la suivante")
+                play_random_music()
             start_config = config.controls_config.get("start", {})
             if start_config and (
                 (event.type == pygame.KEYDOWN and start_config.get("type") == "key" and event.key == start_config.get("value")) or
@@ -496,6 +512,8 @@ async def main():
                 config.needs_redraw = True
                 logger.error(f"État de menu non valide détecté: {config.menu_state}, retour à platform")
             draw_controls(screen, config.menu_state)
+            screen = pygame.display.get_surface()
+            draw_music_popup(screen)  # Ajouter l'appel à la popup
             pygame.display.flip()
             config.needs_redraw = False
 

@@ -96,6 +96,10 @@ def is_input_matched(event, action_name):
     input_type = mapping["type"]
     input_value = mapping["value"]
 
+    # Convertir input_value en tuple si c'est une liste (pour JOYHATMOTION)
+    if input_type == "hat" and isinstance(input_value, list):
+        input_value = tuple(input_value)
+
     if input_type == "key" and event.type == pygame.KEYDOWN:
         return event.key == input_value
     elif input_type == "button" and event.type == pygame.JOYBUTTONDOWN:
@@ -477,7 +481,7 @@ def handle_controls(event, sources, joystick, screen):
                                         config.previous_menu_state = config.menu_state  # Ajouter cette ligne
                                         config.menu_state = "error"
                                         config.error_message = (
-                                            "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichier.api à ouvrir dans un editeur de texte et coller la clé API"
+                                            "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichierAPI.txt à ouvrir dans un editeur de texte et coller la clé API"
                                         )
                                         config.needs_redraw = True
                                         logger.error("Clé API 1fichier absente, téléchargement impossible.")
