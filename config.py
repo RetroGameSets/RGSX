@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.9.2"
+app_version = "1.9.3"
 
 # Variables d'état
 platforms = []
@@ -60,10 +60,6 @@ popup_message = ""  # Message à afficher dans les popups
 popup_timer = 0  # Temps restant pour le popup en millisecondes (0 = inactif)
 last_frame_time = pygame.time.get_ticks()
 
-# Variables globales pour la popup de musique
-current_music_name = None
-music_popup_start_time = None
-MUSIC_POPUP_DURATION = 5  # Durée d'affichage en secondes
 
 GRID_COLS = 3  # Number of columns in the platform grid
 GRID_ROWS = 4  # Number of rows in the platform grid
