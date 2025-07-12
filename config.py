@@ -5,18 +5,25 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.9.3"
+app_version = "1.9.4"
+
+# URL du serveur OTA
+OTA_SERVER_URL = "https://retrogamesets.fr/softs"
+OTA_VERSION_ENDPOINT = f"{OTA_SERVER_URL}/version.json"
+OTA_UPDATE_SCRIPT = f"{OTA_SERVER_URL}/rgsx-update.sh"
+OTA_data_ZIP = f"{OTA_SERVER_URL}/rgsx-data.zip"
+
 
 # Variables d'état
-platforms = []
-current_platform = 0
+platforms = [] # Liste des plateformes chargées depuis sources.json
+current_platform = 0 # Index de la plateforme actuellement sélectionnée
 platform_names = {}  # {platform_id: platform_name}
-games = []
-current_game = 0
-menu_state = "popup"
+games = []  # Liste des jeux chargés pour la plateforme actuelle
+current_game = 0 # Index du jeu actuellement sélectionné
+menu_state = "" # État actuel du menu (par exemple, "main_menu", "game_list", "settings", etc.)
 confirm_choice = False
 scroll_offset = 0
-visible_games = 15
+visible_games = 15  
 popup_start_time = 0
 last_progress_update = 0
 needs_redraw = True
@@ -32,10 +39,6 @@ download_result_start_time = 0
 loading_progress = 0.0
 current_loading_system = ""
 error_message = ""
-repeat_action = None
-repeat_start_time = 0
-repeat_last_action = 0
-repeat_key = None 
 filtered_games = []
 search_mode = False
 search_query = ""

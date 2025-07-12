@@ -2,7 +2,6 @@ import json
 import os
 import logging
 import config
-from config import HISTORY_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -12,16 +11,18 @@ DEFAULT_HISTORY_PATH = "/userdata/saves/ports/rgsx/history.json"
 def init_history():
     """Initialise le fichier history.json s'il n'existe pas."""
     history_path = getattr(config, 'HISTORY_PATH', DEFAULT_HISTORY_PATH)
+    # Vérifie si le fichier history.json existe, sinon le crée
     if not os.path.exists(history_path):
         try:
             os.makedirs(os.path.dirname(history_path), exist_ok=True)
             with open(history_path, "w") as f:
-                json.dump([], f)
-            logger.info(f"Fichier history.json créé à {history_path}")
-        except Exception as e:
-            logger.error(f"Erreur lors de la création de history.json : {e}")
-            return False
-    return True
+                json.dump([], f)  # Initialise avec une liste vide
+            logger.info(f"Fichier d'historique créé : {history_path}")
+        except OSError as e:
+            logger.error(f"Erreur lors de la création du fichier d'historique : {e}")
+    else:
+        logger.info(f"Fichier d'historique trouvé : {history_path}")
+        return history_path
 
 def load_history():
     """Charge l'historique depuis history.json."""

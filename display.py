@@ -849,18 +849,18 @@ def draw_pause_menu(screen, selected_option):
 def draw_controls_help(screen, previous_state):
     """Affiche la liste des contrôles avec un style moderne."""
     common_controls = {
-        "confirm": lambda action: f"{get_control_display('confirm', 'Entrée/A')} : {action}",
-        "cancel": lambda action: f"{get_control_display('cancel', 'Échap/B')} : {action}",
-        "start": lambda: f"{get_control_display('start', 'Start')} : Menu",
-        "progress": lambda action: f"{get_control_display('progress', 'X')} : {action}",
+        "confirm": lambda action: f"{get_control_display('confirm', 'Entrée/A/Croix')} : {action}",
+        "cancel": lambda action: f"{get_control_display('cancel', 'Échap/B/Rond')} : {action}",
+        "start": lambda: f"{get_control_display('start', 'Start/')} : Menu",
+        "progress": lambda action: f"{get_control_display('progress', 'X/Carré')} : {action}",
         "up": lambda action: f"{get_control_display('up', 'Flèche Haut')} : {action}",
         "down": lambda action: f"{get_control_display('down', 'Flèche Bas')} : {action}",
-        "page_up": lambda action: f"{get_control_display('page_up', 'Q/LB')} : {action}",
-        "page_down": lambda action: f"{get_control_display('page_down', 'E/RB')} : {action}",
+        "page_up": lambda action: f"{get_control_display('page_up', 'Q/LB/L1')} : {action}",
+        "page_down": lambda action: f"{get_control_display('page_down', 'E/RB/R1')} : {action}",
         "filter": lambda action: f"{get_control_display('filter', 'Select')} : {action}",
-        "history": lambda action: f"{get_control_display('history', 'H')} : {action}",
-        "delete": lambda: f"{get_control_display('delete', 'Retour Arrière')} : Supprimer",
-        "space": lambda: f"{get_control_display('space', 'Espace')} : Espace"
+        "history": lambda action: f"{get_control_display('history', 'H/Y/Triangle')} : {action}",
+        "delete": lambda: f"{get_control_display('delete', 'Backspace/LT/L2')} : Supprimer",
+        "space": lambda: f"{get_control_display('space', 'Espace/RT/R2')} : Espace"
     }
 
     state_controls = {
@@ -1085,8 +1085,3 @@ def draw_music_popup(screen):
     # Afficher la popup
     screen.blit(popup_surface, (rect_x, rect_y))
 
-def set_music_popup(music_name):
-    """Définit le nom de la musique à afficher dans la popup."""
-    global current_music_name, music_popup_start_time
-    current_music_name = f"♬ {os.path.splitext(music_name)[0]}"  # Utilise l'emoji ♬ directement
-    music_popup_start_time = pygame.time.get_ticks() / 1000  # Temps actuel en secondes

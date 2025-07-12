@@ -3,7 +3,6 @@ import pygame # type: ignore
 import config
 from config import CONTROLS_CONFIG_PATH , GRID_COLS, GRID_ROWS
 import asyncio
-import math
 import json
 import os
 from display import draw_validation_transition

@@ -1,21 +1,19 @@
+import pygame# type: ignore
 import os
 os.environ["SDL_FBDEV"] = "/dev/fb0"
-import pygame # type: ignore
 import asyncio
 import platform
-import subprocess
 import logging
 import requests
-import sys
-import json
-import random
-from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_result_download, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, THEME_COLORS, set_music_popup, draw_music_popup
-from network import test_internet, download_rom, check_extension_before_download, extract_zip
+import config
+from config import logger
+from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_result_download, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, THEME_COLORS, draw_music_popup
+from network import test_internet, download_rom, check_extension_before_download, extract_zip, check_for_updates
 from controls import handle_controls, validate_menu_state
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
-from utils import  load_games, write_unavailable_systems
+from utils import play_random_music, load_sources, detect_non_pc
 from history import load_history
-import config
+from config import OTA_data_ZIP
 
 # Configuration du logging
 log_dir = "/userdata/roms/ports/RGSX/logs"
@@ -36,60 +34,44 @@ except Exception as e:
 
 logger = logging.getLogger(__name__)
 
-# URL du serveur OTA
-OTA_SERVER_URL = "https://retrogamesets.fr/softs"
-OTA_VERSION_ENDPOINT = f"{OTA_SERVER_URL}/version.json"
-OTA_UPDATE_SCRIPT = f"{OTA_SERVER_URL}/rgsx-update.sh"
-OTA_data_ZIP = f"{OTA_SERVER_URL}/rgsx-data.zip"
-
-# Constantes pour la répétition automatique dans pause_menu
-REPEAT_DELAY = 300  # Délai initial avant répétition (ms)
-REPEAT_INTERVAL = 150  # Intervalle entre répétitions (ms), augmenté pour réduire la fréquence
-REPEAT_ACTION_DEBOUNCE = 100  # Délai anti-rebond pour répétitions (ms), augmenté pour éviter les répétitions excessives
-
-# Initialisation de Pygame et des polices
+# Initialisation de Pygame
 pygame.init()
 config.init_font()
 pygame.joystick.init()
 pygame.mouse.set_visible(True)
 
-# Détection système non-PC
-def detect_non_pc():
-    arch = platform.machine()
-    try:
-        result = subprocess.run(["batocera-es-swissknife", "--arch"], capture_output=True, text=True, timeout=2)
-        if result.returncode == 0:
-            arch = result.stdout.strip()
-            logger.debug(f"Architecture via batocera-es-swissknife: {arch}")
-    except (subprocess.SubprocessError, FileNotFoundError):
-        logger.debug(f"batocera-es-swissknife non disponible, utilisation de platform.machine(): {arch}")
-    
-    is_non_pc = arch not in ["x86_64", "amd64"]
-    logger.debug(f"Système détecté: {platform.system()}, architecture: {arch}, is_non_pc={is_non_pc}")
-    return is_non_pc
-
+# Détection du système
 config.is_non_pc = detect_non_pc()
-
-# Initialisation de l’écran
-screen = init_display()
-pygame.display.set_caption("RGSX")
-clock = pygame.time.Clock()
 
 # Initialisation des polices
 try:
     config.font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 36)
     config.title_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 48)
     config.search_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 48)
-    config.progress_font = pygame.font.SysFont("arial", 36) # Police pour l'affichage de la progression
-    config.small_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 28)  # Police pour les petits textes
+    config.progress_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 36)
+    config.small_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 28)
     logger.debug("Police Pixel-UniCode chargée")
 except:
-    config.font = pygame.font.SysFont("arial", 48) # Police fallback
-    config.title_font = pygame.font.SysFont("arial", 60) # Police fallback pour les titres
-    config.search_font = pygame.font.SysFont("arial", 60)   # Police fallback pour la recherche
-    config.progress_font = pygame.font.SysFont("arial", 36)  # Police fallback pour l'affichage de la progression
-    config.small_font = pygame.font.SysFont("arial", 28)  # Police fallback pour les petits textes
+    config.font = pygame.font.SysFont("arial", 48)
+    config.title_font = pygame.font.SysFont("arial", 60)
+    config.search_font = pygame.font.SysFont("arial", 60)
+    config.progress_font = pygame.font.SysFont("arial", 36)
+    config.small_font = pygame.font.SysFont("arial", 28)
     logger.debug("Police Arial chargée")
+
+# Initialisation de l’écran
+screen = init_display()
+pygame.display.set_caption("RGSX")
+
+# Afficher un écran de chargement initial
+draw_gradient(screen, THEME_COLORS["background_top"], THEME_COLORS["background_bottom"])
+loading_text = config.font.render("Initialisation...", True, (255, 255, 255))
+text_rect = loading_text.get_rect(center=(config.screen_width // 2, config.screen_height // 2))
+screen.blit(loading_text, text_rect)
+pygame.display.flip()
+logger.debug("Écran de chargement initial affiché")
+
+
 
 # Mise à jour de la résolution dans config
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
@@ -100,12 +82,6 @@ config.current_page = 0
 config.selected_platform = 0
 config.selected_key = (0, 0)
 config.transition_state = "none"
-
-# Initialisation des variables de répétition
-config.repeat_action = None
-config.repeat_key = None
-config.repeat_start_time = 0
-config.repeat_last_action = 0
 
 # Chargement de l'historique
 config.history = load_history()
@@ -128,143 +104,8 @@ if pygame.joystick.get_count() > 0:
 # Initialisation de pygame.mixer
 pygame.mixer.init()
 
-# Dossier musique Batocera
-music_folder = "/userdata/roms/ports/RGSX/assets/music"
-music_files = [f for f in os.listdir(music_folder) if f.lower().endswith(('.ogg', '.mp3'))]
-current_music = None  # Suivre la musique en cours
-
-def play_random_music():
-    """Joue une musique aléatoire et configure l'événement de fin."""
-    global current_music
-    if music_files:
-        # Éviter de rejouer la même musique consécutivement
-        available_music = [f for f in music_files if f != current_music]
-        if not available_music:  # Si une seule musique, on la reprend
-            available_music = music_files
-        music_file = random.choice(available_music)
-        music_path = os.path.join(music_folder, music_file)
-        logger.debug(f"Lecture de la musique : {music_path}")
-        pygame.mixer.music.load(music_path)
-        pygame.mixer.music.set_volume(0.5)
-        pygame.mixer.music.play(loops=0)  # Jouer une seule fois
-        pygame.mixer.music.set_endevent(pygame.USEREVENT + 1)  # Événement de fin
-        current_music = music_file  # Mettre à jour la musique en cours
-        set_music_popup(music_file)  # Afficher le nom de la musique dans la popup
-    else:
-        logger.debug("Aucune musique trouvée dans /userdata/roms/ports/RGSX/assets/music")
-
 # Jouer la première musique au démarrage
 play_random_music()
-
-# Fonction pour charger sources.json
-def load_sources():
-    sources_path = "/userdata/roms/ports/RGSX/sources.json"
-    logger.debug(f"Chargement de {sources_path}")
-    try:
-        with open(sources_path, 'r', encoding='utf-8') as f:
-            sources = json.load(f)
-        sources = sorted(sources, key=lambda x: x.get("nom", x.get("platform", "")).lower())
-        config.platforms = [source["platform"] for source in sources]
-        config.platform_dicts = sources
-        config.platform_names = {source["platform"]: source["nom"] for source in sources}
-        config.games_count = {platform: 0 for platform in config.platforms}  # Initialiser à 0
-        # Charger les jeux pour chaque plateforme
-        for platform in config.platforms:
-            games = load_games(platform)
-            config.games_count[platform] = len(games)
-            logger.debug(f"Jeux chargés pour {platform}: {len(games)} jeux")
-            write_unavailable_systems()
-        logger.debug(f"load_sources: platforms={config.platforms}, platform_names={config.platform_names}, games_count={config.games_count}")
-        return sources
-    except Exception as e:
-        logger.error(f"Erreur lors du chargement de sources.json : {str(e)}")
-        return []
-
-# Fonction pour vérifier et appliquer les mises à jour OTA
-async def check_for_updates():
-    try:
-        logger.debug("Vérification de la version disponible sur le serveur")
-        config.current_loading_system = "Mise à jour en cours... Patientez l'ecran reste figé..Puis relancer l'application"
-        config.loading_progress = 5.0
-        config.needs_redraw = True
-        response = requests.get(OTA_VERSION_ENDPOINT, timeout=5)
-        response.raise_for_status()
-        if response.headers.get("content-type") != "application/json":
-            raise ValueError(f"Le fichier version.json n'est pas un JSON valide (type de contenu : {response.headers.get('content-type')})")
-        version_data = response.json()
-        latest_version = version_data.get("version")
-        logger.debug(f"Version distante : {latest_version}, version locale : {config.app_version}")
-
-        if latest_version != config.app_version:
-            config.current_loading_system = f"Mise à jour disponible : {latest_version}"
-            config.loading_progress = 10.0
-            config.needs_redraw = True
-            logger.debug(f"Téléchargement du script de mise à jour : {OTA_UPDATE_SCRIPT}")
-
-            update_script_path = "/userdata/roms/ports/rgsx-update.sh"
-            logger.debug(f"Téléchargement de {OTA_UPDATE_SCRIPT} vers {update_script_path}")
-            with requests.get(OTA_UPDATE_SCRIPT, stream=True, timeout=10) as r:
-                r.raise_for_status()
-                with open(update_script_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            config.loading_progress = min(50.0, config.loading_progress + 5.0)
-                            config.needs_redraw = True
-                            await asyncio.sleep(0)
-
-            config.current_loading_system = "Préparation de la mise à jour..."
-            config.loading_progress = 60.0
-            config.needs_redraw = True
-            logger.debug(f"Rendre {update_script_path} exécutable")
-            subprocess.run(["chmod", "+x", update_script_path], check=True)
-            logger.debug(f"Script {update_script_path} rendu exécutable")
-
-            logger.debug(f"Vérification de l'existence et des permissions de {update_script_path}")
-            if not os.path.isfile(update_script_path):
-                logger.error(f"Le script {update_script_path} n'existe pas")
-                return False, f"Erreur : le script {update_script_path} n'existe pas"
-            if not os.access(update_script_path, os.X_OK):
-                logger.error(f"Le script {update_script_path} n'est pas exécutable")
-                return False, f"Erreur : le script {update_script_path} n'est pas exécutable"
-
-            wrapper_script_path = "/userdata/roms/ports/RGSX/update/run.update"
-            logger.debug(f"Vérification de l'existence et des permissions de {wrapper_script_path}")
-            if not os.path.isfile(wrapper_script_path):
-                logger.error(f"Le script wrapper {wrapper_script_path} n'existe pas")
-                return False, f"Erreur : le script wrapper {wrapper_script_path} n'existe pas"
-            if not os.access(wrapper_script_path, os.X_OK):
-                logger.error(f"Le script wrapper {wrapper_script_path} n'est pas exécutable")
-                subprocess.run(["chmod", "+x", wrapper_script_path], check=True)
-                logger.debug(f"Script wrapper {wrapper_script_path} rendu exécutable")
-
-            logger.debug("Désactivation des événements Pygame QUIT")
-            pygame.event.set_blocked(pygame.QUIT)
-
-            config.current_loading_system = "Application de la mise à jour..."
-            config.loading_progress = 80.0
-            config.needs_redraw = True
-            logger.debug(f"Exécution du script wrapper : {wrapper_script_path}")
-            result = os.system(f"{wrapper_script_path} &")
-            logger.debug(f"Résultat de os.system : {result}")
-            if result != 0:
-                logger.error(f"Échec du lancement du script wrapper : code de retour {result}")
-                return False, f"Échec du lancement du script wrapper : code de retour {result}"
-
-            config.current_loading_system = "Mise à jour déclenchée, redémarrage..."
-            config.loading_progress = 100.0
-            config.needs_redraw = True
-            logger.debug("Mise à jour déclenchée, arrêt de l'application")
-            config.update_triggered = True
-            pygame.quit()
-            sys.exit(0)
-        else:
-            logger.debug("Aucune mise à jour logicielle disponible")
-            return True, "Aucune mise à jour disponible"
-
-    except Exception as e:
-        logger.error(f"Erreur OTA : {str(e)}")
-        return False, f"Erreur lors de la vérification des mises à jour : {str(e)}"
 
 # Boucle principale
 async def main():
@@ -276,25 +117,29 @@ async def main():
     config.debounce_delay = 50
     config.update_triggered = False
     last_redraw_time = pygame.time.get_ticks()
-    
-    screen = init_display()
     clock = pygame.time.Clock()
 
+    # Variables pour la progression simulée
+    check_ota_start_time = None
+    load_sources_start_time = None
+    SIMULATED_CHECK_OTA_DURATION = 5.0
+    SIMULATED_LOAD_SOURCES_DURATION = 3.0
+
     while running:
-        clock.tick(60)  # Limite à 60 FPS
+        clock.tick(60)
         if config.update_triggered:
             logger.debug("Mise à jour déclenchée, arrêt de la boucle principale")
             break
 
         current_time = pygame.time.get_ticks()
+        current_time_sec = current_time / 1000.0
 
         # Forcer redraw toutes les 100 ms dans download_progress
         if config.menu_state == "download_progress" and current_time - last_redraw_time >= 100:
             config.needs_redraw = True
             last_redraw_time = current_time
 
-        # Dans __main__.py, dans la boucle principale
-        current_time = pygame.time.get_ticks()
+        # Gestion du popup timer
         delta_time = current_time - config.last_frame_time
         config.last_frame_time = current_time
         if config.menu_state == "restart_popup" and config.popup_timer > 0:
@@ -316,7 +161,7 @@ async def main():
                 config.needs_redraw = True
                 logger.debug("Événement QUIT détecté, passage à confirm_exit")
                 continue
-            elif event.type == pygame.USEREVENT + 1:  # Fin de la musique
+            elif event.type == pygame.USEREVENT + 1:
                 logger.debug("Fin de la musique actuelle, passage à la suivante")
                 play_random_music()
             start_config = config.controls_config.get("start", {})
@@ -334,12 +179,11 @@ async def main():
                     config.needs_redraw = True
                     logger.debug(f"Ouverture menu pause depuis {config.previous_menu_state}")
                     continue
-         
+
             if config.menu_state == "pause_menu":
-                action = handle_controls(event, sources, joystick, screen)
+                handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 logger.debug(f"Événement transmis à handle_controls dans pause_menu: {event.type}")
-
                 continue
 
             if config.menu_state == "controls_help":
@@ -356,14 +200,13 @@ async def main():
                     logger.debug("Controls_help: Annulation, retour à pause_menu")
                 continue
 
-            # Gérer confirm_clear_history explicitement
             if config.menu_state == "confirm_clear_history":
-                action = handle_controls(event, sources, joystick, screen)
+                handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 logger.debug(f"Événement transmis à handle_controls dans confirm_clear_history: {event.type}")
                 continue
             if config.menu_state == "redownload_game_cache":
-                action = handle_controls(event, sources, joystick, screen)
+                handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 logger.debug(f"Événement transmis à handle_controls dans redownload_game_cache: {event.type}")
                 continue
@@ -392,7 +235,7 @@ async def main():
                             task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
                             config.download_tasks[task] = (task, url, game_name, platform)
                             config.menu_state = "download_progress"
-                            config.pending_download = None  # Réinitialiser après démarrage du téléchargement
+                            config.pending_download = None
                             config.needs_redraw = True
                             logger.debug(f"Téléchargement démarré pour {game_name}, passage à download_progress")
                 elif action == "redownload" and config.menu_state == "history" and config.history:
@@ -413,7 +256,7 @@ async def main():
                                 task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
                                 config.download_tasks[task] = (task, url, game_name, platform)
                                 config.menu_state = "download_progress"
-                                config.pending_download = None  # Réinitialiser après démarrage du téléchargement
+                                config.pending_download = None
                                 config.needs_redraw = True
                                 logger.debug(f"Retéléchargement démarré pour {game_name}, passage à download_progress")
                             break
@@ -428,8 +271,8 @@ async def main():
                         config.download_result_error = not success
                         config.download_result_start_time = pygame.time.get_ticks()
                         config.menu_state = "download_result"
-                        config.download_progress.clear()  # Réinitialiser download_progress
-                        config.pending_download = None  # Réinitialiser après téléchargement
+                        config.download_progress.clear()
+                        config.pending_download = None
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
                         logger.debug(f"Téléchargement terminé: {game_name}, succès={success}, message={message}")
@@ -438,8 +281,8 @@ async def main():
                         config.download_result_error = True
                         config.download_result_start_time = pygame.time.get_ticks()
                         config.menu_state = "download_result"
-                        config.download_progress.clear()  # Réinitialiser download_progress
-                        config.pending_download = None  # Réinitialiser après téléchargement
+                        config.download_progress.clear()
+                        config.pending_download = None
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
                         logger.error(f"Erreur dans tâche de téléchargement: {str(e)}")
@@ -447,113 +290,55 @@ async def main():
         # Gestion de la fin du popup download_result
         if config.menu_state == "download_result" and current_time - config.download_result_start_time > 3000:
             config.menu_state = config.previous_menu_state if config.previous_menu_state in ["platform", "game", "history"] else "game"
-            config.download_progress.clear()  # Réinitialiser download_progress
-            config.pending_download = None  # Réinitialiser après affichage du résultat
+            config.download_progress.clear()
+            config.pending_download = None
             config.needs_redraw = True
             logger.debug(f"Fin popup download_result, retour à {config.menu_state}")
 
-        # Affichage
-        if config.needs_redraw:
-            draw_gradient(screen, THEME_COLORS["background_top"], THEME_COLORS["background_bottom"])
-            if config.menu_state == "controls_mapping":
-                draw_controls_mapping(screen, ACTIONS[0], None, False, 0.0)
-               # logger.debug("Rendu initial de draw_controls_mapping")
-            elif config.menu_state == "loading":
-                draw_loading_screen(screen)
-               # logger.debug("Rendu de draw_loading_screen")
-            elif config.menu_state == "error":
-                draw_error_screen(screen)
-               # logger.debug("Rendu de draw_error_screen")
-            elif config.menu_state == "platform":
-                draw_platform_grid(screen)
-               # logger.debug("Rendu de draw_platform_grid")
-            elif config.menu_state == "game":
-                if not config.search_mode:
-                   draw_game_list(screen)
-                if config.search_mode:
-                    draw_game_list(screen)
-                    draw_virtual_keyboard(screen)
-               # logger.debug("Rendu de draw_game_list")
-            elif config.menu_state == "download_progress":
-                draw_progress_screen(screen)
-               # logger.debug("Rendu de draw_progress_screen")
-            elif config.menu_state == "download_result":
-                draw_popup_result_download(screen, config.download_result_message, config.download_result_error)
-               # logger.debug("Rendu de draw_popup_message")
-            elif config.menu_state == "confirm_exit":
-                draw_confirm_dialog(screen)
-               # logger.debug("Rendu de draw_confirm_dialog")
-            elif config.menu_state == "extension_warning":
-                draw_extension_warning(screen)
-               # logger.debug("Rendu de draw_extension_warning")
-            elif config.menu_state == "pause_menu":
-                draw_pause_menu(screen, config.selected_option)
-                logger.debug("Rendu de draw_pause_menu")
-            elif config.menu_state == "controls_help":
-                draw_controls_help(screen, config.previous_menu_state)
-               # logger.debug("Rendu de draw_controls_help")
-            elif config.menu_state == "history":
-                draw_history_list(screen)
-               # logger.debug("Rendu de draw_history_list")
-            elif config.menu_state == "confirm_clear_history":
-                draw_clear_history_dialog(screen)
-               # logger.debug("Rendu de confirm_clear_history")
-            elif config.menu_state == "redownload_game_cache":
-                draw_redownload_game_cache_dialog(screen)  # Fonction existante
-            elif config.menu_state == "restart_popup":
-                draw_popup(screen)  # Nouvelle fonction
-            elif config.menu_state == "confirm_clear_history":
-                draw_clear_history_dialog(screen)  # Fonction existante
-
-            else:
-                # Gestion des états non valides
-                config.menu_state = "platform"
-                draw_platform_grid(screen)
-                config.needs_redraw = True
-                logger.error(f"État de menu non valide détecté: {config.menu_state}, retour à platform")
-            draw_controls(screen, config.menu_state)
-            screen = pygame.display.get_surface()
-            draw_music_popup(screen)  # Ajouter l'appel à la popup
-            pygame.display.flip()
-            config.needs_redraw = False
-
-        # Gestion de l'état controls_mapping
-        if config.menu_state == "controls_mapping":
-            logger.debug("Avant appel de map_controls")
-            try:
-                success = map_controls(screen)
-                logger.debug(f"map_controls terminé, succès={success}")
-                if success:
-                    config.controls_config = load_controls_config()
-                    config.menu_state = "loading"
-                    config.needs_redraw = True
-                    logger.debug("Passage à l'état loading après mappage")
-                else:
-                    config.menu_state = "error"
-                    config.error_message = "Échec du mappage des contrôles"
-                    config.needs_redraw = True
-                    logger.debug("Échec du mappage, passage à l'état error")
-            except Exception as e:
-                logger.error(f"Erreur lors de l'appel de map_controls : {str(e)}")
-                config.menu_state = "error"
-                config.error_message = f"Erreur dans map_controls: {str(e)}"
-                config.needs_redraw = True
-
         # Gestion de l'état loading
-        elif config.menu_state == "loading":
+        if config.menu_state == "loading":
             logger.debug(f"Étape chargement : {loading_step}")
             if loading_step == "none":
-                loading_step = "test_internet"
-                config.current_loading_system = "Test de connexion..."
+                loading_step = "init_sources"
+                config.current_loading_system = "Chargement des sources..."
                 config.loading_progress = 0.0
                 config.needs_redraw = True
+                load_sources_start_time = current_time_sec
                 logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
+
+            elif loading_step == "init_sources":
+                if load_sources_start_time is None:
+                    load_sources_start_time = current_time_sec
+
+                # Simuler la progression pour init_sources
+                elapsed = current_time_sec - load_sources_start_time
+                progress = min(0.0 + (5.0 * elapsed / SIMULATED_LOAD_SOURCES_DURATION), 5.0)
+                config.loading_progress = progress
+                config.needs_redraw = True
+                logger.debug(f"Progression simulée init_sources : {config.loading_progress}%")
+
+                # Exécuter load_sources
+                sources = load_sources()
+                if not sources:
+                    config.menu_state = "error"
+                    config.error_message = "Échec du chargement de sources.json"
+                    config.needs_redraw = True
+                    logger.debug("Erreur : Échec du chargement de sources.json")
+                else:
+                    loading_step = "test_internet"
+                    config.current_loading_system = "Test de connexion..."
+                    config.loading_progress = 5.0
+                    load_sources_start_time = None
+                    config.needs_redraw = True
+                    logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
+
             elif loading_step == "test_internet":
                 logger.debug("Exécution de test_internet()")
                 if test_internet():
                     loading_step = "check_ota"
-                    config.current_loading_system = "Mise à jour en cours... Patientez l'ecran reste figé.. Puis relancer l'application"
-                    config.loading_progress = 100
+                    config.current_loading_system = "Vérification des mises à jour..."
+                    config.loading_progress = 5.0
+                    check_ota_start_time = current_time_sec
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
                 else:
@@ -561,8 +346,19 @@ async def main():
                     config.error_message = "Pas de connexion Internet. Vérifiez votre réseau."
                     config.needs_redraw = True
                     logger.debug(f"Erreur : {config.error_message}")
+
             elif loading_step == "check_ota":
-                logger.debug("Exécution de check_for_updates()")
+                if check_ota_start_time is None:
+                    check_ota_start_time = current_time_sec
+
+                # Simuler la progression pour check_ota
+                elapsed = current_time_sec - check_ota_start_time
+                progress = min(5.0 + (25.0 * elapsed / SIMULATED_CHECK_OTA_DURATION), 30.0)
+                config.loading_progress = progress
+                config.needs_redraw = True
+                logger.debug(f"Progression simulée check_ota : {config.loading_progress}%")
+
+                # Exécuter check_for_updates
                 success, message = await check_for_updates()
                 logger.debug(f"Résultat de check_for_updates : success={success}, message={message}")
                 if not success:
@@ -572,21 +368,22 @@ async def main():
                     logger.debug(f"Erreur OTA : {message}")
                 else:
                     loading_step = "check_data"
-                    config.current_loading_system = "Téléchargement des jeux et images ..."
-                    config.loading_progress = 10.0
+                    config.current_loading_system = "Téléchargement des jeux et images..."
+                    config.loading_progress = 30.0
+                    check_ota_start_time = None
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
+
             elif loading_step == "check_data":
                 games_data_dir = "/userdata/roms/ports/RGSX/games"
                 is_data_empty = not os.path.exists(games_data_dir) or not any(os.scandir(games_data_dir))
-                #logger.debug(f"Dossier Data directory {games_data_dir} is {'empty' if is_data_empty else 'not empty'}")
-                
+
                 if is_data_empty:
                     config.current_loading_system = "Téléchargement du Dossier Data initial..."
-                    config.loading_progress = 15.0
+                    config.loading_progress = 30.0
                     config.needs_redraw = True
                     logger.debug("Dossier Data vide, début du téléchargement du ZIP")
-                    
+
                     try:
                         zip_path = "/userdata/roms/ports/RGSX.zip"
                         headers = {'User-Agent': 'Mozilla/5.0'}
@@ -607,23 +404,23 @@ async def main():
                                             "status": "Téléchargement",
                                             "progress_percent": (downloaded / total_size * 100) if total_size > 0 else 0
                                         }
-                                        config.loading_progress = 15.0 + (35.0 * downloaded / total_size) if total_size > 0 else 15.0
+                                        config.loading_progress = 30.0 + (40.0 * downloaded / total_size) if total_size > 0 else 30.0
                                         config.needs_redraw = True
                                         await asyncio.sleep(0)
                             logger.debug(f"ZIP téléchargé : {zip_path}")
 
                         config.current_loading_system = "Extraction du Dossier Data initial..."
-                        config.loading_progress = 50.0
+                        config.loading_progress = 70.0
                         config.needs_redraw = True
                         dest_dir = "/userdata/roms/ports/RGSX"
                         success, message = extract_zip(zip_path, dest_dir, OTA_data_ZIP)
                         if success:
                             logger.debug(f"Extraction réussie : {message}")
-                            config.loading_progress = 60.0
+                            config.loading_progress = 70.0
                             config.needs_redraw = True
                         else:
                             raise Exception(f"Échec de l'extraction : {message}")
-                    
+
                     except Exception as e:
                         logger.error(f"Erreur lors du téléchargement/extraction du Dossier Data : {str(e)}")
                         config.menu_state = "error"
@@ -637,19 +434,34 @@ async def main():
                     if os.path.exists(zip_path):
                         os.remove(zip_path)
                         logger.debug(f"Fichier ZIP {zip_path} supprimé")
-                    
+
                     loading_step = "load_sources"
                     config.current_loading_system = "Chargement des systèmes..."
-                    config.loading_progress = 60.0
+                    config.loading_progress = 70.0
+                    load_sources_start_time = current_time_sec
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
+
                 else:
                     loading_step = "load_sources"
                     config.current_loading_system = "Chargement des systèmes..."
-                    config.loading_progress = 60.0
+                    config.loading_progress = 70.0
+                    load_sources_start_time = current_time_sec
                     config.needs_redraw = True
                     logger.debug(f"Dossier Data non vide, passage à {loading_step}")
+
             elif loading_step == "load_sources":
+                if load_sources_start_time is None:
+                    load_sources_start_time = current_time_sec
+
+                # Simuler la progression pour load_sources
+                elapsed = current_time_sec - load_sources_start_time
+                progress = min(70.0 + (30.0 * elapsed / SIMULATED_LOAD_SOURCES_DURATION), 100.0)
+                config.loading_progress = progress
+                config.needs_redraw = True
+                logger.debug(f"Progression simulée load_sources : {config.loading_progress}%")
+
+                # Exécuter load_sources
                 sources = load_sources()
                 if not sources:
                     config.menu_state = "error"
@@ -660,6 +472,7 @@ async def main():
                     config.menu_state = "platform"
                     config.loading_progress = 0.0
                     config.current_loading_system = ""
+                    load_sources_start_time = None
                     config.needs_redraw = True
                     logger.debug(f"Fin chargement, passage à platform, progress={config.loading_progress}")
 
@@ -673,13 +486,79 @@ async def main():
                 config.needs_redraw = True
                 logger.debug("Transition terminée, passage à game")
 
+        # Affichage
+        if config.needs_redraw:
+            draw_gradient(screen, THEME_COLORS["background_top"], THEME_COLORS["background_bottom"])
+            if config.menu_state == "controls_mapping":
+                draw_controls_mapping(screen, ACTIONS[0], None, False, 0.0)
+            elif config.menu_state == "loading":
+                draw_loading_screen(screen)
+            elif config.menu_state == "error":
+                draw_error_screen(screen)
+            elif config.menu_state == "platform":
+                draw_platform_grid(screen)
+            elif config.menu_state == "game":
+                if not config.search_mode:
+                    draw_game_list(screen)
+                if config.search_mode:
+                    draw_game_list(screen)
+                    draw_virtual_keyboard(screen)
+            elif config.menu_state == "download_progress":
+                draw_progress_screen(screen)
+            elif config.menu_state == "download_result":
+                draw_popup_result_download(screen, config.download_result_message, config.download_result_error)
+            elif config.menu_state == "confirm_exit":
+                draw_confirm_dialog(screen)
+            elif config.menu_state == "extension_warning":
+                draw_extension_warning(screen)
+            elif config.menu_state == "pause_menu":
+                draw_pause_menu(screen, config.selected_option)
+            elif config.menu_state == "controls_help":
+                draw_controls_help(screen, config.previous_menu_state)
+            elif config.menu_state == "history":
+                draw_history_list(screen)
+            elif config.menu_state == "confirm_clear_history":
+                draw_clear_history_dialog(screen)
+            elif config.menu_state == "redownload_game_cache":
+                draw_redownload_game_cache_dialog(screen)
+            elif config.menu_state == "restart_popup":
+                draw_popup(screen)
+            else:
+                config.menu_state = "platform"
+                draw_platform_grid(screen)
+                config.needs_redraw = True
+                logger.error(f"État de menu non valide détecté: {config.menu_state}, retour à platform")
+            draw_controls(screen, config.menu_state)
+            draw_music_popup(screen)
+            pygame.display.flip()
+            config.needs_redraw = False
+
+        # Gestion de l'état controls_mapping
+        if config.menu_state == "controls_mapping":
+            try:
+                success = map_controls(screen)
+                logger.debug(f"map_controls terminé, succès={success}")
+                if success:
+                    config.controls_config = load_controls_config()
+                    config.menu_state = "loading"
+                    config.needs_redraw = True
+                else:
+                    config.menu_state = "error"
+                    config.error_message = "Échec du mappage des contrôles"
+                    config.needs_redraw = True
+                    logger.debug("Échec du mappage, passage à l'état error")
+            except Exception as e:
+                logger.error(f"Erreur lors de l'appel de map_controls : {str(e)}")
+                config.menu_state = "error"
+                config.error_message = f"Erreur dans map_controls: {str(e)}"
+                config.needs_redraw = True
+
         clock.tick(60)
         await asyncio.sleep(0.01)
 
     pygame.mixer.music.stop()
     pygame.quit()
     logger.debug("Application terminée")
-
 
 if platform.system() == "Emscripten":
     asyncio.ensure_future(main())

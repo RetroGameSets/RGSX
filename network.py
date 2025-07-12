@@ -6,9 +6,10 @@ import threading
 import pygame # type: ignore
 import zipfile
 import json
-import time
 import asyncio
 import config
+import sys
+from config import OTA_VERSION_ENDPOINT, OTA_UPDATE_SCRIPT
 from utils import sanitize_filename
 from history import add_to_history, load_history
 import logging
@@ -20,18 +21,125 @@ cache = {}
 CACHE_TTL = 3600  # 1 heure
         
 def test_internet():
+    """Teste la connexion Internet dans un thread séparé."""
     logger.debug("Test de connexion Internet")
-    try:
-        result = subprocess.run(['ping', '-c', '4', '8.8.8.8'], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            logger.debug("Connexion Internet OK")
-            return True
-        else:
-            logger.debug("Échec ping 8.8.8.8")
-            return False
-    except Exception as e:
-        logger.debug(f"Erreur test Internet: {str(e)}")
-        return False
+    result = [False]
+    
+    def ping_thread():
+        try:
+            proc = subprocess.run(['ping', '-c', '4', '8.8.8.8'], capture_output=True, text=True, timeout=5)
+            result[0] = proc.returncode == 0
+            logger.debug("Connexion Internet OK" if result[0] else "Échec ping 8.8.8.8")
+        except Exception as e:
+            logger.debug(f"Erreur test Internet: {str(e)}")
+            result[0] = False
+    
+    thread = threading.Thread(target=ping_thread)
+    thread.start()
+    thread.join()
+    return result[0]
+
+
+# Fonction pour vérifier et appliquer les mises à jour OTA
+async def check_for_updates():
+    """Vérifie et applique les mises à jour OTA dans un thread séparé."""
+    result = [None, None]
+    
+    def update_thread():
+        try:
+            logger.debug("Vérification de la version disponible sur le serveur")
+            config.current_loading_system = "Mise à jour en cours... Patientez l'écran reste figé..Puis relancer l'application"
+            config.loading_progress = 5.0
+            config.needs_redraw = True
+            response = requests.get(OTA_VERSION_ENDPOINT, timeout=5)
+            response.raise_for_status()
+            if response.headers.get("content-type") != "application/json":
+                raise ValueError(f"Le fichier version.json n'est pas un JSON valide (type de contenu : {response.headers.get('content-type')})")
+            version_data = response.json()
+            latest_version = version_data.get("version")
+            logger.debug(f"Version distante : {latest_version}, version locale : {config.app_version}")
+
+            if latest_version != config.app_version:
+                config.current_loading_system = f"Mise à jour disponible : {latest_version}"
+                config.loading_progress = 10.0
+                config.needs_redraw = True
+                logger.debug(f"Téléchargement du script de mise à jour : {OTA_UPDATE_SCRIPT}")
+
+                update_script_path = "/userdata/roms/ports/rgsx-update.sh"
+                logger.debug(f"Téléchargement de {OTA_UPDATE_SCRIPT} vers {update_script_path}")
+                with requests.get(OTA_UPDATE_SCRIPT, stream=True, timeout=10) as r:
+                    r.raise_for_status()
+                    with open(update_script_path, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                                config.loading_progress = min(50.0, config.loading_progress + 5.0)
+                                config.needs_redraw = True
+                                # Pas de sleep ici, car on est dans un thread
+
+                config.current_loading_system = "Préparation de la mise à jour..."
+                config.loading_progress = 60.0
+                config.needs_redraw = True
+                logger.debug(f"Rendre {update_script_path} exécutable")
+                subprocess.run(["chmod", "+x", update_script_path], check=True)
+                logger.debug(f"Script {update_script_path} rendu exécutable")
+
+                logger.debug(f"Vérification de l'existence et des permissions de {update_script_path}")
+                if not os.path.isfile(update_script_path):
+                    logger.error(f"Le script {update_script_path} n'existe pas")
+                    result[0], result[1] = False, f"Erreur : le script {update_script_path} n'existe pas"
+                    return
+                if not os.access(update_script_path, os.X_OK):
+                    logger.error(f"Le script {update_script_path} n'est pas exécutable")
+                    result[0], result[1] = False, f"Erreur : le script {update_script_path} n'est pas exécutable"
+                    return
+
+                wrapper_script_path = "/userdata/roms/ports/RGSX/update/run.update"
+                logger.debug(f"Vérification de l'existence et des permissions de {wrapper_script_path}")
+                if not os.path.isfile(wrapper_script_path):
+                    logger.error(f"Le script wrapper {wrapper_script_path} n'existe pas")
+                    result[0], result[1] = False, f"Erreur : le script wrapper {wrapper_script_path} n'existe pas"
+                    return
+                if not os.access(wrapper_script_path, os.X_OK):
+                    logger.error(f"Le script wrapper {wrapper_script_path} n'est pas exécutable")
+                    subprocess.run(["chmod", "+x", wrapper_script_path], check=True)
+                    logger.debug(f"Script wrapper {wrapper_script_path} rendu exécutable")
+
+                logger.debug("Désactivation des événements Pygame QUIT")
+                pygame.event.set_blocked(pygame.QUIT)
+
+                config.current_loading_system = "Application de la mise à jour..."
+                config.loading_progress = 80.0
+                config.needs_redraw = True
+                logger.debug(f"Exécution du script wrapper : {wrapper_script_path}")
+                os_result = os.system(f"{wrapper_script_path} &")
+                logger.debug(f"Résultat de os.system : {os_result}")
+                if os_result != 0:
+                    logger.error(f"Échec du lancement du script wrapper : code de retour {os_result}")
+                    result[0], result[1] = False, f"Échec du lancement du script wrapper : code de retour {os_result}"
+                    return
+
+                config.current_loading_system = "Mise à jour déclenchée, redémarrage..."
+                config.loading_progress = 100.0
+                config.needs_redraw = True
+                logger.debug("Mise à jour déclenchée, arrêt de l'application")
+                config.update_triggered = True
+                pygame.quit()
+                sys.exit(0)
+            else:
+                logger.debug("Aucune mise à jour logicielle disponible")
+                result[0], result[1] = True, "Aucune mise à jour disponible"
+        except Exception as e:
+            logger.error(f"Erreur OTA : {str(e)}")
+            result[0], result[1] = False, f"Erreur lors de la vérification des mises à jour : {str(e)}"
+
+    thread = threading.Thread(target=update_thread)
+    thread.start()
+    while thread.is_alive():
+        pygame.event.pump()
+        await asyncio.sleep(0.1)
+    thread.join()
+    return result[0], result[1]
 
 def load_extensions_json():
     """Charge le fichier JSON contenant les extensions supportées."""
