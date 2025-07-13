@@ -39,7 +39,7 @@ RGSX est une application Python basée sur Pygame.
 - Depuis un autre pc sur le réseau avec application Putty, powershell SSH ou autre
 
 Entrez la commande :
-## `curl -L bit.ly/rgsx-install`
+## `curl -L bit.ly/rgsx-install | sh`
   
 Patientez et regardez le retour à l'écran ou sur la commande (à améliorer).  
 Mettez à jour la liste des jeux via : `Menu > Paramètres de jeux > Mettre à jour la liste des jeux `.  
