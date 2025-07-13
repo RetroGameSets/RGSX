@@ -6,19 +6,19 @@ import asyncio
 import json
 import os
 from display import draw_validation_transition
-from network import download_rom, check_extension_before_download, download_from_1fichier, is_1fichier_url, is_extension_supported,load_extensions_json,sanitize_filename
-from utils import load_games
+from network import download_rom, download_from_1fichier, is_1fichier_url
+from utils import load_games, check_extension_before_download, is_extension_supported, load_extensions_json, sanitize_filename
 from history import load_history, clear_history
 import logging
 
 logger = logging.getLogger(__name__)
 
 # Constantes pour la répétition automatique
-REPEAT_DELAY = 300  # Délai initial avant répétition (ms)
+REPEAT_DELAY = 100  # Délai initial avant répétition (ms)
 REPEAT_INTERVAL = 100  # Intervalle entre répétitions (ms)
-JOYHAT_DEBOUNCE = 200  # Délai anti-rebond pour JOYHATMOTION (ms)
+JOYHAT_DEBOUNCE = 0  # Délai anti-rebond pour JOYHATMOTION (ms)
 JOYAXIS_DEBOUNCE = 50  # Délai anti-rebond pour JOYAXISMOTION (ms)
-REPEAT_ACTION_DEBOUNCE = 50  # Délai anti-rebond pour répétitions up/down/left/right (ms)
+REPEAT_ACTION_DEBOUNCE = 0  # Délai anti-rebond pour répétitions up/down/left/right (ms)
 
 # Liste des états valides
 VALID_STATES = [
@@ -177,6 +177,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
+                    logger.debug(f"Plateforme sélectionnée: {config.selected_platform}")
             elif is_input_matched(event, "up"):
                 if current_grid_index - GRID_COLS >= 0:
                     config.selected_platform -= GRID_COLS
@@ -185,6 +186,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
+                    logger.debug(f"Plateforme sélectionnée: {config.selected_platform}")
             elif is_input_matched(event, "left"):
                 if col > 0:
                     config.selected_platform -= 1
@@ -193,6 +195,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
+                    logger.debug(f"Plateforme sélectionnée: {config.selected_platform}")
                 elif config.current_page > 0:
                     config.current_page -= 1
                     config.selected_platform = config.current_page * systems_per_page + row * GRID_COLS + (GRID_COLS - 1)
@@ -203,6 +206,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
+                    logger.debug(f"Plateforme sélectionnée: {config.selected_platform}")
             elif is_input_matched(event, "right"):
                 if col < GRID_COLS - 1 and current_grid_index < max_index:
                     config.selected_platform += 1
@@ -211,6 +215,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
+                    logger.debug(f"Plateforme sélectionnée: {config.selected_platform}")
                 elif (config.current_page + 1) * systems_per_page < len(config.platforms):
                     config.current_page += 1
                     config.selected_platform = config.current_page * systems_per_page + row * GRID_COLS
@@ -221,6 +226,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
+                    logger.debug(f"Plateforme sélectionnée: {config.selected_platform}")
             elif is_input_matched(event, "page_down"):
                 if (config.current_page + 1) * systems_per_page < len(config.platforms):
                     config.current_page += 1
@@ -232,6 +238,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_start_time = 0
                     config.repeat_last_action = current_time
                     config.needs_redraw = True
+                    logger.debug(f"Plateforme sélectionnée: {config.selected_platform}")
                     #logger.debug("Page suivante, répétition réinitialisée")
             elif is_input_matched(event, "page_up"):
                 if config.current_page > 0:
@@ -244,6 +251,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_start_time = 0
                     config.repeat_last_action = current_time
                     config.needs_redraw = True
+                    logger.debug(f"Plateforme sélectionnée: {config.selected_platform}")
                     #logger.debug("Page précédente, répétition réinitialisée")
             elif is_input_matched(event, "page_up"):
                 if config.current_page > 0:
@@ -256,6 +264,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_start_time = 0
                     config.repeat_last_action = current_time
                     config.needs_redraw = True
+                    logger.debug(f"Plateforme sélectionnée: {config.selected_platform}")
                     #logger.debug("Page précédente, répétition réinitialisée")
             elif is_input_matched(event, "progress"):
                 if config.download_tasks:
@@ -454,55 +463,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "history"
                     config.needs_redraw = True
                     logger.debug("Ouverture history depuis game") 
-                elif is_input_matched(event, "confirm"):
-                    if games:
-                        config.pending_download = check_extension_before_download(
-                            games[config.current_game][0],
-                            config.platforms[config.current_platform],
-                            games[config.current_game][1]
-                        )
-                        if config.pending_download:
-                            url, platform, game_name, is_zip_non_supported = config.pending_download
-                            is_supported = is_extension_supported(
-                                sanitize_filename(game_name),
-                                platform,
-                                load_extensions_json()
-                            )
-                            if not is_supported:
-                                config.previous_menu_state = config.menu_state  # Ajouter cette ligne
-                                config.menu_state = "extension_warning"
-                                config.extension_confirm_selection = 0
-                                config.needs_redraw = True
-                                logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
-                            else:
-                                if is_1fichier_url(url):
-                                    if not config.API_KEY_1FICHIER:
-                                        config.previous_menu_state = config.menu_state  # Ajouter cette ligne
-                                        config.menu_state = "error"
-                                        config.error_message = (
-                                            "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichierAPI.txt à ouvrir dans un editeur de texte et coller la clé API"
-                                        )
-                                        config.needs_redraw = True
-                                        logger.error("Clé API 1fichier absente, téléchargement impossible.")
-                                        config.pending_download = None
-                                        return action
-                                    loop = asyncio.get_running_loop()
-                                    task = loop.run_in_executor(None, download_from_1fichier, url, platform, game_name, is_zip_non_supported)
-                                else:
-                                    task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
-                                config.download_tasks[task] = (task, url, game_name, platform)
-                                config.previous_menu_state = config.menu_state  # Ajouter cette ligne
-                                config.menu_state = "download_progress"
-                                config.needs_redraw = True
-                                logger.debug(f"Début du téléchargement: {game_name} pour {platform} depuis {url}")
-                                config.pending_download = None
-                                action = "download"
-                        else:
-                            config.menu_state = "error"
-                            config.error_message = "Extension non supportée ou erreur de téléchargement"
-                            config.pending_download = None
-                            config.needs_redraw = True
-                            logger.error(f"config.pending_download est None pour {games[config.current_game][0]}")
+
                 elif is_input_matched(event, "cancel"):
                     config.menu_state = "platform"
                     config.current_game = 0
@@ -514,6 +475,135 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "redownload_game_cache"
                     config.needs_redraw = True
                     logger.debug("Passage à redownload_game_cache depuis game")
+
+                # Sélectionner un jeu , evenent confirm
+                elif is_input_matched(event, "confirm"):
+                    if games:
+                        url = games[config.current_game][1]
+                        game_name = games[config.current_game][0]
+                        platform = config.platforms[config.current_platform]
+                        logger.debug(f"Vérification pour {game_name}, URL: {url}")
+                        # Vérifier d'abord si c'est un lien 1fichier
+                        if is_1fichier_url(url):
+                            if not config.API_KEY_1FICHIER:
+                                config.previous_menu_state = config.menu_state
+                                config.menu_state = "error"
+                                config.error_message = (
+                                    "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichierAPI.txt à ouvrir dans un editeur de texte et coller la clé API"
+                                )
+                                config.needs_redraw = True
+                                logger.error("Clé API 1fichier absente, téléchargement impossible.")
+                                config.pending_download = None
+                                return action
+                            # Vérifier l'extension pour les liens 1fichier
+                            config.pending_download = check_extension_before_download(url, platform, game_name)
+                            if config.pending_download:
+                                is_supported = is_extension_supported(
+                                    sanitize_filename(game_name),
+                                    platform,
+                                    load_extensions_json()
+                                )
+                                if not is_supported:
+                                    config.previous_menu_state = config.menu_state
+                                    config.menu_state = "extension_warning"
+                                    config.extension_confirm_selection = 0
+                                    config.needs_redraw = True
+                                    logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
+                                else:
+                                    loop = asyncio.get_running_loop()
+                                    task = loop.run_in_executor(None, download_from_1fichier, url, platform, game_name, config.pending_download[3])
+                                    config.download_tasks[task] = (task, url, game_name, platform)
+                                    config.previous_menu_state = config.menu_state
+                                    config.menu_state = "download_progress"
+                                    config.needs_redraw = True
+                                    logger.debug(f"Début du téléchargement 1fichier: {game_name} pour {platform} depuis {url}")
+                                    config.pending_download = None
+                                    action = "download"
+                            else:
+                                config.menu_state = "error"
+                                config.error_message = "Extension non supportée ou erreur de téléchargement"
+                                config.pending_download = None
+                                config.needs_redraw = True
+                                logger.error(f"config.pending_download est None pour {game_name}")
+                        else:
+                            # Vérifier l'extension pour les liens non-1fichier
+                            config.pending_download = check_extension_before_download(url, platform, game_name)
+                            if config.pending_download:
+                                is_supported = is_extension_supported(
+                                    sanitize_filename(game_name),
+                                    platform,
+                                    load_extensions_json()
+                                )
+                                if not is_supported:
+                                    config.previous_menu_state = config.menu_state
+                                    config.menu_state = "extension_warning"
+                                    config.extension_confirm_selection = 0
+                                    config.needs_redraw = True
+                                    logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
+                                else:
+                                    task = asyncio.create_task(download_rom(url, platform, game_name, config.pending_download[3]))
+                                    config.download_tasks[task] = (task, url, game_name, platform)
+                                    config.previous_menu_state = config.menu_state
+                                    config.menu_state = "download_progress"
+                                    config.needs_redraw = True
+                                    logger.debug(f"Début du téléchargement: {game_name} pour {platform} depuis {url}")
+                                    config.pending_download = None
+                                    action = "download"
+                            else:
+                                config.menu_state = "error"
+                                config.error_message = "Extension non supportée ou erreur de téléchargement"
+                                config.pending_download = None
+                                config.needs_redraw = True
+                                logger.error(f"config.pending_download est None pour {game_name}")
+
+        # Avertissement extension
+        elif config.menu_state == "extension_warning":
+            if is_input_matched(event, "confirm"):
+                if config.extension_confirm_selection == 1:
+                    if config.pending_download and len(config.pending_download) == 4:
+                        url, platform, game_name, is_zip_non_supported = config.pending_download
+                        if is_1fichier_url(url):
+                            if not config.API_KEY_1FICHIER:
+                                config.previous_menu_state = config.menu_state
+                                config.menu_state = "error"
+                                config.error_message = (
+                                    "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichierAPI.txt"
+                                )
+                                config.needs_redraw = True
+                                logger.error("Clé API 1fichier absente, téléchargement impossible.")
+                                config.pending_download = None
+                                return action
+                            loop = asyncio.get_running_loop()
+                            task = loop.run_in_executor(None, download_from_1fichier, url, platform, game_name, is_zip_non_supported)
+                        else:
+                            task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
+                        config.download_tasks[task] = (task, url, game_name, platform)
+                        config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                        config.menu_state = "download_progress"
+                        config.needs_redraw = True
+                        logger.debug(f"Téléchargement confirmé après avertissement: {game_name} pour {platform} depuis {url}")
+                        config.pending_download = None
+                        action = "download"
+                    else:
+                        config.menu_state = "error"
+                        config.error_message = "Données de téléchargement invalides"
+                        config.pending_download = None
+                        config.needs_redraw = True
+                        logger.error("config.pending_download invalide")
+                else:
+                    config.pending_download = None
+                    config.menu_state = validate_menu_state(config.previous_menu_state)
+                    config.needs_redraw = True
+                    logger.debug(f"Retour à {config.menu_state} depuis extension_warning")
+            elif is_input_matched(event, "left") or is_input_matched(event, "right"):
+                config.extension_confirm_selection = 1 - config.extension_confirm_selection
+                config.needs_redraw = True
+                #logger.debug(f"Changement sélection extension_warning: {config.extension_confirm_selection}")
+            elif is_input_matched(event, "cancel"):
+                config.pending_download = None
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.needs_redraw = True
+                logger.debug(f"Retour à {config.menu_state} depuis extension_warning")
 
         #Historique            
         elif config.menu_state == "history":
@@ -666,41 +756,6 @@ def handle_controls(event, sources, joystick, screen):
                 config.confirm_selection = 1 - config.confirm_selection
                 config.needs_redraw = True
                 #logger.debug(f"Changement sélection confirm_exit: {config.confirm_selection}")
-
-        # Avertissement extension
-        elif config.menu_state == "extension_warning":
-            if is_input_matched(event, "confirm"):
-                if config.extension_confirm_selection == 1:
-                    if config.pending_download and len(config.pending_download) == 4:
-                        url, platform, game_name, is_zip_non_supported = config.pending_download
-                        task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
-                        config.download_tasks[task] = (task, url, game_name, platform)
-                        config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                        config.menu_state = "download_progress"
-                        config.needs_redraw = True
-                        logger.debug(f"Téléchargement confirmé après avertissement: {game_name} pour {platform} depuis {url}")
-                        config.pending_download = None
-                        action = "download"
-                    else:
-                        config.menu_state = "error"
-                        config.error_message = "Données de téléchargement invalides"
-                        config.pending_download = None
-                        config.needs_redraw = True
-                        logger.error("config.pending_download invalide")
-                else:
-                    config.pending_download = None
-                    config.menu_state = validate_menu_state(config.previous_menu_state)
-                    config.needs_redraw = True
-                    logger.debug(f"Retour à {config.menu_state} depuis extension_warning")
-            elif is_input_matched(event, "left") or is_input_matched(event, "right"):
-                config.extension_confirm_selection = 1 - config.extension_confirm_selection
-                config.needs_redraw = True
-                #logger.debug(f"Changement sélection extension_warning: {config.extension_confirm_selection}")
-            elif is_input_matched(event, "cancel"):
-                config.pending_download = None
-                config.menu_state = validate_menu_state(config.previous_menu_state)
-                config.needs_redraw = True
-                logger.debug(f"Retour à {config.menu_state} depuis extension_warning")
 
         # Menu pause
         elif config.menu_state == "pause_menu":

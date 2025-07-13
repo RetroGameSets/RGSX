@@ -1,348 +1,123 @@
 import requests
 import subprocess
-import re
 import os
 import threading
 import pygame # type: ignore
-import zipfile
-import json
+import sys
 import asyncio
 import config
-import sys
 from config import OTA_VERSION_ENDPOINT, OTA_UPDATE_SCRIPT
-from utils import sanitize_filename
+from utils import sanitize_filename, extract_zip, extract_rar
 from history import add_to_history, load_history
 import logging
 
 logger = logging.getLogger(__name__)
 
-JSON_EXTENSIONS = "/userdata/roms/ports/RGSX/rom_extensions.json"
+
 cache = {}
 CACHE_TTL = 3600  # 1 heure
         
 def test_internet():
-    """Teste la connexion Internet dans un thread séparé."""
     logger.debug("Test de connexion Internet")
-    result = [False]
-    
-    def ping_thread():
-        try:
-            proc = subprocess.run(['ping', '-c', '4', '8.8.8.8'], capture_output=True, text=True, timeout=5)
-            result[0] = proc.returncode == 0
-            logger.debug("Connexion Internet OK" if result[0] else "Échec ping 8.8.8.8")
-        except Exception as e:
-            logger.debug(f"Erreur test Internet: {str(e)}")
-            result[0] = False
-    
-    thread = threading.Thread(target=ping_thread)
-    thread.start()
-    thread.join()
-    return result[0]
+    try:
+        result = subprocess.run(['ping', '-c', '4', '8.8.8.8'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            logger.debug("Connexion Internet OK")
+            return True
+        else:
+            logger.debug("Échec ping 8.8.8.8")
+            return False
+    except Exception as e:
+        logger.debug(f"Erreur test Internet: {str(e)}")
+        return False
 
-
-# Fonction pour vérifier et appliquer les mises à jour OTA
 async def check_for_updates():
-    """Vérifie et applique les mises à jour OTA dans un thread séparé."""
-    result = [None, None]
-    
-    def update_thread():
-        try:
-            logger.debug("Vérification de la version disponible sur le serveur")
-            config.current_loading_system = "Mise à jour en cours... Patientez l'écran reste figé..Puis relancer l'application"
-            config.loading_progress = 5.0
+    try:
+        logger.debug("Vérification de la version disponible sur le serveur")
+        config.current_loading_system = "Mise à jour en cours... Patientez l'ecran reste figé..Puis relancer l'application"
+        config.loading_progress = 5.0
+        config.needs_redraw = True
+        response = requests.get(OTA_VERSION_ENDPOINT, timeout=5)
+        response.raise_for_status()
+        if response.headers.get("content-type") != "application/json":
+            raise ValueError(f"Le fichier version.json n'est pas un JSON valide (type de contenu : {response.headers.get('content-type')})")
+        version_data = response.json()
+        latest_version = version_data.get("version")
+        logger.debug(f"Version distante : {latest_version}, version locale : {config.app_version}")
+
+        if latest_version != config.app_version:
+            config.current_loading_system = f"Mise à jour disponible : {latest_version}"
+            config.loading_progress = 10.0
             config.needs_redraw = True
-            response = requests.get(OTA_VERSION_ENDPOINT, timeout=5)
-            response.raise_for_status()
-            if response.headers.get("content-type") != "application/json":
-                raise ValueError(f"Le fichier version.json n'est pas un JSON valide (type de contenu : {response.headers.get('content-type')})")
-            version_data = response.json()
-            latest_version = version_data.get("version")
-            logger.debug(f"Version distante : {latest_version}, version locale : {config.app_version}")
+            logger.debug(f"Téléchargement du script de mise à jour : {OTA_UPDATE_SCRIPT}")
 
-            if latest_version != config.app_version:
-                config.current_loading_system = f"Mise à jour disponible : {latest_version}"
-                config.loading_progress = 10.0
-                config.needs_redraw = True
-                logger.debug(f"Téléchargement du script de mise à jour : {OTA_UPDATE_SCRIPT}")
+            update_script_path = "/userdata/roms/ports/rgsx-update.sh"
+            logger.debug(f"Téléchargement de {OTA_UPDATE_SCRIPT} vers {update_script_path}")
+            with requests.get(OTA_UPDATE_SCRIPT, stream=True, timeout=10) as r:
+                r.raise_for_status()
+                with open(update_script_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            config.loading_progress = min(50.0, config.loading_progress + 5.0)
+                            config.needs_redraw = True
+                            await asyncio.sleep(0)
 
-                update_script_path = "/userdata/roms/ports/rgsx-update.sh"
-                logger.debug(f"Téléchargement de {OTA_UPDATE_SCRIPT} vers {update_script_path}")
-                with requests.get(OTA_UPDATE_SCRIPT, stream=True, timeout=10) as r:
-                    r.raise_for_status()
-                    with open(update_script_path, "wb") as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                config.loading_progress = min(50.0, config.loading_progress + 5.0)
-                                config.needs_redraw = True
-                                # Pas de sleep ici, car on est dans un thread
-
-                config.current_loading_system = "Préparation de la mise à jour..."
-                config.loading_progress = 60.0
-                config.needs_redraw = True
-                logger.debug(f"Rendre {update_script_path} exécutable")
-                subprocess.run(["chmod", "+x", update_script_path], check=True)
-                logger.debug(f"Script {update_script_path} rendu exécutable")
-
-                logger.debug(f"Vérification de l'existence et des permissions de {update_script_path}")
-                if not os.path.isfile(update_script_path):
-                    logger.error(f"Le script {update_script_path} n'existe pas")
-                    result[0], result[1] = False, f"Erreur : le script {update_script_path} n'existe pas"
-                    return
-                if not os.access(update_script_path, os.X_OK):
-                    logger.error(f"Le script {update_script_path} n'est pas exécutable")
-                    result[0], result[1] = False, f"Erreur : le script {update_script_path} n'est pas exécutable"
-                    return
-
-                wrapper_script_path = "/userdata/roms/ports/RGSX/update/run.update"
-                logger.debug(f"Vérification de l'existence et des permissions de {wrapper_script_path}")
-                if not os.path.isfile(wrapper_script_path):
-                    logger.error(f"Le script wrapper {wrapper_script_path} n'existe pas")
-                    result[0], result[1] = False, f"Erreur : le script wrapper {wrapper_script_path} n'existe pas"
-                    return
-                if not os.access(wrapper_script_path, os.X_OK):
-                    logger.error(f"Le script wrapper {wrapper_script_path} n'est pas exécutable")
-                    subprocess.run(["chmod", "+x", wrapper_script_path], check=True)
-                    logger.debug(f"Script wrapper {wrapper_script_path} rendu exécutable")
-
-                logger.debug("Désactivation des événements Pygame QUIT")
-                pygame.event.set_blocked(pygame.QUIT)
-
-                config.current_loading_system = "Application de la mise à jour..."
-                config.loading_progress = 80.0
-                config.needs_redraw = True
-                logger.debug(f"Exécution du script wrapper : {wrapper_script_path}")
-                os_result = os.system(f"{wrapper_script_path} &")
-                logger.debug(f"Résultat de os.system : {os_result}")
-                if os_result != 0:
-                    logger.error(f"Échec du lancement du script wrapper : code de retour {os_result}")
-                    result[0], result[1] = False, f"Échec du lancement du script wrapper : code de retour {os_result}"
-                    return
-
-                config.current_loading_system = "Mise à jour déclenchée, redémarrage..."
-                config.loading_progress = 100.0
-                config.needs_redraw = True
-                logger.debug("Mise à jour déclenchée, arrêt de l'application")
-                config.update_triggered = True
-                pygame.quit()
-                sys.exit(0)
-            else:
-                logger.debug("Aucune mise à jour logicielle disponible")
-                result[0], result[1] = True, "Aucune mise à jour disponible"
-        except Exception as e:
-            logger.error(f"Erreur OTA : {str(e)}")
-            result[0], result[1] = False, f"Erreur lors de la vérification des mises à jour : {str(e)}"
-
-    thread = threading.Thread(target=update_thread)
-    thread.start()
-    while thread.is_alive():
-        pygame.event.pump()
-        await asyncio.sleep(0.1)
-    thread.join()
-    return result[0], result[1]
-
-def load_extensions_json():
-    """Charge le fichier JSON contenant les extensions supportées."""
-    try:
-        with open(JSON_EXTENSIONS, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        logger.error(f"Erreur lors de la lecture de {JSON_EXTENSIONS}: {e}")
-        return []
-
-def is_extension_supported(filename, platform, extensions_data):
-    """Vérifie si l'extension du fichier est supportée pour la plateforme donnée."""
-    extension = os.path.splitext(filename)[1].lower()
-    dest_dir = None
-    for platform_dict in config.platform_dicts:
-        if platform_dict["platform"] == platform:
-            dest_dir = platform_dict.get("folder")
-            break
-    if not dest_dir:
-        logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform}")
-        dest_dir = os.path.join("/userdata/roms", platform)
-    for system in extensions_data:
-        if system["folder"] == dest_dir:
-            return extension in system["extensions"]
-    logger.warning(f"Aucun système trouvé pour le dossier {dest_dir}")
-    return False
-
-def extract_zip(zip_path, dest_dir, url):
-    """Extrait le contenu du fichier ZIP dans le dossier cible avec un suivi progressif de la progression."""
-    try:
-        lock = threading.Lock()
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            total_size = sum(info.file_size for info in zip_ref.infolist() if not info.is_dir())
-            logger.info(f"Taille totale à extraire: {total_size} octets")
-            if total_size == 0:
-                logger.warning("ZIP vide ou ne contenant que des dossiers")
-                return True, "ZIP vide extrait avec succès"
-
-            extracted_size = 0
-            os.makedirs(dest_dir, exist_ok=True)
-            chunk_size = 8192
-            for info in zip_ref.infolist():
-                if info.is_dir():
-                    continue
-                file_path = os.path.join(dest_dir, info.filename)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
-                    file_size = info.file_size
-                    file_extracted = 0
-                    while True:
-                        chunk = source.read(chunk_size)
-                        if not chunk:
-                            break
-                        dest.write(chunk)
-                        file_extracted += len(chunk)
-                        extracted_size += len(chunk)
-                        with lock:
-                            config.download_progress[url]["downloaded_size"] = extracted_size
-                            config.download_progress[url]["total_size"] = total_size
-                            config.download_progress[url]["status"] = "Extracting"
-                            config.download_progress[url]["progress_percent"] = (extracted_size / total_size * 100) if total_size > 0 else 0
-                            config.needs_redraw = True  # Forcer le redraw
-                        logger.debug(f"Extraction {info.filename}, chunk: {len(chunk)}, file_extracted: {file_extracted}/{file_size}, total_extracted: {extracted_size}/{total_size}, progression: {(extracted_size/total_size*100):.1f}%")
-                os.chmod(file_path, 0o644)
-
-        for root, dirs, _ in os.walk(dest_dir):
-            for dir_name in dirs:
-                os.chmod(os.path.join(root, dir_name), 0o755)
-
-        os.remove(zip_path)
-        logger.info(f"Fichier ZIP {zip_path} extrait dans {dest_dir} et supprimé")
-        return True, "ZIP extrait avec succès"
-    except Exception as e:
-        logger.error(f"Erreur lors de l'extraction de {zip_path}: {e}")
-        return False, str(e)
-
-def extract_rar(rar_path, dest_dir, url):
-    """Extrait le contenu du fichier RAR dans le dossier cible, préservant la structure des dossiers."""
-    try:
-        lock = threading.Lock()
-        os.makedirs(dest_dir, exist_ok=True)
-        
-        result = subprocess.run(['unrar'], capture_output=True, text=True)
-        if result.returncode not in [0, 1]:
-            logger.error("Commande unrar non disponible")
-            return False, "Commande unrar non disponible"
-
-        result = subprocess.run(['unrar', 'l', '-v', rar_path], capture_output=True, text=True)
-        if result.returncode != 0:
-            error_msg = result.stderr.strip()
-            logger.error(f"Erreur lors de la liste des fichiers RAR: {error_msg}")
-            return False, f"Échec de la liste des fichiers RAR: {error_msg}"
-
-        logger.debug(f"Sortie brute de 'unrar l -v {rar_path}':\n{result.stdout}")
-
-        total_size = 0
-        files_to_extract = []
-        root_dirs = set()
-        lines = result.stdout.splitlines()
-        in_file_list = False
-        for line in lines:
-            if line.startswith("----"):
-                in_file_list = not in_file_list
-                continue
-            if in_file_list:
-                match = re.match(r'^\s*(\S+)\s+(\d+)\s+\d*\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+(.+)$', line)
-                if match:
-                    attrs = match.group(1)
-                    file_size = int(match.group(2))
-                    file_date = match.group(3)
-                    file_name = match.group(4).strip()
-                    if 'D' not in attrs:
-                        files_to_extract.append((file_name, file_size))
-                        total_size += file_size
-                        root_dir = file_name.split('/')[0] if '/' in file_name else ''
-                        if root_dir:
-                            root_dirs.add(root_dir)
-                        logger.debug(f"Ligne parsée: {file_name}, taille: {file_size}, date: {file_date}")
-                    else:
-                        logger.debug(f"Dossier ignoré: {file_name}")
-                else:
-                    logger.debug(f"Ligne ignorée (format inattendu): {line}")
-
-        logger.info(f"Taille totale à extraire (RAR): {total_size} octets")
-        logger.debug(f"Fichiers à extraire: {files_to_extract}")
-        logger.debug(f"Dossiers racines détectés: {root_dirs}")
-        if total_size == 0:
-            logger.warning("RAR vide, ne contenant que des dossiers, ou erreur de parsing")
-            return False, "RAR vide ou erreur lors de la liste des fichiers"
-
-        with lock:
-            config.download_progress[url]["downloaded_size"] = 0
-            config.download_progress[url]["total_size"] = total_size
-            config.download_progress[url]["status"] = "Extracting"
-            config.download_progress[url]["progress_percent"] = 0
+            config.current_loading_system = "Préparation de la mise à jour..."
+            config.loading_progress = 60.0
             config.needs_redraw = True
+            logger.debug(f"Rendre {update_script_path} exécutable")
+            subprocess.run(["chmod", "+x", update_script_path], check=True)
+            logger.debug(f"Script {update_script_path} rendu exécutable")
 
-        escaped_rar_path = rar_path.replace(" ", "\\ ")
-        escaped_dest_dir = dest_dir.replace(" ", "\\ ")
-        process = subprocess.Popen(['unrar', 'x', '-y', escaped_rar_path, escaped_dest_dir], 
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, stderr = process.communicate()
+            logger.debug(f"Vérification de l'existence et des permissions de {update_script_path}")
+            if not os.path.isfile(update_script_path):
+                logger.error(f"Le script {update_script_path} n'existe pas")
+                return False, f"Erreur : le script {update_script_path} n'existe pas"
+            if not os.access(update_script_path, os.X_OK):
+                logger.error(f"Le script {update_script_path} n'est pas exécutable")
+                return False, f"Erreur : le script {update_script_path} n'est pas exécutable"
 
-        if process.returncode != 0:
-            logger.error(f"Erreur lors de l'extraction de {rar_path}: {stderr}")
-            return False, f"Erreur lors de l'extraction: {stderr}"
+            wrapper_script_path = "/userdata/roms/ports/RGSX/update/run.update"
+            logger.debug(f"Vérification de l'existence et des permissions de {wrapper_script_path}")
+            if not os.path.isfile(wrapper_script_path):
+                logger.error(f"Le script wrapper {wrapper_script_path} n'existe pas")
+                return False, f"Erreur : le script wrapper {wrapper_script_path} n'existe pas"
+            if not os.access(wrapper_script_path, os.X_OK):
+                logger.error(f"Le script wrapper {wrapper_script_path} n'est pas exécutable")
+                subprocess.run(["chmod", "+x", wrapper_script_path], check=True)
+                logger.debug(f"Script wrapper {wrapper_script_path} rendu exécutable")
 
-        extracted_size = 0
-        extracted_files = []
-        total_files = len(files_to_extract)
-        for i, (expected_file, file_size) in enumerate(files_to_extract):
-            file_path = os.path.join(dest_dir, expected_file)
-            if os.path.exists(file_path):
-                extracted_size += file_size
-                extracted_files.append(expected_file)
-                os.chmod(file_path, 0o644)
-                logger.debug(f"Fichier extrait: {expected_file}, taille: {file_size}, chemin: {file_path}")
-                with lock:
-                    config.download_progress[url]["downloaded_size"] = extracted_size
-                    config.download_progress[url]["status"] = "Extracting"
-                    config.download_progress[url]["progress_percent"] = ((i + 1) / total_files * 100) if total_files > 0 else 0
-                    config.needs_redraw = True
-            else:
-                logger.warning(f"Fichier non trouvé après extraction: {expected_file}")
+            logger.debug("Désactivation des événements Pygame QUIT")
+            pygame.event.set_blocked(pygame.QUIT)
 
-        missing_files = [f for f, _ in files_to_extract if f not in extracted_files]
-        if missing_files:
-            logger.warning(f"Fichiers non extraits: {', '.join(missing_files)}")
-            return False, f"Fichiers non extraits: {', '.join(missing_files)}"
+            config.current_loading_system = "Application de la mise à jour..."
+            config.loading_progress = 80.0
+            config.needs_redraw = True
+            logger.debug(f"Exécution du script wrapper : {wrapper_script_path}")
+            result = os.system(f"{wrapper_script_path} &")
+            logger.debug(f"Résultat de os.system : {result}")
+            if result != 0:
+                logger.error(f"Échec du lancement du script wrapper : code de retour {result}")
+                return False, f"Échec du lancement du script wrapper : code de retour {result}"
 
-        if dest_dir == "/userdata/roms/ps3" and len(root_dirs) == 1:
-            root_dir = root_dirs.pop()
-            old_path = os.path.join(dest_dir, root_dir)
-            new_path = os.path.join(dest_dir, f"{root_dir}.ps3")
-            if os.path.isdir(old_path):
-                try:
-                    os.rename(old_path, new_path)
-                    logger.info(f"Dossier renommé: {old_path} -> {new_path}")
-                except Exception as e:
-                    logger.error(f"Erreur lors du renommage de {old_path} en {new_path}: {str(e)}")
-                    return False, f"Erreur lors du renommage du dossier: {str(e)}"
-            else:
-                logger.warning(f"Dossier racine {old_path} non trouvé après extraction")
-        elif dest_dir == "/userdata/roms/ps3" and len(root_dirs) > 1:
-            logger.warning(f"Plusieurs dossiers racines détectés dans l'archive: {root_dirs}. Aucun renommage effectué.")
+            config.current_loading_system = "Mise à jour déclenchée, redémarrage..."
+            config.loading_progress = 100.0
+            config.needs_redraw = True
+            logger.debug("Mise à jour déclenchée, arrêt de l'application")
+            config.update_triggered = True
+            pygame.quit()
+            sys.exit(0)
+        else:
+            logger.debug("Aucune mise à jour logicielle disponible")
+            return True, "Aucune mise à jour disponible"
 
-        for root, dirs, _ in os.walk(dest_dir):
-            for dir_name in dirs:
-                os.chmod(os.path.join(root, dir_name), 0o755)
-
-        os.remove(rar_path)
-        logger.info(f"Fichier RAR {rar_path} extrait dans {dest_dir} et supprimé")
-        return True, "RAR extrait avec succès"
     except Exception as e:
-        logger.error(f"Erreur lors de l'extraction de {rar_path}: {str(e)}")
-        return False, str(e)
-    finally:
-        if os.path.exists(rar_path):
-            try:
-                os.remove(rar_path)
-                logger.info(f"Fichier RAR {rar_path} supprimé après échec de l'extraction")
-            except Exception as e:
-                logger.error(f"Erreur lors de la suppression de {rar_path}: {str(e)}")
+        logger.error(f"Erreur OTA : {str(e)}")
+        return False, f"Erreur lors de la vérification des mises à jour : {str(e)}"
+
+
+
 
 async def download_rom(url, platform, game_name, is_zip_non_supported=False):
     logger.debug(f"Début téléchargement: {game_name} depuis {url}, is_zip_non_supported={is_zip_non_supported}")
@@ -463,31 +238,6 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False):
     
     return result[0], result[1]
 
-def check_extension_before_download(game_name, platform, url):
-    """Vérifie l'extension avant de lancer le téléchargement et retourne un tuple de 4 éléments."""
-    try:
-        sanitized_name = sanitize_filename(game_name)
-        extensions_data = load_extensions_json()
-        if not extensions_data:
-            logger.error(f"Fichier {JSON_EXTENSIONS} vide ou introuvable")
-            return None
-
-        is_supported = is_extension_supported(sanitized_name, platform, extensions_data)
-        extension = os.path.splitext(sanitized_name)[1].lower()
-        is_archive = extension in (".zip", ".rar")
-
-        if is_supported:
-            logger.debug(f"L'extension de {sanitized_name} est supportée pour {platform}")
-            return (url, platform, game_name, False)
-        elif is_archive:
-            logger.debug(f"Archive {extension.upper()} détectée pour {sanitized_name}, extraction automatique prévue")
-            return (url, platform, game_name, True)
-        else:
-            logger.debug(f"Extension non supportée ({extension}) pour {sanitized_name}, avertissement affiché")
-            return (url, platform, game_name, False)
-    except Exception as e:
-        logger.error(f"Erreur vérification extension {url}: {str(e)}")
-        return None
 
 def is_1fichier_url(url):
     """Détecte si l'URL est un lien 1fichier."""

@@ -5,7 +5,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.9.4"
+app_version = "1.9.5"
+
 
 # URL du serveur OTA
 OTA_SERVER_URL = "https://retrogamesets.fr/softs"
@@ -13,17 +14,22 @@ OTA_VERSION_ENDPOINT = f"{OTA_SERVER_URL}/version.json"
 OTA_UPDATE_SCRIPT = f"{OTA_SERVER_URL}/rgsx-update.sh"
 OTA_data_ZIP = f"{OTA_SERVER_URL}/rgsx-data.zip"
 
+# Constantes pour la répétition automatique dans pause_menu
+REPEAT_DELAY = 300  # Délai initial avant répétition (ms)
+REPEAT_INTERVAL = 150  # Intervalle entre répétitions (ms), augmenté pour réduire la fréquence
+REPEAT_ACTION_DEBOUNCE = 100  # Délai anti-rebond pour répétitions (ms), augmenté pour éviter les répétitions excessives
+
 
 # Variables d'état
-platforms = [] # Liste des plateformes chargées depuis sources.json
-current_platform = 0 # Index de la plateforme actuellement sélectionnée
+platforms = []
+current_platform = 0
 platform_names = {}  # {platform_id: platform_name}
-games = []  # Liste des jeux chargés pour la plateforme actuelle
-current_game = 0 # Index du jeu actuellement sélectionné
-menu_state = "" # État actuel du menu (par exemple, "main_menu", "game_list", "settings", etc.)
+games = []
+current_game = 0
+menu_state = "popup"
 confirm_choice = False
 scroll_offset = 0
-visible_games = 15  
+visible_games = 15
 popup_start_time = 0
 last_progress_update = 0
 needs_redraw = True
@@ -39,6 +45,10 @@ download_result_start_time = 0
 loading_progress = 0.0
 current_loading_system = ""
 error_message = ""
+repeat_action = None
+repeat_start_time = 0
+repeat_last_action = 0
+repeat_key = None 
 filtered_games = []
 search_mode = False
 search_query = ""
@@ -90,6 +100,9 @@ CONTROLS_CONFIG_PATH = "/userdata/saves/ports/rgsx/controls.json"
 """Chemin du fichier de configuration des contrôles."""
 HISTORY_PATH = "/userdata/saves/ports/rgsx/history.json"
 """Chemin du fichier de l'historique des téléchargements."""
+JSON_EXTENSIONS = "/userdata/roms/ports/RGSX/rom_extensions.json"
+"""Chemin du fichier JSON des extensions de ROMs."""
+
 
 def init_font():
     """Initialise les polices après pygame.init()."""

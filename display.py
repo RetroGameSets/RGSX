@@ -1,6 +1,5 @@
 import pygame  # type: ignore
 import config
-import os
 from utils import truncate_text_middle, wrap_text, load_system_image
 import logging
 import math
@@ -152,7 +151,9 @@ def draw_loading_screen(screen):
         "Bienvenue dans RGSX",
         "It's dangerous to go alone, take all you need!",
         "Mais ne téléchargez que des jeux",
-        "dont vous possédez les originaux !"
+        "dont vous possédez les originaux !",
+        "RGSX n'est pas responsable des contenus téléchargés,",
+        "et n'heberge pas de ROMs.",
     ]
 
     margin_horizontal = int(config.screen_width * 0.025)
@@ -699,7 +700,7 @@ def draw_popup_result_download(screen, message, is_error):
     """Affiche une popup avec un message de résultat."""
     screen.blit(OVERLAY, (0, 0))
     if message is None:
-        message = "Téléchargement annulé"
+        message = "Téléchargement annulé par l'utilisateur."
     logger.debug(f"Message popup : {message}, is_error={is_error}")
     # Réduire la largeur maximale pour le wrapping
     wrapped_message = wrap_text(message, config.small_font, config.screen_width - 160)
@@ -849,18 +850,18 @@ def draw_pause_menu(screen, selected_option):
 def draw_controls_help(screen, previous_state):
     """Affiche la liste des contrôles avec un style moderne."""
     common_controls = {
-        "confirm": lambda action: f"{get_control_display('confirm', 'Entrée/A/Croix')} : {action}",
-        "cancel": lambda action: f"{get_control_display('cancel', 'Échap/B/Rond')} : {action}",
-        "start": lambda: f"{get_control_display('start', 'Start/')} : Menu",
-        "progress": lambda action: f"{get_control_display('progress', 'X/Carré')} : {action}",
+        "confirm": lambda action: f"{get_control_display('confirm', 'Entrée/A')} : {action}",
+        "cancel": lambda action: f"{get_control_display('cancel', 'Échap/B')} : {action}",
+        "start": lambda: f"{get_control_display('start', 'Start')} : Menu",
+        "progress": lambda action: f"{get_control_display('progress', 'X')} : {action}",
         "up": lambda action: f"{get_control_display('up', 'Flèche Haut')} : {action}",
         "down": lambda action: f"{get_control_display('down', 'Flèche Bas')} : {action}",
-        "page_up": lambda action: f"{get_control_display('page_up', 'Q/LB/L1')} : {action}",
-        "page_down": lambda action: f"{get_control_display('page_down', 'E/RB/R1')} : {action}",
+        "page_up": lambda action: f"{get_control_display('page_up', 'Q/LB')} : {action}",
+        "page_down": lambda action: f"{get_control_display('page_down', 'E/RB')} : {action}",
         "filter": lambda action: f"{get_control_display('filter', 'Select')} : {action}",
-        "history": lambda action: f"{get_control_display('history', 'H/Y/Triangle')} : {action}",
-        "delete": lambda: f"{get_control_display('delete', 'Backspace/LT/L2')} : Supprimer",
-        "space": lambda: f"{get_control_display('space', 'Espace/RT/R2')} : Espace"
+        "history": lambda action: f"{get_control_display('history', 'H')} : {action}",
+        "delete": lambda: f"{get_control_display('delete', 'Retour Arrière')} : Supprimer",
+        "space": lambda: f"{get_control_display('space', 'Espace')} : Espace"
     }
 
     state_controls = {
@@ -1042,46 +1043,3 @@ def draw_popup(screen):
     countdown_surface = config.small_font.render(countdown_text, True, THEME_COLORS["text"])
     countdown_rect = countdown_surface.get_rect(center=(config.screen_width // 2, popup_y + margin_top_bottom + len(text_lines) * line_height + line_height // 2))
     screen.blit(countdown_surface, countdown_rect)
-
-
-# Variables globales pour la popup de musique
-current_music_name = None
-music_popup_start_time = None
-MUSIC_POPUP_DURATION = 5  # Durée d'affichage en secondes
-
-def draw_music_popup(screen):
-    """Affiche une popup discrète en bas à droite avec le nom de la musique en cours."""
-    global current_music_name, music_popup_start_time
-    
-    if current_music_name is None or music_popup_start_time is None:
-        return
-    
-    # Vérifier si la popup doit encore être affichée
-    current_time = pygame.time.get_ticks() / 1000  # Temps en secondes
-    if current_time - music_popup_start_time > MUSIC_POPUP_DURATION:
-        current_music_name = None
-        music_popup_start_time = None
-        return
-    
-    # Paramètres de la popup
-    font = config.small_font
-    text = font.render(current_music_name, True, THEME_COLORS["text"])
-    text_width, text_height = font.size(current_music_name)
-    padding = 10
-    rect_width = text_width + 2 * padding
-    rect_height = text_height + 2 * padding
-    rect_x = config.screen_width - rect_width - 22 # 20 pixels de marge à droite
-    rect_y = config.screen_height - rect_height - 8 # 20 pixels de marge en bas
-    
-    # Créer une surface semi-transparente
-    popup_surface = pygame.Surface((rect_width, rect_height), pygame.SRCALPHA)
-    pygame.draw.rect(popup_surface, THEME_COLORS["fond_image"] + (180,), (0, 0, rect_width, rect_height), border_radius=8)
-    pygame.draw.rect(popup_surface, THEME_COLORS["border"] + (200,), (0, 0, rect_width, rect_height), 1, border_radius=8)
-    
-    # Ajouter le texte
-    text_rect = text.get_rect(center=(rect_width // 2, rect_height // 2))
-    popup_surface.blit(text, text_rect)
-    
-    # Afficher la popup
-    screen.blit(popup_surface, (rect_x, rect_y))
-

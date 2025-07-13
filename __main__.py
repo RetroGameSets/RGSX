@@ -1,19 +1,18 @@
-import pygame# type: ignore
 import os
 os.environ["SDL_FBDEV"] = "/dev/fb0"
+import pygame # type: ignore
 import asyncio
 import platform
 import logging
 import requests
-import config
-from config import logger
-from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_gradient, draw_virtual_keyboard, draw_popup_result_download, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, THEME_COLORS, draw_music_popup
-from network import test_internet, download_rom, check_extension_before_download, extract_zip, check_for_updates
+from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_virtual_keyboard, draw_popup_result_download, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, draw_gradient, THEME_COLORS
+from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates
 from controls import handle_controls, validate_menu_state
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
-from utils import play_random_music, load_sources, detect_non_pc
+from utils import detect_non_pc, load_sources, check_extension_before_download, extract_zip, play_random_music
 from history import load_history
-from config import OTA_data_ZIP
+import config
+from config import OTA_VERSION_ENDPOINT, OTA_UPDATE_SCRIPT, OTA_data_ZIP
 
 # Configuration du logging
 log_dir = "/userdata/roms/ports/RGSX/logs"
@@ -34,44 +33,35 @@ except Exception as e:
 
 logger = logging.getLogger(__name__)
 
-# Initialisation de Pygame
+# Initialisation de Pygame et des polices
 pygame.init()
 config.init_font()
 pygame.joystick.init()
 pygame.mouse.set_visible(True)
 
-# Détection du système
+# Détection du système non-PC
 config.is_non_pc = detect_non_pc()
-
-# Initialisation des polices
-try:
-    config.font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 36)
-    config.title_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 48)
-    config.search_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 48)
-    config.progress_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 36)
-    config.small_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 28)
-    logger.debug("Police Pixel-UniCode chargée")
-except:
-    config.font = pygame.font.SysFont("arial", 48)
-    config.title_font = pygame.font.SysFont("arial", 60)
-    config.search_font = pygame.font.SysFont("arial", 60)
-    config.progress_font = pygame.font.SysFont("arial", 36)
-    config.small_font = pygame.font.SysFont("arial", 28)
-    logger.debug("Police Arial chargée")
 
 # Initialisation de l’écran
 screen = init_display()
 pygame.display.set_caption("RGSX")
+clock = pygame.time.Clock()
 
-# Afficher un écran de chargement initial
-draw_gradient(screen, THEME_COLORS["background_top"], THEME_COLORS["background_bottom"])
-loading_text = config.font.render("Initialisation...", True, (255, 255, 255))
-text_rect = loading_text.get_rect(center=(config.screen_width // 2, config.screen_height // 2))
-screen.blit(loading_text, text_rect)
-pygame.display.flip()
-logger.debug("Écran de chargement initial affiché")
-
-
+# Initialisation des polices
+try:
+    config.font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 36) # Police principale
+    config.title_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 48) # Police pour les titres
+    config.search_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 48) # Police pour la recherche
+    config.progress_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 36)  # Police pour l'affichage de la progression
+    config.small_font = pygame.font.Font("/userdata/roms/ports/RGSX/assets/Pixel-UniCode.ttf", 28)  # Police pour les petits textes
+    logger.debug("Police Pixel-UniCode chargée")
+except:
+    config.font = pygame.font.SysFont("arial", 48) # Police fallback
+    config.title_font = pygame.font.SysFont("arial", 60) # Police fallback pour les titres
+    config.search_font = pygame.font.SysFont("arial", 60)   # Police fallback pour la recherche
+    config.progress_font = pygame.font.SysFont("arial", 36)  # Police fallback pour l'affichage de la progression
+    config.small_font = pygame.font.SysFont("arial", 28)  # Police fallback pour les petits textes
+    logger.debug("Police Arial chargée")
 
 # Mise à jour de la résolution dans config
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
@@ -82,6 +72,25 @@ config.current_page = 0
 config.selected_platform = 0
 config.selected_key = (0, 0)
 config.transition_state = "none"
+
+# Initialisation des variables de répétition
+config.repeat_action = None
+config.repeat_key = None
+config.repeat_start_time = 0
+config.repeat_last_action = 0
+
+# Initialisation des variables pour la popup de musique
+current_music_name = None
+music_popup_start_time = 0
+# Dossier musique Batocera
+music_folder = "/userdata/roms/ports/RGSX/assets/music"
+music_files = [f for f in os.listdir(music_folder) if f.lower().endswith(('.ogg', '.mp3'))]
+current_music = None  # Variable pour suivre la musique en cours
+if music_files:
+    current_music = play_random_music(music_files, music_folder, current_music)
+else:
+    logger.debug("Aucune musique trouvée dans /userdata/roms/ports/RGSX/assets/music")
+
 
 # Chargement de l'historique
 config.history = load_history()
@@ -101,14 +110,14 @@ if pygame.joystick.get_count() > 0:
     joystick.init()
     logger.debug("Gamepad initialisé")
 
-# Initialisation de pygame.mixer
+# Initialisation du mixer Pygame
+pygame.mixer.pre_init(44100, -16, 2, 4096)
 pygame.mixer.init()
 
-# Jouer la première musique au démarrage
-play_random_music()
 
 # Boucle principale
 async def main():
+    global current_music, music_files, music_folder
     logger.debug("Début main")
     running = True
     loading_step = "none"
@@ -117,33 +126,27 @@ async def main():
     config.debounce_delay = 50
     config.update_triggered = False
     last_redraw_time = pygame.time.get_ticks()
+    config.last_frame_time = pygame.time.get_ticks()  # Initialisation pour éviter erreur
+
+    screen = init_display()
     clock = pygame.time.Clock()
 
-    # Variables pour la progression simulée
-    check_ota_start_time = None
-    load_sources_start_time = None
-    SIMULATED_CHECK_OTA_DURATION = 5.0
-    SIMULATED_LOAD_SOURCES_DURATION = 3.0
-
     while running:
-        clock.tick(60)
+        clock.tick(60)  # Limite à 60 FPS
         if config.update_triggered:
             logger.debug("Mise à jour déclenchée, arrêt de la boucle principale")
             break
 
         current_time = pygame.time.get_ticks()
-        current_time_sec = current_time / 1000.0
 
         # Forcer redraw toutes les 100 ms dans download_progress
         if config.menu_state == "download_progress" and current_time - last_redraw_time >= 100:
             config.needs_redraw = True
             last_redraw_time = current_time
 
-        # Gestion du popup timer
-        delta_time = current_time - config.last_frame_time
-        config.last_frame_time = current_time
+        # Gestion de la fin du popup
         if config.menu_state == "restart_popup" and config.popup_timer > 0:
-            config.popup_timer -= delta_time
+            config.popup_timer -= (current_time - config.last_frame_time)
             config.needs_redraw = True
             if config.popup_timer <= 0:
                 config.menu_state = validate_menu_state(config.previous_menu_state)
@@ -155,15 +158,18 @@ async def main():
         # Gestion des événements
         events = pygame.event.get()
         for event in events:
+            if event.type == pygame.USEREVENT + 1:  # Événement de fin de musique
+                logger.debug("Fin de la musique détectée, lecture d'une nouvelle musique aléatoire")
+                current_music = play_random_music(music_files, music_folder, current_music)
+                continue
+
             if event.type == pygame.QUIT:
                 config.menu_state = "confirm_exit"
                 config.confirm_selection = 0
                 config.needs_redraw = True
                 logger.debug("Événement QUIT détecté, passage à confirm_exit")
                 continue
-            elif event.type == pygame.USEREVENT + 1:
-                logger.debug("Fin de la musique actuelle, passage à la suivante")
-                play_random_music()
+
             start_config = config.controls_config.get("start", {})
             if start_config and (
                 (event.type == pygame.KEYDOWN and start_config.get("type") == "key" and event.key == start_config.get("value")) or
@@ -179,9 +185,9 @@ async def main():
                     config.needs_redraw = True
                     logger.debug(f"Ouverture menu pause depuis {config.previous_menu_state}")
                     continue
-
+         
             if config.menu_state == "pause_menu":
-                handle_controls(event, sources, joystick, screen)
+                action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 logger.debug(f"Événement transmis à handle_controls dans pause_menu: {event.type}")
                 continue
@@ -201,12 +207,13 @@ async def main():
                 continue
 
             if config.menu_state == "confirm_clear_history":
-                handle_controls(event, sources, joystick, screen)
+                action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 logger.debug(f"Événement transmis à handle_controls dans confirm_clear_history: {event.type}")
                 continue
+
             if config.menu_state == "redownload_game_cache":
-                handle_controls(event, sources, joystick, screen)
+                action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 logger.debug(f"Événement transmis à handle_controls dans redownload_game_cache: {event.type}")
                 continue
@@ -223,21 +230,57 @@ async def main():
                     platform = config.platforms[config.current_platform]
                     url = game[1] if isinstance(game, (list, tuple)) and len(game) > 1 else None
                     if url:
-                        logger.debug(f"Vérification de l'extension pour {game_name}, URL: {url}")
-                        is_supported, message, is_zip_non_supported = check_extension_before_download(url, platform, game_name)
-                        if not is_supported:
-                            config.pending_download = (url, platform, game_name, is_zip_non_supported)
-                            config.menu_state = "extension_warning"
-                            config.extension_confirm_selection = 0
-                            config.needs_redraw = True
-                            logger.debug(f"Extension non reconnue, passage à extension_warning pour {game_name}")
+                        logger.debug(f"Vérification pour {game_name}, URL: {url}")
+                        if is_1fichier_url(url):
+                            if not config.API_KEY_1FICHIER:
+                                config.previous_menu_state = config.menu_state
+                                config.menu_state = "error"
+                                config.error_message = (
+                                    "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichierAPI.txt"
+                                )
+                                config.needs_redraw = True
+                                logger.error("Clé API 1fichier absente")
+                                config.pending_download = None
+                                continue
+                            is_supported, message, is_zip_non_supported = check_extension_before_download(url, platform, game_name)
+                            if not is_supported:
+                                config.pending_download = (url, platform, game_name, is_zip_non_supported)
+                                config.menu_state = "extension_warning"
+                                config.extension_confirm_selection = 0
+                                config.needs_redraw = True
+                                logger.debug(f"Extension non reconnue pour lien 1fichier, passage à extension_warning pour {game_name}")
+                            else:
+                                config.previous_menu_state = config.menu_state
+                                logger.debug(f"Previous menu state défini: {config.previous_menu_state}")
+                                success, message = download_from_1fichier(url, platform, game_name, is_zip_non_supported)
+                                config.download_result_message = message
+                                config.download_result_error = not success
+                                config.download_result_start_time = pygame.time.get_ticks()
+                                config.menu_state = "download_result"
+                                config.download_progress.clear()
+                                config.pending_download = None
+                                config.needs_redraw = True
+                                logger.debug(f"Téléchargement 1fichier terminé pour {game_name}, succès={success}, message={message}")
                         else:
-                            task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
-                            config.download_tasks[task] = (task, url, game_name, platform)
-                            config.menu_state = "download_progress"
-                            config.pending_download = None
-                            config.needs_redraw = True
-                            logger.debug(f"Téléchargement démarré pour {game_name}, passage à download_progress")
+                            is_supported, message, is_zip_non_supported = check_extension_before_download(url, platform, game_name)
+                            if not is_supported:
+                                config.pending_download = (url, platform, game_name, is_zip_non_supported)
+                                config.menu_state = "extension_warning"
+                                config.extension_confirm_selection = 0
+                                config.needs_redraw = True
+                                logger.debug(f"Extension non reconnue, passage à extension_warning pour {game_name}")
+                            else:
+                                config.previous_menu_state = config.menu_state
+                                logger.debug(f"Previous menu state défini: {config.previous_menu_state}")
+                                success, message = download_rom(url, platform, game_name, is_zip_non_supported)
+                                config.download_result_message = message
+                                config.download_result_error = not success
+                                config.download_result_start_time = pygame.time.get_ticks()
+                                config.menu_state = "download_result"
+                                config.download_progress.clear()
+                                config.pending_download = None
+                                config.needs_redraw = True
+                                logger.debug(f"Téléchargement terminé pour {game_name}, succès={success}, message={message}")
                 elif action == "redownload" and config.menu_state == "history" and config.history:
                     entry = config.history[config.current_history_item]
                     platform = entry["platform"]
@@ -245,20 +288,57 @@ async def main():
                     for game in config.games:
                         if game[0] == game_name and config.platforms[config.current_platform] == platform:
                             url = game[1]
-                            is_supported, message, is_zip_non_supported = check_extension_before_download(url, platform, game_name)
-                            if not is_supported:
-                                config.pending_download = (url, platform, game_name, is_zip_non_supported)
-                                config.menu_state = "extension_warning"
-                                config.extension_confirm_selection = 0
-                                config.needs_redraw = True
-                                logger.debug(f"Extension non reconnue pour retéléchargement, passage à extension_warning pour {game_name}")
+                            logger.debug(f"Vérification pour retéléchargement de {game_name}, URL: {url}")
+                            if is_1fichier_url(url):
+                                if not config.API_KEY_1FICHIER:
+                                    config.previous_menu_state = config.menu_state
+                                    config.menu_state = "error"
+                                    config.error_message = (
+                                        "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichierAPI.txt"
+                                    )
+                                    config.needs_redraw = True
+                                    logger.error("Clé API 1fichier absente")
+                                    config.pending_download = None
+                                    continue
+                                is_supported, message, is_zip_non_supported = check_extension_before_download(url, platform, game_name)
+                                if not is_supported:
+                                    config.pending_download = (url, platform, game_name, is_zip_non_supported)
+                                    config.menu_state = "extension_warning"
+                                    config.extension_confirm_selection = 0
+                                    config.needs_redraw = True
+                                    logger.debug(f"Extension non reconnue pour lien 1fichier, passage à extension_warning pour {game_name}")
+                                else:
+                                    config.previous_menu_state = config.menu_state
+                                    logger.debug(f"Previous menu state défini: {config.previous_menu_state}")
+                                    success, message = download_from_1fichier(url, platform, game_name, is_zip_non_supported)
+                                    config.download_result_message = message
+                                    config.download_result_error = not success
+                                    config.download_result_start_time = pygame.time.get_ticks()
+                                    config.menu_state = "download_result"
+                                    config.download_progress.clear()
+                                    config.pending_download = None
+                                    config.needs_redraw = True
+                                    logger.debug(f"Retéléchargement 1fichier terminé pour {game_name}, succès={success}, message={message}")
                             else:
-                                task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported))
-                                config.download_tasks[task] = (task, url, game_name, platform)
-                                config.menu_state = "download_progress"
-                                config.pending_download = None
-                                config.needs_redraw = True
-                                logger.debug(f"Retéléchargement démarré pour {game_name}, passage à download_progress")
+                                is_supported, message, is_zip_non_supported = check_extension_before_download(url, platform, game_name)
+                                if not is_supported:
+                                    config.pending_download = (url, platform, game_name, is_zip_non_supported)
+                                    config.menu_state = "extension_warning"
+                                    config.extension_confirm_selection = 0
+                                    config.needs_redraw = True
+                                    logger.debug(f"Extension non reconnue pour retéléchargement, passage à extension_warning pour {game_name}")
+                                else:
+                                    config.previous_menu_state = config.menu_state
+                                    logger.debug(f"Previous menu state défini: {config.previous_menu_state}")
+                                    success, message = download_rom(url, platform, game_name, is_zip_non_supported)
+                                    config.download_result_message = message
+                                    config.download_result_error = not success
+                                    config.download_result_start_time = pygame.time.get_ticks()
+                                    config.menu_state = "download_result"
+                                    config.download_progress.clear()
+                                    config.pending_download = None
+                                    config.needs_redraw = True
+                                    logger.debug(f"Retéléchargement terminé pour {game_name}, succès={success}, message={message}")
                             break
 
         # Gestion des téléchargements
@@ -295,197 +375,6 @@ async def main():
             config.needs_redraw = True
             logger.debug(f"Fin popup download_result, retour à {config.menu_state}")
 
-        # Gestion de l'état loading
-        if config.menu_state == "loading":
-            logger.debug(f"Étape chargement : {loading_step}")
-            if loading_step == "none":
-                loading_step = "init_sources"
-                config.current_loading_system = "Chargement des sources..."
-                config.loading_progress = 0.0
-                config.needs_redraw = True
-                load_sources_start_time = current_time_sec
-                logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
-
-            elif loading_step == "init_sources":
-                if load_sources_start_time is None:
-                    load_sources_start_time = current_time_sec
-
-                # Simuler la progression pour init_sources
-                elapsed = current_time_sec - load_sources_start_time
-                progress = min(0.0 + (5.0 * elapsed / SIMULATED_LOAD_SOURCES_DURATION), 5.0)
-                config.loading_progress = progress
-                config.needs_redraw = True
-                logger.debug(f"Progression simulée init_sources : {config.loading_progress}%")
-
-                # Exécuter load_sources
-                sources = load_sources()
-                if not sources:
-                    config.menu_state = "error"
-                    config.error_message = "Échec du chargement de sources.json"
-                    config.needs_redraw = True
-                    logger.debug("Erreur : Échec du chargement de sources.json")
-                else:
-                    loading_step = "test_internet"
-                    config.current_loading_system = "Test de connexion..."
-                    config.loading_progress = 5.0
-                    load_sources_start_time = None
-                    config.needs_redraw = True
-                    logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
-
-            elif loading_step == "test_internet":
-                logger.debug("Exécution de test_internet()")
-                if test_internet():
-                    loading_step = "check_ota"
-                    config.current_loading_system = "Vérification des mises à jour..."
-                    config.loading_progress = 5.0
-                    check_ota_start_time = current_time_sec
-                    config.needs_redraw = True
-                    logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
-                else:
-                    config.menu_state = "error"
-                    config.error_message = "Pas de connexion Internet. Vérifiez votre réseau."
-                    config.needs_redraw = True
-                    logger.debug(f"Erreur : {config.error_message}")
-
-            elif loading_step == "check_ota":
-                if check_ota_start_time is None:
-                    check_ota_start_time = current_time_sec
-
-                # Simuler la progression pour check_ota
-                elapsed = current_time_sec - check_ota_start_time
-                progress = min(5.0 + (25.0 * elapsed / SIMULATED_CHECK_OTA_DURATION), 30.0)
-                config.loading_progress = progress
-                config.needs_redraw = True
-                logger.debug(f"Progression simulée check_ota : {config.loading_progress}%")
-
-                # Exécuter check_for_updates
-                success, message = await check_for_updates()
-                logger.debug(f"Résultat de check_for_updates : success={success}, message={message}")
-                if not success:
-                    config.menu_state = "error"
-                    config.error_message = message
-                    config.needs_redraw = True
-                    logger.debug(f"Erreur OTA : {message}")
-                else:
-                    loading_step = "check_data"
-                    config.current_loading_system = "Téléchargement des jeux et images..."
-                    config.loading_progress = 30.0
-                    check_ota_start_time = None
-                    config.needs_redraw = True
-                    logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
-
-            elif loading_step == "check_data":
-                games_data_dir = "/userdata/roms/ports/RGSX/games"
-                is_data_empty = not os.path.exists(games_data_dir) or not any(os.scandir(games_data_dir))
-
-                if is_data_empty:
-                    config.current_loading_system = "Téléchargement du Dossier Data initial..."
-                    config.loading_progress = 30.0
-                    config.needs_redraw = True
-                    logger.debug("Dossier Data vide, début du téléchargement du ZIP")
-
-                    try:
-                        zip_path = "/userdata/roms/ports/RGSX.zip"
-                        headers = {'User-Agent': 'Mozilla/5.0'}
-                        with requests.get(OTA_data_ZIP, stream=True, headers=headers, timeout=30) as response:
-                            response.raise_for_status()
-                            total_size = int(response.headers.get('content-length', 0))
-                            logger.debug(f"Taille totale du ZIP : {total_size} octets")
-                            downloaded = 0
-                            os.makedirs(os.path.dirname(zip_path), exist_ok=True)
-                            with open(zip_path, 'wb') as f:
-                                for chunk in response.iter_content(chunk_size=8192):
-                                    if chunk:
-                                        f.write(chunk)
-                                        downloaded += len(chunk)
-                                        config.download_progress[OTA_data_ZIP] = {
-                                            "downloaded_size": downloaded,
-                                            "total_size": total_size,
-                                            "status": "Téléchargement",
-                                            "progress_percent": (downloaded / total_size * 100) if total_size > 0 else 0
-                                        }
-                                        config.loading_progress = 30.0 + (40.0 * downloaded / total_size) if total_size > 0 else 30.0
-                                        config.needs_redraw = True
-                                        await asyncio.sleep(0)
-                            logger.debug(f"ZIP téléchargé : {zip_path}")
-
-                        config.current_loading_system = "Extraction du Dossier Data initial..."
-                        config.loading_progress = 70.0
-                        config.needs_redraw = True
-                        dest_dir = "/userdata/roms/ports/RGSX"
-                        success, message = extract_zip(zip_path, dest_dir, OTA_data_ZIP)
-                        if success:
-                            logger.debug(f"Extraction réussie : {message}")
-                            config.loading_progress = 70.0
-                            config.needs_redraw = True
-                        else:
-                            raise Exception(f"Échec de l'extraction : {message}")
-
-                    except Exception as e:
-                        logger.error(f"Erreur lors du téléchargement/extraction du Dossier Data : {str(e)}")
-                        config.menu_state = "error"
-                        config.error_message = f"Échec du téléchargement/extraction du Dossier Data : {str(e)}"
-                        config.needs_redraw = True
-                        loading_step = "load_sources"
-                        if os.path.exists(zip_path):
-                            os.remove(zip_path)
-                        continue
-
-                    if os.path.exists(zip_path):
-                        os.remove(zip_path)
-                        logger.debug(f"Fichier ZIP {zip_path} supprimé")
-
-                    loading_step = "load_sources"
-                    config.current_loading_system = "Chargement des systèmes..."
-                    config.loading_progress = 70.0
-                    load_sources_start_time = current_time_sec
-                    config.needs_redraw = True
-                    logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
-
-                else:
-                    loading_step = "load_sources"
-                    config.current_loading_system = "Chargement des systèmes..."
-                    config.loading_progress = 70.0
-                    load_sources_start_time = current_time_sec
-                    config.needs_redraw = True
-                    logger.debug(f"Dossier Data non vide, passage à {loading_step}")
-
-            elif loading_step == "load_sources":
-                if load_sources_start_time is None:
-                    load_sources_start_time = current_time_sec
-
-                # Simuler la progression pour load_sources
-                elapsed = current_time_sec - load_sources_start_time
-                progress = min(70.0 + (30.0 * elapsed / SIMULATED_LOAD_SOURCES_DURATION), 100.0)
-                config.loading_progress = progress
-                config.needs_redraw = True
-                logger.debug(f"Progression simulée load_sources : {config.loading_progress}%")
-
-                # Exécuter load_sources
-                sources = load_sources()
-                if not sources:
-                    config.menu_state = "error"
-                    config.error_message = "Échec du chargement de sources.json"
-                    config.needs_redraw = True
-                    logger.debug("Erreur : Échec du chargement de sources.json")
-                else:
-                    config.menu_state = "platform"
-                    config.loading_progress = 0.0
-                    config.current_loading_system = ""
-                    load_sources_start_time = None
-                    config.needs_redraw = True
-                    logger.debug(f"Fin chargement, passage à platform, progress={config.loading_progress}")
-
-        # Gestion de l'état de transition
-        if config.transition_state == "to_game":
-            config.transition_progress += 1
-            if config.transition_progress >= config.transition_duration:
-                config.menu_state = "game"
-                config.transition_state = "idle"
-                config.transition_progress = 0.0
-                config.needs_redraw = True
-                logger.debug("Transition terminée, passage à game")
-
         # Affichage
         if config.needs_redraw:
             draw_gradient(screen, THEME_COLORS["background_top"], THEME_COLORS["background_bottom"])
@@ -513,6 +402,7 @@ async def main():
                 draw_extension_warning(screen)
             elif config.menu_state == "pause_menu":
                 draw_pause_menu(screen, config.selected_option)
+                logger.debug("Rendu de draw_pause_menu")
             elif config.menu_state == "controls_help":
                 draw_controls_help(screen, config.previous_menu_state)
             elif config.menu_state == "history":
@@ -529,12 +419,12 @@ async def main():
                 config.needs_redraw = True
                 logger.error(f"État de menu non valide détecté: {config.menu_state}, retour à platform")
             draw_controls(screen, config.menu_state)
-            draw_music_popup(screen)
             pygame.display.flip()
             config.needs_redraw = False
 
         # Gestion de l'état controls_mapping
         if config.menu_state == "controls_mapping":
+            logger.debug("Avant appel de map_controls")
             try:
                 success = map_controls(screen)
                 logger.debug(f"map_controls terminé, succès={success}")
@@ -542,6 +432,7 @@ async def main():
                     config.controls_config = load_controls_config()
                     config.menu_state = "loading"
                     config.needs_redraw = True
+                    logger.debug("Passage à l'état loading après mappage")
                 else:
                     config.menu_state = "error"
                     config.error_message = "Échec du mappage des contrôles"
@@ -553,6 +444,134 @@ async def main():
                 config.error_message = f"Erreur dans map_controls: {str(e)}"
                 config.needs_redraw = True
 
+        # Gestion de l'état loading
+        elif config.menu_state == "loading":
+            if loading_step == "none":
+                loading_step = "test_internet"
+                config.current_loading_system = "Test de connexion..."
+                config.loading_progress = 0.0
+                config.needs_redraw = True
+                logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
+            elif loading_step == "test_internet":
+                logger.debug("Exécution de test_internet()")
+                if test_internet():
+                    loading_step = "check_ota"
+                    config.current_loading_system = "Mise à jour en cours... Patientez si l'ecran reste figé.. Puis relancer l'application une fois qu'elle est terminée."
+                    config.loading_progress = 20.0
+                    config.needs_redraw = True
+                    logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
+                else:
+                    config.menu_state = "error"
+                    config.error_message = "Pas de connexion Internet. Vérifiez votre réseau."
+                    config.needs_redraw = True
+                    logger.debug(f"Erreur : {config.error_message}")
+            elif loading_step == "check_ota":
+                logger.debug("Exécution de check_for_updates()")
+                success, message = await check_for_updates()
+                logger.debug(f"Résultat de check_for_updates : success={success}, message={message}")
+                if not success:
+                    config.menu_state = "error"
+                    config.error_message = message
+                    config.needs_redraw = True
+                    logger.debug(f"Erreur OTA : {message}")
+                else:
+                    loading_step = "check_data"
+                    config.current_loading_system = "Téléchargement des jeux et images ..."
+                    config.loading_progress = 50.0
+                    config.needs_redraw = True
+                    logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
+            elif loading_step == "check_data":
+                games_data_dir = "/userdata/roms/ports/RGSX/games"
+                is_data_empty = not os.path.exists(games_data_dir) or not any(os.scandir(games_data_dir))
+                if is_data_empty:
+                    config.current_loading_system = "Téléchargement du Dossier Data initial..."
+                    config.loading_progress = 30.0
+                    config.needs_redraw = True
+                    logger.debug("Dossier Data vide, début du téléchargement du ZIP")
+                    try:
+                        zip_path = "/userdata/roms/ports/RGSX.zip"
+                        headers = {'User-Agent': 'Mozilla/5.0'}
+                        with requests.get(OTA_data_ZIP, stream=True, headers=headers, timeout=30) as response:
+                            response.raise_for_status()
+                            total_size = int(response.headers.get('content-length', 0))
+                            logger.debug(f"Taille totale du ZIP : {total_size} octets")
+                            downloaded = 0
+                            os.makedirs(os.path.dirname(zip_path), exist_ok=True)
+                            with open(zip_path, 'wb') as f:
+                                for chunk in response.iter_content(chunk_size=8192):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded += len(chunk)
+                                        config.download_progress[OTA_data_ZIP] = {
+                                            "downloaded_size": downloaded,
+                                            "total_size": total_size,
+                                            "status": "Téléchargement",
+                                            "progress_percent": (downloaded / total_size * 100) if total_size > 0 else 0
+                                        }
+                                        config.loading_progress = 15.0 + (35.0 * downloaded / total_size) if total_size > 0 else 15.0
+                                        config.needs_redraw = True
+                                        await asyncio.sleep(0)
+                            logger.debug(f"ZIP téléchargé : {zip_path}")
+
+                        config.current_loading_system = "Extraction du Dossier Data initial..."
+                        config.loading_progress = 60.0
+                        config.needs_redraw = True
+                        dest_dir = "/userdata/roms/ports/RGSX"
+                        success, message = extract_zip(zip_path, dest_dir, OTA_data_ZIP)
+                        if success:
+                            logger.debug(f"Extraction réussie : {message}")
+                            config.loading_progress = 70.0
+                            config.needs_redraw = True
+                        else:
+                            raise Exception(f"Échec de l'extraction : {message}")
+                    except Exception as e:
+                        logger.error(f"Erreur lors du téléchargement/extraction du Dossier Data : {str(e)}")
+                        config.menu_state = "error"
+                        config.error_message = f"Échec du téléchargement/extraction du Dossier Data : {str(e)}"
+                        config.needs_redraw = True
+                        loading_step = "load_sources"
+                        if os.path.exists(zip_path):
+                            os.remove(zip_path)
+                        continue
+                    if os.path.exists(zip_path):
+                        os.remove(zip_path)
+                        logger.debug(f"Fichier ZIP {zip_path} supprimé")
+                    loading_step = "load_sources"
+                    config.current_loading_system = "Chargement des systèmes..."
+                    config.loading_progress = 80.0
+                    config.needs_redraw = True
+                    logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
+                else:
+                    loading_step = "load_sources"
+                    config.current_loading_system = "Chargement des systèmes..."
+                    config.loading_progress = 80.0
+                    config.needs_redraw = True
+                    logger.debug(f"Dossier Data non vide, passage à {loading_step}")
+            elif loading_step == "load_sources":
+                sources = load_sources()
+                if not sources:
+                    config.menu_state = "error"
+                    config.error_message = "Échec du chargement de sources.json"
+                    config.needs_redraw = True
+                    logger.debug("Erreur : Échec du chargement de sources.json")
+                else:
+                    config.menu_state = "platform"
+                    config.loading_progress = 100.0
+                    config.current_loading_system = ""
+                    config.needs_redraw = True
+                    logger.debug(f"Fin chargement, passage à platform, progress={config.loading_progress}")
+
+        # Gestion de l'état de transition
+        if config.transition_state == "to_game":
+            config.transition_progress += 1
+            if config.transition_progress >= config.transition_duration:
+                config.menu_state = "game"
+                config.transition_state = "idle"
+                config.transition_progress = 0.0
+                config.needs_redraw = True
+                logger.debug("Transition terminée, passage à game")
+
+        config.last_frame_time = current_time
         clock.tick(60)
         await asyncio.sleep(0.01)
 
