@@ -9,8 +9,10 @@ import subprocess
 import config
 import threading
 import zipfile
+import time
 import random
 from config import JSON_EXTENSIONS
+from history import save_history
 
 from datetime import datetime
 
@@ -177,11 +179,12 @@ def write_unavailable_systems():
     except Exception as e:
         logger.error(f"Erreur lors de l'écriture du fichier {log_file} : {str(e)}")
 
-        
-def truncate_text_middle(text, font, max_width):
-    """Tronque le texte en insérant '...' au milieu, en préservant le début et la fin, sans extension de fichier."""
-    # Supprimer l'extension de fichier
-    text = text.rsplit('.', 1)[0] if '.' in text else text
+def truncate_text_middle(text, font, max_width, is_filename=True):
+    """Tronque le texte en insérant '...' au milieu, en préservant le début et la fin.
+    Si is_filename=False, ne supprime pas l'extension."""
+    # Supprimer l'extension uniquement si is_filename est True
+    if is_filename:
+        text = text.rsplit('.', 1)[0] if '.' in text else text
     text_width = font.size(text)[0]
     if text_width <= max_width:
         return text
@@ -191,7 +194,7 @@ def truncate_text_middle(text, font, max_width):
     if max_text_width <= 0:
         return ellipsis
 
-    # Diviser la largeur disponible entre début et fin
+    # Diviser la largeur disponible entre début et fin, en priorisant la fin
     chars = list(text)
     left = []
     right = []
@@ -200,14 +203,9 @@ def truncate_text_middle(text, font, max_width):
     left_idx = 0
     right_idx = len(chars) - 1
 
+    # Préserver plus de caractères à droite pour garder le '%'
     while left_idx <= right_idx and (left_width + right_width) < max_text_width:
-        if left_idx < right_idx:
-            left.append(chars[left_idx])
-            left_width = font.size(''.join(left))[0]
-            if left_width + right_width > max_text_width:
-                left.pop()
-                break
-            left_idx += 1
+        # Ajouter à droite en priorité
         if left_idx <= right_idx:
             right.insert(0, chars[right_idx])
             right_width = font.size(''.join(right))[0]
@@ -215,6 +213,14 @@ def truncate_text_middle(text, font, max_width):
                 right.pop(0)
                 break
             right_idx -= 1
+        # Ajouter à gauche seulement si nécessaire
+        if left_idx < right_idx:
+            left.append(chars[left_idx])
+            left_width = font.size(''.join(left))[0]
+            if left_width + right_width > max_text_width:
+                left.pop()
+                break
+            left_idx += 1
 
     # Reculer jusqu'à un espace pour éviter de couper un mot
     while left and left[-1] != ' ' and left_width + right_width > max_text_width:
@@ -305,12 +311,13 @@ def load_system_image(platform_dict):
         return None
 
 
-# Fonction pour extraire le contenu d'un fichier ZIP 
 def extract_zip(zip_path, dest_dir, url):
     """Extrait le contenu du fichier ZIP dans le dossier cible avec un suivi progressif de la progression."""
+    logger.debug(f"Extraction de {zip_path} dans {dest_dir}")
     try:
         lock = threading.Lock()
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.testzip()  # Vérifier l'intégrité de l'archive
             total_size = sum(info.file_size for info in zip_ref.infolist() if not info.is_dir())
             logger.info(f"Taille totale à extraire: {total_size} octets")
             if total_size == 0:
@@ -319,7 +326,9 @@ def extract_zip(zip_path, dest_dir, url):
 
             extracted_size = 0
             os.makedirs(dest_dir, exist_ok=True)
-            chunk_size = 8192
+            chunk_size = 2048  # Réduire pour plus de mises à jour
+            last_save_time = time.time()
+            save_interval = 0.5  # Sauvegarder toutes les 0.5 secondes
             for info in zip_ref.infolist():
                 if info.is_dir():
                     continue
@@ -335,15 +344,19 @@ def extract_zip(zip_path, dest_dir, url):
                         dest.write(chunk)
                         file_extracted += len(chunk)
                         extracted_size += len(chunk)
+                        current_time = time.time()
                         with lock:
-                            config.download_progress[url]["downloaded_size"] = extracted_size
-                            config.download_progress[url]["total_size"] = total_size
-                            config.download_progress[url]["status"] = "Extracting"
-                            config.download_progress[url]["progress_percent"] = (extracted_size / total_size * 100) if total_size > 0 else 0
-                            config.needs_redraw = True  # Forcer le redraw
-                    # Logger une seule ligne à la fin de l'extraction du fichier
-                    progress_percentage = (extracted_size / total_size * 100) if total_size > 0 else 0
-                    logger.debug(f"Extraction terminée pour {info.filename}, file_extracted: {file_extracted}/{file_size}, total_extracted: {extracted_size}/{total_size}, progression: {progress_percentage:.1f}%")
+                            for entry in config.history:
+                                if entry["url"] == url and entry["status"] in ["Téléchargement", "Extracting"]:
+                                    entry["status"] = "Extracting"
+                                    entry["progress"] = (extracted_size / total_size * 100) if total_size > 0 else 0
+                                    entry["message"] = "Extraction en cours"
+                                    if current_time - last_save_time >= save_interval:
+                                        save_history(config.history)
+                                        last_save_time = current_time
+                                        logger.debug(f"Extraction en cours: {info.filename}, file_extracted={file_extracted}/{file_size}, total_extracted={extracted_size}/{total_size}, progression={entry['progress']:.1f}%")
+                                    config.needs_redraw = True
+                                    break
                 os.chmod(file_path, 0o644)
 
         for root, dirs, _ in os.walk(dest_dir):
@@ -352,10 +365,17 @@ def extract_zip(zip_path, dest_dir, url):
 
         os.remove(zip_path)
         logger.info(f"Fichier ZIP {zip_path} extrait dans {dest_dir} et supprimé")
-        return True, "ZIP extrait avec succès"
+        return True, f"Extracted: {os.path.basename(zip_path)}"
+    except zipfile.BadZipFile as e:
+        logger.error(f"Erreur: Archive ZIP corrompue: {str(e)}")
+        return False, f"Archive ZIP corrompue: {str(e)}"
+    except PermissionError as e:
+        logger.error(f"Erreur: Permission refusée lors de l'extraction: {str(e)}")
+        return False, f"Permission refusée lors de l'extraction: {str(e)}"
     except Exception as e:
-        logger.error(f"Erreur lors de l'extraction de {zip_path}: {e}")
-        return False, str(e)
+        logger.error(f"Erreur lors de l'extraction de {zip_path}: {str(e)}")
+        return False, f"Échec de l'extraction: {str(e)}"
+     
 
 # Fonction pour extraire le contenu d'un fichier RAR
 def extract_rar(rar_path, dest_dir, url):

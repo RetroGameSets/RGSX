@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.9.5"
+app_version = "1.9.6"
 
 
 # URL du serveur OTA
@@ -37,11 +37,7 @@ transition_state = "idle"
 transition_progress = 0.0
 transition_duration = 18
 games_count = {}
-download_tasks = {}
-download_progress = {}
-download_result_message = ""
-download_result_error = False
-download_result_start_time = 0
+
 loading_progress = 0.0
 current_loading_system = ""
 error_message = ""
@@ -58,8 +54,16 @@ pending_download = None
 controls_config = {}
 selected_option = 0
 previous_menu_state = None
-history = []  # Liste des entrées de l'historique
-current_history_item = 0  # Index de l'élément sélectionné dans l'historique
+history = []  # Liste des entrées d'historique avec platform, game_name, status, url, progress, message, timestamp
+download_progress = {}
+download_tasks = {}  # Dictionnaire pour les tâches de téléchargement
+download_result_message = ""
+download_result_error = False
+download_result_start_time = 0
+pending_download = None
+needs_redraw = False
+current_history_item = 0
+history_scroll_offset = 0
 history_scroll_offset = 0  # Offset pour le défilement de l'historique
 visible_history_items = 15  # Nombre d'éléments d'historique visibles (ajusté dynamiquement)
 confirm_clear_selection = 0  # confirmation clear historique

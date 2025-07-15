@@ -1,6 +1,6 @@
 import pygame  # type: ignore
 import config
-from utils import truncate_text_middle, wrap_text, load_system_image
+from utils import truncate_text_middle, wrap_text, load_system_image, truncate_text_end
 import logging
 import math
 from history import load_history  # Ajout de l'import
@@ -437,13 +437,20 @@ def draw_game_scrollbar(screen, scroll_offset, total_items, visible_items, x, y,
     pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], (x, scrollbar_y, 15, scrollbar_height), border_radius=4)
 
 def draw_history_list(screen):
-    """Affiche l'historique des téléchargements avec un style moderne."""
+    # logger.debug(f"Dessin historique, history={config.history}, needs_redraw={config.needs_redraw}")
     history = config.history if hasattr(config, 'history') else load_history()
     history_count = len(history)
 
-    col_platform_width = int((0.95 * config.screen_width - 60) * 0.33)
-    col_game_width = int((0.95 * config.screen_width - 60) * 0.50)
-    col_status_width = int((0.95 * config.screen_width - 60) * 0.17)
+    # Define column widths as percentages of available space
+    column_width_percentages = {
+        "platform": 0.25,  # platform column
+        "game_name": 0.50,  #  game name column
+        "status": 0.25     #  status column
+    }
+    available_width = int(0.95 * config.screen_width - 60)  # Total available width for columns
+    col_platform_width = int(available_width * column_width_percentages["platform"])
+    col_game_width = int(available_width * column_width_percentages["game_name"])
+    col_status_width = int(available_width * column_width_percentages["status"])
     rect_width = int(0.95 * config.screen_width)
 
     line_height = config.small_font.get_height() + 10
@@ -514,7 +521,6 @@ def draw_history_list(screen):
         text_rect = text_surface.get_rect(center=(x_pos, header_y))
         screen.blit(text_surface, text_rect)
 
-    # Ajouter un séparateur sous les en-têtes
     separator_y = rect_y + margin_top_bottom + header_height
     pygame.draw.line(screen, THEME_COLORS["border"], (rect_x + 20, separator_y), (rect_x + rect_width - 20, separator_y), 2)
 
@@ -523,10 +529,28 @@ def draw_history_list(screen):
         platform = entry.get("platform", "Inconnu")
         game_name = entry.get("game_name", "Inconnu")
         status = entry.get("status", "Inconnu")
+        progress = entry.get("progress", 0)
+        # Personnaliser l'affichage du statut
+        if status in ["Téléchargement", "downloading"]:
+            status_text = f"Téléchargement : {progress:.1f}%"
+            # logger.debug(f"Affichage progression: {progress:.1f}% pour {game_name}, status={status_text}")
+        elif status == "Extracting":
+            status_text = f"Extraction : {progress:.1f}%"
+            # logger.debug(f"Affichage extraction: {progress:.1f}% pour {game_name}, status={status_text}")
+        elif status == "Download_OK":
+            status_text = "Terminé"
+            # logger.debug(f"Affichage terminé: {game_name}, status={status_text}")
+        elif status == "Erreur":
+            status_text = f"Erreur : {entry.get('message', 'Échec')}"
+            logger.debug(f"Affichage erreur: {game_name}, status={status_text}")
+        else:
+            status_text = status
+            logger.debug(f"Affichage statut inconnu: {game_name}, status={status_text}")
+
         color = THEME_COLORS["fond_lignes"] if i == config.current_history_item else THEME_COLORS["text"]
-        platform_text = truncate_text_middle(platform, config.small_font, col_platform_width - 10)
-        game_text = truncate_text_middle(game_name, config.small_font, col_game_width - 10)
-        status_text = truncate_text_middle(status, config.small_font, col_status_width - 10)
+        platform_text = truncate_text_end(platform, config.small_font, col_platform_width - 10)
+        game_text = truncate_text_end(game_name, config.small_font, col_game_width - 10)
+        status_text = truncate_text_middle(status_text, config.small_font, col_status_width - 10, is_filename=False)
 
         y_pos = rect_y + margin_top_bottom + header_height + idx * line_height + line_height // 2
         platform_surface = config.small_font.render(platform_text, True, color)
@@ -697,31 +721,41 @@ def draw_progress_screen(screen):
 
 # Écran popup résultat téléchargement
 def draw_popup_result_download(screen, message, is_error):
-    """Affiche une popup avec un message de résultat."""
-    screen.blit(OVERLAY, (0, 0))
+    """Affiche une popup flottante centrée avec un message de résultat."""
     if message is None:
         message = "Téléchargement annulé par l'utilisateur."
     logger.debug(f"Message popup : {message}, is_error={is_error}")
+
     # Réduire la largeur maximale pour le wrapping
-    wrapped_message = wrap_text(message, config.small_font, config.screen_width - 160)
-    # Débogage pour vérifier les lignes wrappées
-    logger.debug(f"Lignes wrappées : {wrapped_message}")
+    max_popup_width = config.screen_width // 3  # Popup prend 1/3 de la largeur de l'écran
+    wrapped_message = wrap_text(message, config.small_font, max_popup_width - 40)  # 40 pixels de marge interne
     line_height = config.small_font.get_height() + 5
     text_height = len(wrapped_message) * line_height
-    margin_top_bottom = 20
+    margin_top_bottom = 15
+    margin_sides = 20
     rect_height = text_height + 2 * margin_top_bottom
-    max_text_width = max([config.small_font.size(line)[0] for line in wrapped_message], default=300)
-    rect_width = max_text_width + 100  # Augmenter la marge
+    max_text_width = max([config.small_font.size(line)[0] for line in wrapped_message], default=200)
+    rect_width = min(max_text_width + 2 * margin_sides, max_popup_width)
+
+    # Positionner la popup au centre de l'écran
     rect_x = (config.screen_width - rect_width) // 2
     rect_y = (config.screen_height - rect_height) // 2
 
-    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
-    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+    # Fond semi-transparent pour un effet flottant
+    popup_surface = pygame.Surface((rect_width, rect_height), pygame.SRCALPHA)
+    # Utiliser button_idle sans modifier son alpha (déjà à 150)
+    pygame.draw.rect(popup_surface, THEME_COLORS["button_idle"], (0, 0, rect_width, rect_height), border_radius=10)
+    # Bordure sans alpha modifié
+    pygame.draw.rect(popup_surface, THEME_COLORS["border"], (0, 0, rect_width, rect_height), 2, border_radius=10)
 
+    # Afficher le texte
     for i, line in enumerate(wrapped_message):
-        text = config.small_font.render(line, True, THEME_COLORS["error_text"] if is_error else THEME_COLORS["fond_lignes"])
-        text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
-        screen.blit(text, text_rect)
+        text = config.small_font.render(line, True, THEME_COLORS["error_text"] if is_error else THEME_COLORS["text"])
+        text_rect = text.get_rect(center=(rect_width // 2, margin_top_bottom + i * line_height + line_height // 2))
+        popup_surface.blit(text, text_rect)
+
+    # Appliquer la surface de la popup sur l'écran
+    screen.blit(popup_surface, (rect_x, rect_y))
 
 # Écran avertissement extension non supportée téléchargement
 def draw_extension_warning(screen):
@@ -795,7 +829,9 @@ def draw_extension_warning(screen):
 def draw_controls(screen, menu_state):
     """Affiche les contrôles sur une seule ligne en bas de l’écran."""
     start_button = get_control_display('start', 'START')
-    control_text = f"RGSX v{config.app_version} - {start_button} : Options - History - Help"
+    history_button = get_control_display('history', 'H')
+    filter_button = get_control_display('filter', 'F')
+    control_text = f"RGSX v{config.app_version} - {start_button} : Options - {history_button}: Historique - {filter_button} : Filtrer (bug)"
     max_width = config.screen_width - 40
     wrapped_controls = wrap_text(control_text, config.small_font, max_width)
     line_height = config.small_font.get_height() + 5
