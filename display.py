@@ -831,7 +831,7 @@ def draw_controls(screen, menu_state):
     start_button = get_control_display('start', 'START')
     history_button = get_control_display('history', 'H')
     filter_button = get_control_display('filter', 'F')
-    control_text = f"RGSX v{config.app_version} - {start_button} : Options - {history_button}: Historique - {filter_button} : Filtrer (bug)"
+    control_text = f"RGSX v{config.app_version} - {start_button} : Options - {history_button}: Historique - {filter_button} : Filtrer"
     max_width = config.screen_width - 40
     wrapped_controls = wrap_text(control_text, config.small_font, max_width)
     line_height = config.small_font.get_height() + 5
