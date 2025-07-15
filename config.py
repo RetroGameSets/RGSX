@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.9.6"
+app_version = "1.9.6.1"
 
 
 # URL du serveur OTA

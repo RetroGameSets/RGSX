@@ -516,7 +516,8 @@ async def main():
                     draw_game_list(screen)
                 if config.search_mode:
                     draw_game_list(screen)
-                    draw_virtual_keyboard(screen)
+                    if config.is_non_pc:
+                        draw_virtual_keyboard(screen)
             elif config.menu_state == "download_progress":
                 draw_progress_screen(screen)
             elif config.menu_state == "download_result":

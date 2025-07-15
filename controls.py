@@ -393,7 +393,7 @@ def handle_controls(event, sources, joystick, screen):
                             config.needs_redraw = True
                             logger.debug(f"Suppression caractère: query={config.search_query}, jeux filtrés={len(config.filtered_games)}")
                    # Gestion de la validation
-                    elif is_input_matched(event, "select"):
+                    elif is_input_matched(event, "confirm"):
                         config.search_mode = False
                         config.filter_active = True  # Conserver le filtre actif
                         config.current_game = 0

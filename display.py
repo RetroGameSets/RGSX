@@ -380,7 +380,7 @@ def draw_game_list(screen):
         screen.blit(title_surface, title_rect)
     elif config.filter_active:
         filter_text = f"Filtre actif : {config.search_query}"
-        title_surface = config.small_font.render(filter_text, True, THEME_COLORS["text"])
+        title_surface = config.font.render(filter_text, True, THEME_COLORS["fond_lignes"])
         title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
         title_rect_inflated = title_rect.inflate(60, 30)
         title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
