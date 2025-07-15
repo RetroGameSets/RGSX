@@ -14,7 +14,7 @@ from controls_mapper import load_controls_config, map_controls, draw_controls_ma
 from utils import detect_non_pc, load_sources, check_extension_before_download, extract_zip, play_random_music
 from history import load_history, save_history
 import config
-from config import OTA_VERSION_ENDPOINT, OTA_UPDATE_SCRIPT, OTA_data_ZIP
+from config import OTA_data_ZIP
 
 # Configuration du logging
 log_dir = "/userdata/roms/ports/RGSX/logs"
@@ -162,6 +162,14 @@ async def main():
                 config.popup_timer = 0
                 config.needs_redraw = True
                 logger.debug(f"Fermeture automatique du popup, retour à {config.menu_state}")
+       
+        # Gestion de la fin du popup update_result
+        if config.menu_state == "update_result" and current_time - config.update_result_start_time > 5000:
+            config.menu_state = "platform"  # Retour à l'écran des plateformes
+            config.update_result_message = ""
+            config.update_result_error = False
+            config.needs_redraw = True
+            logger.debug("Fin popup update_result, retour à platform")
 
         # Gestion des événements
         events = pygame.event.get()
@@ -509,6 +517,8 @@ async def main():
                 draw_loading_screen(screen)
             elif config.menu_state == "error":
                 draw_error_screen(screen)
+            elif config.menu_state == "update_result":
+                draw_popup_result_download(screen, config.update_result_message, config.update_result_error)
             elif config.menu_state == "platform":
                 draw_platform_grid(screen)
             elif config.menu_state == "game":
@@ -585,7 +595,7 @@ async def main():
                 logger.debug("Exécution de test_internet()")
                 if test_internet():
                     loading_step = "check_ota"
-                    config.current_loading_system = "Mise à jour en cours... Patientez si l'ecran reste figé.. Puis relancer l'application une fois qu'elle est terminée."
+                    config.current_loading_system = "Verification Mise à jour en cours... Patientez..."
                     config.loading_progress = 20.0
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")

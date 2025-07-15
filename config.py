@@ -5,14 +5,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.9.6.1"
+app_version = "1.9.6.3"
 
 
 # URL du serveur OTA
 OTA_SERVER_URL = "https://retrogamesets.fr/softs"
 OTA_VERSION_ENDPOINT = f"{OTA_SERVER_URL}/version.json"
-OTA_UPDATE_SCRIPT = f"{OTA_SERVER_URL}/rgsx-update.sh"
+OTA_UPDATE_ZIP = f"{OTA_SERVER_URL}/RGSX.zip"
 OTA_data_ZIP = f"{OTA_SERVER_URL}/rgsx-data.zip"
+APP_FOLDER = "/userdata/roms/ports/RGSX"
+UPDATE_FOLDER = f"{APP_FOLDER}/update"
 
 # Constantes pour la répétition automatique dans pause_menu
 REPEAT_DELAY = 300  # Délai initial avant répétition (ms)

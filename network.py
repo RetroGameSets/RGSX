@@ -3,15 +3,17 @@ import subprocess
 import os
 import threading
 import pygame # type: ignore
-import sys
+import zipfile
 import asyncio
 import config
-from config import OTA_VERSION_ENDPOINT, OTA_UPDATE_SCRIPT
+from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
 from utils import sanitize_filename, extract_zip, extract_rar
 from history import save_history
 import logging
 import queue
 import time
+import os
+
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +35,11 @@ def test_internet():
         logger.debug(f"Erreur test Internet: {str(e)}")
         return False
 
+
 async def check_for_updates():
     try:
         logger.debug("Vérification de la version disponible sur le serveur")
-        config.current_loading_system = "Mise à jour en cours... Patientez l'ecran reste figé..Puis relancer l'application"
+        config.current_loading_system = "Vérification des mises à jour..."
         config.loading_progress = 5.0
         config.needs_redraw = True
         response = requests.get(OTA_VERSION_ENDPOINT, timeout=5)
@@ -46,79 +49,107 @@ async def check_for_updates():
         version_data = response.json()
         latest_version = version_data.get("version")
         logger.debug(f"Version distante : {latest_version}, version locale : {config.app_version}")
-
+        UPDATE_ZIP = OTA_UPDATE_ZIP.replace("RGSX.zip", f"RGSX_v{latest_version}.zip")
+        logger.debug(f"URL de mise à jour : {UPDATE_ZIP}")
         if latest_version != config.app_version:
             config.current_loading_system = f"Mise à jour disponible : {latest_version}"
             config.loading_progress = 10.0
             config.needs_redraw = True
-            logger.debug(f"Téléchargement du script de mise à jour : {OTA_UPDATE_SCRIPT}")
+            logger.debug(f"Téléchargement du ZIP de mise à jour : {UPDATE_ZIP}")
 
-            update_script_path = "/userdata/roms/ports/rgsx-update.sh"
-            logger.debug(f"Téléchargement de {OTA_UPDATE_SCRIPT} vers {update_script_path}")
-            with requests.get(OTA_UPDATE_SCRIPT, stream=True, timeout=10) as r:
+            # Créer le dossier UPDATE_FOLDER s'il n'existe pas
+            os.makedirs(UPDATE_FOLDER, exist_ok=True)
+            update_zip_path = os.path.join(UPDATE_FOLDER, "RGSX.zip")
+            logger.debug(f"Téléchargement de {UPDATE_ZIP} vers {update_zip_path}")
+
+            # Télécharger le ZIP
+            with requests.get(UPDATE_ZIP, stream=True, timeout=10) as r:
                 r.raise_for_status()
-                with open(update_script_path, "wb") as f:
+                total_size = int(r.headers.get('content-length', 0))
+                downloaded = 0
+                with open(update_zip_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
-                            config.loading_progress = min(50.0, config.loading_progress + 5.0)
+                            downloaded += len(chunk)
+                            config.loading_progress = 10.0 + (40.0 * downloaded / total_size) if total_size > 0 else 10.0
                             config.needs_redraw = True
                             await asyncio.sleep(0)
+            logger.debug(f"ZIP téléchargé : {update_zip_path}")
 
-            config.current_loading_system = "Préparation de la mise à jour..."
+            # Extraire le contenu du ZIP dans APP_FOLDER
+            config.current_loading_system = "Extraction de la mise à jour..."
             config.loading_progress = 60.0
             config.needs_redraw = True
-            logger.debug(f"Rendre {update_script_path} exécutable")
-            subprocess.run(["chmod", "+x", update_script_path], check=True)
-            logger.debug(f"Script {update_script_path} rendu exécutable")
+            success, message = extract_update(update_zip_path, APP_FOLDER, UPDATE_ZIP)
+            if not success:
+                logger.error(f"Échec de l'extraction : {message}")
+                return False, f"Échec de l'extraction de la mise à jour : {message}"
 
-            logger.debug(f"Vérification de l'existence et des permissions de {update_script_path}")
-            if not os.path.isfile(update_script_path):
-                logger.error(f"Le script {update_script_path} n'existe pas")
-                return False, f"Erreur : le script {update_script_path} n'existe pas"
-            if not os.access(update_script_path, os.X_OK):
-                logger.error(f"Le script {update_script_path} n'est pas exécutable")
-                return False, f"Erreur : le script {update_script_path} n'est pas exécutable"
+            # Supprimer le fichier ZIP après extraction
+            if os.path.exists(update_zip_path):
+                os.remove(update_zip_path)
+                logger.debug(f"Fichier ZIP {update_zip_path} supprimé")
 
-            wrapper_script_path = "/userdata/roms/ports/RGSX/update/run.update"
-            logger.debug(f"Vérification de l'existence et des permissions de {wrapper_script_path}")
-            if not os.path.isfile(wrapper_script_path):
-                logger.error(f"Le script wrapper {wrapper_script_path} n'existe pas")
-                return False, f"Erreur : le script wrapper {wrapper_script_path} n'existe pas"
-            if not os.access(wrapper_script_path, os.X_OK):
-                logger.error(f"Le script wrapper {wrapper_script_path} n'est pas exécutable")
-                subprocess.run(["chmod", "+x", wrapper_script_path], check=True)
-                logger.debug(f"Script wrapper {wrapper_script_path} rendu exécutable")
-
-            logger.debug("Désactivation des événements Pygame QUIT")
-            pygame.event.set_blocked(pygame.QUIT)
-
-            config.current_loading_system = "Application de la mise à jour..."
-            config.loading_progress = 80.0
-            config.needs_redraw = True
-            logger.debug(f"Exécution du script wrapper : {wrapper_script_path}")
-            result = os.system(f"{wrapper_script_path} &")
-            logger.debug(f"Résultat de os.system : {result}")
-            if result != 0:
-                logger.error(f"Échec du lancement du script wrapper : code de retour {result}")
-                return False, f"Échec du lancement du script wrapper : code de retour {result}"
-
-            config.current_loading_system = "Mise à jour déclenchée, redémarrage..."
+            config.current_loading_system = "Mise à jour terminée"
             config.loading_progress = 100.0
             config.needs_redraw = True
-            logger.debug("Mise à jour déclenchée, arrêt de l'application")
-            config.update_triggered = True
-            pygame.quit()
-            sys.exit(0)
+            logger.debug("Mise à jour terminée avec succès")
+
+            # Configurer la popup pour afficher le message de succès
+            config.menu_state = "update_result"
+            config.update_result_message = f"Mise à jour vers {latest_version} terminée avec succès. Veuillez redémarrer l'application."
+            config.update_result_error = False
+            config.update_result_start_time = pygame.time.get_ticks()
+            config.needs_redraw = True
+            logger.debug(f"Affichage de la popup de mise à jour réussie")
+
+            return True, "Mise à jour terminée avec succès"
         else:
-            logger.debug("Aucune mise à jour logicielle disponible")
+            logger.debug("Aucune mise à jour disponible")
             return True, "Aucune mise à jour disponible"
 
     except Exception as e:
         logger.error(f"Erreur OTA : {str(e)}")
+        config.menu_state = "update_result"
+        config.update_result_message = f"Erreur lors de la mise à jour : {str(e)}"
+        config.update_result_error = True
+        config.update_result_start_time = pygame.time.get_ticks()
+        config.needs_redraw = True
         return False, f"Erreur lors de la vérification des mises à jour : {str(e)}"
 
+def extract_update(zip_path, dest_dir, source_url):
+    try:
+        # Vérifier et ajuster les permissions du répertoire de destination
+        os.makedirs(dest_dir, exist_ok=True)
+        try:
+            subprocess.run(["chmod", "-R", "u+rw", dest_dir], check=True)
+            logger.debug(f"Permissions ajustées pour {dest_dir}")
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Impossible d'ajuster les permissions pour {dest_dir}: {str(e)}")
 
+        # Extraire le ZIP
+        skipped_files = []
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            for file_info in zip_ref.infolist():
+                try:
+                    zip_ref.extract(file_info, dest_dir)
+                except PermissionError as e:
+                    logger.warning(f"Impossible d'extraire {file_info.filename}: {str(e)}")
+                    skipped_files.append(file_info.filename)
+                except Exception as e:
+                    logger.warning(f"Erreur lors de l'extraction de {file_info.filename}: {str(e)}")
+                    skipped_files.append(file_info.filename)
+
+        if skipped_files:
+            message = f"Extraction réussie, mais certains fichiers ont été ignorés en raison d'erreurs : {', '.join(skipped_files)}"
+            logger.warning(message)
+            return True, message  # Considérer comme succès si certains fichiers sont extraits
+        return True, "Extraction réussie"
+
+    except Exception as e:
+        logger.error(f"Erreur critique lors de l'extraction du ZIP {source_url}: {str(e)}")
+        return False, f"Erreur lors de l'extraction du ZIP {source_url}: {str(e)}"
 
 # File d'attente pour la progression
 import queue
