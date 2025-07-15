@@ -300,7 +300,7 @@ async def main():
                                 # Mettre à jour l'entrée temporaire avec l'erreur
                                 config.history[-1]["status"] = "Erreur"
                                 config.history[-1]["progress"] = 0
-                                config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
+                                config.history[-1]["message"] = "Erreur API 1fichier absente"
                                 save_history(config.history)
                                 config.needs_redraw = True
                                 logger.error("Clé API 1fichier absente")
