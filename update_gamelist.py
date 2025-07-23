@@ -12,6 +12,7 @@ RGSX_ENTRY = {
     "name": "RGSX",
     "desc": "Retro Games Sets X - Games Downloader",
     "image": "./images/RGSX.png",
+    "video": "./videos/RGSX.mp4"
     "marquee": "./images/RGSX.png",
     "thumbnail": "./images/RGSX.png",
     "fanart": "./images/RGSX.png",
@@ -19,9 +20,9 @@ RGSX_ENTRY = {
     "releasedate": "20250620T165718",
     "developer": "RetroGameSets.fr",
     "genre": "Compilation, Various / Utilities",
-    "playcount": "251",
+    "playcount": "666",
     "lastplayed": "20250621T234656",
-    "gametime": "30830",
+    "gametime": "9999999",
     "lang": "fr"
 }
 
