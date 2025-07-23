@@ -1,0 +1,9 @@
+logs/ 
+images/ 
+games/ 
+__pycache__/ 
+sources.json 
+gamelist.xml
+*.log
+*.rar
+*.zip
