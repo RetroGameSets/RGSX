@@ -834,6 +834,13 @@ def handle_controls(event, sources, joystick, screen):
                 elif config.selected_option == 1:  # Remap controls
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     logger.debug(f"Previous menu state avant controls_mapping: {config.previous_menu_state}")
+                    #Supprimer le fichier de configuration des contrôles s'il existe
+                    if os.path.exists(config.CONTROLS_CONFIG_PATH):
+                        try:
+                            os.remove(config.CONTROLS_CONFIG_PATH)
+                            logger.debug(f"Fichier de configuration des contrôles supprimé: {config.CONTROLS_CONFIG_PATH}")
+                        except Exception as e:
+                            logger.error(f"Erreur lors de la suppression du fichier de configuration des contrôles: {e}")
                     config.menu_state = "controls_mapping"
                     config.needs_redraw = True
                     logger.debug(f"Passage à controls_mapping depuis pause_menu")

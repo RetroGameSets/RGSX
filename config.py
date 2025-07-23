@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.9.7.0"
+app_version = "1.9.7.1"
 
 # Langue par défaut
 current_language = "fr"

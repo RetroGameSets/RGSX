@@ -18,15 +18,15 @@ ACTIONS = [
     {"name": "up", "display": "Haut", "description": "Naviguer vers le haut"},
     {"name": "down", "display": "Bas", "description": "Naviguer vers le bas"},
     {"name": "left", "display": "Gauche", "description": "Naviguer à gauche"},
-    {"name": "right", "display": "Droite", "description": "Naviguer à droite"},
+    {"name": "right", "display": "Droite", "description": "Naviguer à droite"},    
+    {"name": "start", "display": "Start", "description": "Menu pause / Paramètres (Recommandé: Start, AltGr)"},
+    {"name": "filter", "display": "Filtrer", "description": "Ouvrir filtre (Recommandé: F, Select)"},
     {"name": "page_up", "display": "Page Précédente", "description": "Page précédente/Défilement Rapide Haut (Recommandé: PageUp, LB/L1)"},
     {"name": "page_down", "display": "Page Suivante", "description": "Page suivante/Défilement Rapide Bas (Recommandé: PageDown, RB/R1)"},
-    {"name": "history", "display": "Historique", "description": "Ouvrir l'historique (Recommandé: H, Y/Triangle)"},
-    {"name": "progress", "display": "Progression", "description": "Historique : Effacer la liste (Recommandé: X/Carré)"},
-    {"name": "filter", "display": "Filtrer", "description": "Ouvrir filtre (Recommandé: F, Select)"},
+    {"name": "history", "display": "Historique", "description": "Ouvrir l'historique (Recommandé: H, Y/Carré)"},
+    {"name": "progress", "display": "Progression", "description": "Historique : Effacer la liste (Recommandé: X/Triangle)"},
     {"name": "delete", "display": "Supprimer", "description": "Mode Fitre : Supprimer caractère en mode recherche (Recommandé: DEL, LT/L2)"},
     {"name": "space", "display": "Espace", "description": "Mode Filtre : Ajouter espace (Recommandé: Espace, RT/R2)"},
-    {"name": "start", "display": "Start", "description": "Menu pause / Paramètres (Recommandé: Start, AltGr)"},
 ]
 
 # Mappage des valeurs SDL vers les constantes Pygame
