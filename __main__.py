@@ -40,10 +40,7 @@ logger = logging.getLogger(__name__)
 pygame.init()
 config.init_font()
 pygame.joystick.init()
-pygame.mouse.set_visible(True)
 
-# Initialisation du sélecteur de langue
-update_valid_states()
 
 # Chargement et initialisation de la langue
 from language import initialize_language
@@ -55,8 +52,9 @@ config.is_non_pc = detect_non_pc()
 
 # Initialisation de l’écran
 screen = init_display()
-pygame.display.set_caption("RGSX")
 clock = pygame.time.Clock()
+
+pygame.display.set_caption("RGSX")
 
 # Initialisation des polices
 try:
@@ -66,18 +64,18 @@ try:
     config.search_font = pygame.font.Font(font_path, 48) # Police pour la recherche
     config.progress_font = pygame.font.Font(font_path, 36)  # Police pour l'affichage de la progression
     config.small_font = pygame.font.Font(font_path, 28)  # Police pour les petits textes
-    logger.debug("Police Pixel-UniCode chargée")
+    #logger.debug("Police Pixel-UniCode chargée")
 except:
     config.font = pygame.font.SysFont("arial", 48) # Police fallback
     config.title_font = pygame.font.SysFont("arial", 60) # Police fallback pour les titres
     config.search_font = pygame.font.SysFont("arial", 60)   # Police fallback pour la recherche
     config.progress_font = pygame.font.SysFont("arial", 36)  # Police fallback pour l'affichage de la progression
     config.small_font = pygame.font.SysFont("arial", 28)  # Police fallback pour les petits textes
-    logger.debug("Police Arial chargée")
+    #logger.debug("Police Arial chargée")
 
 # Mise à jour de la résolution dans config
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
-logger.debug(f"Résolution réelle : {config.screen_width}x{config.screen_height}")
+logger.debug(f"Résolution d'écran : {config.screen_width}x{config.screen_height}")
 
 # Initialisation des variables de grille
 config.current_page = 0
@@ -106,21 +104,17 @@ else:
 
 # Chargement de l'historique
 config.history = load_history()
-logger.debug(f"Historique chargé: {len(config.history)} entrées")
-
-# Vérifier si le fichier de configuration des contrôles existe
-controls_file_exists = os.path.exists(config.CONTROLS_CONFIG_PATH)
-logger.debug(f"Fichier controls.json existe: {controls_file_exists} à {config.CONTROLS_CONFIG_PATH}")
+logger.debug(f"Historique de téléchargement : {len(config.history)} entrées")
 
 # Vérification et chargement de la configuration des contrôles
 config.controls_config = load_controls_config()
 
-# Déterminer l'état initial de l'application
-if not controls_file_exists:
-    # Si pas de fichier de contrôles, on commence par les configurer
+# Vérifier si la configuration est vide (pas de fichier ou importation échouée)
+if not config.controls_config:
+    # Si pas de configuration, on commence par les configurer
     config.menu_state = "controls_mapping"
     config.needs_redraw = True  # Forcer le redraw immédiatement
-    logger.info(f"Pas de fichier de contrôles à {config.CONTROLS_CONFIG_PATH}, configuration des contrôles")
+    logger.info("Aucune configuration de contrôles disponible, configuration manuelle nécessaire")
     logger.debug("Menu initial: mappage des contrôles")
 else:
     # Sinon, chargement normal
@@ -153,8 +147,6 @@ async def main():
     last_redraw_time = pygame.time.get_ticks()
     config.last_frame_time = pygame.time.get_ticks()  # Initialisation pour éviter erreur
 
-    screen = init_display()
-    clock = pygame.time.Clock()
 
     while running:
         clock.tick(30)  # Limite à 60 FPS
@@ -219,11 +211,11 @@ async def main():
 
             start_config = config.controls_config.get("start", {})
             if start_config and (
-                (event.type == pygame.KEYDOWN and start_config.get("type") == "key" and event.key == start_config.get("value")) or
-                (event.type == pygame.JOYBUTTONDOWN and start_config.get("type") == "button" and event.button == start_config.get("value")) or
-                (event.type == pygame.JOYAXISMOTION and start_config.get("type") == "axis" and event.axis == start_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == start_config.get("value")[1]) or
-                (event.type == pygame.JOYHATMOTION and start_config.get("type") == "hat" and event.value == tuple(start_config.get("value"))) or
-                (event.type == pygame.MOUSEBUTTONDOWN and start_config.get("type") == "mouse" and event.button == start_config.get("value"))
+                (event.type == pygame.KEYDOWN and start_config.get("type") == "key" and event.key == start_config.get("key")) or
+                (event.type == pygame.JOYBUTTONDOWN and start_config.get("type") == "button" and event.button == start_config.get("button")) or
+                (event.type == pygame.JOYAXISMOTION and start_config.get("type") == "axis" and event.axis == start_config.get("axis") and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == start_config.get("direction")) or
+                (event.type == pygame.JOYHATMOTION and start_config.get("type") == "hat" and event.value == tuple(start_config.get("value") if isinstance(start_config.get("value"), list) else start_config.get("value"))) or
+                (event.type == pygame.MOUSEBUTTONDOWN and start_config.get("type") == "mouse" and event.button == start_config.get("button"))
             ):
                 if config.menu_state not in ["pause_menu", "controls_help", "controls_mapping", "history", "confirm_clear_history"]:
                     config.previous_menu_state = config.menu_state
@@ -236,33 +228,25 @@ async def main():
             if config.menu_state == "pause_menu":
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
-                logger.debug(f"Événement transmis à handle_controls dans pause_menu: {event.type}")
+                #logger.debug(f"Événement transmis à handle_controls dans pause_menu: {event.type}")
                 continue
 
             if config.menu_state == "controls_help":
-                cancel_config = config.controls_config.get("cancel", {})
-                if (
-                    (event.type == pygame.KEYDOWN and cancel_config and event.key == cancel_config.get("value")) or
-                    (event.type == pygame.JOYBUTTONDOWN and cancel_config and cancel_config.get("type") == "button" and event.button == cancel_config.get("value")) or
-                    (event.type == pygame.JOYAXISMOTION and cancel_config and cancel_config.get("type") == "axis" and event.axis == cancel_config.get("value")[0] and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == cancel_config.get("value")[1]) or
-                    (event.type == pygame.JOYHATMOTION and cancel_config and cancel_config.get("type") == "hat" and event.value == tuple(cancel_config.get("value")))
-                ):
-                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                    config.menu_state = "pause_menu"
-                    config.needs_redraw = True
-                    logger.debug("Controls_help: Annulation, retour à pause_menu")
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
+                #logger.debug(f"Événement transmis à handle_controls dans controls_help: {event.type}")
                 continue
 
             if config.menu_state == "confirm_clear_history":
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
-                logger.debug(f"Événement transmis à handle_controls dans confirm_clear_history: {event.type}")
+                #logger.debug(f"Événement transmis à handle_controls dans confirm_clear_history: {event.type}")
                 continue
 
             if config.menu_state == "redownload_game_cache":
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
-                logger.debug(f"Événement transmis à handle_controls dans redownload_game_cache: {event.type}")
+                #logger.debug(f"Événement transmis à handle_controls dans redownload_game_cache: {event.type}")
                 continue
 
             if config.menu_state == "extension_warning":
@@ -570,7 +554,7 @@ async def main():
                 draw_extension_warning(screen)
             elif config.menu_state == "pause_menu":
                 draw_pause_menu(screen, config.selected_option)
-                logger.debug("Rendu de draw_pause_menu")
+                #logger.debug("Rendu de draw_pause_menu")
             elif config.menu_state == "controls_help":
                 draw_controls_help(screen, config.previous_menu_state)
             elif config.menu_state == "history":
@@ -582,10 +566,6 @@ async def main():
                 draw_redownload_game_cache_dialog(screen)
             elif config.menu_state == "restart_popup":
                 draw_popup(screen)
-            elif config.menu_state == "language_select":
-                draw_language_menu(screen)
-                # Ajout de log pour déboguer
-                logger.debug(f"Affichage du sélecteur de langue, index={config.selected_language_index}")
             else:
                 config.menu_state = "platform"
                 draw_platform_grid(screen)
@@ -646,7 +626,7 @@ async def main():
                 config.needs_redraw = True
                 logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
             elif loading_step == "test_internet":
-                logger.debug("Exécution de test_internet()")
+                #logger.debug("Exécution de test_internet()")
                 if test_internet():
                     loading_step = "check_ota"
                     config.current_loading_system = "Verification Mise à jour en cours... Patientez..."

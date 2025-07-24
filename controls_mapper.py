@@ -203,7 +203,7 @@ HOLD_DURATION = 1000
 JOYHAT_DEBOUNCE = 200  # Délai anti-rebond pour JOYHATMOTION (ms)
 
 def load_controls_config():
-    #Charge la configuration des contrôles depuis controls.json
+    """Charge la configuration des contrôles depuis controls.json ou EmulationStation"""
     try:
         if os.path.exists(CONTROLS_CONFIG_PATH):
             with open(CONTROLS_CONFIG_PATH, "r") as f:
@@ -211,8 +211,17 @@ def load_controls_config():
                 logger.debug(f"Configuration des contrôles chargée : {config}")
                 return config
         else:
-            logger.debug("Aucun fichier controls.json trouvé, configuration par défaut.")
-            return {}
+            logger.debug("Aucun fichier controls.json trouvé, tentative d'importation depuis EmulationStation")
+            # Essayer d'importer depuis EmulationStation
+            from es_input_parser import parse_es_input_config
+            es_config = parse_es_input_config()
+            if es_config:
+                logger.info("Configuration importée depuis EmulationStation")
+                save_controls_config(es_config)
+                return es_config
+            else:
+                logger.debug("Importation depuis EmulationStation échouée, configuration par défaut")
+                return {}
     except Exception as e:
         logger.error(f"Erreur lors du chargement de controls.json : {e}")
         return {}

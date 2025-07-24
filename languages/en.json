@@ -91,7 +91,7 @@
     "controls_action_filter": "Filter",
     "controls_action_delete": "Delete",
     "controls_action_space": "Space",
-    "controls_action_start": "Menu",
+    "controls_action_start": "Help / Settings",
     
     "controls_desc_confirm": "Validate (e.g. A, Enter)",
     "controls_desc_cancel": "Cancel/Back (e.g. B, Backspace)",

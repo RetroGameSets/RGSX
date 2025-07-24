@@ -98,23 +98,22 @@ def is_input_matched(event, action_name):
         return False
     mapping = config.controls_config[action_name]
     input_type = mapping["type"]
-    input_value = mapping["value"]
-
-    # Convertir input_value en tuple si c'est une liste (pour JOYHATMOTION)
-    if input_type == "hat" and isinstance(input_value, list):
-        input_value = tuple(input_value)
-
+    
     if input_type == "key" and event.type == pygame.KEYDOWN:
-        return event.key == input_value
+        return event.key == mapping.get("key")
     elif input_type == "button" and event.type == pygame.JOYBUTTONDOWN:
-        return event.button == input_value
+        return event.button == mapping.get("button")
     elif input_type == "axis" and event.type == pygame.JOYAXISMOTION:
-        axis, direction = input_value
+        axis = mapping.get("axis")
+        direction = mapping.get("direction")
         return event.axis == axis and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == direction
     elif input_type == "hat" and event.type == pygame.JOYHATMOTION:
-        return event.value == input_value
+        hat_value = mapping.get("value")
+        if isinstance(hat_value, list):
+            hat_value = tuple(hat_value)
+        return event.value == hat_value
     elif input_type == "mouse" and event.type == pygame.MOUSEBUTTONDOWN:
-        return event.button == input_value
+        return event.button == mapping.get("button")
     return False
 
 def handle_controls(event, sources, joystick, screen):
@@ -146,7 +145,7 @@ def handle_controls(event, sources, joystick, screen):
             return "quit"
         
         # Menu pause
-        if is_input_matched(event, "start") and config.menu_state not in ("pause_menu", "controls_help", "controls_mapping", "redownload_game_cache"):
+        if is_input_matched(event, "start") and config.menu_state not in ("pause_menu", "controls_mapping", "redownload_game_cache"):
             config.previous_menu_state = config.menu_state
             config.menu_state = "pause_menu"
             config.selected_option = 0
@@ -375,13 +374,30 @@ def handle_controls(event, sources, joystick, screen):
                     config.scroll_offset = 0
                     config.needs_redraw = True
                     logger.debug("Sortie du mode recherche")
-                elif is_input_matched(event, "filter"):
+                elif is_input_matched(event, "filter") or is_input_matched(event, "confirm"):
                     config.search_mode = False
                     config.filter_active = bool(config.search_query)
-                    config.needs_redraw = True  
+                    config.needs_redraw = True
+                    logger.debug(f"Validation du filtre avec manette: query={config.search_query}, filter_active={config.filter_active}")  
             elif config.search_mode and not config.is_non_pc:
-                # Gestion de la recherche sur PC
-                if event.type == pygame.KEYDOWN:
+                # Gestion de la recherche sur PC (clavier et manette)
+                if is_input_matched(event, "filter"):
+                    config.search_mode = False
+                    config.filter_active = True
+                    config.current_game = 0
+                    config.scroll_offset = 0
+                    config.needs_redraw = True
+                    logger.debug(f"Validation du filtre avec bouton filter sur PC: query={config.search_query}")
+                elif is_input_matched(event, "cancel"):
+                    config.search_mode = False
+                    config.search_query = ""
+                    config.filtered_games = config.games
+                    config.filter_active = False
+                    config.current_game = 0
+                    config.scroll_offset = 0
+                    config.needs_redraw = True
+                    logger.debug("Sortie du mode recherche avec bouton cancel sur PC")
+                elif event.type == pygame.KEYDOWN:
                     # Saisie de texte alphanumérique
                     if event.unicode.isalnum() or event.unicode == ' ':
                         config.search_query += event.unicode
@@ -416,6 +432,14 @@ def handle_controls(event, sources, joystick, screen):
                         config.scroll_offset = 0
                         config.needs_redraw = True
                         logger.debug("Sortie du mode recherche")
+                    # Gestion de la validation avec le bouton filter
+                    elif is_input_matched(event, "filter"):
+                        config.search_mode = False
+                        config.filter_active = True
+                        config.current_game = 0
+                        config.scroll_offset = 0
+                        config.needs_redraw = True
+                        logger.debug(f"Validation du filtre avec bouton filter: query={config.search_query}, jeux filtrés={len(config.filtered_games)}")
      
             else:
                 if is_input_matched(event, "up"):
@@ -813,27 +837,27 @@ def handle_controls(event, sources, joystick, screen):
 
         # Menu pause
         elif config.menu_state == "pause_menu":
-            logger.debug(f"État pause_menu, selected_option={config.selected_option}, événement={event.type}, valeur={getattr(event, 'value', None)}")
+            #logger.debug(f"État pause_menu, selected_option={config.selected_option}, événement={event.type}, valeur={getattr(event, 'value', None)}")
             if is_input_matched(event, "up"):
                 config.selected_option = max(0, config.selected_option - 1)
                 # La répétition est gérée par update_key_state
                 config.needs_redraw = True
-                logger.debug(f"Navigation vers le haut: selected_option={config.selected_option}")
+                #logger.debug(f"Navigation vers le haut: selected_option={config.selected_option}")
             elif is_input_matched(event, "down"):
                 config.selected_option = min(5, config.selected_option + 1)
                 # La répétition est gérée par update_key_state
                 config.needs_redraw = True
-                logger.debug(f"Navigation vers le bas: selected_option={config.selected_option}")
+                #logger.debug(f"Navigation vers le bas: selected_option={config.selected_option}")
             elif is_input_matched(event, "confirm"):
-                logger.debug(f"Confirmation dans pause_menu avec selected_option={config.selected_option}")
+                #logger.debug(f"Confirmation dans pause_menu avec selected_option={config.selected_option}")
                 if config.selected_option == 0:  # Controls
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "controls_help"
                     config.needs_redraw = True
-                    logger.debug(f"Passage à controls_help depuis pause_menu")
+                    #logger.debug(f"Passage à controls_help depuis pause_menu")
                 elif config.selected_option == 1:  # Remap controls
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                    logger.debug(f"Previous menu state avant controls_mapping: {config.previous_menu_state}")
+                    #logger.debug(f"Previous menu state avant controls_mapping: {config.previous_menu_state}")
                     #Supprimer le fichier de configuration des contrôles s'il existe
                     if os.path.exists(config.CONTROLS_CONFIG_PATH):
                         try:
@@ -878,9 +902,9 @@ def handle_controls(event, sources, joystick, screen):
         # Aide contrôles
         elif config.menu_state == "controls_help":
             if is_input_matched(event, "cancel"):
-                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.menu_state = "pause_menu"
                 config.needs_redraw = True
-                logger.debug(f"Retour à {config.menu_state} depuis controls_help")
+                logger.debug("Retour au menu pause depuis controls_help")
 
         # Remap controls
         elif config.menu_state == "controls_mapping":
@@ -962,41 +986,33 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 return action
             
-            # Navigation directe avec les touches du clavier
-            if event.type == pygame.KEYDOWN:
-                # Navigation vers le haut
-                if event.key == pygame.K_UP:
-                    config.selected_language_index = (config.selected_language_index - 1) % len(available_languages)
-                    config.needs_redraw = True
-                    logger.debug(f"Navigation vers le haut dans le sélecteur de langue: {config.selected_language_index}")
-                
-                # Navigation vers le bas
-                elif event.key == pygame.K_DOWN:
-                    config.selected_language_index = (config.selected_language_index + 1) % len(available_languages)
-                    config.needs_redraw = True
-                    logger.debug(f"Navigation vers le bas dans le sélecteur de langue: {config.selected_language_index}")
-                
-                # Sélection de la langue
-                elif event.key == pygame.K_RETURN:
-                    lang_code = available_languages[config.selected_language_index]
-                    if set_language(lang_code):
-                        logger.info(f"Langue changée pour {lang_code}")
-                        config.current_language = lang_code
-                        # Afficher un message de confirmation
-                        config.menu_state = "restart_popup"
-                        config.popup_message = _("language_changed").format(lang_code)
-                        config.popup_timer = 2000  # 2 secondes
-                    else:
-                        # Retour au menu pause en cas d'erreur
-                        config.menu_state = "pause_menu"
-                    config.needs_redraw = True
-                    logger.debug(f"Sélection de la langue: {lang_code}")
-                
-                # Annulation
-                elif event.key == pygame.K_ESCAPE:
+            # Navigation avec clavier et manette
+            if is_input_matched(event, "up"):
+                config.selected_language_index = (config.selected_language_index - 1) % len(available_languages)
+                config.needs_redraw = True
+                logger.debug(f"Navigation vers le haut dans le sélecteur de langue: {config.selected_language_index}")
+            elif is_input_matched(event, "down"):
+                config.selected_language_index = (config.selected_language_index + 1) % len(available_languages)
+                config.needs_redraw = True
+                logger.debug(f"Navigation vers le bas dans le sélecteur de langue: {config.selected_language_index}")
+            elif is_input_matched(event, "confirm"):
+                lang_code = available_languages[config.selected_language_index]
+                if set_language(lang_code):
+                    logger.info(f"Langue changée pour {lang_code}")
+                    config.current_language = lang_code
+                    # Afficher un message de confirmation
+                    config.menu_state = "restart_popup"
+                    config.popup_message = _("language_changed").format(lang_code)
+                    config.popup_timer = 2000  # 2 secondes
+                else:
+                    # Retour au menu pause en cas d'erreur
                     config.menu_state = "pause_menu"
-                    config.needs_redraw = True
-                    logger.debug("Annulation de la sélection de langue, retour au menu pause")
+                config.needs_redraw = True
+                logger.debug(f"Sélection de la langue: {lang_code}")
+            elif is_input_matched(event, "cancel"):
+                config.menu_state = "pause_menu"
+                config.needs_redraw = True
+                logger.debug("Annulation de la sélection de langue, retour au menu pause")
 
 
     # Gestion des relâchements de touches
@@ -1004,21 +1020,27 @@ def handle_controls(event, sources, joystick, screen):
         # Vérifier quelle touche a été relâchée
         for action_name in ["up", "down", "left", "right", "confirm", "cancel"]:
             if config.controls_config.get(action_name, {}).get("type") == "key" and \
-               config.controls_config.get(action_name, {}).get("value") == event.key:
+               config.controls_config.get(action_name, {}).get("key") == event.key:
                 update_key_state(action_name, False)
     
     elif event.type == pygame.JOYBUTTONUP:
         # Vérifier quel bouton a été relâché
         for action_name in ["up", "down", "left", "right", "confirm", "cancel"]:
             if config.controls_config.get(action_name, {}).get("type") == "button" and \
-               config.controls_config.get(action_name, {}).get("value") == event.button:
+               config.controls_config.get(action_name, {}).get("button") == event.button:
                 update_key_state(action_name, False)
     
     elif event.type == pygame.JOYAXISMOTION and abs(event.value) < 0.5:
         # Vérifier quel axe a été relâché
         for action_name in ["up", "down", "left", "right"]:
             if config.controls_config.get(action_name, {}).get("type") == "axis" and \
-               config.controls_config.get(action_name, {}).get("value")[0] == event.axis:
+               config.controls_config.get(action_name, {}).get("axis") == event.axis:
+                update_key_state(action_name, False)
+    
+    elif event.type == pygame.JOYHATMOTION and event.value == (0, 0):
+        # Vérifier quel hat a été relâché
+        for action_name in ["up", "down", "left", "right"]:
+            if config.controls_config.get(action_name, {}).get("type") == "hat":
                 update_key_state(action_name, False)
 
     return action

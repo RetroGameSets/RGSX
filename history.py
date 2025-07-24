@@ -39,7 +39,7 @@ def load_history():
                 if not all(key in entry for key in ['platform', 'game_name', 'status']):
                     logger.warning(f"Entrée d'historique invalide : {entry}")
                     return []
-            logger.debug(f"Historique chargé depuis {history_path}, {len(history)} entrées")
+            #logger.debug(f"Historique chargé depuis {history_path}, {len(history)} entrées")
             return history
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logger.error(f"Erreur lors de la lecture de {history_path} : {e}")

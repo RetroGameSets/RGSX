@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Version actuelle de l'application
-app_version = "1.9.7.1"
+app_version = "1.9.7.2"
 
 # Langue par défaut
 current_language = "fr"
@@ -117,6 +117,10 @@ small_font = None
 
 def init_font():
     """Initialise les polices après pygame.init()."""
+    logger.debug("--------------------------------------------------------------------")
+    logger.debug("---------------------------DEBUT LOG--------------------------------")
+    logger.debug("--------------------------------------------------------------------")
+
     global FONT, progress_font, title_font, search_font, small_font
     try:
         FONT = pygame.font.Font(None, 36)

@@ -189,12 +189,48 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             dest_path = os.path.join(dest_dir, f"{sanitized_name}")
             logger.debug(f"Chemin destination: {dest_path}")
             
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(url, stream=True, headers=headers, timeout=30)
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
+            }
+            
+            # Utiliser une session pour gérer les cookies
+            session = requests.Session()
+            session.headers.update(headers)
+            
+            # Première requête HEAD pour obtenir la vraie URL
+            logger.debug(f"Première requête HEAD vers {url}")
+            head_response = session.head(url, timeout=30, allow_redirects=False)
+            logger.debug(f"HEAD Status: {head_response.status_code}, Headers: {dict(head_response.headers)}")
+            
+            # Suivre la redirection manuellement si nécessaire
+            final_url = url
+            if head_response.status_code in [301, 302, 303, 307, 308]:
+                final_url = head_response.headers.get('Location', url)
+                logger.debug(f"Redirection détectée vers: {final_url}")
+            
+            # Requête GET vers l'URL finale avec en-têtes spécifiques
+            download_headers = headers.copy()
+            download_headers['Accept'] = 'application/octet-stream, */*'
+            download_headers['Referer'] = 'https://myrient.erista.me/'
+            response = session.get(final_url, stream=True, timeout=30, allow_redirects=False, headers=download_headers)
+            logger.debug(f"Status code: {response.status_code}")
+            logger.debug(f"Headers: {dict(response.headers)}")
             response.raise_for_status()
             
             total_size = int(response.headers.get('content-length', 0))
             logger.debug(f"Taille totale: {total_size} octets")
+            
+            if total_size == 0:
+                logger.warning(f"Taille de fichier 0, possible redirection ou erreur. URL finale: {response.url}")
+                # Vérifier si c'est une redirection
+                if response.url != url:
+                    logger.debug(f"Redirection détectée: {url} -> {response.url}")
             
             # Initialiser la progression avec task_id
             progress_queue.put((task_id, 0, total_size))

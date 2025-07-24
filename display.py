@@ -240,7 +240,58 @@ def get_control_display(action, default):
     if not config.controls_config:
         logger.warning(f"controls_config vide pour l'action {action}, utilisation de la valeur par défaut")
         return default
-    return config.controls_config.get(action, {}).get('display', default)
+    
+    control_config = config.controls_config.get(action, {})
+    control_type = control_config.get('type', '')
+    
+    # Générer le nom d'affichage basé sur la configuration réelle
+    if control_type == 'key':
+        key_code = control_config.get('key')
+        key_names = {
+            pygame.K_RETURN: "Entrée",
+            pygame.K_BACKSPACE: "Retour",
+            pygame.K_UP: "↑",
+            pygame.K_DOWN: "↓",
+            pygame.K_LEFT: "←",
+            pygame.K_RIGHT: "→",
+            pygame.K_SPACE: "Espace",
+            pygame.K_DELETE: "Suppr",
+            pygame.K_PAGEUP: "PgUp",
+            pygame.K_PAGEDOWN: "PgDn",
+            pygame.K_p: "P",
+            pygame.K_h: "H",
+            pygame.K_f: "F",
+            pygame.K_x: "X"
+        }
+        return key_names.get(key_code, chr(key_code) if 32 <= key_code <= 126 else f"Key{key_code}")
+    
+    elif control_type == 'button':
+        button_id = control_config.get('button')
+        button_names = {
+            0: "A", 1: "B", 2: "X", 3: "Y",
+            4: "LB", 5: "RB", 6: "Select", 7: "Start"
+        }
+        return button_names.get(button_id, f"Btn{button_id}")
+    
+    elif control_type == 'hat':
+        hat_value = control_config.get('value', (0, 0))
+        hat_names = {
+            (0, 1): "D↑", (0, -1): "D↓",
+            (-1, 0): "D←", (1, 0): "D→"
+        }
+        return hat_names.get(tuple(hat_value) if isinstance(hat_value, list) else hat_value, "D-Pad")
+    
+    elif control_type == 'axis':
+        axis_id = control_config.get('axis')
+        direction = control_config.get('direction')
+        axis_names = {
+            (0, -1): "J←", (0, 1): "J→",
+            (1, -1): "J↑", (1, 1): "J↓"
+        }
+        return axis_names.get((axis_id, direction), f"Joy{axis_id}")
+    
+    # Fallback vers l'ancien système ou valeur par défaut
+    return control_config.get('display', default)
 
 # Cache pour les images des plateformes
 platform_images_cache = {}
@@ -901,9 +952,8 @@ def draw_extension_warning(screen):
 def draw_controls(screen, menu_state):
     """Affiche les contrôles sur une seule ligne en bas de l’écran."""
     start_button = get_control_display('start', 'START')
-    history_button = get_control_display('history', 'H')
-    filter_button = get_control_display('filter', 'F')
-    control_text = _("footer_version").format(config.app_version, start_button, history_button, filter_button)
+    start_text = _("controls_action_start")
+    control_text = f"RGSX v{config.app_version} - {start_button} : {start_text}"
     max_width = config.screen_width - 40
     wrapped_controls = wrap_text(control_text, config.small_font, max_width)
     line_height = config.small_font.get_height() + 5
@@ -1029,18 +1079,20 @@ def draw_controls_help(screen, previous_state):
     space_text = _("controls_action_space")
     
     common_controls = {
-        "confirm": lambda action: f"{get_control_display('confirm', confirm_text)} : {action}",
-        "cancel": lambda action: f"{get_control_display('cancel', cancel_text)} : {action}",
-        "start": lambda: f"{get_control_display('start', start_text)} : {start_text}",
-        "progress": lambda action: f"{get_control_display('progress', progress_text)} : {action}",
-        "up": lambda action: f"{get_control_display('up', up_text)} : {action}",
-        "down": lambda action: f"{get_control_display('down', down_text)} : {action}",
-        "page_up": lambda action: f"{get_control_display('page_up', page_up_text)} : {action}",
-        "page_down": lambda action: f"{get_control_display('page_down', page_down_text)} : {action}",
-        "filter": lambda action: f"{get_control_display('filter', filter_text)} : {action}",
-        "history": lambda action: f"{get_control_display('history', history_text)} : {action}",
-        "delete": lambda: f"{get_control_display('delete', delete_text)} : {delete_text}",
-        "space": lambda: f"{get_control_display('space', space_text)} : {space_text}"
+        "confirm": lambda action: f"{get_control_display('confirm', 'A')} : {action}",
+        "cancel": lambda action: f"{get_control_display('cancel', 'B')} : {action}",
+        "start": lambda: f"{get_control_display('start', 'Start')} : {start_text}",
+        "progress": lambda action: f"{get_control_display('progress', 'X')} : {action}",
+        "up": lambda action: f"{get_control_display('up', '↑')} : {action}",
+        "down": lambda action: f"{get_control_display('down', '↓')} : {action}",
+        "left": lambda action: f"{get_control_display('left', '←')} : {action}",
+        "right": lambda action: f"{get_control_display('right', '→')} : {action}",
+        "page_up": lambda action: f"{get_control_display('page_up', 'LB')} : {action}",
+        "page_down": lambda action: f"{get_control_display('page_down', 'RB')} : {action}",
+        "filter": lambda action: f"{get_control_display('filter', 'Select')} : {action}",
+        "history": lambda action: f"{get_control_display('history', 'Y')} : {action}",
+        "delete": lambda: f"{get_control_display('delete', 'Suppr')} : {delete_text}",
+        "space": lambda: f"{get_control_display('space', 'Espace')} : {space_text}"
     }
 
     # Utiliser des variables pour les traductions d'actions
@@ -1063,91 +1115,109 @@ def draw_controls_help(screen, previous_state):
         "clear_history": _("action_clear_history")
     }
     
-    state_controls = {
-        "error": [
-            common_controls["confirm"](action_translations["retry"]),
-            common_controls["cancel"](action_translations["quit"])
+    # Catégories de contrôles
+    control_categories = {
+        "Navigation": [
+            f"{get_control_display('up', '↑')} {get_control_display('down', '↓')} {get_control_display('left', '←')} {get_control_display('right', '→')} : Navigation",
+            f"{get_control_display('page_up', 'LB')} {get_control_display('page_down', 'RB')} : Pages"
         ],
-        "platform": [
-            common_controls["confirm"](action_translations["select"]),
-            common_controls["cancel"](action_translations["quit"]),
-            common_controls["start"](),
-            common_controls["history"](action_translations["history"]),
-            *( [common_controls["progress"](action_translations["progress"])] if config.download_tasks else [])
+        "Actions principales": [
+            f"{get_control_display('confirm', 'A')} : Confirmer/Sélectionner",
+            f"{get_control_display('cancel', 'B')} : Annuler/Retour",
+            f"{get_control_display('start', 'Start')} : {start_text}"
         ],
-        "game": [
-            common_controls["confirm"](action_translations["select"] if config.search_mode else action_translations["download"]),
-            common_controls["filter"](action_translations["filter"]),
-            common_controls["cancel"](action_translations["cancel"] if config.search_mode else action_translations["back"]),
-            common_controls["history"](action_translations["history"]),
-            *( [
-                common_controls["delete"](),
-                common_controls["space"]()
-            ] if config.search_mode and config.is_non_pc else []),
-            *( [
-                f"{common_controls['up'](action_translations['navigate'])} / {common_controls['down'](action_translations['navigate'])}",
-                f"{common_controls['page_up'](action_translations['page'])} / {common_controls['page_down'](action_translations['page'])}",
-                common_controls["filter"](action_translations["filter"])
-            ] if not config.is_non_pc or not config.search_mode else []),
-            common_controls["start"](),
-            *( [common_controls["progress"](action_translations["progress"])] if config.download_tasks and not config.search_mode else [])
+        "Téléchargements": [
+            f"{get_control_display('history', 'Y')} : Historique",
+            f"{get_control_display('progress', 'X')} : Effacer historique"
         ],
-        "download_progress": [
-            common_controls["cancel"](action_translations["cancel_download"]),
-            common_controls["progress"](action_translations["background"]),
-            common_controls["start"]()
-        ],
-        "download_result": [
-            common_controls["confirm"](action_translations["back"])
-        ],
-        "confirm_exit": [
-            common_controls["confirm"](action_translations["confirm"])
-        ],
-        "extension_warning": [
-            common_controls["confirm"](action_translations["confirm"])
-        ],
-        "history": [
-            common_controls["confirm"](action_translations["redownload"]),
-            common_controls["cancel"](action_translations["back"]),
-            common_controls["progress"](action_translations["clear_history"]),
-            f"{common_controls['up'](action_translations['navigate'])} / {common_controls['down'](action_translations['navigate'])}",
-            f"{common_controls['page_up'](action_translations['page'])} / {common_controls['page_down'](action_translations['page'])}",
-            common_controls["start"]()
+        "Recherche": [            
+            f"{get_control_display('filter', 'Select')} : Filtrer/Rechercher",
+            f"{get_control_display('delete', 'Suppr')} : {delete_text}",
+            f"{get_control_display('space', 'Espace')} : {space_text}"
         ]
     }
+    
+    state_controls = {
+        "error": control_categories,
+        "platform": control_categories,
+        "game": control_categories,
+        "download_progress": control_categories,
+        "download_result": control_categories,
+        "confirm_exit": control_categories,
+        "extension_warning": control_categories,
+        "history": control_categories
+    }
 
-    controls = state_controls.get(previous_state, [])
-    if not controls:
+    control_columns = state_controls.get(previous_state, {})
+    if not control_columns:
         return
 
     screen.blit(OVERLAY, (0, 0))
 
-    max_width = config.screen_width - 80
-    wrapped_controls = []
-    current_line = ""
-    for control in controls:
-        test_line = f"{current_line} | {control}" if current_line else control
-        if config.font.size(test_line)[0] <= max_width:
-            current_line = test_line
-        else:
-            wrapped_controls.append(current_line)
-            current_line = control
-    if current_line:
-        wrapped_controls.append(current_line)
-
-    line_height = config.font.get_height() + 10
-    popup_width = max_width + 40
-    popup_height = len(wrapped_controls) * line_height + 60
+    # Organisation en 2x2
+    categories = list(control_columns.keys())
+    col1 = [categories[0], categories[2]]  # Navigation, Historique/Téléchargements
+    col2 = [categories[1], categories[3]]  # Actions principales, Recherche / Filtre
+    
+    # Calculer la largeur nécessaire
+    max_text_width = 0
+    for category, controls in control_columns.items():
+        for control in controls:
+            text_width = config.small_font.size(control)[0]
+            max_text_width = max(max_text_width, text_width)
+    
+    col_width = max_text_width + 40
+    popup_width = col_width * 2 + 100  # Plus d'espace entre colonnes
+    popup_height = 320
     popup_x = (config.screen_width - popup_width) // 2
     popup_y = (config.screen_height - popup_height) // 2
 
+    # Fond principal
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (popup_x, popup_y, popup_width, popup_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (popup_x, popup_y, popup_width, popup_height), 2, border_radius=12)
 
-    for i, line in enumerate(wrapped_controls):
-        text = config.font.render(line, True, THEME_COLORS["text"])
-        text_rect = text.get_rect(center=(config.screen_width // 2, popup_y + 40 + i * line_height))
-        screen.blit(text, text_rect)
+    # Titre
+    title_text = "Aide des contrôles"
+    title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, popup_y + 25))
+    screen.blit(title_surface, title_rect)
+
+    # Affichage en colonnes
+    start_y = popup_y + 60
+    
+    # Colonne 1
+    current_y = start_y
+    for category in col1:
+        controls = control_columns[category]
+        # Titre
+        cat_surface = config.font.render(category, True, THEME_COLORS["fond_lignes"])
+        cat_rect = cat_surface.get_rect(x=popup_x + 20, y=current_y)
+        screen.blit(cat_surface, cat_rect)
+        current_y += 30  # Plus d'espace après titre
+        # Contrôles
+        for control in controls:
+            ctrl_surface = config.small_font.render(f"• {control}", True, THEME_COLORS["text"])
+            ctrl_rect = ctrl_surface.get_rect(x=popup_x + 30, y=current_y)
+            screen.blit(ctrl_surface, ctrl_rect)
+            current_y += 20
+        current_y += 20  # Plus d'espace entre sections
+    
+    # Colonne 2
+    current_y = start_y
+    for category in col2:
+        controls = control_columns[category]
+        # Titre
+        cat_surface = config.font.render(category, True, THEME_COLORS["fond_lignes"])
+        cat_rect = cat_surface.get_rect(x=popup_x + col_width + 40, y=current_y)  # Plus d'espace entre colonnes
+        screen.blit(cat_surface, cat_rect)
+        current_y += 30  # Plus d'espace après titre
+        # Contrôles
+        for control in controls:
+            ctrl_surface = config.small_font.render(f"• {control}", True, THEME_COLORS["text"])
+            ctrl_rect = ctrl_surface.get_rect(x=popup_x + col_width + 50, y=current_y)  # Plus d'espace entre colonnes
+            screen.blit(ctrl_surface, ctrl_rect)
+            current_y += 20
+        current_y += 20  # Plus d'espace entre sections
 
 # Menu Quitter Appli
 def draw_confirm_dialog(screen):

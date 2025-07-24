@@ -34,7 +34,7 @@ def load_language(lang_code=None):
             translations = json.load(f)
         
         current_language = lang_code
-        logger.debug(f"Langue {lang_code} chargée avec succès ({len(translations)} traductions)")
+        #logger.debug(f"Langue {lang_code} chargée avec succès ({len(translations)} traductions)")
         return True
     
     except Exception as e:
@@ -114,7 +114,6 @@ def load_language_preference():
             data = json.load(f)
             lang_code = data.get("language", DEFAULT_LANGUAGE)
             
-        logger.debug(f"Préférence de langue chargée: {lang_code}")
         return lang_code
     except json.JSONDecodeError:
         logger.warning("Fichier de préférence de langue corrompu, utilisation du français par défaut")

@@ -34,7 +34,7 @@ def detect_non_pc():
         result = subprocess.run(["batocera-es-swissknife", "--arch"], capture_output=True, text=True, timeout=2)
         if result.returncode == 0:
             arch = result.stdout.strip()
-            logger.debug(f"Architecture via batocera-es-swissknife: {arch}")
+            #logger.debug(f"Architecture via batocera-es-swissknife: {arch}")
     except (subprocess.SubprocessError, FileNotFoundError):
         logger.debug(f"batocera-es-swissknife non disponible, utilisation de platform.machine(): {arch}")
     
@@ -130,7 +130,7 @@ def load_sources():
 def load_games(platform_id):
     """Charge les jeux pour une plateforme donnée en utilisant platform_id et teste la première URL."""
     games_path = os.path.join(config.APP_FOLDER, "games", f"{platform_id}.json")
-    logger.debug(f"Chargement des jeux pour {platform_id} depuis {games_path}")
+    #logger.debug(f"Chargement des jeux pour {platform_id} depuis {games_path}")
     try:
         with open(games_path, 'r', encoding='utf-8') as f:
             games = json.load(f)
