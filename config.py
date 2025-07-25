@@ -3,7 +3,7 @@ import os
 import logging
 
 # Version actuelle de l'application
-app_version = "1.9.7.2"
+app_version = "1.9.7.3"
 
 # Langue par défaut
 current_language = "fr"
