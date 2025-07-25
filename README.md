@@ -10,9 +10,10 @@ RGSX est une application Python basée sur Pygame.
   - Les téléchargements ne nécessitent aucune authentification ni compte pour la plupart.
   - Les systèmes notés `(1fichier)` dans le nom ne seront accessibles que si vous renseignez votre clé API 1fichier (voir plus bas).
 - **Historique des téléchargements** : Consultez et retéléchargez les anciens fichiers.
-- **Personnalisation des contrôles** : Remappez les touches du clavier ou de la manette à votre convenance.
-- **Mode recherche** : Filtrez les jeux par nom pour une navigation rapide.
-- **Gestion des erreurs**
+- **Personnalisation des contrôles** : Remappez les touches du clavier ou de la manette à votre convenance avec détection automatique des noms de boutons depuis EmulationStation.
+- **Mode recherche** : Filtrez les jeux par nom pour une navigation rapide avec clavier virtuel sur manette.
+- **Support multilingue** : Interface disponible en plusieurs langues.
+- **Gestion des erreurs** avec messages informatifs.
 - **Interface réactive** : L'interface s'adapte à toutes résolutions de 800x600 à 4K (non testé au-delà de 1920x1080).
 - **Mise à jour automatique** (bug d'affichage à améliorer lors d'une mise à jour) : l'application doit être relancée après sa fermeture automatique.
 
@@ -64,8 +65,9 @@ Vous trouverez RGSX dans le système "PORTS" ou "Jeux Amateurs et portages" et d
 ---
 
 - Lancez RGSX depuis ports.
-- Configurez les contrôles. Ils pourront être reconfigurés via le menu pause par la suite si erreur.
-- Supprimez le fichier `/saves/ports/rgsx/controls.json` en cas de problème puis relancez l'application.
+- Au premier lancement, l'application importera automatiquement la configuration des contrôles depuis EmulationStation si disponible.
+- Configurez les contrôles si nécessaire. Ils pourront être reconfigurés via le menu pause par la suite.
+- Supprimez le fichier `/saves/ports/RGSX/controls.json` en cas de problème puis relancez l'application.
 - L'application téléchargera toutes les données nécessaires automatiquement ensuite.
 
 ---
@@ -93,7 +95,8 @@ Vous trouverez RGSX dans le système "PORTS" ou "Jeux Amateurs et portages" et d
 
 - Dans le menu pause, sélectionnez **Remap controls**.
 - Suivez les instructions à l'écran pour mapper chaque action en maintenant la touche ou le bouton pendant 3 secondes.
-- Appuyez sur **Échap** pour ignorer une action sans la mapper.
+- Les noms des boutons s'affichent automatiquement selon votre manette (A, B, X, Y, LB, RB, LT, RT, etc.).
+- La configuration est compatible avec toutes les manettes supportées par EmulationStation.
 
 ---
 
@@ -101,6 +104,7 @@ Vous trouverez RGSX dans le système "PORTS" ou "Jeux Amateurs et portages" et d
 
 - Accédez à l'historique des téléchargements via le menu pause ou en appuyant sur la touche history (par défaut, **H**).
 - Sélectionnez un jeu pour le retélécharger si nécessaire.
+- Videz l'historique via le bouton progress dans le menu historique.
 
 ---
 
@@ -118,11 +122,13 @@ RGSX/
 │
 ├── main.py              # Point d'entrée principal de l'application.
 ├── controls.py          # Gestion des événements clavier/manette/souris et navigation dans les menus.
-├── controls_mapper.py   # Configuration des contrôles.
+├── controls_mapper.py   # Configuration des contrôles avec détection automatique des noms de boutons.
+├── es_input_parser.py   # Parseur de configuration EmulationStation pour l'import automatique des contrôles.
 ├── display.py           # Rendu des interfaces graphiques avec Pygame.
 ├── config.py            # Configuration globale (chemins, paramètres, etc.).
 ├── network.py           # Gestion des téléchargements de jeux.
 ├── history.py           # Gestion de l'historique des téléchargements.
+├── language.py          # Gestion du support multilingue.
 ├── utils.py             # Fonctions utilitaires (wrap du texte, troncage etc.).
 └── logs/
     └── RGSX.log         # Fichier de logs.
