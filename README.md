@@ -27,7 +27,7 @@ RGSX est une application Python basée sur Pygame.
 - Manette (optionnelle, mais recommandée pour une expérience optimale) ou Clavier.
 
 ### Espace disque
-- Espace suffisant dans `/userdata/roms/ports/RGSX` pour stocker les ROMs, images et fichiers de configuration.
+- Espace suffisant pour stocker les ROMs, images et fichiers de configuration.
 
 ---
 
@@ -43,14 +43,14 @@ Entrez la commande :
   
 Patientez et regardez le retour à l'écran ou sur la commande (à améliorer).  
 Mettez à jour la liste des jeux via : `Menu > Paramètres de jeux > Mettre à jour la liste des jeux `.  
-Vous trouverez RGSX dans le système "PORTS" ou "Jeux Amateurs et portages" et dans `/userdata/roms/ports/RGSX`
+Vous trouverez RGSX dans le système "PORTS" ou "Jeux Amateurs et portages" et dans `/roms/ports/RGSX`
 
 ---
 
 ### Méthode 2 : Copie manuelle
 
 - Téléchargez le contenu du dépôt en zip : https://github.com/RetroGameSets/RGSX/archive/refs/heads/main.zip
-- Extrayez le tout dans `/userdata/roms/ports/RGSX` (le dossier RGSX devra être créé manuellement). Attention de bien respecter la structure indiquée plus bas.
+- Extrayez le tout dans `roms/ports/RGSX` (le dossier RGSX devra être créé manuellement). Attention de bien respecter la structure indiquée plus bas.
 - Mettez à jour la liste des jeux via le menu :  
   `Paramètres de jeux > Mettre à jour la liste`.
 
@@ -59,13 +59,13 @@ Vous trouverez RGSX dans le système "PORTS" ou "Jeux Amateurs et portages" et d
 ---
 > ## IMPORTANT
 > Si vous avez une clé API 1Fichier, vous devez la renseigner dans  
-> `/userdata/saves/ports/RGSX/1FichierAPI.txt`  
+> `/saves/ports/RGSX/1FichierAPI.txt`  
 > si vous souhaitez télécharger depuis des liens 1Fichier.
 ---
 
 - Lancez RGSX depuis ports.
 - Configurez les contrôles. Ils pourront être reconfigurés via le menu pause par la suite si erreur.
-- Supprimez le fichier `/userdata/saves/ports/rgsx/controls.json` en cas de problème puis relancez l'application.
+- Supprimez le fichier `/saves/ports/rgsx/controls.json` en cas de problème puis relancez l'application.
 - L'application téléchargera toutes les données nécessaires automatiquement ensuite.
 
 ---
@@ -106,13 +106,13 @@ Vous trouverez RGSX dans le système "PORTS" ou "Jeux Amateurs et portages" et d
 
 ### Logs
 
-Les logs sont enregistrés dans `/userdata/roms/ports/RGSX/logs/RGSX.log` pour diagnostiquer les problèmes.
+Les logs sont enregistrés dans `/roms/ports/RGSX/logs/RGSX.log` pour diagnostiquer les problèmes.
 
 ---
 
 ## 📁 Structure du projet
 ```
-/userdata/roms/ports/
+/roms/ports/
 RGSX-INSTALL.log         # LOG d'installation uniquement
 RGSX/
 │
@@ -127,7 +127,7 @@ RGSX/
 └── logs/
     └── RGSX.log         # Fichier de logs.
 
-/userdata/saves/ports/
+/saves/ports/
 RGSX/
 │
 ├── controls.json        # Fichier de mappage des contrôles  (généré après le 1er demarrage)
@@ -145,7 +145,7 @@ RGSX/
 
 ### Signaler un bug
 
-1. Consultez les logs dans `/userdata/roms/ports/RGSX/logs/RGSX.log`.
+1. Consultez les logs dans `/roms/ports/RGSX/logs/RGSX.log`.
 2. Ouvrez une issue sur GitHub avec une description détaillée et les logs pertinents.
 
 ### Proposer une fonctionnalité

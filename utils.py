@@ -86,7 +86,7 @@ def is_extension_supported(filename, platform, extensions_data):
     dest_dir = None
     for platform_dict in config.platform_dicts:
         if platform_dict["platform"] == platform:
-            dest_dir = platform_dict.get("folder")
+            dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder", platform.lower().replace(" ", "")))
             break
     if not dest_dir:
         logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform}")
@@ -300,7 +300,7 @@ def wrap_text(text, font, max_width):
     
 def load_system_image(platform_dict):
     """Charge une image système depuis le chemin spécifié dans system_image."""
-    image_path = platform_dict.get("system_image")
+    image_path = os.path.join(config.IMAGES_FOLDER, platform_dict.get("system_image", "default.png"))
     platform_name = platform_dict.get("platform", "unknown")
     #logger.debug(f"Chargement de l'image système pour {platform_name} depuis {image_path}")
     try:

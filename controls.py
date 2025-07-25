@@ -45,52 +45,35 @@ def validate_menu_state(state):
 
 def load_controls_config(path=CONTROLS_CONFIG_PATH):
     """Charge la configuration des contrôles depuis un fichier JSON."""
+    default_config = {
+        "confirm": {"type": "key", "key": pygame.K_RETURN},
+        "cancel": {"type": "key", "key": pygame.K_ESCAPE},
+        "left": {"type": "key", "key": pygame.K_LEFT},
+        "right": {"type": "key", "key": pygame.K_RIGHT},
+        "up": {"type": "key", "key": pygame.K_UP},
+        "down": {"type": "key", "key": pygame.K_DOWN},
+        "start": {"type": "key", "key": pygame.K_p},
+        "progress": {"type": "key", "key": pygame.K_x},
+        "history": {"type": "key", "key": pygame.K_h},
+        "page_up": {"type": "key", "key": pygame.K_PAGEUP},
+        "page_down": {"type": "key", "key": pygame.K_PAGEDOWN},
+        "filter": {"type": "key", "key": pygame.K_f},
+        "delete": {"type": "key", "key": pygame.K_BACKSPACE},
+        "space": {"type": "key", "key": pygame.K_SPACE}
+    }
+    
     try:
         with open(path, "r") as f:
             config_data = json.load(f)
-            # Vérifier les actions nécessaires
-            required_actions = ["confirm", "cancel", "up", "down"]
-            for action in required_actions:
+            # Vérifier et compléter les actions manquantes
+            for action, default_mapping in default_config.items():
                 if action not in config_data:
                     logger.warning(f"Action {action} manquante dans {path}, utilisation de la valeur par défaut")
-                    config_data[action] = {
-                        "type": "key",
-                        "value": {
-                            "confirm": {"type": "key", "value": pygame.K_RETURN},
-                            "cancel": {"type": "key", "value": pygame.K_ESCAPE},
-                            "left": {"type": "key", "value": pygame.K_LEFT},
-                            "right": {"type": "key", "value": pygame.K_RIGHT},
-                            "up": {"type": "key", "value": pygame.K_UP},
-                            "down": {"type": "key", "value": pygame.K_DOWN},
-                            "start": {"type": "key", "value": pygame.K_p},
-                            "progress": {"type": "key", "value": pygame.K_x},
-                            "history": {"type": "key", "value": pygame.K_h},
-                            "page_up": {"type": "key", "value": pygame.K_PAGEUP},
-                            "page_down": {"type": "key", "value": pygame.K_PAGEDOWN},
-                            "filter": {"type": "key", "value": pygame.K_f},
-                            "delete": {"type": "key", "value": pygame.K_BACKSPACE},
-                            "space": {"type": "key", "value": pygame.K_SPACE}
-                        }[action]
-                    }
+                    config_data[action] = default_mapping
             return config_data
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logger.error(f"Erreur lors de la lecture de {path} : {e}, utilisation de la configuration par défaut")
-        return {
-            "confirm": {"type": "key", "value": pygame.K_RETURN},
-            "cancel": {"type": "key", "value": pygame.K_ESCAPE},
-            "left": {"type": "key", "value": pygame.K_LEFT},
-            "right": {"type": "key", "value": pygame.K_RIGHT},
-            "up": {"type": "key", "value": pygame.K_UP},
-            "down": {"type": "key", "value": pygame.K_DOWN},
-            "start": {"type": "key", "value": pygame.K_p},
-            "progress": {"type": "key", "value": pygame.K_x},
-            "history": {"type": "key", "value": pygame.K_h},
-            "page_up": {"type": "key", "value": pygame.K_PAGEUP},
-            "page_down": {"type": "key", "value": pygame.K_PAGEDOWN},
-            "filter": {"type": "key", "value": pygame.K_f},
-            "delete": {"type": "key", "value": pygame.K_BACKSPACE},
-            "space": {"type": "key", "value": pygame.K_SPACE}
-        }
+        return default_config
 
 # Fonction pour vérifier si un événement correspond à une action
 def is_input_matched(event, action_name):
@@ -623,7 +606,7 @@ def handle_controls(event, sources, joystick, screen):
                                 config.menu_state = "error"
                                 config.error_message = _(
                                     "error_api_key"
-                                ).format("/userdata/saves/ports/rgsx/1fichierAPI.txt")
+                                ).format(os.join(config.SAVE_FOLDER,"1fichierAPI.txt"))
                                 config.history[-1]["status"] = "Erreur"
                                 config.history[-1]["progress"] = 0
                                 config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
@@ -728,9 +711,9 @@ def handle_controls(event, sources, joystick, screen):
                                         if not config.API_KEY_1FICHIER:
                                             config.previous_menu_state = config.menu_state
                                             config.menu_state = "error"
-                                            config.error_message = (
-                                                "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichierAPI.txt"
-                                            )
+                                            logger.warning("clé api absente dans os.path.join(config.SAVE_FOLDER, '1fichierAPI.txt')\n")
+                                            config.error_message = _("error_api_key").format(os.path.join(config.SAVE_FOLDER, "1fichierAPI.txt"))
+                                            
                                             config.history[-1]["status"] = "Erreur"
                                             config.history[-1]["progress"] = 0
                                             config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
@@ -930,11 +913,11 @@ def handle_controls(event, sources, joystick, screen):
                         try:
                             os.remove(config.APP_FOLDER + "/sources.json")
                             logger.debug("Fichier sources.json supprimé avec succès")
-                            if os.path.exists(config.APP_FOLDER + "/games"):
-                                shutil.rmtree(config.APP_FOLDER + "/games")
+                            if os.path.exists(config.GAMES_FOLDER):
+                                shutil.rmtree(config.GAMES_FOLDER)
                                 logger.debug("Dossier games supprimé avec succès")
-                            if os.path.exists(config.APP_FOLDER + "/images"):
-                                shutil.rmtree(config.APP_FOLDER + "/images")
+                            if os.path.exists(config.IMAGES_FOLDER):
+                                shutil.rmtree(config.IMAGES_FOLDER)
                                 logger.debug("Dossier images supprimé avec succès")
                             config.menu_state = "restart_popup"
                             config.popup_message = _("popup_redownload_success")

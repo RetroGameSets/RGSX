@@ -680,10 +680,10 @@ def draw_history_list(screen):
             # logger.debug(f"Affichage terminé: {game_name}, status={status_text}")
         elif status == "Erreur":
             status_text = _("history_status_error").format(entry.get('message', 'Échec'))
-            logger.debug(f"Affichage erreur: {game_name}, status={status_text}")
+            #logger.debug(f"Affichage erreur: {game_name}, status={status_text}")
         else:
             status_text = status
-            logger.debug(f"Affichage statut inconnu: {game_name}, status={status_text}")
+            #logger.debug(f"Affichage statut inconnu: {game_name}, status={status_text}")
 
         color = THEME_COLORS["fond_lignes"] if i == config.current_history_item else THEME_COLORS["text"]
         platform_text = truncate_text_end(platform, config.small_font, col_platform_width - 10)

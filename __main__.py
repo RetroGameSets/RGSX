@@ -18,12 +18,10 @@ import config
 from config import OTA_data_ZIP
 
 # Configuration du logging
-log_dir = os.path.join(config.APP_FOLDER, "logs")
-log_file = os.path.join(log_dir, "RGSX.log")
 try:
-    os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(config.log_dir, exist_ok=True)
     logging.basicConfig(
-        filename=log_file,
+        filename=config.log_file,
         level=logging.DEBUG,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
@@ -32,7 +30,7 @@ except Exception as e:
         level=logging.DEBUG,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
-    logging.error(f"Échec de la configuration du logging dans {log_file}: {str(e)}")
+    logging.error(f"Échec de la configuration du logging dans {config.log_file}: {str(e)}")
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +308,7 @@ async def main():
                                 config.previous_menu_state = config.menu_state
                                 config.menu_state = "error"
                                 config.error_message = (
-                                    "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichierAPI.txt"
+                                    f"Attention il faut renseigner sa clé API (premium only) dans le fichier {os.path.join(config.SAVE_FOLDER, '1fichierAPI.txt')}"
                                 )
                                 # Mettre à jour l'entrée temporaire avec l'erreur
                                 config.history[-1]["status"] = "Erreur"

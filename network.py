@@ -176,7 +176,9 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             dest_dir = None
             for platform_dict in config.platform_dicts:
                 if platform_dict["platform"] == platform:
-                    dest_dir = platform_dict.get("folder")
+                    dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder", platform.lower().replace(" ", "")))
+                    logger.debug(f"Répertoire de destination trouvé pour {platform}: {dest_dir}")
+                    #dest_dir = platform_dict.get("folder")
                     break
             if not dest_dir:
                 dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform.lower().replace(" ", ""))
@@ -204,15 +206,15 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             session.headers.update(headers)
             
             # Première requête HEAD pour obtenir la vraie URL
-            logger.debug(f"Première requête HEAD vers {url}")
+            #logger.debug(f"Première requête HEAD vers {url}")
             head_response = session.head(url, timeout=30, allow_redirects=False)
-            logger.debug(f"HEAD Status: {head_response.status_code}, Headers: {dict(head_response.headers)}")
+            #logger.debug(f"HEAD Status: {head_response.status_code}, Headers: {dict(head_response.headers)}")
             
             # Suivre la redirection manuellement si nécessaire
             final_url = url
             if head_response.status_code in [301, 302, 303, 307, 308]:
                 final_url = head_response.headers.get('Location', url)
-                logger.debug(f"Redirection détectée vers: {final_url}")
+                #logger.debug(f"Redirection détectée vers: {final_url}")
             
             # Requête GET vers l'URL finale avec en-têtes spécifiques
             download_headers = headers.copy()
@@ -368,7 +370,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             logger.error(f"Erreur mise à jour progression: {str(e)}")
     
     thread.join()
-    logger.debug(f"Thread joined for {url}, task_id={task_id}")
+    #logger.debug(f"Thread joined for {url}, task_id={task_id}")
     return result[0], result[1]
 
 async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=False, task_id=None):
@@ -391,7 +393,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             dest_dir = None
             for platform_dict in config.platform_dicts:
                 if platform_dict["platform"] == platform:
-                    dest_dir = platform_dict.get("folder")
+                    dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder", platform.lower().replace(" ", "")))
                     break
             if not dest_dir:
                 logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform}")
@@ -411,9 +413,9 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 "pretty": 1
             }
 
-            logger.debug(f"Envoi requête POST à https://api.1fichier.com/v1/file/info.cgi pour {url}")
+            #logger.debug(f"Envoi requête POST à https://api.1fichier.com/v1/file/info.cgi pour {url}")
             response = requests.post("https://api.1fichier.com/v1/file/info.cgi", headers=headers, json=payload, timeout=30)
-            logger.debug(f"Réponse reçue, status: {response.status_code}")
+            #logger.debug(f"Réponse reçue, status: {response.status_code}")
             response.raise_for_status()
             file_info = response.json()
 
@@ -434,9 +436,9 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             dest_path = os.path.join(dest_dir, sanitized_filename)
             logger.debug(f"Chemin destination: {dest_path}")
 
-            logger.debug(f"Envoi requête POST à https://api.1fichier.com/v1/download/get_token.cgi pour {url}")
+            #logger.debug(f"Envoi requête POST à https://api.1fichier.com/v1/download/get_token.cgi pour {url}")
             response = requests.post("https://api.1fichier.com/v1/download/get_token.cgi", headers=headers, json=payload, timeout=30)
-            logger.debug(f"Réponse reçue, status: {response.status_code}")
+            #logger.debug(f"Réponse reçue, status: {response.status_code}")
             response.raise_for_status()
             download_info = response.json()
 
@@ -452,12 +454,12 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             retry_delay = 10
             # Initialiser la progression avec task_id
             progress_queue.put((task_id, 0, 0))  # Taille initiale inconnue
-            logger.debug(f"Progression initiale envoyée: 0% pour {game_name}, task_id={task_id}")
+            #logger.debug(f"Progression initiale envoyée: 0% pour {game_name}, task_id={task_id}")
             for attempt in range(retries):
                 try:
-                    logger.debug(f"Tentative {attempt + 1} : Envoi requête GET à {final_url}")
+                    #logger.debug(f"Tentative {attempt + 1} : Envoi requête GET à {final_url}")
                     with requests.get(final_url, stream=True, headers={'User-Agent': 'Mozilla/5.0'}, timeout=30) as response:
-                        logger.debug(f"Réponse reçue, status: {response.status_code}")
+                        #logger.debug(f"Réponse reçue, status: {response.status_code}")
                         response.raise_for_status()
                         total_size = int(response.headers.get('content-length', 0))
                         logger.debug(f"Taille totale: {total_size} octets")
@@ -496,7 +498,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                                         entry["downloaded_size"] = downloaded
                                                         entry["total_size"] = total_size
                                                         config.needs_redraw = True
-                                                        logger.debug(f"Progression mise à jour: {entry['progress']:.1f}% pour {game_name}")
+                                                        #logger.debug(f"Progression mise à jour: {entry['progress']:.1f}% pour {game_name}")
                                                         break
                                         progress_queue.put((task_id, downloaded, total_size))
                                         last_update_time = current_time

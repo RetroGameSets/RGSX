@@ -2,8 +2,6 @@ import pygame # type: ignore
 import os
 import logging
 
-logger = logging.getLogger(__name__)
-
 # Version actuelle de l'application
 app_version = "1.9.7.2"
 
@@ -11,20 +9,29 @@ app_version = "1.9.7.2"
 current_language = "fr"
 
 
-# URL
-OTA_SERVER_URL = "https://retrogamesets.fr/softs"
-OTA_VERSION_ENDPOINT = f"{OTA_SERVER_URL}/version.json"
-OTA_UPDATE_ZIP = f"{OTA_SERVER_URL}/RGSX.zip"
-OTA_data_ZIP = f"{OTA_SERVER_URL}/rgsx-data.zip"
-
 # Chemins de base
-APP_FOLDER = "/userdata/roms/ports/RGSX"
-SAVE_FOLDER = "/userdata/saves/ports/rgsx"
-UPDATE_FOLDER = f"{APP_FOLDER}/update"
+SYSTEM_FOLDER = "/userdata"
+ROMS_FOLDER = os.path.join(SYSTEM_FOLDER, "roms")
+APP_FOLDER = os.path.join(ROMS_FOLDER, "ports", "RGSX")
+UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")
+SAVE_FOLDER = os.path.join(SYSTEM_FOLDER, "saves", "ports", "rgsx")
+IMAGES_FOLDER = os.path.join(APP_FOLDER, "images", "systemes")
+GAMES_FOLDER = os.path.join(APP_FOLDER, "games")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
 HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
 LANGUAGE_CONFIG_PATH = os.path.join(SAVE_FOLDER, "language.json")
 JSON_EXTENSIONS = os.path.join(APP_FOLDER, "rom_extensions.json")
+
+# Configuration du logging
+logger = logging.getLogger(__name__)
+log_dir = os.path.join(APP_FOLDER, "logs")
+log_file = os.path.join(log_dir, "RGSX.log")
+
+# URL
+OTA_SERVER_URL = "https://retrogamesets.fr/softs"
+OTA_VERSION_ENDPOINT = os.path.join(OTA_SERVER_URL, "version.json")
+OTA_UPDATE_ZIP = os.path.join(OTA_SERVER_URL, "RGSX.zip")
+OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "rgsx-data.zip")
 
 
 # Constantes pour la répétition automatique dans pause_menu
@@ -50,6 +57,7 @@ transition_state = "idle"
 transition_progress = 0.0
 transition_duration = 18
 games_count = {}
+API_KEY_1FICHIER = ""  # Initialisation de la variable globale pour la clé API
 
 # Variables pour la sélection de langue
 selected_language_index = 0
@@ -149,4 +157,4 @@ def validate_resolution():
 
 
     
-API_KEY_1FICHIER = ""  # Initialisation de la variable globale pour la clé API
+
