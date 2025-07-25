@@ -3,7 +3,7 @@ import os
 import logging
 
 # Version actuelle de l'application
-app_version = "1.9.7.3"
+app_version = "1.9.7.4"
 
 
 
@@ -97,8 +97,8 @@ redownload_confirm_selection = 0  # Sélection pour la confirmation de redownloa
 popup_message = ""  # Message à afficher dans les popups
 popup_timer = 0  # Temps restant pour le popup en millisecondes (0 = inactif)
 last_frame_time = pygame.time.get_ticks()
+current_music_name = None
 music_popup_start_time = 0
-current_music_name = ""
 
 
 GRID_COLS = 3  # Number of columns in the platform grid

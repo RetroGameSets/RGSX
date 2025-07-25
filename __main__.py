@@ -8,7 +8,7 @@ import requests
 import queue
 import datetime
 from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_virtual_keyboard, draw_popup_result_download, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, draw_gradient, draw_language_menu, THEME_COLORS
-from language import update_valid_states, handle_language_menu_events, _
+from language import handle_language_menu_events, _
 from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates
 from controls import handle_controls, validate_menu_state, process_key_repeats
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
@@ -43,7 +43,6 @@ pygame.joystick.init()
 # Chargement et initialisation de la langue
 from language import initialize_language
 initialize_language()
-logger.debug(f"Langue initialisée: {config.current_language}")
 
 # Détection du système non-PC
 config.is_non_pc = detect_non_pc()
@@ -88,8 +87,8 @@ config.repeat_start_time = 0
 config.repeat_last_action = 0
 
 # Initialisation des variables pour la popup de musique
-current_music_name = None
-music_popup_start_time = 0
+
+
 # Dossier musique Batocera
 music_folder = os.path.join(config.APP_FOLDER, "assets", "music")
 music_files = [f for f in os.listdir(music_folder) if f.lower().endswith(('.ogg', '.mp3'))]
@@ -569,14 +568,7 @@ async def main():
                 draw_platform_grid(screen)
                 config.needs_redraw = True
                 logger.error(f"État de menu non valide détecté: {config.menu_state}, retour à platform")
-            draw_controls(screen, config.menu_state)
-            
-            # Afficher la popup de musique si nécessaire
-            if current_music_name and music_popup_start_time > 0:
-                from display import draw_music_popup
-                if not draw_music_popup(screen, current_music_name, music_popup_start_time):
-                    current_music_name = None
-                    music_popup_start_time = 0
+            draw_controls(screen, config.menu_state, getattr(config, 'current_music_name', None), getattr(config, 'music_popup_start_time', 0))
             
             pygame.display.flip()
             

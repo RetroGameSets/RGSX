@@ -949,11 +949,18 @@ def draw_extension_warning(screen):
             screen.blit(error_surface, error_rect)
 
 # Affichage des contrôles en bas de page
-def draw_controls(screen, menu_state):
+def draw_controls(screen, menu_state, current_music_name=None, music_popup_start_time=0):
     """Affiche les contrôles sur une seule ligne en bas de l’écran."""
     start_button = get_control_display('start', 'START')
     start_text = _("controls_action_start")
     control_text = f"RGSX v{config.app_version} - {start_button} : {start_text}"
+    
+    # Ajouter le nom de la musique si disponible
+    if config.current_music_name and config.music_popup_start_time > 0:
+        current_time = pygame.time.get_ticks() / 1000
+        if current_time - config.music_popup_start_time < 3.0:  # Afficher pendant 3 secondes
+            control_text += f" | {config.current_music_name}"
+            logger.debug(f"config.current_music_name")
     max_width = config.screen_width - 40
     wrapped_controls = wrap_text(control_text, config.small_font, max_width)
     line_height = config.small_font.get_height() + 5
@@ -1313,39 +1320,3 @@ def draw_popup(screen):
     countdown_rect = countdown_surface.get_rect(center=(config.screen_width // 2, popup_y + margin_top_bottom + len(text_lines) * line_height + line_height // 2))
     screen.blit(countdown_surface, countdown_rect)
 
-def draw_music_popup(screen, music_name, start_time):
-    """Affiche une popup temporaire avec le nom de la musique en cours"""
-    current_time = pygame.time.get_ticks() / 1000
-    elapsed = current_time - start_time
-    
-    # Afficher pendant 3 secondes
-    if elapsed > 3.0:
-        return False
-    
-    # Effet de fondu
-    alpha = 255
-    if elapsed > 2.5:
-        alpha = int(255 * (3.0 - elapsed) / 0.5)
-    
-    # Dimensions de la popup
-    popup_width = 300
-    popup_height = 60
-    popup_x = config.screen_width - popup_width - 20
-    popup_y = 20
-    
-    # Surface avec transparence
-    popup_surface = pygame.Surface((popup_width, popup_height), pygame.SRCALPHA)
-    popup_surface.set_alpha(alpha)
-    
-    # Fond de la popup
-    pygame.draw.rect(popup_surface, THEME_COLORS["button_idle"], (0, 0, popup_width, popup_height), border_radius=10)
-    pygame.draw.rect(popup_surface, THEME_COLORS["border"], (0, 0, popup_width, popup_height), 2, border_radius=10)
-    
-    # Texte de la musique
-    text_surface = config.small_font.render(music_name, True, THEME_COLORS["text"])
-    text_rect = text_surface.get_rect(center=(popup_width // 2, popup_height // 2))
-    popup_surface.blit(text_surface, text_rect)
-    
-    # Afficher la popup
-    screen.blit(popup_surface, (popup_x, popup_y))
-    return True
