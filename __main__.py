@@ -570,6 +570,14 @@ async def main():
                 config.needs_redraw = True
                 logger.error(f"État de menu non valide détecté: {config.menu_state}, retour à platform")
             draw_controls(screen, config.menu_state)
+            
+            # Afficher la popup de musique si nécessaire
+            if current_music_name and music_popup_start_time > 0:
+                from display import draw_music_popup
+                if not draw_music_popup(screen, current_music_name, music_popup_start_time):
+                    current_music_name = None
+                    music_popup_start_time = 0
+            
             pygame.display.flip()
             
             config.needs_redraw = False

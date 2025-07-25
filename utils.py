@@ -11,9 +11,11 @@ import threading
 import zipfile
 import time
 import random
+import random
 from config import JSON_EXTENSIONS, SAVE_FOLDER
 from history import save_history
 from language import _  # Import de la fonction de traduction
+from datetime import datetime
 
 from datetime import datetime
 

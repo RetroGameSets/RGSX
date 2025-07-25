@@ -306,39 +306,6 @@ def save_controls_config(controls_config):
     except Exception as e:
         logger.error(f"Erreur lors de l'enregistrement de controls.json : {e}")
 
-def validate_controls_config(controls_config):
-    """Valide la structure de la configuration des contrôles"""
-    required_actions = ["confirm", "cancel", "up", "down", "left", "right"]
-    
-    for action in required_actions:
-        if action not in controls_config:
-            logger.warning(f"Action {action} manquante dans la configuration")
-            return False
-        
-        mapping = controls_config[action]
-        if "type" not in mapping:
-            logger.warning(f"Type manquant pour l'action {action}")
-            return False
-        
-        input_type = mapping["type"]
-        if input_type == "key" and "key" not in mapping:
-            logger.warning(f"Clé 'key' manquante pour l'action {action}")
-            return False
-        elif input_type == "button" and "button" not in mapping:
-            logger.warning(f"Clé 'button' manquante pour l'action {action}")
-            return False
-        elif input_type == "axis" and ("axis" not in mapping or "direction" not in mapping):
-            logger.warning(f"Clés 'axis' ou 'direction' manquantes pour l'action {action}")
-            return False
-        elif input_type == "hat" and "value" not in mapping:
-            logger.warning(f"Clé 'value' manquante pour l'action {action}")
-            return False
-        elif input_type == "mouse" and "button" not in mapping:
-            logger.warning(f"Clé 'button' manquante pour l'action {action}")
-            return False
-    
-    return True
-
 def get_readable_input_name(event):
     """Retourne un nom lisible pour une entrée (touche, bouton, axe, hat, ou souris)"""
     if event.type == pygame.KEYDOWN:

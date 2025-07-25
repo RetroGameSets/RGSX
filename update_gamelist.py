@@ -20,11 +20,7 @@ RGSX_ENTRY = {
     "rating": "1",
     "releasedate": "20250620T165718",
     "developer": "RetroGameSets.fr",
-    "genre": "Compilation, Various / Utilities",
-    "playcount": "666",
-    "lastplayed": "20250621T234656",
-    "gametime": "9999999",
-    "lang": "fr"
+    "genre": "Various / Utilities"
 }
 
 def update_gamelist():
