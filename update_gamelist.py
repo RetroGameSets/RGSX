@@ -2,17 +2,18 @@ import os
 import xml.dom.minidom
 import xml.etree.ElementTree as ET
 import logging
+import config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-GAMELIST_FILE = "/userdata/roms/ports/gamelist.xml"
+
 RGSX_ENTRY = {
     "path": "./RGSX/RGSX.sh",
     "name": "RGSX",
     "desc": "Retro Games Sets X - Games Downloader",
     "image": "./images/RGSX.png",
-    "video": "./videos/RGSX.mp4"
+    "video": "./videos/RGSX.mp4",
     "marquee": "./images/RGSX.png",
     "thumbnail": "./images/RGSX.png",
     "fanart": "./images/RGSX.png",
@@ -29,19 +30,19 @@ RGSX_ENTRY = {
 def update_gamelist():
     try:
         # Si le fichier n'existe pas, est vide ou non valide, créer une nouvelle structure
-        if not os.path.exists(GAMELIST_FILE) or os.path.getsize(GAMELIST_FILE) == 0:
-            logger.info(f"Création de {GAMELIST_FILE}")
+        if not os.path.exists(config.GAMELISTXML) or os.path.getsize(config.GAMELISTXML) == 0:
+            logger.info(f"Création de {config.GAMELISTXML}")
             root = ET.Element("gameList")
         else:
             try:
-                logger.info(f"Lecture de {GAMELIST_FILE}")
-                tree = ET.parse(GAMELIST_FILE)
+                logger.info(f"Lecture de {config.GAMELISTXML}")
+                tree = ET.parse(config.GAMELISTXML)
                 root = tree.getroot()
                 if root.tag != "gameList":
-                    logger.info(f"{GAMELIST_FILE} n'a pas de balise <gameList>, création d'une nouvelle structure")
+                    logger.info(f"{config.GAMELISTXML} n'a pas de balise <gameList>, création d'une nouvelle structure")
                     root = ET.Element("gameList")
             except ET.ParseError:
-                logger.info(f"{GAMELIST_FILE} est invalide, création d'une nouvelle structure")
+                logger.info(f"{config.GAMELISTXML} est invalide, création d'une nouvelle structure")
                 root = ET.Element("gameList")
 
         # Supprimer l'ancienne entrée RGSX
@@ -64,15 +65,15 @@ def update_gamelist():
         pretty_xml = parsed.toprettyxml(indent="\t", encoding='utf-8').decode('utf-8')
         # Supprimer les lignes vides inutiles générées par minidom
         pretty_xml = '\n'.join(line for line in pretty_xml.split('\n') if line.strip())
-        with open(GAMELIST_FILE, 'w', encoding='utf-8') as f:
+        with open(config.GAMELISTXML, 'w', encoding='utf-8') as f:
             f.write(pretty_xml)
-        logger.info(f"{GAMELIST_FILE} mis à jour avec succès")
+        logger.info(f"{config.GAMELISTXML} mis à jour avec succès")
 
         # Définir les permissions
-        os.chmod(GAMELIST_FILE, 0o644)
+        os.chmod(config.GAMELISTXML, 0o644)
 
     except Exception as e:
-        logger.error(f"Erreur lors de la mise à jour de {GAMELIST_FILE}: {e}")
+        logger.error(f"Erreur lors de la mise à jour de {config.GAMELISTXML}: {e}")
         raise
         
 def load_gamelist(path):

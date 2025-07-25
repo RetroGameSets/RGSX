@@ -14,6 +14,7 @@ SYSTEM_FOLDER = "/userdata"
 ROMS_FOLDER = os.path.join(SYSTEM_FOLDER, "roms")
 APP_FOLDER = os.path.join(ROMS_FOLDER, "ports", "RGSX")
 UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")
+GAMELISTXML = os.path.join(APP_FOLDER, "gamelist.xml")
 SAVE_FOLDER = os.path.join(SYSTEM_FOLDER, "saves", "ports", "rgsx")
 IMAGES_FOLDER = os.path.join(APP_FOLDER, "images", "systemes")
 GAMES_FOLDER = os.path.join(APP_FOLDER, "games")
