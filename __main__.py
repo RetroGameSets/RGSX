@@ -196,7 +196,6 @@ async def main():
         for event in events:
             # Gestion directe des événements pour le menu de langue
             if config.menu_state == "language_select":
-                from language import handle_language_menu_events
                 if handle_language_menu_events(event, screen):
                     config.needs_redraw = True
                 continue
