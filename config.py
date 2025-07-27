@@ -3,7 +3,7 @@ import os
 import logging
 
 # Version actuelle de l'application
-app_version = "1.9.7.6"
+app_version = "1.9.7.7"
 
 
 
@@ -43,6 +43,9 @@ REPEAT_ACTION_DEBOUNCE = 150  # Délai anti-rebond pour répétitions (ms) - aug
 platforms = []
 current_platform = 0
 accessibility_mode = False  # Mode accessibilité pour les polices agrandies
+accessibility_settings = {"font_scale": 1.0}
+font_scale_options = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0]
+current_font_scale_index = 3  # Index pour 1.0
 platform_names = {}  # {platform_id: platform_name}
 games = []
 current_game = 0
@@ -89,6 +92,7 @@ current_history_item = 0
 history_scroll_offset = 0  # Offset pour le défilement de l'historique
 visible_history_items = 15  # Nombre d'éléments d'historique visibles (ajusté dynamiquement)
 confirm_clear_selection = 0  # confirmation clear historique
+confirm_cancel_selection = 0  # confirmation annulation téléchargement
 last_state_change_time = 0  # Temps du dernier changement d'état pour debounce
 debounce_delay = 200  # Délai de debounce en millisecondes
 platform_dicts = []  # Liste des dictionnaires de plateformes
@@ -126,27 +130,32 @@ small_font = None
 
 def init_font():
     """Initialise les polices après pygame.init()."""
-    logger.debug("--------------------------------------------------------------------")
-    logger.debug("---------------------------DEBUT LOG--------------------------------")
-    logger.debug("--------------------------------------------------------------------")
 
-    global FONT, progress_font, title_font, search_font, small_font
-    multiplier = 1.5 if accessibility_mode else 1.0
+    global font, progress_font, title_font, search_font, small_font
+    font_scale = accessibility_settings.get("font_scale", 1.0)
     try:
-        FONT = pygame.font.Font(None, int(36 * multiplier))
-        progress_font = pygame.font.Font(None, int(28 * multiplier))
-        title_font = pygame.font.Font(None, int(48 * multiplier))
-        search_font = pygame.font.Font(None, int(36 * multiplier))
-        small_font = pygame.font.Font(None, int(24 * multiplier))
-        logger.debug(f"Polices initialisées avec succès (mode accessibilité: {accessibility_mode})")
-    # amazonq-ignore-next-line
-    except pygame.error as e:
-        logger.error(f"Erreur lors de l'initialisation des polices : {e}")
-        FONT = None
-        progress_font = None
-        title_font = None
-        search_font = None
-        small_font = None
+        font_path = os.path.join(APP_FOLDER, "assets", "Pixel-UniCode.ttf")
+        font = pygame.font.Font(font_path, int(36 * font_scale))
+        title_font = pygame.font.Font(font_path, int(48 * font_scale))
+        search_font = pygame.font.Font(font_path, int(48 * font_scale))
+        progress_font = pygame.font.Font(font_path, int(36 * font_scale))
+        small_font = pygame.font.Font(font_path, int(28 * font_scale))
+        logger.debug(f"Polices Pixel-UniCode initialisées (font_scale: {font_scale})")
+    except Exception as e:
+        try:
+            font = pygame.font.SysFont("arial", int(48 * font_scale))
+            title_font = pygame.font.SysFont("arial", int(60 * font_scale))
+            search_font = pygame.font.SysFont("arial", int(60 * font_scale))
+            progress_font = pygame.font.SysFont("arial", int(36 * font_scale))
+            small_font = pygame.font.SysFont("arial", int(28 * font_scale))
+            logger.debug(f"Polices Arial initialisées (font_scale: {font_scale})")
+        except Exception as e2:
+            logger.error(f"Erreur lors de l'initialisation des polices : {e2}")
+            font = None
+            progress_font = None
+            title_font = None
+            search_font = None
+            small_font = None
 
 def validate_resolution():
     """Valide la résolution de l'écran par rapport aux capacités de l'écran."""

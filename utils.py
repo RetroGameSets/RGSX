@@ -13,6 +13,28 @@ import time
 import random
 import random
 from config import JSON_EXTENSIONS, SAVE_FOLDER
+
+def load_accessibility_settings():
+    """Charge les paramètres d'accessibilité depuis accessibility.json."""
+    accessibility_path = os.path.join(SAVE_FOLDER, "accessibility.json")
+    try:
+        if os.path.exists(accessibility_path):
+            with open(accessibility_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Erreur lors du chargement de accessibility.json: {str(e)}")
+    return {"font_scale": 1.0}
+
+def save_accessibility_settings(settings):
+    """Sauvegarde les paramètres d'accessibilité dans accessibility.json."""
+    accessibility_path = os.path.join(SAVE_FOLDER, "accessibility.json")
+    try:
+        os.makedirs(SAVE_FOLDER, exist_ok=True)
+        with open(accessibility_path, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2)
+        logger.debug(f"Paramètres d'accessibilité sauvegardés: {settings}")
+    except Exception as e:
+        logger.error(f"Erreur lors de la sauvegarde de accessibility.json: {str(e)}")
 from history import save_history
 from language import _  # Import de la fonction de traduction
 from datetime import datetime
@@ -85,17 +107,23 @@ def check_extension_before_download(url, platform, game_name):
 def is_extension_supported(filename, platform, extensions_data):
     """Vérifie si l'extension du fichier est supportée pour la plateforme donnée."""
     extension = os.path.splitext(filename)[1].lower()
+    
     dest_dir = None
     for platform_dict in config.platform_dicts:
         if platform_dict["platform"] == platform:
-            dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder", platform.lower().replace(" ", "")))
+            dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder"))
             break
+    
     if not dest_dir:
         logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform}")
         dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform)
-    for system in extensions_data:
-        if system["folder"] == dest_dir:
-            return extension in system["extensions"]
+    
+    dest_folder_name = os.path.basename(dest_dir)
+    for i, system in enumerate(extensions_data):
+        if system["folder"] == dest_folder_name:
+            result = extension in system["extensions"]
+            return result
+    
     logger.warning(f"Aucun système trouvé pour le dossier {dest_dir}")
     return False
 
@@ -388,7 +416,7 @@ def extract_zip(zip_path, dest_dir, url):
                                             if current_time - last_save_time >= save_interval:
                                                 save_history(config.history)
                                                 last_save_time = current_time
-                                                logger.debug(f"Extraction en cours: {info.filename}, file_extracted={file_extracted}/{file_size}, total_extracted={extracted_size}/{total_size}, progression={progress_percent:.1f}%")
+                                                # logger.debug(f"Extraction en cours: {info.filename}, file_extracted={file_extracted}/{file_size}, total_extracted={extracted_size}/{total_size}, progression={progress_percent:.1f}%")
                                             
                                             config.needs_redraw = True
                                             break
@@ -574,7 +602,7 @@ def extract_rar(rar_path, dest_dir, url):
                 logger.error(f"Erreur lors de la suppression de {rar_path}: {str(e)}")
 
 def play_random_music(music_files, music_folder, current_music=None):
-    """Joue une musique aléatoire et configure l'événement de fin."""
+    """Joue une musique aléatoire et configure l'événement de fin de manière non-bloquante."""
     if music_files:
         # Éviter de rejouer la même musique consécutivement
         available_music = [f for f in music_files if f != current_music]
@@ -583,11 +611,21 @@ def play_random_music(music_files, music_folder, current_music=None):
         music_file = random.choice(available_music)
         music_path = os.path.join(music_folder, music_file)
         logger.debug(f"Lecture de la musique : {music_path}")
-        pygame.mixer.music.load(music_path)
-        pygame.mixer.music.set_volume(0.5)
-        pygame.mixer.music.play(loops=0)  # Jouer une seule fois
-        pygame.mixer.music.set_endevent(pygame.USEREVENT + 1)  # Événement de fin
-        set_music_popup(music_file)  # Afficher le nom de la musique dans la popup
+        
+        def load_and_play_music():
+            try:
+                pygame.mixer.music.load(music_path)
+                pygame.mixer.music.set_volume(0.5)
+                pygame.mixer.music.play(loops=0)  # Jouer une seule fois
+                pygame.mixer.music.set_endevent(pygame.USEREVENT + 1)  # Événement de fin
+                set_music_popup(music_file)  # Afficher le nom de la musique dans la popup
+            except Exception as e:
+                logger.error(f"Erreur lors du chargement de la musique {music_path}: {str(e)}")
+        
+        # Charger et jouer la musique dans un thread séparé pour éviter le blocage
+        music_thread = threading.Thread(target=load_and_play_music, daemon=True)
+        music_thread.start()
+        
         return music_file  # Retourner la nouvelle musique pour mise à jour
     else:
         logger.debug("Aucune musique trouvée dans /RGSX/assets/music")
@@ -602,13 +640,17 @@ def set_music_popup(music_name):
 def load_api_key_1fichier():
     """Charge la clé API 1fichier depuis le dossier de sauvegarde, crée le fichier si absent."""
     api_path = os.path.join(SAVE_FOLDER, "1fichierAPI.txt")
+    logger.debug(f"Tentative de chargement de la clé API depuis: {api_path}")
     try:
         # Vérifie si le fichier existe déjà 
         if not os.path.exists(api_path):
+            # Crée le dossier parent si nécessaire
+            os.makedirs(SAVE_FOLDER, exist_ok=True)
             # Crée le fichier vide si absent
             with open(api_path, "w") as f:
                 f.write("")
             logger.info(f"Fichier de clé API créé : {api_path}")
+            return ""
     except OSError as e:
         logger.error(f"Erreur lors de la création du fichier de clé API : {e}")
         return ""
@@ -616,9 +658,10 @@ def load_api_key_1fichier():
     try:
         with open(api_path, "r", encoding="utf-8") as f:
             api_key = f.read().strip()
-        logger.debug(f"Clé API 1fichier chargée : {api_key}")
+        logger.debug(f"Clé API 1fichier lue: '{api_key}' (longueur: {len(api_key)})")
         if not api_key:
             logger.warning("Clé API 1fichier vide, veuillez la renseigner dans le fichier pour pouvoir utiliser les fonctionnalités de téléchargement sur 1fichier.")
+        config.API_KEY_1FICHIER = api_key
         return api_key
     except OSError as e:
         logger.error(f"Erreur lors de la lecture de la clé API : {e}")

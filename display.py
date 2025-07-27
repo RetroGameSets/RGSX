@@ -530,7 +530,7 @@ def draw_game_list(screen):
     for i in range(config.scroll_offset, min(config.scroll_offset + items_per_page, len(games))):
         game_name = games[i][0] if isinstance(games[i], (list, tuple)) else games[i]
         color = THEME_COLORS["fond_lignes"] if i == config.current_game else THEME_COLORS["text"]
-        game_text = truncate_text_middle(game_name, config.small_font, rect_width - 40)
+        game_text = truncate_text_middle(game_name, config.small_font, rect_width - 40, is_filename=False)
         text_surface = config.small_font.render(game_text, True, color)
         text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + (i - config.scroll_offset) * line_height + line_height // 2))
         if i == config.current_game:
@@ -680,7 +680,8 @@ def draw_history_list(screen):
             # logger.debug(f"Affichage terminé: {game_name}, status={status_text}")
         elif status == "Erreur":
             status_text = _("history_status_error").format(entry.get('message', 'Échec'))
-            #logger.debug(f"Affichage erreur: {game_name}, status={status_text}")
+        elif status == "Canceled":
+            status_text = _("history_status_canceled")
         else:
             status_text = status
             #logger.debug(f"Affichage statut inconnu: {game_name}, status={status_text}")
@@ -757,8 +758,37 @@ def draw_clear_history_dialog(screen):
         text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
         screen.blit(text, text_rect)
 
-    draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - 180, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.confirm_clear_selection == 1)
-    draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 20, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.confirm_clear_selection == 0)
+    button_width = min(160, (rect_width - 60) // 2)
+    draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - button_width - 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=config.confirm_clear_selection == 1)
+    draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=config.confirm_clear_selection == 0)
+
+def draw_cancel_download_dialog(screen):
+    """Affiche la boîte de dialogue de confirmation pour annuler un téléchargement."""
+    screen.blit(OVERLAY, (0, 0))
+
+    message = _("confirm_cancel_download")
+    wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
+    line_height = config.font.get_height() + 5
+    text_height = len(wrapped_message) * line_height
+    button_height = int(config.screen_height * 0.0463)
+    margin_top_bottom = 20
+    rect_height = text_height + button_height + 2 * margin_top_bottom
+    max_text_width = max([config.font.size(line)[0] for line in wrapped_message], default=300)
+    rect_width = max_text_width + 150
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+
+    for i, line in enumerate(wrapped_message):
+        text = config.font.render(line, True, THEME_COLORS["text"])
+        text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
+        screen.blit(text, text_rect)
+
+    button_width = min(160, (rect_width - 60) // 2)
+    draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - button_width - 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=config.confirm_cancel_selection == 1)
+    draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=config.confirm_cancel_selection == 0)
 
 # Affichage du clavier virtuel sur non-PC
 def draw_virtual_keyboard(screen):
@@ -960,7 +990,6 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
         current_time = pygame.time.get_ticks() / 1000
         if current_time - config.music_popup_start_time < 3.0:  # Afficher pendant 3 secondes
             control_text += f" | {config.current_music_name}"
-            logger.debug(f"config.current_music_name")
     max_width = config.screen_width - 40
     wrapped_controls = wrap_text(control_text, config.small_font, max_width)
     line_height = config.small_font.get_height() + 5
@@ -1124,22 +1153,30 @@ def draw_controls_help(screen, previous_state):
     }
     
     # Catégories de contrôles
+    nav_text = _("controls_navigation")
+    pages_text = _("controls_pages")
+    confirm_select_text = _("controls_confirm_select")
+    cancel_back_text = _("controls_cancel_back")
+    history_text = _("controls_history")
+    clear_history_text = _("controls_clear_history")
+    filter_search_text = _("controls_filter_search")
+    
     control_categories = {
-        "Navigation": [
-            f"{get_control_display('up', '↑')} {get_control_display('down', '↓')} {get_control_display('left', '←')} {get_control_display('right', '→')} : Navigation",
-            f"{get_control_display('page_up', 'LB')} {get_control_display('page_down', 'RB')} : Pages"
+        _("controls_category_navigation"): [
+            f"{get_control_display('up', '↑')} {get_control_display('down', '↓')} {get_control_display('left', '←')} {get_control_display('right', '→')} : {nav_text}",
+            f"{get_control_display('page_up', 'LB')} {get_control_display('page_down', 'RB')} : {pages_text}"
         ],
-        "Actions principales": [
-            f"{get_control_display('confirm', 'A')} : Confirmer/Sélectionner",
-            f"{get_control_display('cancel', 'B')} : Annuler/Retour",
+        _("controls_category_main_actions"): [
+            f"{get_control_display('confirm', 'A')} : {confirm_select_text}",
+            f"{get_control_display('cancel', 'B')} : {cancel_back_text}",
             f"{get_control_display('start', 'Start')} : {start_text}"
         ],
-        "Téléchargements": [
-            f"{get_control_display('history', 'Y')} : Historique",
-            f"{get_control_display('progress', 'X')} : Effacer historique"
+        _("controls_category_downloads"): [
+            f"{get_control_display('history', 'Y')} : {history_text}",
+            f"{get_control_display('progress', 'X')} : {clear_history_text}"
         ],
-        "Recherche": [            
-            f"{get_control_display('filter', 'Select')} : Filtrer/Rechercher",
+        _("controls_category_search"): [            
+            f"{get_control_display('filter', 'Select')} : {filter_search_text}",
             f"{get_control_display('delete', 'Suppr')} : {delete_text}",
             f"{get_control_display('space', 'Espace')} : {space_text}"
         ]
@@ -1185,7 +1222,7 @@ def draw_controls_help(screen, previous_state):
     pygame.draw.rect(screen, THEME_COLORS["border"], (popup_x, popup_y, popup_width, popup_height), 2, border_radius=12)
 
     # Titre
-    title_text = "Aide des contrôles"
+    title_text = _("controls_help_title")
     title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
     title_rect = title_surface.get_rect(center=(config.screen_width // 2, popup_y + 25))
     screen.blit(title_surface, title_rect)
@@ -1257,8 +1294,9 @@ def draw_confirm_dialog(screen):
         text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
         screen.blit(text, text_rect)
 
-    draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - 180, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.confirm_selection == 1)
-    draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 20, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.confirm_selection == 0)
+    button_width = min(160, (rect_width - 60) // 2)
+    draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - button_width - 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=config.confirm_selection == 1)
+    draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=config.confirm_selection == 0)
 
 # draw_redownload_game_cache_dialog
 def draw_redownload_game_cache_dialog(screen):

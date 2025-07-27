@@ -42,6 +42,7 @@
     "history_status_extracting": "Extracting: {0}%",
     "history_status_completed": "Completed",
     "history_status_error": "Error: {0}",
+    "history_status_canceled": "Canceled",
     
     "download_status": "{0}: {1}",
     "download_progress": "{0}% {1} MB / {2} MB",
@@ -66,6 +67,7 @@
     "menu_remap_controls": "Remap controls",
     "menu_history": "History",
     "menu_language": "Language",
+    "menu_accessibility": "Accessibility",
     "menu_redownload_cache": "Redownload Games cache",
     "menu_quit": "Quit",
     
@@ -155,5 +157,20 @@
     "utils_permission_denied": "Permission denied during extraction: {0}",
     "utils_extraction_failed": "Extraction failed: {0}",
     "utils_unrar_unavailable": "Unrar command not available",
-    "utils_rar_list_failed": "Failed to list RAR files: {0}"
+    "utils_rar_list_failed": "Failed to list RAR files: {0}",
+    "download_initializing": "Initializing...",
+    "accessibility_font_size": "Font size: {0}",
+    "confirm_cancel_download": "Cancel current download?",
+    "controls_help_title": "Controls Help",
+    "controls_category_navigation": "Navigation",
+    "controls_category_main_actions": "Main Actions",
+    "controls_category_downloads": "Downloads",
+    "controls_category_search": "Search",
+    "controls_navigation": "Navigation",
+    "controls_pages": "Pages",
+    "controls_confirm_select": "Confirm/Select",
+    "controls_cancel_back": "Cancel/Back",
+    "controls_history": "History",
+    "controls_clear_history": "Clear History",
+    "controls_filter_search": "Filter/Search"
 }

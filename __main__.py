@@ -7,7 +7,7 @@ import logging
 import requests
 import queue
 import datetime
-from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_virtual_keyboard, draw_popup_result_download, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, draw_gradient, draw_language_menu, THEME_COLORS
+from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_virtual_keyboard, draw_popup_result_download, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, draw_gradient, THEME_COLORS
 from language import handle_language_menu_events, _
 from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates
 from controls import handle_controls, validate_menu_state, process_key_repeats
@@ -38,7 +38,18 @@ logger = logging.getLogger(__name__)
 pygame.init()
 config.init_font()
 pygame.joystick.init()
+logger.debug("--------------------------------------------------------------------")
+logger.debug("---------------------------DEBUT LOG--------------------------------")
+logger.debug("--------------------------------------------------------------------")
 
+
+# Chargement des paramètres d'accessibilité
+from utils import load_accessibility_settings
+config.accessibility_settings = load_accessibility_settings()
+for i, scale in enumerate(config.font_scale_options):
+    if scale == config.accessibility_settings.get("font_scale", 1.0):
+        config.current_font_scale_index = i
+        break
 
 # Chargement et initialisation de la langue
 from language import initialize_language
@@ -53,22 +64,8 @@ clock = pygame.time.Clock()
 
 pygame.display.set_caption("RGSX")
 
-# Initialisation des polices
-try:
-    font_path = os.path.join(config.APP_FOLDER, "assets", "Pixel-UniCode.ttf")
-    config.font = pygame.font.Font(font_path, 36) # Police principale
-    config.title_font = pygame.font.Font(font_path, 48) # Police pour les titres
-    config.search_font = pygame.font.Font(font_path, 48) # Police pour la recherche
-    config.progress_font = pygame.font.Font(font_path, 36)  # Police pour l'affichage de la progression
-    config.small_font = pygame.font.Font(font_path, 28)  # Police pour les petits textes
-    #logger.debug("Police Pixel-UniCode chargée")
-except:
-    config.font = pygame.font.SysFont("arial", 48) # Police fallback
-    config.title_font = pygame.font.SysFont("arial", 60) # Police fallback pour les titres
-    config.search_font = pygame.font.SysFont("arial", 60)   # Police fallback pour la recherche
-    config.progress_font = pygame.font.SysFont("arial", 36)  # Police fallback pour l'affichage de la progression
-    config.small_font = pygame.font.SysFont("arial", 28)  # Police fallback pour les petits textes
-    #logger.debug("Police Arial chargée")
+# Initialisation des polices via config
+config.init_font()
 
 # Mise à jour de la résolution dans config
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
@@ -190,8 +187,10 @@ async def main():
         events = pygame.event.get()
         for event in events:
             # Gestion directe des événements pour le menu de langue
-            if config.menu_state == "language_select" and event.type == pygame.KEYDOWN:
-                handle_language_menu_events(event, screen)
+            if config.menu_state == "language_select":
+                from language import handle_language_menu_events
+                if handle_language_menu_events(event, screen):
+                    config.needs_redraw = True
                 continue
                 
             if event.type == pygame.USEREVENT + 1:  # Événement de fin de musique
@@ -228,6 +227,12 @@ async def main():
                 #logger.debug(f"Événement transmis à handle_controls dans pause_menu: {event.type}")
                 continue
 
+            if config.menu_state == "accessibility_menu":
+                from accessibility import handle_accessibility_events
+                if handle_accessibility_events(event):
+                    config.needs_redraw = True
+                continue
+
             if config.menu_state == "controls_help":
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
@@ -237,7 +242,11 @@ async def main():
             if config.menu_state == "confirm_clear_history":
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
-                #logger.debug(f"Événement transmis à handle_controls dans confirm_clear_history: {event.type}")
+                continue
+
+            if config.menu_state == "confirm_cancel_download":
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
                 continue
 
             if config.menu_state == "redownload_game_cache":
@@ -298,6 +307,7 @@ async def main():
                             "game_name": game_name,
                             "status": "downloading",
                             "progress": 0,
+                            "message": _("download_initializing"),
                             "url": url,
                             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         })
@@ -559,10 +569,18 @@ async def main():
                 # logger.debug("Screen updated with draw_history_list")
             elif config.menu_state == "confirm_clear_history":
                 draw_clear_history_dialog(screen)
+            elif config.menu_state == "confirm_cancel_download":
+                draw_cancel_download_dialog(screen)
             elif config.menu_state == "redownload_game_cache":
                 draw_redownload_game_cache_dialog(screen)
             elif config.menu_state == "restart_popup":
                 draw_popup(screen)
+            elif config.menu_state == "accessibility_menu":
+                from accessibility import draw_accessibility_menu
+                draw_accessibility_menu(screen)
+            elif config.menu_state == "language_select":
+                from display import draw_language_menu
+                draw_language_menu(screen)
             else:
                 config.menu_state = "platform"
                 draw_platform_grid(screen)

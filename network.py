@@ -10,6 +10,7 @@ from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZI
 from utils import sanitize_filename, extract_zip, extract_rar, load_api_key_1fichier
 from history import save_history
 import logging
+import datetime
 import queue
 import time
 import os
@@ -152,9 +153,8 @@ def extract_update(zip_path, dest_dir, source_url):
         logger.error(f"Erreur critique lors de l'extraction du ZIP {source_url}: {str(e)}")
         return False, _("network_zip_extraction_error").format(source_url, str(e))
 
-# File d'attente pour la progression
-import queue
-progress_queue = queue.Queue()
+# File d'attente pour la progression - une par tâche
+progress_queues = {}
 
 
 
@@ -162,13 +162,9 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     logger.debug(f"Début téléchargement: {game_name} depuis {url}, is_zip_non_supported={is_zip_non_supported}, task_id={task_id}")
     result = [None, None]
     
-    # Vider la file d'attente avant de commencer
-    while not progress_queue.empty():
-        try:
-            progress_queue.get_nowait()
-            logger.debug(f"File progress_queue vidée pour {game_name}")
-        except queue.Empty:
-            break
+    # Créer une queue spécifique pour cette tâche
+    if task_id not in progress_queues:
+        progress_queues[task_id] = queue.Queue()
     
     def download_thread():
         logger.debug(f"Thread téléchargement démarré pour {url}, task_id={task_id}")
@@ -178,7 +174,6 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 if platform_dict["platform"] == platform:
                     dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder", platform.lower().replace(" ", "")))
                     logger.debug(f"Répertoire de destination trouvé pour {platform}: {dest_dir}")
-                    #dest_dir = platform_dict.get("folder")
                     break
             if not dest_dir:
                 dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform.lower().replace(" ", ""))
@@ -201,47 +196,27 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 'Upgrade-Insecure-Requests': '1'
             }
             
-            # Utiliser une session pour gérer les cookies
             session = requests.Session()
             session.headers.update(headers)
             
-            # Première requête HEAD pour obtenir la vraie URL
-            #logger.debug(f"Première requête HEAD vers {url}")
-            head_response = session.head(url, timeout=30, allow_redirects=False)
-            #logger.debug(f"HEAD Status: {head_response.status_code}, Headers: {dict(head_response.headers)}")
-            
-            # Suivre la redirection manuellement si nécessaire
-            final_url = url
-            if head_response.status_code in [301, 302, 303, 307, 308]:
-                final_url = head_response.headers.get('Location', url)
-                #logger.debug(f"Redirection détectée vers: {final_url}")
-            
-            # Requête GET vers l'URL finale avec en-têtes spécifiques
             download_headers = headers.copy()
             download_headers['Accept'] = 'application/octet-stream, */*'
             download_headers['Referer'] = 'https://myrient.erista.me/'
-            response = session.get(final_url, stream=True, timeout=30, allow_redirects=False, headers=download_headers)
+            response = session.get(url, stream=True, timeout=30, allow_redirects=True, headers=download_headers)
             logger.debug(f"Status code: {response.status_code}")
-            logger.debug(f"Headers: {dict(response.headers)}")
             response.raise_for_status()
             
             total_size = int(response.headers.get('content-length', 0))
             logger.debug(f"Taille totale: {total_size} octets")
             
-            if total_size == 0:
-                logger.warning(f"Taille de fichier 0, possible redirection ou erreur. URL finale: {response.url}")
-                # Vérifier si c'est une redirection
-                if response.url != url:
-                    logger.debug(f"Redirection détectée: {url} -> {response.url}")
-            
             # Initialiser la progression avec task_id
-            progress_queue.put((task_id, 0, total_size))
+            progress_queues[task_id].put((task_id, 0, total_size))
             logger.debug(f"Progression initiale envoyée: 0% pour {game_name}, task_id={task_id}")
             
             downloaded = 0
             chunk_size = 4096
             last_update_time = time.time()
-            update_interval = 0.5  # Mettre à jour toutes les 0,5 secondes
+            update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
             with open(dest_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=chunk_size):
                     if chunk:
@@ -250,24 +225,17 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         downloaded += size_received
                         current_time = time.time()
                         if current_time - last_update_time >= update_interval:
-                            # Calculer le pourcentage correctement et le limiter entre 0 et 100
-                            progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
-                            progress_percent = max(0, min(100, progress_percent))
-                            progress_queue.put((task_id, downloaded, total_size))
+                            progress_queues[task_id].put((task_id, downloaded, total_size))
                             last_update_time = current_time
-                    else:
-                        logger.debug("Chunk vide reçu")
             
             os.chmod(dest_path, 0o644)
             logger.debug(f"Téléchargement terminé: {dest_path}")
             
-            # Vérifier si l'extraction est nécessaire pour les archives non supportées
             if is_zip_non_supported:
                 logger.debug(f"Extraction automatique nécessaire pour {dest_path}")
                 extension = os.path.splitext(dest_path)[1].lower()
                 if extension == ".zip":
                     try:
-                        # Mettre à jour le statut avant l'extraction
                         if isinstance(config.history, list):
                             for entry in config.history:
                                 if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
@@ -319,7 +287,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             result[1] = _("network_download_error").format(game_name, str(e))
         finally:
             logger.debug(f"Thread téléchargement terminé pour {url}, task_id={task_id}")
-            progress_queue.put((task_id, result[0], result[1]))
+            progress_queues[task_id].put((task_id, result[0], result[1]))
             logger.debug(f"Final result sent to queue: success={result[0]}, message={result[1]}, task_id={task_id}")
 
     thread = threading.Thread(target=download_thread)
@@ -328,68 +296,63 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     # Boucle principale pour mettre à jour la progression
     while thread.is_alive():
         try:
-            while not progress_queue.empty():
-                data = progress_queue.get()
-                logger.debug(f"Progress queue data received: {data}")
-                if len(data) != 3 or data[0] != task_id:  # Ignorer les données d'une autre tâche
-                    logger.debug(f"Ignoring queue data for task_id={data[0]}, expected={task_id}")
-                    continue
-                if isinstance(data[1], bool):  # Fin du téléchargement
-                    success, message = data[1], data[2]
-                    # Vérifier si config.history est une liste avant d'itérer
-                    if isinstance(config.history, list):
-                        for entry in config.history:
-                            if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
-                                entry["status"] = "Download_OK" if success else "Erreur"
-                                entry["progress"] = 100 if success else 0
-                                # Utiliser une variable intermédiaire pour stocker le message
-                                message_text = message
-                                entry["message"] = message_text
-                                save_history(config.history)
-                                config.needs_redraw = True
-                                logger.debug(f"Final update in history: status={entry['status']}, progress={entry['progress']}%, message={message}, task_id={task_id}")
-                                break
-                else:
-                    downloaded, total_size = data[1], data[2]
-                    # Calculer le pourcentage correctement et le limiter entre 0 et 100
-                    progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
-                    progress_percent = max(0, min(100, progress_percent))
-                    
-                    # Vérifier si config.history est une liste avant d'itérer
-                    if isinstance(config.history, list):
-                        for entry in config.history:
-                            if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
-                                entry["progress"] = progress_percent
-                                entry["status"] = "Téléchargement"
-                                entry["downloaded_size"] = downloaded
-                                entry["total_size"] = total_size
-                                config.needs_redraw = True
-                                break
-            await asyncio.sleep(0.2)
+            task_queue = progress_queues.get(task_id)
+            if task_queue:
+                while not task_queue.empty():
+                    data = task_queue.get()
+                    #logger.debug(f"Progress queue data received: {data}")
+                    if isinstance(data[1], bool):  # Fin du téléchargement
+                        success, message = data[1], data[2]
+                        if isinstance(config.history, list):
+                            for entry in config.history:
+                                if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
+                                    entry["status"] = "Download_OK" if success else "Erreur"
+                                    entry["progress"] = 100 if success else 0
+                                    entry["message"] = message
+                                    save_history(config.history)
+                                    config.needs_redraw = True
+                                    logger.debug(f"Final update in history: status={entry['status']}, progress={entry['progress']}%, message={message}, task_id={task_id}")
+                                    break
+                    else:
+                        downloaded, total_size = data[1], data[2]
+                        progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
+                        progress_percent = max(0, min(100, progress_percent))
+                        
+                        if isinstance(config.history, list):
+                            for entry in config.history:
+                                if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
+                                    entry["progress"] = progress_percent
+                                    entry["status"] = "Téléchargement"
+                                    entry["downloaded_size"] = downloaded
+                                    entry["total_size"] = total_size
+                                    config.needs_redraw = True
+                                    break
+            await asyncio.sleep(0.1)
         except Exception as e:
             logger.error(f"Erreur mise à jour progression: {str(e)}")
     
     thread.join()
-    #logger.debug(f"Thread joined for {url}, task_id={task_id}")
+    # Nettoyer la queue
+    if task_id in progress_queues:
+        del progress_queues[task_id]
     return result[0], result[1]
 
 async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=False, task_id=None):
-    load_api_key_1fichier()
+    config.API_KEY_1FICHIER = load_api_key_1fichier()
     logger.debug(f"Début téléchargement 1fichier: {game_name} depuis {url}, is_zip_non_supported={is_zip_non_supported}, task_id={task_id}")
+    logger.debug(f"Clé API 1fichier: {'présente' if config.API_KEY_1FICHIER else 'absente'}")
     result = [None, None]
 
-    # Vider la file d'attente avant de commencer
-    while not progress_queue.empty():
-        try:
-            progress_queue.get_nowait()
-            logger.debug(f"File progress_queue vidée pour {game_name}")
-        except queue.Empty:
-            break
+    # Créer une queue spécifique pour cette tâche
+    logger.debug(f"Création queue pour task_id={task_id}")
+    if task_id not in progress_queues:
+        progress_queues[task_id] = queue.Queue()
 
     def download_thread():
         logger.debug(f"Thread téléchargement 1fichier démarré pour {url}, task_id={task_id}")
         try:
             link = url.split('&af=')[0]
+            logger.debug(f"URL nettoyée: {link}")
             dest_dir = None
             for platform_dict in config.platform_dicts:
                 if platform_dict["platform"] == platform:
@@ -398,10 +361,13 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             if not dest_dir:
                 logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform}")
                 dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform)
+            logger.debug(f"Répertoire destination déterminé: {dest_dir}")
 
             logger.debug(f"Vérification répertoire destination: {dest_dir}")
             os.makedirs(dest_dir, exist_ok=True)
+            logger.debug(f"Répertoire créé ou existant: {dest_dir}")
             if not os.access(dest_dir, os.W_OK):
+                logger.error(f"Pas de permission d'écriture dans {dest_dir}")
                 raise PermissionError(f"Pas de permission d'écriture dans {dest_dir}")
 
             headers = {
@@ -412,10 +378,9 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 "url": link,
                 "pretty": 1
             }
-
-            #logger.debug(f"Envoi requête POST à https://api.1fichier.com/v1/file/info.cgi pour {url}")
+            logger.debug(f"Préparation requête file/info pour {link}")
             response = requests.post("https://api.1fichier.com/v1/file/info.cgi", headers=headers, json=payload, timeout=30)
-            #logger.debug(f"Réponse reçue, status: {response.status_code}")
+            logger.debug(f"Réponse file/info reçue, code: {response.status_code}")
             response.raise_for_status()
             file_info = response.json()
 
@@ -427,7 +392,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
 
             filename = file_info.get("filename", "").strip()
             if not filename:
-                logger.error("Impossible de récupérer le nom du fichier")
+                logger.error(f"Impossible de récupérer le nom du fichier")
                 result[0] = False
                 result[1] = _("network_cannot_get_filename")
                 return
@@ -435,50 +400,48 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             sanitized_filename = sanitize_filename(filename)
             dest_path = os.path.join(dest_dir, sanitized_filename)
             logger.debug(f"Chemin destination: {dest_path}")
-
-            #logger.debug(f"Envoi requête POST à https://api.1fichier.com/v1/download/get_token.cgi pour {url}")
+            logger.debug(f"Envoi requête get_token pour {link}")
             response = requests.post("https://api.1fichier.com/v1/download/get_token.cgi", headers=headers, json=payload, timeout=30)
-            #logger.debug(f"Réponse reçue, status: {response.status_code}")
+            logger.debug(f"Réponse get_token reçue, code: {response.status_code}")
             response.raise_for_status()
             download_info = response.json()
 
             final_url = download_info.get("url")
             if not final_url:
-                logger.error("Impossible de récupérer l'URL de téléchargement")
+                logger.error(f"Impossible de récupérer l'URL de téléchargement")
                 result[0] = False
                 result[1] = _("network_cannot_get_download_url")
                 return
 
+            logger.debug(f"URL de téléchargement obtenue: {final_url}")
             lock = threading.Lock()
             retries = 10
             retry_delay = 10
-            # Initialiser la progression avec task_id
-            progress_queue.put((task_id, 0, 0))  # Taille initiale inconnue
-            #logger.debug(f"Progression initiale envoyée: 0% pour {game_name}, task_id={task_id}")
+            logger.debug(f"Initialisation progression avec taille inconnue pour task_id={task_id}")
+            progress_queues[task_id].put((task_id, 0, 0))  # Taille initiale inconnue
             for attempt in range(retries):
+                logger.debug(f"Début tentative {attempt + 1} pour télécharger {final_url}")
                 try:
-                    #logger.debug(f"Tentative {attempt + 1} : Envoi requête GET à {final_url}")
                     with requests.get(final_url, stream=True, headers={'User-Agent': 'Mozilla/5.0'}, timeout=30) as response:
-                        #logger.debug(f"Réponse reçue, status: {response.status_code}")
+                        logger.debug(f"Réponse GET reçue, code: {response.status_code}")
                         response.raise_for_status()
                         total_size = int(response.headers.get('content-length', 0))
                         logger.debug(f"Taille totale: {total_size} octets")
                         with lock:
-                            # Vérifier si config.history est une liste avant d'itérer
                             if isinstance(config.history, list):
                                 for entry in config.history:
                                     if "url" in entry and entry["url"] == url and entry["status"] == "downloading":
                                         entry["total_size"] = total_size
                                         config.needs_redraw = True
                                         break
-                            progress_queue.put((task_id, 0, total_size))  # Mettre à jour la taille totale
+                            progress_queues[task_id].put((task_id, 0, total_size))  # Mettre à jour la taille totale
 
                         downloaded = 0
                         chunk_size = 8192
                         last_update_time = time.time()
-                        update_interval = 0.5  # Mettre à jour toutes les 0,5 secondes
+                        update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
+                        logger.debug(f"Ouverture fichier: {dest_path}")
                         with open(dest_path, 'wb') as f:
-                            logger.debug(f"Ouverture fichier: {dest_path}")
                             for chunk in response.iter_content(chunk_size=chunk_size):
                                 if chunk:
                                     f.write(chunk)
@@ -486,11 +449,9 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                     current_time = time.time()
                                     if current_time - last_update_time >= update_interval:
                                         with lock:
-                                            # Vérifier si config.history est une liste avant d'itérer
                                             if isinstance(config.history, list):
                                                 for entry in config.history:
                                                     if "url" in entry and entry["url"] == url and entry["status"] == "downloading":
-                                                        # Calculer le pourcentage correctement et le limiter entre 0 et 100
                                                         progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
                                                         progress_percent = max(0, min(100, progress_percent))
                                                         entry["progress"] = progress_percent
@@ -498,14 +459,12 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                                         entry["downloaded_size"] = downloaded
                                                         entry["total_size"] = total_size
                                                         config.needs_redraw = True
-                                                        #logger.debug(f"Progression mise à jour: {entry['progress']:.1f}% pour {game_name}")
                                                         break
-                                        progress_queue.put((task_id, downloaded, total_size))
+                                        progress_queues[task_id].put((task_id, downloaded, total_size))
                                         last_update_time = current_time
 
                     if is_zip_non_supported:
                         with lock:
-                            # Vérifier si config.history est une liste avant d'itérer
                             if isinstance(config.history, list):
                                 for entry in config.history:
                                     if "url" in entry and entry["url"] == url and entry["status"] == "Téléchargement":
@@ -514,11 +473,12 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         config.needs_redraw = True
                                         break
                         extension = os.path.splitext(dest_path)[1].lower()
+                        logger.debug(f"Début extraction, type d'archive: {extension}")
                         if extension == ".zip":
                             try:
                                 success, msg = extract_zip(dest_path, dest_dir, url)
+                                logger.debug(f"Extraction ZIP terminée: {msg}")
                                 if success:
-                                    logger.debug(f"Extraction ZIP réussie: {msg}")
                                     result[0] = True
                                     result[1] = _("network_download_extract_ok").format(game_name)
                                 else:
@@ -526,14 +486,14 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                     result[0] = False
                                     result[1] = _("network_extraction_failed").format(msg)
                             except Exception as e:
-                                logger.error(f"Exception lors de l'extraction: {str(e)}")
+                                logger.error(f"Exception lors de l'extraction ZIP: {str(e)}")
                                 result[0] = False
                                 result[1] = f"Erreur téléchargement {game_name}: {str(e)}"
                         elif extension == ".rar":
                             try:
                                 success, msg = extract_rar(dest_path, dest_dir, url)
+                                logger.debug(f"Extraction RAR terminée: {msg}")
                                 if success:
-                                    logger.debug(f"Extraction RAR réussie: {msg}")
                                     result[0] = True
                                     result[1] = _("network_download_extract_ok").format(game_name)
                                 else:
@@ -549,6 +509,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                             result[0] = True
                             result[1] = _("network_download_ok").format(game_name)
                     else:
+                        logger.debug(f"Application des permissions sur {dest_path}")
                         os.chmod(dest_path, 0o644)
                         logger.debug(f"Téléchargement terminé: {dest_path}")
                         result[0] = True
@@ -556,78 +517,77 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     return
 
                 except requests.exceptions.RequestException as e:
-                    logger.error(f"Tentative {attempt + 1} échouée : {e}")
+                    logger.error(f"Tentative {attempt + 1} échouée: {e}")
                     if attempt < retries - 1:
+                        logger.debug(f"Attente de {retry_delay} secondes avant nouvelle tentative")
                         time.sleep(retry_delay)
                     else:
-                        logger.error("Nombre maximum de tentatives atteint")
+                        logger.error(f"Nombre maximum de tentatives atteint")
                         result[0] = False
                         result[1] = _("network_download_failed").format(retries)
                         return
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Erreur API 1fichier : {e}")
+            logger.error(f"Erreur API 1fichier: {e}")
             result[0] = False
             result[1] = _("network_api_error").format(str(e))
 
         finally:
             logger.debug(f"Thread téléchargement 1fichier terminé pour {url}, task_id={task_id}")
-            progress_queue.put((task_id, result[0], result[1]))
-            logger.debug(f"Final result sent to queue: success={result[0]}, message={result[1]}, task_id={task_id}")
+            progress_queues[task_id].put((task_id, result[0], result[1]))
+            logger.debug(f"Résultat final envoyé à la queue: success={result[0]}, message={result[1]}, task_id={task_id}")
 
-    thread = threading.Thread(target=download_thread)
     logger.debug(f"Démarrage thread pour {url}, task_id={task_id}")
+    thread = threading.Thread(target=download_thread)
     thread.start()
 
     # Boucle principale pour mettre à jour la progression
+    logger.debug(f"Début boucle de progression pour task_id={task_id}")
     while thread.is_alive():
         try:
-            while not progress_queue.empty():
-                data = progress_queue.get()
-                logger.debug(f"Progress queue data received: {data}")
-                if len(data) != 3 or data[0] != task_id:  # Ignorer les données d'une autre tâche
-                    logger.debug(f"Ignoring queue data for task_id={data[0]}, expected={task_id}")
-                    continue
-                if isinstance(data[1], bool):  # Fin du téléchargement
-                    success, message = data[1], data[2]
-                    # Vérifier si config.history est une liste avant d'itérer
-                    if isinstance(config.history, list):
-                        for entry in config.history:
-                            if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
-                                entry["status"] = "Download_OK" if success else "Erreur"
-                                entry["progress"] = 100 if success else 0
-                                # Utiliser une variable intermédiaire pour stocker le message
-                                message_text = message
-                                entry["message"] = message_text
-                                save_history(config.history)
-                                config.needs_redraw = True
-                                logger.debug(f"Final update in history: status={entry['status']}, progress={entry['progress']}%, message={message}, task_id={task_id}")
-                                break
-                else:
-                    downloaded, total_size = data[1], data[2]
-                    # Calculer le pourcentage correctement et le limiter entre 0 et 100
-                    progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
-                    progress_percent = max(0, min(100, progress_percent))
-                    
-                    # Vérifier si config.history est une liste avant d'itérer
-                    if isinstance(config.history, list):
-                        for entry in config.history:
-                            if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
-                                entry["progress"] = progress_percent
-                                entry["status"] = "Téléchargement"
-                                entry["downloaded_size"] = downloaded
-                                entry["total_size"] = total_size
-                                config.needs_redraw = True
-                                break
-            await asyncio.sleep(0.2)
+            task_queue = progress_queues.get(task_id)
+            if task_queue:
+                while not task_queue.empty():
+                    data = task_queue.get()
+                    logger.debug(f"Données queue progression reçues: {data}")
+                    if isinstance(data[1], bool):  # Fin du téléchargement
+                        success, message = data[1], data[2]
+                        if isinstance(config.history, list):
+                            for entry in config.history:
+                                if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
+                                    entry["status"] = "Download_OK" if success else "Erreur"
+                                    entry["progress"] = 100 if success else 0
+                                    entry["message"] = message
+                                    save_history(config.history)
+                                    config.needs_redraw = True
+                                    logger.debug(f"Mise à jour finale historique: status={entry['status']}, progress={entry['progress']}%, message={message}, task_id={task_id}")
+                                    break
+                    else:
+                        downloaded, total_size = data[1], data[2]
+                        progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
+                        progress_percent = max(0, min(100, progress_percent))
+                        
+                        if isinstance(config.history, list):
+                            for entry in config.history:
+                                if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
+                                    entry["progress"] = progress_percent
+                                    entry["status"] = "Téléchargement"
+                                    entry["downloaded_size"] = downloaded
+                                    entry["total_size"] = total_size
+                                    config.needs_redraw = True
+                                    break
+            await asyncio.sleep(0.1)
         except Exception as e:
             logger.error(f"Erreur mise à jour progression: {str(e)}")
 
+    logger.debug(f"Fin boucle de progression, attente fin thread pour task_id={task_id}")
     thread.join()
-    logger.debug(f"Thread joined for {url}, task_id={task_id}")
+    logger.debug(f"Thread terminé, nettoyage queue pour task_id={task_id}")
+    # Nettoyer la queue
+    if task_id in progress_queues:
+        del progress_queues[task_id]
+    logger.debug(f"Fin download_from_1fichier, résultat: success={result[0]}, message={result[1]}")
     return result[0], result[1]
-
-
 def is_1fichier_url(url):
     """Détecte si l'URL est un lien 1fichier."""
     return "1fichier.com" in url
