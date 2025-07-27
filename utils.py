@@ -595,7 +595,7 @@ def play_random_music(music_files, music_folder, current_music=None):
 
 def set_music_popup(music_name):
     """Définit le nom de la musique à afficher dans la popup."""
-    config.current_music_name = f"♬ {os.path(music_name)[0]}"  # Utilise l'emoji ♬ directement
+    config.current_music_name = f"♬ {os.path.splitext(music_name)[0]}"  # Utilise l'emoji ♬ directement
     config.music_popup_start_time = pygame.time.get_ticks() / 1000  # Temps actuel en secondes
     config.needs_redraw = True  # Forcer le redraw pour afficher le nom de la musique
 

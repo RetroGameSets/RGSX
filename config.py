@@ -3,7 +3,7 @@ import os
 import logging
 
 # Version actuelle de l'application
-app_version = "1.9.7.4"
+app_version = "1.9.7.6"
 
 
 
@@ -42,6 +42,7 @@ REPEAT_ACTION_DEBOUNCE = 150  # Délai anti-rebond pour répétitions (ms) - aug
 # Variables d'état
 platforms = []
 current_platform = 0
+accessibility_mode = False  # Mode accessibilité pour les polices agrandies
 platform_names = {}  # {platform_id: platform_name}
 games = []
 current_game = 0
@@ -130,13 +131,14 @@ def init_font():
     logger.debug("--------------------------------------------------------------------")
 
     global FONT, progress_font, title_font, search_font, small_font
+    multiplier = 1.5 if accessibility_mode else 1.0
     try:
-        FONT = pygame.font.Font(None, 36)
-        progress_font = pygame.font.Font(None, 28)
-        title_font = pygame.font.Font(None, 48)
-        search_font = pygame.font.Font(None, 36)
-        small_font = pygame.font.Font(None, 24)
-        logger.debug("Polices initialisées avec succès")
+        FONT = pygame.font.Font(None, int(36 * multiplier))
+        progress_font = pygame.font.Font(None, int(28 * multiplier))
+        title_font = pygame.font.Font(None, int(48 * multiplier))
+        search_font = pygame.font.Font(None, int(36 * multiplier))
+        small_font = pygame.font.Font(None, int(24 * multiplier))
+        logger.debug(f"Polices initialisées avec succès (mode accessibilité: {accessibility_mode})")
     # amazonq-ignore-next-line
     except pygame.error as e:
         logger.error(f"Erreur lors de l'initialisation des polices : {e}")

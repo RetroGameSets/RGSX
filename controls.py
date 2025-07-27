@@ -827,7 +827,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 #logger.debug(f"Navigation vers le haut: selected_option={config.selected_option}")
             elif is_input_matched(event, "down"):
-                config.selected_option = min(5, config.selected_option + 1)
+                config.selected_option = min(6, config.selected_option + 1)
                 # La répétition est gérée par update_key_state
                 config.needs_redraw = True
                 #logger.debug(f"Navigation vers le bas: selected_option={config.selected_option}")
@@ -865,13 +865,34 @@ def handle_controls(event, sources, joystick, screen):
                     config.selected_language_index = 0
                     config.needs_redraw = True
                     logger.debug(f"Passage à language_select depuis pause_menu")
-                elif config.selected_option == 4:  # Redownload game cache
+                elif config.selected_option == 4:  # Accessibility
+                    config.accessibility_mode = not config.accessibility_mode
+                    config.init_font()
+                    # Reinitialiser les polices dans le main
+                    font_path = os.path.join(config.APP_FOLDER, "assets", "Pixel-UniCode.ttf")
+                    multiplier = 1.5 if config.accessibility_mode else 1.0
+                    try:
+                        config.font = pygame.font.Font(font_path, int(36 * multiplier))
+                        config.title_font = pygame.font.Font(font_path, int(48 * multiplier))
+                        config.search_font = pygame.font.Font(font_path, int(48 * multiplier))
+                        config.progress_font = pygame.font.Font(font_path, int(36 * multiplier))
+                        config.small_font = pygame.font.Font(font_path, int(28 * multiplier))
+                    except:
+                        config.font = pygame.font.SysFont("arial", int(48 * multiplier))
+                        config.title_font = pygame.font.SysFont("arial", int(60 * multiplier))
+                        config.search_font = pygame.font.SysFont("arial", int(60 * multiplier))
+                        config.progress_font = pygame.font.SysFont("arial", int(36 * multiplier))
+                        config.small_font = pygame.font.SysFont("arial", int(28 * multiplier))
+                    config.menu_state = config.previous_menu_state
+                    config.needs_redraw = True
+                    logger.debug(f"Mode accessibilité {'activé' if config.accessibility_mode else 'désactivé'}")
+                elif config.selected_option == 5:  # Redownload game cache
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "redownload_game_cache"
                     config.redownload_confirm_selection = 0
                     config.needs_redraw = True
                     logger.debug(f"Passage à redownload_game_cache depuis pause_menu")
-                elif config.selected_option == 5:  # Quit
+                elif config.selected_option == 6:  # Quit
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "confirm_exit"
                     config.confirm_selection = 0

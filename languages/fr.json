@@ -19,7 +19,7 @@
     "error_controls_mapping": "Échec du mappage des contrôles",
     "error_download_data": "Échec du téléchargement/extraction du Dossier Data : {0}",
     "error_api_key": "Attention il faut renseigner sa clé API (premium only) dans le fichier {0}",
-    "error_api_key_extended": "Attention il faut renseigner sa clé API (premium only) dans le fichier /saves/ports/rgsx/1fichierAPI.txt à ouvrir dans un éditeur de texte et coller la clé API",
+    "error_api_key_extended": "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichierAPI.txt à ouvrir dans un éditeur de texte et coller la clé API",
     "error_invalid_download_data": "Données de téléchargement invalides",
     "error_delete_sources": "Erreur lors de la suppression du fichier sources.json ou dossiers",
     "error_extension": "Extension non supportée ou erreur de téléchargement",

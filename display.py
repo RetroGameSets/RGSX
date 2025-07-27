@@ -1042,6 +1042,7 @@ def draw_pause_menu(screen, selected_option):
         _("menu_remap_controls"),
         _("menu_history"),
         _("menu_language"),
+        _("menu_accessibility"),
         _("menu_redownload_cache"),
         _("menu_quit")
     ]
