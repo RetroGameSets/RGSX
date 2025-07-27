@@ -71,6 +71,14 @@ config.init_font()
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
 logger.debug(f"Résolution d'écran : {config.screen_width}x{config.screen_height}")
 
+
+# Vérification des dossiers pour le débogage
+logger.debug(f"SYSTEM_FOLDER: {config.SYSTEM_FOLDER}")
+logger.debug(f"ROMS_FOLDER: {config.ROMS_FOLDER}")
+logger.debug(f"SAVE_FOLDER: {config.SAVE_FOLDER}")
+logger.debug(f"APP_FOLDER: {config.APP_FOLDER}")
+
+
 # Initialisation des variables de grille
 config.current_page = 0
 config.selected_platform = 0

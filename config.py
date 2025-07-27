@@ -1,19 +1,62 @@
 import pygame # type: ignore
 import os
+import sys
 import logging
 
 # Version actuelle de l'application
 app_version = "1.9.7.7"
 
+def get_application_root():
+    """Détermine le dossier de l'application de manière portable."""
+    try:
+        # Obtenir le chemin absolu du fichier config.py
+        current_file = os.path.abspath(__file__)
+        # Remonter au dossier parent de config.py (par exemple, dossier de l'application)
+        app_root = os.path.dirname(os.path.dirname(current_file))
+        return app_root
+    except NameError:
+        # Si __file__ n'est pas défini (par exemple, exécution dans un REPL)
+        return os.path.abspath(os.getcwd())
 
+def get_system_root():
+    """Détermine le dossier racine du système de fichiers (par exemple, /userdata ou C:\\)."""
+    try:
+        if sys.platform.startswith("win"):
+            # Sur Windows, extraire la lettre de disque
+            current_path = os.path.abspath(__file__)
+            drive, _ = os.path.splitdrive(current_path)
+            system_root = drive + os.sep
+            return system_root
+        else:
+            # Sur Linux/Batocera, remonter jusqu'à atteindre /userdata ou /
+            current_path = os.path.abspath(__file__)
+            current_dir = current_path
+            while current_dir != os.path.dirname(current_dir):  # Tant qu'on peut remonter
+                parent_dir = os.path.dirname(current_dir)
+                if os.path.basename(parent_dir) == "userdata":  # Vérifier si le parent est userdata
+                    system_root = parent_dir
+                    return system_root
+                current_dir = parent_dir
+            # Si userdata n'est pas trouvé, retourner /
+            return "/"
+    except NameError:
+        # Si __file__ n'est pas défini, utiliser le répertoire de travail actuel
+        return "/" if not sys.platform.startswith("win") else os.path.splitdrive(os.getcwd())[0] + os.sep
 
 # Chemins de base
-SYSTEM_FOLDER = "/userdata"
+SYSTEM_FOLDER = get_system_root()
+APP_FOLDER = os.path.join(get_application_root(), "RGSX")
 ROMS_FOLDER = os.path.join(SYSTEM_FOLDER, "roms")
-APP_FOLDER = os.path.join(ROMS_FOLDER, "ports", "RGSX")
+SAVE_FOLDER = os.path.join(SYSTEM_FOLDER, "saves", "ports", "rgsx")
+
+# Configuration du logging
+logger = logging.getLogger(__name__)
+log_dir = os.path.join(APP_FOLDER, "logs")
+log_file = os.path.join(log_dir, "RGSX.log")
+
+# Chemins de base
 UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")
 GAMELISTXML = os.path.join(APP_FOLDER, "gamelist.xml")
-SAVE_FOLDER = os.path.join(SYSTEM_FOLDER, "saves", "ports", "rgsx")
 IMAGES_FOLDER = os.path.join(APP_FOLDER, "images", "systemes")
 GAMES_FOLDER = os.path.join(APP_FOLDER, "games")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
@@ -21,13 +64,11 @@ HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
 LANGUAGE_CONFIG_PATH = os.path.join(SAVE_FOLDER, "language.json")
 JSON_EXTENSIONS = os.path.join(APP_FOLDER, "rom_extensions.json")
 
-# Configuration du logging
-logger = logging.getLogger(__name__)
-log_dir = os.path.join(APP_FOLDER, "logs")
-log_file = os.path.join(log_dir, "RGSX.log")
+
+
 
 # URL
-OTA_SERVER_URL = "https://retrogamesets.fr/softs"
+OTA_SERVER_URL = "https://retrogamesets.fr/softs/"
 OTA_VERSION_ENDPOINT = os.path.join(OTA_SERVER_URL, "version.json")
 OTA_UPDATE_ZIP = os.path.join(OTA_SERVER_URL, "RGSX.zip")
 OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "rgsx-data.zip")

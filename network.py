@@ -1,6 +1,7 @@
 import requests
 import subprocess
 import os
+import sys
 import threading
 import pygame # type: ignore
 import zipfile
@@ -24,17 +25,28 @@ cache = {}
 CACHE_TTL = 3600  # 1 heure
         
 def test_internet():
+    """Teste la connexion Internet de manière portable pour Windows et Linux/Batocera."""
     logger.debug("Test de connexion Internet")
+    
+    # Choisir l'option ping en fonction de la plateforme
+    ping_option = '-n' if sys.platform.startswith("win") else '-c'
+    logger.debug(f"Utilisation de ping avec option {ping_option}")
+    
     try:
-        result = subprocess.run(['ping', '-c', '4', '8.8.8.8'], capture_output=True, text=True, timeout=5)
+        result = subprocess.run(
+            ['ping', ping_option, '4', '8.8.8.8'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
         if result.returncode == 0:
-            logger.debug("Connexion Internet OK")
+            logger.debug("Connexion Internet OK (ping)")
             return True
         else:
-            logger.debug("Échec ping 8.8.8.8")
+            logger.debug(f"Échec ping 8.8.8.8, code retour: {result.returncode}")
             return False
     except Exception as e:
-        logger.debug(f"Erreur test Internet: {str(e)}")
+        logger.debug(f"Erreur test Internet (ping): {str(e)}")
         return False
 
 
