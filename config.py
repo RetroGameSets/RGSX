@@ -14,6 +14,7 @@ def get_application_root():
         # Remonter au dossier parent de config.py (par exemple, dossier de l'application)
         app_root = os.path.dirname(os.path.dirname(current_file))
         return app_root
+        
     except NameError:
         # Si __file__ n'est pas défini (par exemple, exécution dans un REPL)
         return os.path.abspath(os.getcwd())
@@ -46,8 +47,8 @@ def get_system_root():
 # Chemins de base
 SYSTEM_FOLDER = get_system_root()
 APP_FOLDER = os.path.join(get_application_root(), "RGSX")
-ROMS_FOLDER = os.path.join(SYSTEM_FOLDER, "roms")
-SAVE_FOLDER = os.path.join(SYSTEM_FOLDER, "saves", "ports", "rgsx")
+ROMS_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms")
+SAVE_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "saves", "ports", "rgsx")
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
