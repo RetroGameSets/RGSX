@@ -1,7 +1,6 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-<<<<<<< HEAD
 :: Définir le fichier de log
 set LOG_FILE=%CD%\python_execution_log.txt
 
@@ -10,12 +9,11 @@ echo [%DATE% %TIME%] Démarrage du script >> "%LOG_FILE%"
 
 :: Afficher un message de démarrage
 cls
-echo Exécution de __main__.py pour RetroBat...
-echo [%DATE% %TIME%] Exécution de __main__.py pour RetroBat >> "%LOG_FILE%"
+echo Exécution de __main__.py pour Windows...
+echo [%DATE% %TIME%] Exécution de __main__.py pour Windows >> "%LOG_FILE%"
 
 :: Définir les chemins relatifs
 set TOOLS_FOLDER=..\..\..\system\tools
-set EMULATOR_LAUNCHER=..\..\..\emulationstation\emulatorLauncher.exe
 set PYTHON_EXE=python.exe
 set MAIN_SCRIPT=__main__.py
 set CURRENT_DIR=%CD%
@@ -25,8 +23,6 @@ set "MAIN_SCRIPT_FULL=%CURRENT_DIR%\!MAIN_SCRIPT!"
 :: Afficher et logger les variables
 echo TOOLS_FOLDER : !TOOLS_FOLDER!
 echo [%DATE% %TIME%] TOOLS_FOLDER : !TOOLS_FOLDER! >> "%LOG_FILE%"
-echo EMULATOR_LAUNCHER : !EMULATOR_LAUNCHER!
-echo [%DATE% %TIME%] EMULATOR_LAUNCHER : !EMULATOR_LAUNCHER! >> "%LOG_FILE%"
 echo PYTHON_EXE : !PYTHON_EXE!
 echo [%DATE% %TIME%] PYTHON_EXE : !PYTHON_EXE! >> "%LOG_FILE%"
 echo MAIN_SCRIPT : !MAIN_SCRIPT!
@@ -114,7 +110,6 @@ if %ERRORLEVEL% equ 0 (
 :end
 echo Tâche terminée.
 echo [%DATE% %TIME%] Tâche terminée avec succès. >> "%LOG_FILE%"
-=======
 :: Vérifier si Python est installé
 echo Vérification de la présence de Python...
 where python >nul 2>&1
@@ -171,10 +166,7 @@ exit /b 0
 
 :error
 echo Une erreur s'est produite.
-<<<<<<< HEAD
 echo [%DATE% %TIME%] Une erreur s'est produite. >> "%LOG_FILE%"
-=======
 rd /s /q "%TEMP_DIR%"
 pause
->>>>>>> d5d5fa0991ce487dc11335a0d27345e48fa2ac4c
 exit /b 1
