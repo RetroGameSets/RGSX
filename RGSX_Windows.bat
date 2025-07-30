@@ -62,7 +62,7 @@ if not exist "!PYTHON_EXE_FULL!" (
         echo [%DATE% %TIME%] Téléchargement terminé. Extraction de python.zip vers !TOOLS_FOLDER!\Python... >> "%LOG_FILE%"
         :: Afficher des messages de progression pendant l'extraction
         echo Extraction en cours...
-        tar -xf "!ZIP_FILE!" -C "!TOOLS_FOLDER!\Python" --strip-components=0
+        tar -xf "!ZIP_FILE!" -C "!TOOLS_FOLDER!" --strip-components=0
         echo Extraction terminée.
         echo [%DATE% %TIME%] Extraction terminée. >> "%LOG_FILE%"
         del /q "!ZIP_FILE!"
