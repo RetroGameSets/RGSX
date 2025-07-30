@@ -1,8 +1,9 @@
-@echo off
+@echo on
 setlocal EnableDelayedExpansion
 
 :: Définir le fichier de log
-set LOG_FILE=%CD%\python_execution_log.txt
+if not exist %CD%\logs MD %CD%\logs
+set LOG_FILE=%CD%\logs\Retrobat_log.txt
 
 :: Ajouter un horodatage au début du log
 echo [%DATE% %TIME%] Démarrage du script >> "%LOG_FILE%"
