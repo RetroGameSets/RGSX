@@ -602,7 +602,9 @@ def extract_rar(rar_path, dest_dir, url):
                 logger.error(f"Erreur lors de la suppression de {rar_path}: {str(e)}")
 
 def play_random_music(music_files, music_folder, current_music=None):
-    """Joue une musique aléatoire et configure l'événement de fin de manière non-bloquante."""
+    if not getattr(config, "music_enabled", True):
+        pygame.mixer.music.stop()
+        return current_music
     if music_files:
         # Éviter de rejouer la même musique consécutivement
         available_music = [f for f in music_files if f != current_music]
@@ -666,3 +668,28 @@ def load_api_key_1fichier():
     except OSError as e:
         logger.error(f"Erreur lors de la lecture de la clé API : {e}")
         return ""
+
+def load_music_config():
+    """Charge la configuration musique depuis music_config.json."""
+    path = config.MUSIC_CONFIG_PATH
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                config.music_enabled = data.get("music_enabled", True)
+                return config.music_enabled
+    except Exception as e:
+        logger.error(f"Erreur lors du chargement de music_config.json: {str(e)}")
+    config.music_enabled = True
+    return True
+
+def save_music_config():
+    """Sauvegarde la configuration musique dans music_config.json."""
+    path = config.MUSIC_CONFIG_PATH
+    try:
+        os.makedirs(config.SAVE_FOLDER, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"music_enabled": config.music_enabled}, f, indent=2)
+        logger.debug(f"Configuration musique sauvegardée: {config.music_enabled}")
+    except Exception as e:
+        logger.error(f"Erreur lors de la sauvegarde de music_config.json: {str(e)}")

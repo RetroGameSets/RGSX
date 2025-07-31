@@ -49,7 +49,6 @@ SYSTEM_FOLDER = get_system_root()
 APP_FOLDER = os.path.join(get_application_root(), "RGSX")
 ROMS_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms")
 SAVE_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "saves", "ports", "rgsx")
-
 # Configuration du logging
 logger = logging.getLogger(__name__)
 log_dir = os.path.join(APP_FOLDER, "logs")
@@ -64,8 +63,7 @@ CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
 HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
 LANGUAGE_CONFIG_PATH = os.path.join(SAVE_FOLDER, "language.json")
 JSON_EXTENSIONS = os.path.join(APP_FOLDER, "rom_extensions.json")
-
-
+MUSIC_CONFIG_PATH = os.path.join(SAVE_FOLDER, "music_config.json")
 
 
 # URL
@@ -102,6 +100,7 @@ transition_state = "idle"
 transition_progress = 0.0
 transition_duration = 18
 games_count = {}
+music_enabled = True  # Par défaut la musique est activée
 API_KEY_1FICHIER = ""  # Initialisation de la variable globale pour la clé API
 
 # Variables pour la sélection de langue
@@ -206,8 +205,3 @@ def validate_resolution():
         logger.warning(f"Résolution {SCREEN_WIDTH}x{SCREEN_HEIGHT} dépasse les limites de l'écran")
         return display_info.current_w, display_info.current_h
     return SCREEN_WIDTH, SCREEN_HEIGHT
-
-
-
-    
-

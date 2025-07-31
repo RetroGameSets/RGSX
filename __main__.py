@@ -98,11 +98,16 @@ config.repeat_last_action = 0
 music_folder = os.path.join(config.APP_FOLDER, "assets", "music")
 music_files = [f for f in os.listdir(music_folder) if f.lower().endswith(('.ogg', '.mp3'))]
 current_music = None  # Variable pour suivre la musique en cours
+config.music_folder = music_folder
+config.music_files = music_files
+config.current_music = current_music
+
 if music_files:
     current_music = play_random_music(music_files, music_folder, current_music)
 else:
     logger.debug("Aucune musique trouvée dans config.APP_FOLDER/assets/music")
 
+config.current_music = current_music  # Met à jour la musique en cours dans config
 
 # Chargement de l'historique
 config.history = load_history()
@@ -133,6 +138,8 @@ if pygame.joystick.get_count() > 0:
 # Initialisation du mixer Pygame
 pygame.mixer.pre_init(44100, -16, 2, 4096)
 pygame.mixer.init()
+from utils import load_music_config
+load_music_config()
 
 
 # Boucle principale

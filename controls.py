@@ -9,7 +9,7 @@ import json
 import os
 from display import draw_validation_transition
 from network import download_rom, download_from_1fichier, is_1fichier_url
-from utils import load_games, check_extension_before_download, is_extension_supported, load_extensions_json, sanitize_filename, load_api_key_1fichier
+from utils import load_games, check_extension_before_download, is_extension_supported, load_extensions_json, play_random_music, sanitize_filename, load_api_key_1fichier, save_music_config
 from history import load_history, clear_history, add_to_history, save_history
 import logging
 from language import _  # Import de la fonction de traduction
@@ -861,16 +861,11 @@ def handle_controls(event, sources, joystick, screen):
             #logger.debug(f"État pause_menu, selected_option={config.selected_option}, événement={event.type}, valeur={getattr(event, 'value', None)}")
             if is_input_matched(event, "up"):
                 config.selected_option = max(0, config.selected_option - 1)
-                # La répétition est gérée par update_key_state
                 config.needs_redraw = True
-                #logger.debug(f"Navigation vers le haut: selected_option={config.selected_option}")
             elif is_input_matched(event, "down"):
-                config.selected_option = min(6, config.selected_option + 1)
-                # La répétition est gérée par update_key_state
+                config.selected_option = min(7, config.selected_option + 1)  # 7 options maintenant
                 config.needs_redraw = True
-                #logger.debug(f"Navigation vers le bas: selected_option={config.selected_option}")
             elif is_input_matched(event, "confirm"):
-                #logger.debug(f"Confirmation dans pause_menu avec selected_option={config.selected_option}")
                 if config.selected_option == 0:  # Controls
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "controls_help"
@@ -914,7 +909,21 @@ def handle_controls(event, sources, joystick, screen):
                     config.redownload_confirm_selection = 0
                     config.needs_redraw = True
                     logger.debug(f"Passage à redownload_game_cache depuis pause_menu")
-                elif config.selected_option == 6:  # Quit
+                elif config.selected_option == 6:  # Music toggle
+                    config.music_enabled = not config.music_enabled
+                    save_music_config()
+                    if config.music_enabled:
+                        # Relancer la musique si activée
+                        # Utilise les variables globales si elles existent
+                        music_files = getattr(config, "music_files", None)
+                        music_folder = getattr(config, "music_folder", None)
+                        if music_files and music_folder:
+                            config.current_music = play_random_music(music_files, music_folder, getattr(config, "current_music", None))
+                    else:
+                        pygame.mixer.music.stop()
+                    config.needs_redraw = True
+                    logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via menu pause")
+                elif config.selected_option == 7:  # Quit
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "confirm_exit"
                     config.confirm_selection = 0

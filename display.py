@@ -1161,6 +1161,13 @@ def draw_pause_menu(screen, selected_option):
     """Dessine le menu pause avec un style moderne."""
     screen.blit(OVERLAY, (0, 0))
 
+    # Option musique dynamique
+    if config.music_enabled:
+        music_name = config.current_music_name or ""
+        music_option = _("menu_music_enabled").format(music_name)
+    else:
+        music_option = _("menu_music_disabled")
+
     options = [
         _("menu_controls"),
         _("menu_remap_controls"),
@@ -1168,6 +1175,7 @@ def draw_pause_menu(screen, selected_option):
         _("menu_language"),
         _("menu_accessibility"),
         _("menu_redownload_cache"),
+        music_option,  # Ici l'option dynamique
         _("menu_quit")
     ]
 
@@ -1290,6 +1298,7 @@ def draw_controls_help(screen, previous_state):
 
     control_columns = state_controls.get(previous_state, {})
     if not control_columns:
+
         return
 
     screen.blit(OVERLAY, (0, 0))

@@ -70,6 +70,9 @@
     "menu_accessibility": "Accessibilité",
     "menu_redownload_cache": "Retélécharger le cache des jeux",
     "menu_quit": "Quitter",
+    "menu_music_toggle": "Activer/Désactiver la musique",
+    "menu_music_enabled": "Musique activée : {0}",
+    "menu_music_disabled": "Musique désactivée",
     
     "button_yes": "Oui",
     "button_no": "Non",
@@ -94,6 +97,7 @@
     "controls_action_delete": "Supprimer",
     "controls_action_space": "Espace",
     "controls_action_start": "Aide / Réglages",
+    "controls_action_music_toggle": "Musique On/Off",
     
     "controls_desc_confirm": "Valider (ex: A, Entrée)",
     "controls_desc_cancel": "Annuler/Retour (ex: B, RetourArrière)",
@@ -109,6 +113,7 @@
     "controls_desc_delete": "Supprimer caractère (ex: LT, Suppr)",
     "controls_desc_space": "Ajouter espace (ex: RT, Espace)",
     "controls_desc_start": "Ouvrir le menu pause (ex: Start, AltGr)",
+    "controls_desc_music_toggle": "Active ou désactive la musique de fond",
     
     "footer_version": "RGSX v{0} - {1} : Options - {2}: Historique - {3} : Filtrer",
     
