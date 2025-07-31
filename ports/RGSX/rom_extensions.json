@@ -1,0 +1,2317 @@
+[
+  {
+    "system": "3DO INTERACTIVE MULTIPLAYER",
+    "folder": "3do",
+    "extensions": [
+      ".iso",
+      ".chd",
+      ".cue"
+    ]
+  },
+  {
+    "system": "3DS",
+    "folder": "3ds",
+    "extensions": [
+      ".3ds",
+      ".3dsx",
+      ".cxi",
+      ".axf",
+      ".elf",
+      ".app",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "ABUSE",
+    "folder": "abuse",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "ADAM",
+    "folder": "adam",
+    "extensions": [
+      ".wav",
+      ".ddp",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".rom",
+      ".col",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ADVENTURE VISION",
+    "folder": "advision",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "AMIGA AGA",
+    "folder": "amiga1200",
+    "extensions": [
+      ".adf",
+      ".uae",
+      ".ipf",
+      ".dms",
+      ".dmz",
+      ".adz",
+      ".lha",
+      ".hdf",
+      ".exe",
+      ".m3u",
+      ".zip",
+      ".raw",
+      ".scp"
+    ]
+  },
+  {
+    "system": "AMIGA OCS/ECS",
+    "folder": "amiga500",
+    "extensions": [
+      ".adf",
+      ".uae",
+      ".ipf",
+      ".dms",
+      ".dmz",
+      ".adz",
+      ".lha",
+      ".hdf",
+      ".exe",
+      ".m3u",
+      ".zip",
+      ".raw",
+      ".scp"
+    ]
+  },
+  {
+    "system": "AMIGA CD32",
+    "folder": "amigacd32",
+    "extensions": [
+      ".bin",
+      ".cue",
+      ".iso",
+      ".chd"
+    ]
+  },
+  {
+    "system": "AMIGA CDTV",
+    "folder": "amigacdtv",
+    "extensions": [
+      ".bin",
+      ".cue",
+      ".iso",
+      ".chd",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "AMSTRAD CPC",
+    "folder": "amstradcpc",
+    "extensions": [
+      ".dsk",
+      ".sna",
+      ".tap",
+      ".cdt",
+      ".voc",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "M-1000",
+    "folder": "apfm1000",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "APPLE II",
+    "folder": "apple2",
+    "extensions": [
+      ".nib",
+      ".do",
+      ".po",
+      ".dsk",
+      ".mfi",
+      ".dfi",
+      ".rti",
+      ".edd",
+      ".woz",
+      ".wav",
+      ".zip",
+      ".7z",
+      ".chd",
+      ".hdv",
+      ".2mg"
+    ]
+  },
+  {
+    "system": "APPLE IIGS",
+    "folder": "apple2gs",
+    "extensions": [
+      ".2mg",
+      ".do",
+      ".nib",
+      ".po",
+      ".dsk",
+      ".mfi",
+      ".dfi",
+      ".rti",
+      ".edd",
+      ".woz",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqui",
+      ".ima",
+      ".img",
+      ".ufi",
+      ".360",
+      ".ipf",
+      ".dc42",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ARCADIA 2001",
+    "folder": "arcadia",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ARCHIMEDES",
+    "folder": "archimedes",
+    "extensions": [
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".ima",
+      ".img",
+      ".ufi",
+      ".360",
+      ".ipf",
+      ".adf",
+      ".apd",
+      ".jfd",
+      ".ads",
+      ".adm",
+      ".adl",
+      ".ssd",
+      ".bbc",
+      ".dsd",
+      ".st",
+      ".msa",
+      ".chd",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ARDUBOY",
+    "folder": "arduboy",
+    "extensions": [
+      ".hex",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ASTROCADE",
+    "folder": "astrocde",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATARI 2600",
+    "folder": "atari2600",
+    "extensions": [
+      ".a26",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATARI 5200",
+    "folder": "atari5200",
+    "extensions": [
+      ".rom",
+      ".xfd",
+      ".atr",
+      ".atx",
+      ".cdm",
+      ".cas",
+      ".car",
+      ".bin",
+      ".a52",
+      ".xex",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATARI 7800",
+    "folder": "atari7800",
+    "extensions": [
+      ".a78",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATARI 800",
+    "folder": "atari800",
+    "extensions": [
+      ".rom",
+      ".xfd",
+      ".atr",
+      ".atx",
+      ".cdm",
+      ".cas",
+      ".car",
+      ".bin",
+      ".a52",
+      ".xex",
+      ".zip",
+      ".7z",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "ATARI ST",
+    "folder": "atarist",
+    "extensions": [
+      ".st",
+      ".msa",
+      ".stx",
+      ".dim",
+      ".ipf",
+      ".m3u",
+      ".zip",
+      ".7z",
+      ".hd",
+      ".gemdos"
+    ]
+  },
+  {
+    "system": "ATOM",
+    "folder": "atom",
+    "extensions": [
+      ".wav",
+      ".tap",
+      ".csw",
+      ".uef",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".40t",
+      ".atm",
+      ".bin",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATOMISWAVE",
+    "folder": "atomiswave",
+    "extensions": [
+      ".lst",
+      ".bin",
+      ".dat",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "BBC MICRO",
+    "folder": "bbc",
+    "extensions": [
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".ima",
+      ".img",
+      ".ufi",
+      ".360",
+      ".ipf",
+      ".ssd",
+      ".bbc",
+      ".dsd",
+      ".adf",
+      ".ads",
+      ".adm",
+      ".adl",
+      ".fsd",
+      ".wav",
+      ".tap",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "COMMODORE 128",
+    "folder": "c128",
+    "extensions": [
+      ".d64",
+      ".d81",
+      ".prg",
+      ".lnx",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "COMMODORE VIC-20",
+    "folder": "c20",
+    "extensions": [
+      ".20",
+      ".40",
+      ".60",
+      ".rom",
+      ".a0",
+      ".b0",
+      ".crt",
+      ".d64",
+      ".d81",
+      ".prg",
+      ".tap",
+      ".t64",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "COMMODORE 64",
+    "folder": "c64",
+    "extensions": [
+      ".d64",
+      ".d71",
+      ".d81",
+      ".crt",
+      ".prg",
+      ".tap",
+      ".t64",
+      ".m3u",
+      ".zip",
+      ".7z",
+      ".nib",
+      ".g64"
+    ]
+  },
+  {
+    "system": "CAMPUTERS LYNX",
+    "folder": "camplynx",
+    "extensions": [
+      ".wav",
+      ".tap",
+      ".ldf",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "CANNONBALL",
+    "folder": "cannonball",
+    "extensions": [
+      ".cannonball"
+    ]
+  },
+  {
+    "system": "CAVE STORY",
+    "folder": "cavestory",
+    "extensions": [
+      ".exe"
+    ]
+  },
+  {
+    "system": "CD-I",
+    "folder": "cdi",
+    "extensions": [
+      ".chd",
+      ".cue",
+      ".toc",
+      ".nrg",
+      ".gdi",
+      ".iso",
+      ".cdr"
+    ]
+  },
+  {
+    "system": "C-DOGS SDL",
+    "folder": "cdogs",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "COMMANDER GENIUS",
+    "folder": "cgenius",
+    "extensions": [
+      ".cgenius"
+    ]
+  },
+  {
+    "system": "CHANNEL-F",
+    "folder": "channelf",
+    "extensions": [
+      ".zip",
+      ".rom",
+      ".bin",
+      ".chf"
+    ]
+  },
+  {
+    "system": "SEGA CHIHIRO",
+    "folder": "chihiro",
+    "extensions": [
+      ".iso"
+    ]
+  },
+  {
+    "system": "COLOR COMPUTER",
+    "folder": "coco",
+    "extensions": [
+      ".wav",
+      ".cas",
+      ".dsk",
+      ".ccc",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "COLECOVISION",
+    "folder": "colecovision",
+    "extensions": [
+      ".bin",
+      ".col",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "COMMANDER X16",
+    "folder": "commanderx16",
+    "extensions": [
+      ".bas",
+      ".img",
+      ".prg"
+    ]
+  },
+  {
+    "system": "CORSIXTH",
+    "folder": "corsixth",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "COMMODORE PLUS4",
+    "folder": "cplus4",
+    "extensions": [
+      ".d64",
+      ".prg",
+      ".tap",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "CREATIVISION",
+    "folder": "crvision",
+    "extensions": [
+      ".bin",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "DAPHNE",
+    "folder": "daphne",
+    "extensions": [
+      ".daphne",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "DIABLO",
+    "folder": "devilutionx",
+    "extensions": [
+      ".mpq"
+    ]
+  },
+  {
+    "system": "DOOM 3",
+    "folder": "doom3",
+    "extensions": [
+      ".d3"
+    ]
+  },
+  {
+    "system": "DOS (X86)",
+    "folder": "dos",
+    "extensions": [
+      ".pc",
+      ".dos",
+      ".zip",
+      ".squashfs",
+      ".dosz",
+      ".m3u",
+      ".iso",
+      ".cue"
+    ]
+  },
+  {
+    "system": "DREAMCAST",
+    "folder": "dreamcast",
+    "extensions": [
+      ".cdi",
+      ".cue",
+      ".gdi",
+      ".chd",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "DXX REBIRTH",
+    "folder": "dxx-rebirth",
+    "extensions": [
+      ".d1x",
+      ".d2x"
+    ]
+  },
+  {
+    "system": "EASYRPG",
+    "folder": "easyrpg",
+    "extensions": [
+      ".easyrpg",
+      ".squashfs",
+      ".zip"
+    ]
+  },
+  {
+    "system": "ECWOLF",
+    "folder": "ecwolf",
+    "extensions": [
+      ".ecwolf",
+      ".pk3",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "EDUKE32",
+    "folder": "eduke32",
+    "extensions": [
+      ".eduke32"
+    ]
+  },
+  {
+    "system": "ELECTRON",
+    "folder": "electron",
+    "extensions": [
+      ".wav",
+      ".csw",
+      ".uef",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".ssd",
+      ".bbc",
+      ".img",
+      ".dsd",
+      ".adf",
+      ".ads",
+      ".adm",
+      ".adl",
+      ".rom",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "WOLFENSTEIN - ENEMY TERRITORY",
+    "folder": "etlegacy",
+    "extensions": [
+      ".etl"
+    ]
+  },
+  {
+    "system": "FALLOUT COMMUNITY EDITION",
+    "folder": "fallout1-ce",
+    "extensions": [
+      ".f1ce"
+    ]
+  },
+  {
+    "system": "FALLOUT 2 COMMUNITY EDITION",
+    "folder": "fallout2-ce",
+    "extensions": [
+      ".f2ce"
+    ]
+  },
+  {
+    "system": "FINAL BURN NEO",
+    "folder": "fbneo",
+    "extensions": [
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "FAMILY COMPUTER DISK SYSTEM",
+    "folder": "fds",
+    "extensions": [
+      ".fds",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "FLASH PLAYER",
+    "folder": "flash",
+    "extensions": [
+      ".swf"
+    ]
+  },
+  {
+    "system": "APPLICATIONS",
+    "folder": "flatpak",
+    "extensions": [
+      ".flatpak"
+    ]
+  },
+  {
+    "system": "FM-7",
+    "folder": "fm7",
+    "extensions": [
+      ".wav",
+      ".t77",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "FM-TOWNS",
+    "folder": "fmtowns",
+    "extensions": [
+      ".bin",
+      ".m3u",
+      ".cue",
+      ".d88",
+      ".d77",
+      ".xdf",
+      ".iso",
+      ".chd",
+      ".toc",
+      ".nrg",
+      ".gdi",
+      ".cdr",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "FUTURE PINBALL",
+    "folder": "fpinball",
+    "extensions": [
+      ".fpt"
+    ]
+  },
+  {
+    "system": "ION FURY",
+    "folder": "fury",
+    "extensions": [
+      ".grp"
+    ]
+  },
+  {
+    "system": "GAMATE",
+    "folder": "gamate",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME AND WATCH",
+    "folder": "gameandwatch",
+    "extensions": [
+      ".mgw",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME.COM",
+    "folder": "gamecom",
+    "extensions": [
+      ".bin",
+      ".tgc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAMECUBE",
+    "folder": "gamecube",
+    "extensions": [
+      ".gcm",
+      ".iso",
+      ".gcz",
+      ".ciso",
+      ".wbfs",
+      ".rvz",
+      ".elf",
+      ".dol",
+      ".m3u",
+      ".json"
+    ]
+  },
+  {
+    "system": "GAME GEAR",
+    "folder": "gamegear",
+    "extensions": [
+      ".bin",
+      ".gg",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME POCKET COMPUTER",
+    "folder": "gamepock",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME BOY",
+    "folder": "gb",
+    "extensions": [
+      ".gb",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME BOY (2 PLAYERS)",
+    "folder": "gb2players",
+    "extensions": [
+      ".gb",
+      ".gb2",
+      ".gbc2",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME BOY ADVANCE",
+    "folder": "gba",
+    "extensions": [
+      ".gba",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME BOY COLOR",
+    "folder": "gbc",
+    "extensions": [
+      ".gbc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME BOY COLOR (2 PLAYERS)",
+    "folder": "gbc2players",
+    "extensions": [
+      ".gbc",
+      ".gb2",
+      ".gbc2",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GAME MASTER",
+    "folder": "gmaster",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GP32",
+    "folder": "gp32",
+    "extensions": [
+      ".smc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GX4000",
+    "folder": "gx4000",
+    "extensions": [
+      ".dsk",
+      ".m3u",
+      ".cpr",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "GZDOOM",
+    "folder": "gzdoom",
+    "extensions": [
+      ".wad",
+      ".iwad",
+      ".pwad",
+      ".gzdoom"
+    ]
+  },
+  {
+    "system": "HYDRA CASTLE LABYRINTH",
+    "folder": "hcl",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "HURRICAN",
+    "folder": "hurrican",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "IKEMEN",
+    "folder": "ikemen",
+    "extensions": [
+      ".ikemen",
+      ".pc"
+    ]
+  },
+  {
+    "system": "MATTEL INTELLIVISION",
+    "folder": "intellivision",
+    "extensions": [
+      ".int",
+      ".bin",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "RETURN TO CASTLE WOLFENSTEIN",
+    "folder": "iortcw",
+    "extensions": [
+      ".rtcw"
+    ]
+  },
+  {
+    "system": "JAGUAR",
+    "folder": "jaguar",
+    "extensions": [
+      ".j64",
+      ".jag",
+      ".cof",
+      ".abs",
+      ".rom",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "JAGUAR CD",
+    "folder": "jaguarcd",
+    "extensions": [
+      ".cue",
+      ".cdi"
+    ]
+  },
+  {
+    "system": "JAZZ JACKRABBIT 2",
+    "folder": "jazz2",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "LASER 310",
+    "folder": "laser310",
+    "extensions": [
+      ".vz",
+      ".wav",
+      ".cas",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "LCD GAMES",
+    "folder": "lcdgames",
+    "extensions": [
+      ".mgw",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "LOWRES NX",
+    "folder": "lowresnx",
+    "extensions": [
+      ".nx",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "LUTRO",
+    "folder": "lutro",
+    "extensions": [
+      ".lutro",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ATARI LYNX",
+    "folder": "lynx",
+    "extensions": [
+      ".bll",
+      ".lnx",
+      ".lyx",
+      ".o",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "MACINTOSH",
+    "folder": "macintosh",
+    "extensions": [
+      ".dsk",
+      ".zip",
+      ".7z",
+      ".mfi",
+      ".dfi",
+      ".hfe",
+      ".mfm",
+      ".td0",
+      ".imd",
+      ".d77",
+      ".d88",
+      ".1dd",
+      ".cqm",
+      ".cqi",
+      ".dsk",
+      ".ima",
+      ".img",
+      ".ufi",
+      ".ipf",
+      ".dc42",
+      ".woz",
+      ".2mg",
+      ".360",
+      ".chd",
+      ".cue",
+      ".toc",
+      ".nrg",
+      ".gdi",
+      ".iso",
+      ".cdr",
+      ".hd",
+      ".hdv",
+      ".2mg",
+      ".hdi"
+    ]
+  },
+  {
+    "system": "MAME",
+    "folder": "mame",
+    "extensions": [
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "MASTER SYSTEM",
+    "folder": "mastersystem",
+    "extensions": [
+      ".bin",
+      ".sms",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "MEGA DRIVE",
+    "folder": "megadrive",
+    "extensions": [
+      ".bin",
+      ".gen",
+      ".md",
+      ".sg",
+      ".smd",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "MEGA DUCK / COUGAR BOY",
+    "folder": "megaduck",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "MODEL 2",
+    "folder": "model2",
+    "extensions": [
+      ".zip"
+    ]
+  },
+  {
+    "system": "MODEL 3",
+    "folder": "model3",
+    "extensions": [
+      ".zip"
+    ]
+  },
+  {
+    "system": "MOONLIGHT EMBEDDED",
+    "folder": "moonlight",
+    "extensions": [
+      ".moonlight"
+    ]
+  },
+  {
+    "system": "MRBOOM",
+    "folder": "mrboom",
+    "extensions": [
+      ".libretro"
+    ]
+  },
+  {
+    "system": "MSU-MD",
+    "folder": "msu-md",
+    "extensions": [
+      ".md",
+      ".zip",
+      ".7z",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "MSX1",
+    "folder": "msx1",
+    "extensions": [
+      ".dsk",
+      ".mx1",
+      ".rom",
+      ".zip",
+      ".7z",
+      ".cas",
+      ".m3u",
+      ".ogv",
+      ".openmsx"
+    ]
+  },
+  {
+    "system": "MSX2",
+    "folder": "msx2",
+    "extensions": [
+      ".dsk",
+      ".mx2",
+      ".rom",
+      ".zip",
+      ".7z",
+      ".cas",
+      ".m3u",
+      ".ogv",
+      ".openmsx"
+    ]
+  },
+  {
+    "system": "MSX2+",
+    "folder": "msx2+",
+    "extensions": [
+      ".dsk",
+      ".mx2",
+      ".rom",
+      ".zip",
+      ".7z",
+      ".cas",
+      ".m3u",
+      ".openmsx"
+    ]
+  },
+  {
+    "system": "MSX TURBO-R",
+    "folder": "msxturbor",
+    "extensions": [
+      ".dsk",
+      ".mx2",
+      ".rom",
+      ".zip",
+      ".7z",
+      ".openmsx",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "MUGEN",
+    "folder": "mugen",
+    "extensions": [
+      ".pc"
+    ]
+  },
+  {
+    "system": "OTHELLO MULTIVISION",
+    "folder": "multivision",
+    "extensions": [
+      ".bin",
+      ".sg",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NINTENDO 64",
+    "folder": "n64",
+    "extensions": [
+      ".z64",
+      ".n64",
+      ".v64",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NINTENDO 64 DISK DRIVE",
+    "folder": "n64dd",
+    "extensions": [
+      ".z64",
+      ".n64",
+      ".ndd",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NAMCO 246/256",
+    "folder": "namco2x6",
+    "extensions": [
+      ".zip"
+    ]
+  },
+  {
+    "system": "NAOMI",
+    "folder": "naomi",
+    "extensions": [
+      ".lst",
+      ".bin",
+      ".dat",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NAOMI 2",
+    "folder": "naomi2",
+    "extensions": [
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NINTENDO DS",
+    "folder": "nds",
+    "extensions": [
+      ".nds",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NEO-GEO",
+    "folder": "neogeo",
+    "extensions": [
+      ".7z",
+      ".zip"
+    ]
+  },
+  {
+    "system": "NEO-GEO CD",
+    "folder": "neogeocd",
+    "extensions": [
+      ".cue",
+      ".iso",
+      ".chd"
+    ]
+  },
+  {
+    "system": "NINTENDO ENTERTAINMENT SYSTEM",
+    "folder": "nes",
+    "extensions": [
+      ".nes",
+      ".unif",
+      ".unf",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NEO-GEO POCKET",
+    "folder": "ngp",
+    "extensions": [
+      ".ngp",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "NEO-GEO POCKET COLOR",
+    "folder": "ngpc",
+    "extensions": [
+      ".ngc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ODYSSEY2",
+    "folder": "o2em",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "OD-COMMANDER",
+    "folder": "odcommander",
+    "extensions": [
+      ".odc"
+    ]
+  },
+  {
+    "system": "OPENBOR",
+    "folder": "openbor",
+    "extensions": [
+      ".pak"
+    ]
+  },
+  {
+    "system": "JAZZ JACKRABBIT",
+    "folder": "openjazz",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "OPENLARA",
+    "folder": "openlara",
+    "extensions": [
+      ".croft"
+    ]
+  },
+  {
+    "system": "PC-8800",
+    "folder": "pc88",
+    "extensions": [
+      ".cmt",
+      ".d88",
+      ".u88",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "PC-9800",
+    "folder": "pc98",
+    "extensions": [
+      ".d98",
+      ".zip",
+      ".98d",
+      ".fdi",
+      ".fdd",
+      ".2hd",
+      ".tfd",
+      ".d88",
+      ".88d",
+      ".hdm",
+      ".xdf",
+      ".dup",
+      ".cmd",
+      ".hdi",
+      ".thd",
+      ".nhd",
+      ".hdd",
+      ".hdn",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "PC ENGINE",
+    "folder": "pcengine",
+    "extensions": [
+      ".pce",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "PC ENGINE CD",
+    "folder": "pcenginecd",
+    "extensions": [
+      ".pce",
+      ".cue",
+      ".ccd",
+      ".iso",
+      ".img",
+      ".chd"
+    ]
+  },
+  {
+    "system": "PC-FX",
+    "folder": "pcfx",
+    "extensions": [
+      ".cue",
+      ".ccd",
+      ".toc",
+      ".chd",
+      ".zip",
+      ".7z",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "PDP-1",
+    "folder": "pdp1",
+    "extensions": [
+      ".zip",
+      ".7z",
+      ".tap",
+      ".rim",
+      ".drm"
+    ]
+  },
+  {
+    "system": "COMMODORE PET",
+    "folder": "pet",
+    "extensions": [
+      ".a0",
+      ".b0",
+      ".crt",
+      ".d64",
+      ".d81",
+      ".prg",
+      ".tap",
+      ".t64",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SEGA PICO",
+    "folder": "pico",
+    "extensions": [
+      ".bin",
+      ".md",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "PICO-8",
+    "folder": "pico8",
+    "extensions": [
+      ".p8",
+      ".png",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "PLUG AND PLAY TV GAMES",
+    "folder": "plugnplay",
+    "extensions": [
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "POKEMON MINI",
+    "folder": "pokemini",
+    "extensions": [
+      ".min",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "PRBOOM",
+    "folder": "prboom",
+    "extensions": [
+      ".wad",
+      ".iwad",
+      ".pwad"
+    ]
+  },
+  {
+    "system": "PLAYSTATION 2",
+    "folder": "ps2",
+    "extensions": [
+      ".iso",
+      ".mdf",
+      ".nrg",
+      ".bin",
+      ".img",
+      ".dump",
+      ".gz",
+      ".cso",
+      ".chd",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "PLAYSTATION 3",
+    "folder": "ps3",
+    "extensions": [
+      ".ps3",
+      ".psn",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "PLAYSTATION PORTABLE",
+    "folder": "psp",
+    "extensions": [
+      ".iso",
+      ".cso",
+      ".pbp",
+      ".chd"
+    ]
+  },
+  {
+    "system": "PLAYSTATION VITA",
+    "folder": "psvita",
+    "extensions": [
+      ".zip",
+      ".psvita"
+    ]
+  },
+  {
+    "system": "PLAYSTATION",
+    "folder": "psx",
+    "extensions": [
+      ".cue",
+      ".img",
+      ".mdf",
+      ".pbp",
+      ".toc",
+      ".cbn",
+      ".m3u",
+      ".ccd",
+      ".chd",
+      ".iso"
+    ]
+  },
+  {
+    "system": "PV-1000",
+    "folder": "pv1000",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "PYGAME",
+    "folder": "pygame",
+    "extensions": [
+      ".pygame"
+    ]
+  },
+  {
+    "system": "PYXEL",
+    "folder": "pyxel",
+    "extensions": [
+      ".py",
+      ".pyxapp"
+    ]
+  },
+  {
+    "system": "QUAKE III",
+    "folder": "quake3",
+    "extensions": [
+      ".quake3"
+    ]
+  },
+  {
+    "system": "RAZE",
+    "folder": "raze",
+    "extensions": [
+      ".raze"
+    ]
+  },
+  {
+    "system": "REMINISCENCE",
+    "folder": "reminiscence",
+    "extensions": [
+      ".rem"
+    ]
+  },
+  {
+    "system": "RISE OF THE TRIAD",
+    "folder": "rott",
+    "extensions": [
+      ".rott"
+    ]
+  },
+  {
+    "system": "SAM COUPÉ",
+    "folder": "samcoupe",
+    "extensions": [
+      ".cpm",
+      ".dsk",
+      ".sad",
+      ".mgt",
+      ".sdf",
+      ".td0",
+      ".sbt",
+      ".zip"
+    ]
+  },
+  {
+    "system": "SATELLAVIEW",
+    "folder": "satellaview",
+    "extensions": [
+      ".bs",
+      ".smc",
+      ".sfc",
+      ".zip",
+      ".7z",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "SATURN",
+    "folder": "saturn",
+    "extensions": [
+      ".cue",
+      ".ccd",
+      ".m3u",
+      ".chd",
+      ".iso",
+      ".zip",
+      ".mds"
+    ]
+  },
+  {
+    "system": "SCUMMVM",
+    "folder": "scummvm",
+    "extensions": [
+      ".scummvm",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "SUPER CASSETTE VISION",
+    "folder": "scv",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".0"
+    ]
+  },
+  {
+    "system": "SDLPOP",
+    "folder": "sdlpop",
+    "extensions": [
+      ".sdlpop"
+    ]
+  },
+  {
+    "system": "32X",
+    "folder": "sega32x",
+    "extensions": [
+      ".32x",
+      ".chd",
+      ".smd",
+      ".bin",
+      ".md",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SEGA CD",
+    "folder": "segacd",
+    "extensions": [
+      ".cue",
+      ".iso",
+      ".chd",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "SG-1000",
+    "folder": "sg1000",
+    "extensions": [
+      ".bin",
+      ".sg",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SUPER GAME BOY",
+    "folder": "sgb",
+    "extensions": [
+      ".gb",
+      ".gbc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SINGE",
+    "folder": "singe",
+    "extensions": [
+      ".daphne",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "SUPER NINTENDO ENTERTAINMENT SYSTEM",
+    "folder": "snes",
+    "extensions": [
+      ".smc",
+      ".fig",
+      ".sfc",
+      ".gd3",
+      ".gd7",
+      ".dx2",
+      ".bsx",
+      ".swc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SUPER DISC (MSU1)",
+    "folder": "snes-msu1",
+    "extensions": [
+      ".smc",
+      ".sfc",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "SOCRATES",
+    "folder": "socrates",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SOLARUS",
+    "folder": "solarus",
+    "extensions": [
+      ".zip",
+      ".solarus"
+    ]
+  },
+  {
+    "system": "SONIC MANIA",
+    "folder": "sonic-mania",
+    "extensions": [
+      ".sman"
+    ]
+  },
+  {
+    "system": "SONIC 3 A.I.R.",
+    "folder": "sonic3-air",
+    "extensions": [
+      ".s3air"
+    ]
+  },
+  {
+    "system": "SONIC RETRO ENGINE",
+    "folder": "sonicretro",
+    "extensions": [
+      ".son",
+      ".scd"
+    ]
+  },
+  {
+    "system": "SPECTRAVIDEO SV-328",
+    "folder": "spectravideo",
+    "extensions": [
+      ".zip",
+      ".7z",
+      ".cas"
+    ]
+  },
+  {
+    "system": "STEAM",
+    "folder": "steam",
+    "extensions": [
+      ".steam"
+    ]
+  },
+  {
+    "system": "SUFAMI TURBO",
+    "folder": "sufami",
+    "extensions": [
+      ".st",
+      ".fig",
+      ".bs",
+      ".smc",
+      ".sfc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SUPER MARIO WAR",
+    "folder": "superbroswar",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "SUPERGRAFX",
+    "folder": "supergrafx",
+    "extensions": [
+      ".pce",
+      ".sgx",
+      ".cue",
+      ".ccd",
+      ".chd",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SUPERVISION",
+    "folder": "supervision",
+    "extensions": [
+      ".sv",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SUPER A'CAN",
+    "folder": "supracan",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SEGA SP",
+    "folder": "systemsp",
+    "extensions": [
+      ".lst",
+      ".bin",
+      ".dat",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "THE FORCE ENGINE",
+    "folder": "theforceengine",
+    "extensions": [
+      ".tfe"
+    ]
+  },
+  {
+    "system": "THEXTECH",
+    "folder": "thextech",
+    "extensions": [
+      ".smbx",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "THOMSON - MO/TO (THEODORE)",
+    "folder": "thomson",
+    "extensions": [
+      ".fd",
+      ".sap",
+      ".k7",
+      ".m7",
+      ".m5",
+      ".rom",
+      ".zip"
+    ]
+  },
+  {
+    "system": "TI-99",
+    "folder": "ti99",
+    "extensions": [
+      ".rpk",
+      ".wav",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "TIC-80",
+    "folder": "tic80",
+    "extensions": [
+      ".tic"
+    ]
+  },
+  {
+    "system": "TRIFORCE",
+    "folder": "triforce",
+    "extensions": [
+      ".gcm",
+      ".iso",
+      ".gcz",
+      ".ciso",
+      ".wbfs",
+      ".elf",
+      ".dol",
+      ".m3u"
+    ]
+  },
+  {
+    "system": "TUTOR",
+    "folder": "tutor",
+    "extensions": [
+      ".bin",
+      ".wav",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "TYRIAN",
+    "folder": "tyrian",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "TYRQUAKE",
+    "folder": "tyrquake",
+    "extensions": [
+      ".pak"
+    ]
+  },
+  {
+    "system": "UZEBOX",
+    "folder": "uzebox",
+    "extensions": [
+      ".uze"
+    ]
+  },
+  {
+    "system": "VC 4000",
+    "folder": "vc4000",
+    "extensions": [
+      ".bin",
+      ".rom",
+      ".pgm",
+      ".tvc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "VECTREX",
+    "folder": "vectrex",
+    "extensions": [
+      ".bin",
+      ".gam",
+      ".vec",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "VIDEO GAME MUSIC PLAYER",
+    "folder": "vgmplay",
+    "extensions": [
+      ".vgm",
+      ".vgz",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "VIDEOPAC+ G7400",
+    "folder": "videopacplus",
+    "extensions": [
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "VIRCON32",
+    "folder": "vircon32",
+    "extensions": [
+      ".v32",
+      ".zip"
+    ]
+  },
+  {
+    "system": "VIRTUAL BOY",
+    "folder": "virtualboy",
+    "extensions": [
+      ".vb",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "TANDY VIDEO INFORMATION SYSTEM",
+    "folder": "vis",
+    "extensions": [
+      ".chd",
+      ".cue",
+      ".toc",
+      ".nrg",
+      ".gdi",
+      ".iso",
+      ".cdr"
+    ]
+  },
+  {
+    "system": "QUAKE II",
+    "folder": "vitaquake2",
+    "extensions": [
+      ".pak",
+      ".zip",
+      ".7zip"
+    ]
+  },
+  {
+    "system": "VISUAL PINBALL X",
+    "folder": "vpinball",
+    "extensions": [
+      ".vpx"
+    ]
+  },
+  {
+    "system": "V.SMILE",
+    "folder": "vsmile",
+    "extensions": [
+      ".u1",
+      ".u3",
+      ".bin",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "WASM4",
+    "folder": "wasm4",
+    "extensions": [
+      ".wasm"
+    ]
+  },
+  {
+    "system": "WII",
+    "folder": "wii",
+    "extensions": [
+      ".gcm",
+      ".iso",
+      ".gcz",
+      ".ciso",
+      ".wbfs",
+      ".wad",
+      ".rvz",
+      ".elf",
+      ".dol",
+      ".m3u",
+      ".json"
+    ]
+  },
+  {
+    "system": "WII U",
+    "folder": "wiiu",
+    "extensions": [
+      ".wua",
+      ".wup",
+      ".wud",
+      ".wux",
+      ".rpx",
+      ".squashfs",
+      ".wuhb"
+    ]
+  },
+  {
+    "system": "WINDOWS",
+    "folder": "windows",
+    "extensions": [
+      ".pc",
+      ".exe",
+      ".wine",
+      ".wsquashfs",
+      ".wtgz"
+    ]
+  },
+  {
+    "system": "INSTALL A NEW WINDOWS GAME",
+    "folder": "windows_installers",
+    "extensions": [
+      ".exe",
+      ".iso"
+    ]
+  },
+  {
+    "system": "WONDERSWAN",
+    "folder": "wswan",
+    "extensions": [
+      ".ws",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "WONDERSWAN COLOR",
+    "folder": "wswanc",
+    "extensions": [
+      ".wsc",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SHARP X1",
+    "folder": "x1",
+    "extensions": [
+      ".dx1",
+      ".zip",
+      ".2d",
+      ".2hd",
+      ".tfd",
+      ".d88",
+      ".88d",
+      ".hdm",
+      ".xdf",
+      ".dup",
+      ".cmd",
+      ".7z"
+    ]
+  },
+  {
+    "system": "SHARP X68000",
+    "folder": "x68000",
+    "extensions": [
+      ".dim",
+      ".img",
+      ".d88",
+      ".88d",
+      ".hdm",
+      ".dup",
+      ".2hd",
+      ".xdf",
+      ".hdf",
+      ".cmd",
+      ".m3u",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "HALF-LIFE 1",
+    "folder": "xash3d_fwgs",
+    "extensions": [
+      ".game"
+    ]
+  },
+  {
+    "system": "XBOX",
+    "folder": "xbox",
+    "extensions": [
+      ".iso",
+      ".squashfs"
+    ]
+  },
+  {
+    "system": "XBOX 360",
+    "folder": "xbox360",
+    "extensions": [
+      ".iso",
+      ".xex",
+      ".xbox360",
+      ".zar"
+    ]
+  },
+  {
+    "system": "ATARI XE GAME SYSTEM",
+    "folder": "xegs",
+    "extensions": [
+      ".atr",
+      ".dsk",
+      ".xfd",
+      ".bin",
+      ".rom",
+      ".car",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "XRICK",
+    "folder": "xrick",
+    "extensions": [
+      ".zip"
+    ]
+  },
+  {
+    "system": "ZELDA CLASSIC",
+    "folder": "zc210",
+    "extensions": [
+      ".qst"
+    ]
+  },
+  {
+    "system": "ZX81",
+    "folder": "zx81",
+    "extensions": [
+      ".tzx",
+      ".p",
+      ".zip",
+      ".7z"
+    ]
+  },
+  {
+    "system": "ZX SPECTRUM",
+    "folder": "zxspectrum",
+    "extensions": [
+      ".tzx",
+      ".tap",
+      ".z80",
+      ".rzx",
+      ".scl",
+      ".trd",
+      ".dsk",
+      ".zip",
+      ".7z"
+    ]
+  }
+]

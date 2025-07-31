@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<gameList>
+	<game>
+		<path>./RGSX/RGSX.sh</path>
+		<name>RGSX</name>
+		<desc>Retro Games Sets X - Games Downloader</desc>
+		<image>./images/RGSX.png</image>
+		<marquee>./images/RGSX.png</marquee>
+		<thumbnail>./images/RGSX.png</thumbnail>
+		<fanart>./images/RGSX.png</fanart>
+		<rating>1</rating>
+		<releasedate>20250620T165718</releasedate>
+		<developer>RetroGameSets.fr</developer>
+		<genre>Compilation, Various / Utilities</genre>
+		<playcount>352</playcount>
+		<lastplayed>20250725T171934</lastplayed>
+		<gametime>48965</gametime>
+		<lang>fr</lang>
+	</game>
+</gameList>
