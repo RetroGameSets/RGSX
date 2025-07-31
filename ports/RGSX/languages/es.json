@@ -69,6 +69,9 @@
     "menu_language": "Idioma",
     "menu_accessibility": "Accesibilidad",
     "menu_redownload_cache": "Volver a descargar la caché de juegos",
+    "menu_music_toggle": "Activar/Desactivar música",
+    "menu_music_enabled": "Música activada: {0}",
+    "menu_music_disabled": "Música desactivada",
     "menu_quit": "Salir",
     
     "button_yes": "Sí",

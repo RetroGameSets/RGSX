@@ -69,6 +69,9 @@
     "menu_language": "Language",
     "menu_accessibility": "Accessibility",
     "menu_redownload_cache": "Redownload Games cache",
+    "menu_music_toggle": "Toggle music",
+    "menu_music_enabled": "Music enabled: {0}",
+    "menu_music_disabled": "Music disabled",
     "menu_quit": "Quit",
     
     "button_yes": "Yes",
