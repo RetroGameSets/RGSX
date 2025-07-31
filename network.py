@@ -73,7 +73,7 @@ async def check_for_updates():
 
             # Créer le dossier UPDATE_FOLDER s'il n'existe pas
             os.makedirs(UPDATE_FOLDER, exist_ok=True)
-            update_zip_path = os.path.join(UPDATE_FOLDER, "RGSX.zip")
+            update_zip_path = os.path.join(UPDATE_FOLDER, f"RGSX_v{latest_version}.zip")
             logger.debug(f"Téléchargement de {UPDATE_ZIP} vers {update_zip_path}")
 
             # Télécharger le ZIP
@@ -133,15 +133,10 @@ async def check_for_updates():
         return False, _("network_check_update_error").format(str(e))
 
 def extract_update(zip_path, dest_dir, source_url):
+    
     try:
-        # Vérifier et ajuster les permissions du répertoire de destination
         os.makedirs(dest_dir, exist_ok=True)
-        try:
-            subprocess.run(["chmod", "-R", "u+rw", dest_dir], check=True)
-            logger.debug(f"Permissions ajustées pour {dest_dir}")
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"Impossible d'ajuster les permissions pour {dest_dir}: {str(e)}")
-
+        logger.debug(f"Tentative d'ouverture du ZIP : {zip_path}")
         # Extraire le ZIP
         skipped_files = []
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
