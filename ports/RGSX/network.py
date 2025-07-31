@@ -223,6 +223,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             downloaded = 0
             chunk_size = 4096
             last_update_time = time.time()
+            last_downloaded = 0
             update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
             with open(dest_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=chunk_size):
@@ -232,8 +233,13 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         downloaded += size_received
                         current_time = time.time()
                         if current_time - last_update_time >= update_interval:
-                            progress_queues[task_id].put((task_id, downloaded, total_size))
+                            # Calcul de la vitesse en Mo/s
+                            delta = downloaded - last_downloaded
+                            speed = delta / (current_time - last_update_time) / (1024 * 1024)
+                            last_downloaded = downloaded
                             last_update_time = current_time
+                            progress_queues[task_id].put((task_id, downloaded, total_size, speed))
+
             
             os.chmod(dest_path, 0o644)
             logger.debug(f"Téléchargement terminé: {dest_path}")
@@ -321,10 +327,14 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     logger.debug(f"Final update in history: status={entry['status']}, progress={entry['progress']}%, message={message}, task_id={task_id}")
                                     break
                     else:
-                        downloaded, total_size = data[1], data[2]
+                        if len(data) >= 4:
+                            downloaded, total_size, speed = data[1], data[2], data[3]
+                        else:
+                            downloaded, total_size = data[1], data[2]
+                            speed = 0.0
                         progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
                         progress_percent = max(0, min(100, progress_percent))
-                        
+                            
                         if isinstance(config.history, list):
                             for entry in config.history:
                                 if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
@@ -332,8 +342,9 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     entry["status"] = "Téléchargement"
                                     entry["downloaded_size"] = downloaded
                                     entry["total_size"] = total_size
+                                    entry["speed"] = speed  # Ajout de la vitesse
                                     config.needs_redraw = True
-                                    break
+                                    break           
             await asyncio.sleep(0.1)
         except Exception as e:
             logger.error(f"Erreur mise à jour progression: {str(e)}")

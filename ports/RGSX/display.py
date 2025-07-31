@@ -663,6 +663,25 @@ def draw_history_list(screen):
     history = config.history if hasattr(config, 'history') else load_history()
     history_count = len(history)
 
+    # Cherche une entrée en cours de téléchargement pour afficher la vitesse
+    speed_str = ""
+    for entry in history:
+        if entry.get("status") in ["Téléchargement", "downloading"]:
+            speed = entry.get("speed", 0.0)
+            if speed and speed > 0:
+                speed_str = f" - Téléchargement : {speed:.2f} Mo/s"
+            break
+
+    screen.blit(OVERLAY, (0, 0))
+    title_text = _("history_title").format(history_count) + speed_str
+    title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
+    title_rect_inflated = title_rect.inflate(60, 30)
+    title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)  # fond opaque
+    pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
+    screen.blit(title_surface, title_rect)
+
     # Define column widths as percentages of available space
     column_width_percentages = {
         "platform": 0.25,  # platform column
@@ -681,6 +700,17 @@ def draw_history_list(screen):
     extra_margin_top = 40
     extra_margin_bottom = 80
     title_height = config.title_font.get_height() + 20
+
+    speed = 0.0
+    if history and history[config.current_history_item].get("status") in ["Téléchargement", "downloading"]:
+        speed = history[config.current_history_item].get("speed", 0.0)
+    if speed > 0:
+        speed_str = f"{speed:.2f} Mo/s"
+        title_text = _("history_title").format(history_count) + f" - Téléchargement : {speed_str}"
+    else:
+        title_text = _("history_title").format(history_count)
+    title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
+   
 
     if not history:
         logger.debug("Aucun historique disponible")
@@ -717,16 +747,6 @@ def draw_history_list(screen):
     elif config.current_history_item >= config.history_scroll_offset + items_per_page:
         config.history_scroll_offset = config.current_history_item - items_per_page + 1
 
-    screen.blit(OVERLAY, (0, 0))
-
-    title_text = _("history_title").format(history_count)
-    title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
-    title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
-    title_rect_inflated = title_rect.inflate(60, 30)
-    title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
-    pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)
-    pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
-    screen.blit(title_surface, title_rect)
 
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)

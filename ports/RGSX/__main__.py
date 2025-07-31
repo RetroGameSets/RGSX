@@ -779,6 +779,14 @@ async def main():
         await asyncio.sleep(0.01)
 
     pygame.mixer.music.stop()
+
+    process_name = "emulatorLauncher.exe"
+    result = os.system(f"taskkill /f /im {process_name}")
+    if result == 0:
+        logger.debug(f"Quitté avec succès: {process_name}")
+    else:
+        logger.debug("Error en essayant de quitter emulatorlauncher.")
+        
     pygame.quit()
     logger.debug("Application terminée")
 
