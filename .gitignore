@@ -5,6 +5,7 @@ ports/RGSX/__pycache__/
 ports/RGSX/sources.json 
 ports/RGSX/gamelist.xml
 windows/gamelist.xml
+ports/gamelist.xml
 *.log
 *.rar
 *.zip
