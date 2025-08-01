@@ -710,7 +710,25 @@ def handle_xbox(dest_dir):
                 logger.info(f"xdvdfs téléchargé dans {XDVDFS_LINUX}")
             except Exception as e:
                 logger.error(f"Impossible de télécharger xdvdfs: {str(e)}")
-                return False, _("utils_xdvdfs_unavailable")
+                return False, _("utils_xdvdfs_unavailable")    # Vérifier les permissions après le téléchargement
+        try:
+            stat_info = os.stat(XDVDFS_LINUX)
+            mode = stat_info.st_mode
+            logger.debug(f"Permissions de {XDVDFS_LINUX}: {oct(mode)}")
+            logger.debug(f"Propriétaire: {stat_info.st_uid}, Groupe: {stat_info.st_gid}")
+            
+            # Vérifier si le fichier est exécutable
+            if not os.access(XDVDFS_LINUX, os.X_OK):
+                logger.error(f"Le fichier {XDVDFS_LINUX} n'est pas exécutable")
+                try:
+                    os.chmod(XDVDFS_LINUX, 0o755)
+                    logger.info(f"Permissions corrigées pour {XDVDFS_LINUX}")
+                except Exception as e:
+                    logger.error(f"Impossible de modifier les permissions: {str(e)}")
+                    return False, "Erreur de permissions sur xdvdfs"
+        except Exception as e:
+            logger.error(f"Erreur lors de la vérification des permissions: {str(e)}")
+    
         xdvdfs_cmd = [XDVDFS_LINUX, "pack"]  # Liste avec 2 éléments
 
     try:
