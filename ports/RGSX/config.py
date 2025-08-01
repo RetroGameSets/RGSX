@@ -56,7 +56,7 @@ log_file = os.path.join(log_dir, "RGSX.log")
 
 # Chemins de base
 UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")
-GAMELISTXML = os.path.join(APP_FOLDER, "gamelist.xml")
+GAMELISTXML = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms", "ports", "gamelist.xml")
 IMAGES_FOLDER = os.path.join(APP_FOLDER, "images", "systemes")
 GAMES_FOLDER = os.path.join(APP_FOLDER, "games")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
