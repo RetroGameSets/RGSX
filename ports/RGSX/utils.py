@@ -460,17 +460,37 @@ def extract_zip(zip_path, dest_dir, url):
 
 # Fonction pour extraire le contenu d'un fichier RAR
 def extract_rar(rar_path, dest_dir, url):
-    """Extrait le contenu du fichier RAR dans le dossier cible, préservant la structure des dossiers."""
+    """Extrait le contenu du fichier RAR dans le dossier cible."""
     try:
         lock = threading.Lock()
         os.makedirs(dest_dir, exist_ok=True)
-        
-        result = subprocess.run(['unrar'], capture_output=True, text=True)
+
+        system_type = platform.system()
+        if system_type == "Windows":
+            # Sur Windows, utiliser directement config.UNRAR_EXE
+            unrar_exe = config.UNRAR_EXE
+            if not os.path.exists(unrar_exe):
+                logger.warning("unrar.exe absent, téléchargement en cours...")
+                try:
+                    import urllib.request
+                    os.makedirs(os.path.dirname(unrar_exe), exist_ok=True)
+                    urllib.request.urlretrieve(config.unrar_download_exe, unrar_exe)
+                    logger.info(f"unrar.exe téléchargé dans {unrar_exe}")
+                except Exception as e:
+                    logger.error(f"Impossible de télécharger unrar.exe: {str(e)}")
+                    return False, _("utils_unrar_unavailable")
+            unrar_cmd = [unrar_exe]
+        else:
+            # Linux/Batocera: utiliser 'unrar' du système
+            unrar_cmd = ["unrar"]
+
+        # Reste du code pour la vérification de unrar
+        result = subprocess.run(unrar_cmd, capture_output=True, text=True)
         if result.returncode not in [0, 1]:
             logger.error("Commande unrar non disponible")
             return False, _("utils_unrar_unavailable")
 
-        result = subprocess.run(['unrar', 'l', '-v', rar_path], capture_output=True, text=True)
+        result = subprocess.run(unrar_cmd + ['l', '-v', rar_path], capture_output=True, text=True)
         if result.returncode != 0:
             error_msg = result.stderr.strip()
             logger.error(f"Erreur lors de la liste des fichiers RAR: {error_msg}")
@@ -529,7 +549,7 @@ def extract_rar(rar_path, dest_dir, url):
 
         escaped_rar_path = rar_path.replace(" ", "\\ ")
         escaped_dest_dir = dest_dir.replace(" ", "\\ ")
-        process = subprocess.Popen(['unrar', 'x', '-y', escaped_rar_path, escaped_dest_dir], 
+        process = subprocess.Popen(unrar_cmd + ['x', '-y', escaped_rar_path, escaped_dest_dir],
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
 
@@ -559,28 +579,13 @@ def extract_rar(rar_path, dest_dir, url):
                     # Continuer l'extraction même en cas d'erreur de mise à jour de la progression
             else:
                 logger.warning(f"Fichier non trouvé après extraction: {expected_file}")
-
-        missing_files = [f for f, _ in files_to_extract if f not in extracted_files]
-        if missing_files:
-            logger.warning(f"Fichiers non extraits: {', '.join(missing_files)}")
-            return False, f"Fichiers non extraits: {', '.join(missing_files)}"
-
+       
+        # Vérifier si c'est un dossier PS3 et le traiter si nécessaire
         ps3_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), "ps3")
-        if dest_dir == ps3_dir and len(root_dirs) == 1:
-            root_dir = root_dirs.pop()
-            old_path = os.path.join(dest_dir, root_dir)
-            new_path = os.path.join(dest_dir, f"{root_dir}.ps3")
-            if os.path.isdir(old_path):
-                try:
-                    os.rename(old_path, new_path)
-                    logger.info(f"Dossier renommé: {old_path} -> {new_path}")
-                except Exception as e:
-                    logger.error(f"Erreur lors du renommage de {old_path} en {new_path}: {str(e)}")
-                    return False, f"Erreur lors du renommage du dossier: {str(e)}"
-            else:
-                logger.warning(f"Dossier racine {old_path} non trouvé après extraction")
-        elif dest_dir == ps3_dir and len(root_dirs) > 1:
-            logger.warning(f"Plusieurs dossiers racines détectés dans l'archive: {root_dirs}. Aucun renommage effectué.")
+        if dest_dir == ps3_dir:
+            success, error_msg = handle_ps3(dest_dir)
+            if not success:
+                return False, error_msg
 
         for root, dirs, files in os.walk(dest_dir):
             for dir_name in dirs:
@@ -589,9 +594,9 @@ def extract_rar(rar_path, dest_dir, url):
         os.remove(rar_path)
         logger.info(f"Fichier RAR {rar_path} extrait dans {dest_dir} et supprimé")
         return True, "RAR extrait avec succès"
+        
     except Exception as e:
         logger.error(f"Erreur lors de l'extraction de {rar_path}: {str(e)}")
-        # Ne pas renvoyer l'URL comme message d'erreur
         return False, f"Erreur lors de l'extraction: {str(e)}"
     finally:
         if os.path.exists(rar_path):
@@ -600,6 +605,71 @@ def extract_rar(rar_path, dest_dir, url):
                 logger.info(f"Fichier RAR {rar_path} supprimé après échec de l'extraction")
             except Exception as e:
                 logger.error(f"Erreur lors de la suppression de {rar_path}: {str(e)}")
+
+def handle_ps3(dest_dir):
+    """Gère le renommage spécifique des dossiers PS3 extraits."""
+    logger.debug(f"Traitement spécifique PS3 dans: {dest_dir}")
+    
+    # Attendre un peu que tous les processus d'extraction se terminent
+    time.sleep(2)
+    
+    # Rechercher le dossier extrait directement dans dest_dir
+    extracted_dirs = [d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))]
+    logger.debug(f"Dossiers trouvés dans {dest_dir}: {extracted_dirs}")
+    
+    # Filtrer pour ne garder que les dossiers nouvellement extraits
+    ps3_dirs = [d for d in extracted_dirs if not d.endswith('.ps3')]
+    logger.debug(f"Dossiers PS3 à renommer: {ps3_dirs}")
+    
+    if len(ps3_dirs) == 1:
+        old_path = os.path.join(dest_dir, ps3_dirs[0])
+        new_path = os.path.join(dest_dir, f"{ps3_dirs[0]}.ps3")
+        logger.debug(f"Tentative de renommage PS3: {old_path} -> {new_path}")
+        
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                # Fermer les handles potentiellement ouverts
+                for root, dirs, files in os.walk(old_path):
+                    for f in files:
+                        try:
+                            os.chmod(os.path.join(root, f), 0o644)
+                        except:
+                            pass
+                    for d in dirs:
+                        try:
+                            os.chmod(os.path.join(root, d), 0o755)
+                        except:
+                            pass
+
+                if os.path.exists(new_path):
+                    shutil.rmtree(new_path, ignore_errors=True)
+                    time.sleep(1)
+
+                os.rename(old_path, new_path)
+                logger.info(f"Dossier renommé avec succès: {old_path} -> {new_path}")
+                return True, None
+                
+            except Exception as e:
+                logger.warning(f"Tentative {attempt + 1}/{max_retries} échouée: {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                else:
+                    error_msg = f"Erreur lors du renommage de {old_path} en {new_path}: {str(e)}"
+                    logger.error(error_msg)
+                    return False, error_msg
+                    
+    elif len(ps3_dirs) > 1:
+        logger.warning(f"Plusieurs dossiers PS3 détectés: {ps3_dirs}")
+        return True, None
+    else:
+        logger.warning("Aucun dossier PS3 à renommer trouvé")
+        return True, None
+
+
+
 
 def play_random_music(music_files, music_folder, current_music=None):
     if not getattr(config, "music_enabled", True):
@@ -693,3 +763,4 @@ def save_music_config():
         logger.debug(f"Configuration musique sauvegardée: {config.music_enabled}")
     except Exception as e:
         logger.error(f"Erreur lors de la sauvegarde de music_config.json: {str(e)}")
+
