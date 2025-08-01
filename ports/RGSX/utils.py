@@ -695,11 +695,10 @@ def handle_xbox(dest_dir):
             except Exception as e:
                 logger.error(f"Impossible de télécharger xdvdfs.exe: {str(e)}")
                 return False, _("utils_xdvdfs_unavailable")
-        xdvdfs_cmd = [XDVDFS_EXE] + ["pack"]
+        xdvdfs_cmd = [XDVDFS_EXE, "pack"]  # Liste avec 2 éléments
 
     else:
         # Linux/Batocera : télécharger le fichier xdvdfs  
-        # Vérifier si xdvdfs est disponible
         XDVDFS_LINUX = config.XDVDFS_LINUX
         if not os.path.exists(XDVDFS_LINUX):
             logger.warning("xdvdfs non trouvé, téléchargement en cours...")
@@ -707,11 +706,13 @@ def handle_xbox(dest_dir):
                 import urllib.request
                 os.makedirs(os.path.dirname(XDVDFS_LINUX), exist_ok=True)
                 urllib.request.urlretrieve(config.xdvdfs_download_linux, XDVDFS_LINUX)
+                os.chmod(XDVDFS_LINUX, 0o755)  # Rendre exécutable
                 logger.info(f"xdvdfs téléchargé dans {XDVDFS_LINUX}")
             except Exception as e:
                 logger.error(f"Impossible de télécharger xdvdfs: {str(e)}")
                 return False, _("utils_xdvdfs_unavailable")
-        xdvdfs_cmd = XDVDFS_LINUX + ["pack"]
+        xdvdfs_cmd = [XDVDFS_LINUX, "pack"]  # Liste avec 2 éléments
+
     try:
         # Chercher les fichiers ISO à convertir
         iso_files = []
@@ -728,10 +729,12 @@ def handle_xbox(dest_dir):
             logger.debug(f"Traitement de l'ISO Xbox: {iso_xbox_source}")
             xiso_dest = os.path.splitext(iso_xbox_source)[0] + "_xbox.iso"
 
-            # Convertir l'ISO avec xdvdfs
-            logger.debug(f"Conversion de l'ISO xbox : {iso_xbox_source} -> {xiso_dest}")
+            # Construction de la commande avec des arguments distincts
+            cmd = xdvdfs_cmd + [iso_xbox_source, xiso_dest]
+            logger.debug(f"Exécution de la commande: {' '.join(cmd)}")
+            
             process = subprocess.run(
-                xdvdfs_cmd + [iso_xbox_source, xiso_dest],
+                cmd,
                 capture_output=True,
                 text=True
             )
