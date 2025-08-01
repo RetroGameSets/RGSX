@@ -4,7 +4,7 @@ import sys
 import logging
 
 # Version actuelle de l'application
-app_version = "1.9.8.0"
+app_version = "1.9.8.1"
 
 def get_application_root():
     """Détermine le dossier de l'application de manière portable."""
@@ -64,7 +64,9 @@ HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
 LANGUAGE_CONFIG_PATH = os.path.join(SAVE_FOLDER, "language.json")
 JSON_EXTENSIONS = os.path.join(APP_FOLDER, "rom_extensions.json")
 MUSIC_CONFIG_PATH = os.path.join(SAVE_FOLDER, "music_config.json")
-UNRAR_EXE = os.path.join(SAVE_FOLDER, "unrar.exe")
+UNRAR_EXE = os.path.join(APP_FOLDER,"assets", "unrar.exe")
+XDVDFS_EXE = os.path.join(APP_FOLDER,"assets", "xdvdfs.exe")
+XDVDFS_LINUX = os.path.join(APP_FOLDER,"assets", "xdvdfs")
 
 
 # URL
@@ -73,6 +75,8 @@ OTA_VERSION_ENDPOINT = os.path.join(OTA_SERVER_URL, "version.json")
 OTA_UPDATE_ZIP = os.path.join(OTA_SERVER_URL, "RGSX.zip")
 OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "rgsx-data.zip")
 unrar_download_exe = os.path.join(OTA_SERVER_URL, "unrar.exe")
+xdvdfs_download_exe = os.path.join(OTA_SERVER_URL, "xdvdfs.exe")
+xdvdfs_download_linux = os.path.join(OTA_SERVER_URL, "xdvdfs")
 
 # Constantes pour la répétition automatique dans pause_menu
 REPEAT_DELAY = 350  # Délai initial avant répétition (ms) - augmenté pour éviter les doubles actions

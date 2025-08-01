@@ -658,6 +658,18 @@ def draw_game_scrollbar(screen, scroll_offset, total_items, visible_items, x, y,
     scrollbar_y = y + (game_area_height - scrollbar_height) * (scroll_offset / max(1, total_items - visible_items))
     pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], (x, scrollbar_y, 15, scrollbar_height), border_radius=4)
 
+def format_size(size):
+    """Convertit une taille en octets en format lisible."""
+    if not isinstance(size, (int, float)) or size == 0:
+        return "N/A"
+    
+    for unit in ['o', 'Ko', 'Mo', 'Go', 'To']:
+        if size < 1024.0:
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} Po"
+
+
 def draw_history_list(screen):
     # logger.debug(f"Dessin historique, history={config.history}, needs_redraw={config.needs_redraw}")
     history = config.history if hasattr(config, 'history') else load_history()
@@ -669,7 +681,7 @@ def draw_history_list(screen):
         if entry.get("status") in ["Téléchargement", "downloading"]:
             speed = entry.get("speed", 0.0)
             if speed and speed > 0:
-                speed_str = f" - Téléchargement : {speed:.2f} Mo/s"
+                speed_str = f" - {speed:.2f} Mo/s"
             break
 
     screen.blit(OVERLAY, (0, 0))
@@ -684,13 +696,15 @@ def draw_history_list(screen):
 
     # Define column widths as percentages of available space
     column_width_percentages = {
-        "platform": 0.25,  # platform column
+        "platform": 0.20,  # platform column
         "game_name": 0.50,  #  game name column
-        "status": 0.25     #  status column
+        "size": 0.10,  # size column
+        "status": 0.20     #  status column
     }
     available_width = int(0.95 * config.screen_width - 60)  # Total available width for columns
     col_platform_width = int(available_width * column_width_percentages["platform"])
     col_game_width = int(available_width * column_width_percentages["game_name"])
+    col_size_width = int(available_width * column_width_percentages["size"])
     col_status_width = int(available_width * column_width_percentages["status"])
     rect_width = int(0.95 * config.screen_width)
 
@@ -706,7 +720,7 @@ def draw_history_list(screen):
         speed = history[config.current_history_item].get("speed", 0.0)
     if speed > 0:
         speed_str = f"{speed:.2f} Mo/s"
-        title_text = _("history_title").format(history_count) + f" - Téléchargement : {speed_str}"
+        title_text = _("history_title").format(history_count) + f" {speed_str}"
     else:
         title_text = _("history_title").format(history_count)
     title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
@@ -751,12 +765,13 @@ def draw_history_list(screen):
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
 
-    headers = [_("history_column_system"), _("history_column_game"), _("history_column_status")]
+    headers = [_("history_column_system"), _("history_column_game"), _("history_column_size"), _("history_column_status")]
     header_y = rect_y + margin_top_bottom + header_height // 2
     header_x_positions = [
         rect_x + 20 + col_platform_width // 2,
         rect_x + 20 + col_platform_width + col_game_width // 2,
-        rect_x + 20 + col_platform_width + col_game_width + col_status_width // 2
+        rect_x + 20 + col_platform_width + col_game_width + col_size_width // 2,
+        rect_x + 20 + col_platform_width + col_game_width + col_size_width + col_status_width // 2
     ]
     for header, x_pos in zip(headers, header_x_positions):
         text_surface = config.small_font.render(header, True, THEME_COLORS["text"])
@@ -770,8 +785,16 @@ def draw_history_list(screen):
         entry = history[i]
         platform = entry.get("platform", "Inconnu")
         game_name = entry.get("game_name", "Inconnu")
+        
+        # Correction du calcul de la taille
+        size = entry.get("total_size", 0)
+        color = THEME_COLORS["fond_lignes"] if i == config.current_history_item else THEME_COLORS["text"]
+        size_text = format_size(size)
+        
         status = entry.get("status", "Inconnu")
         progress = entry.get("progress", 0)
+        
+
         # Personnaliser l'affichage du statut
         if status in ["Téléchargement", "downloading"]:
             status_text = _("history_status_downloading").format(progress)
@@ -801,19 +824,21 @@ def draw_history_list(screen):
             status_text = status
             #logger.debug(f"Affichage statut inconnu: {game_name}, status={status_text}")
 
-        color = THEME_COLORS["fond_lignes"] if i == config.current_history_item else THEME_COLORS["text"]
         platform_text = truncate_text_end(platform, config.small_font, col_platform_width - 10)
         game_text = truncate_text_end(game_name, config.small_font, col_game_width - 10)
+        size_text = truncate_text_end(size_text, config.small_font, col_size_width - 10)
         status_text = truncate_text_middle(status_text, config.small_font, col_status_width - 10, is_filename=False)
 
         y_pos = rect_y + margin_top_bottom + header_height + idx * line_height + line_height // 2
         platform_surface = config.small_font.render(platform_text, True, color)
         game_surface = config.small_font.render(game_text, True, color)
+        size_surface = config.small_font.render(size_text, True, color)  # Correction ici
         status_surface = config.small_font.render(status_text, True, color)
 
         platform_rect = platform_surface.get_rect(center=(header_x_positions[0], y_pos))
         game_rect = game_surface.get_rect(center=(header_x_positions[1], y_pos))
-        status_rect = status_surface.get_rect(center=(header_x_positions[2], y_pos))
+        size_rect = size_surface.get_rect(center=(header_x_positions[2], y_pos))
+        status_rect = status_surface.get_rect(center=(header_x_positions[3], y_pos))
 
         if i == config.current_history_item:
             glow_surface = pygame.Surface((rect_width - 40, line_height), pygame.SRCALPHA)
@@ -822,6 +847,7 @@ def draw_history_list(screen):
 
         screen.blit(platform_surface, platform_rect)
         screen.blit(game_surface, game_rect)
+        screen.blit(size_surface, size_rect)
         screen.blit(status_surface, status_rect)
 
     if len(history) > items_per_page:

@@ -421,7 +421,13 @@ def extract_zip(zip_path, dest_dir, url):
                                             config.needs_redraw = True
                                             break
                 os.chmod(file_path, 0o644)
-
+        # Vérifier si c'est un dossier xbox et le traiter si nécessaire
+        xbox_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), "xbox")
+        if dest_dir == xbox_dir:
+            success, error_msg = handle_xbox(dest_dir)
+            if not success:
+                return False, error_msg
+            
         for root, dirs, files in os.walk(dest_dir):
             for dir_name in dirs:
                 os.chmod(os.path.join(root, dir_name), 0o755)
@@ -668,6 +674,88 @@ def handle_ps3(dest_dir):
         logger.warning("Aucun dossier PS3 à renommer trouvé")
         return True, None
 
+
+def handle_xbox(dest_dir):
+    """Gère la conversion des fichiers Xbox extraits."""
+    logger.debug(f"Traitement spécifique Xbox dans: {dest_dir}")
+    
+    # Attendre un peu que tous les processus d'extraction se terminent
+    time.sleep(2)
+    system_type = platform.system()
+    if system_type == "Windows":
+        # Sur Windows; telecharger le fichier exe
+        XDVDFS_EXE = config.XDVDFS_EXE
+        if not os.path.exists(XDVDFS_EXE):
+            logger.warning("xdvdfs.exe absent, téléchargement en cours...")
+            try:
+                import urllib.request
+                os.makedirs(os.path.dirname(XDVDFS_EXE), exist_ok=True)
+                urllib.request.urlretrieve(config.xdvdfs_download_exe, XDVDFS_EXE)
+                logger.info(f"xdvdfs.exe téléchargé dans {XDVDFS_EXE}")
+            except Exception as e:
+                logger.error(f"Impossible de télécharger xdvdfs.exe: {str(e)}")
+                return False, _("utils_xdvdfs_unavailable")
+        xdvdfs_cmd = [XDVDFS_EXE] + ["pack"]
+
+    else:
+        # Linux/Batocera : télécharger le fichier xdvdfs  
+        # Vérifier si xdvdfs est disponible
+        XDVDFS_LINUX = config.XDVDFS_LINUX
+        if not os.path.exists(XDVDFS_LINUX):
+            logger.warning("xdvdfs non trouvé, téléchargement en cours...")
+            try:
+                import urllib.request
+                os.makedirs(os.path.dirname(XDVDFS_LINUX), exist_ok=True)
+                urllib.request.urlretrieve(config.xdvdfs_download_linux, XDVDFS_LINUX)
+                logger.info(f"xdvdfs téléchargé dans {XDVDFS_LINUX}")
+            except Exception as e:
+                logger.error(f"Impossible de télécharger xdvdfs: {str(e)}")
+                return False, _("utils_xdvdfs_unavailable")
+        xdvdfs_cmd = XDVDFS_LINUX + ["pack"]
+    try:
+        # Chercher les fichiers ISO à convertir
+        iso_files = []
+        for root, dirs, files in os.walk(dest_dir):
+            for file in files:
+                if file.lower().endswith('.iso'):
+                    iso_files.append(os.path.join(root, file))
+
+        if not iso_files:
+            logger.warning("Aucun fichier ISO xbox trouvé")
+            return True, None
+
+        for iso_xbox_source in iso_files:
+            logger.debug(f"Traitement de l'ISO Xbox: {iso_xbox_source}")
+            xiso_dest = os.path.splitext(iso_xbox_source)[0] + "_xbox.iso"
+
+            # Convertir l'ISO avec xdvdfs
+            logger.debug(f"Conversion de l'ISO xbox : {iso_xbox_source} -> {xiso_dest}")
+            process = subprocess.run(
+                xdvdfs_cmd + [iso_xbox_source, xiso_dest],
+                capture_output=True,
+                text=True
+            )
+
+            if process.returncode != 0:
+                logger.error(f"Erreur lors de la conversion de l'ISO: {process.stderr}")
+                return False, f"Erreur lors de la conversion de l'ISO: {process.stderr}"
+
+            # Vérifier que l'ISO converti a été créé
+            if os.path.exists(xiso_dest):
+                logger.info(f"ISO converti avec succès: {xiso_dest}")
+                # Remplacer l'ISO original par l'ISO converti
+                os.remove(iso_xbox_source)
+                os.rename(xiso_dest, iso_xbox_source)
+                logger.debug(f"ISO original remplacé par la version convertie")
+            else:
+                logger.error(f"L'ISO converti n'a pas été créé: {xiso_dest}")
+                return False, "Échec de la conversion de l'ISO"
+
+        return True, "Conversion Xbox terminée avec succès"
+
+    except Exception as e:
+        logger.error(f"Erreur lors de la conversion Xbox: {str(e)}")
+        return False, f"Erreur lors de la conversion: {str(e)}"
 
 
 

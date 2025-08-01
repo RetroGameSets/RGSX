@@ -215,6 +215,12 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             
             total_size = int(response.headers.get('content-length', 0))
             logger.debug(f"Taille totale: {total_size} octets")
+            if isinstance(config.history, list):
+                for entry in config.history:
+                    if "url" in entry and entry["url"] == url:
+                        entry["total_size"] = total_size  # Ajouter la taille totale
+                        save_history(config.history)
+                        break
             
             # Initialiser la progression avec task_id
             progress_queues[task_id].put((task_id, 0, total_size))
@@ -445,6 +451,12 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         response.raise_for_status()
                         total_size = int(response.headers.get('content-length', 0))
                         logger.debug(f"Taille totale: {total_size} octets")
+                        if isinstance(config.history, list):
+                            for entry in config.history:
+                                if "url" in entry and entry["url"] == url:
+                                    entry["total_size"] = total_size  # Ajouter la taille totale
+                                    save_history(config.history)
+                                    break
                         with lock:
                             if isinstance(config.history, list):
                                 for entry in config.history:

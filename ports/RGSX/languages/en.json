@@ -37,6 +37,7 @@
     "history_empty": "No downloads in history",
     "history_column_system": "System",
     "history_column_game": "Game name",
+    "history_column_size": "Size",
     "history_column_status": "Status",
     "history_status_downloading": "Downloading: {0}%",
     "history_status_extracting": "Extracting: {0}%",

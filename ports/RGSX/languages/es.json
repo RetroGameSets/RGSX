@@ -37,6 +37,7 @@
     "history_empty": "No hay descargas en el historial",
     "history_column_system": "Sistema",
     "history_column_game": "Nombre del juego",
+    "history_column_size": "Tamaño",
     "history_column_status": "Estado",
     "history_status_downloading": "Descargando: {0}%",
     "history_status_extracting": "Extrayendo: {0}%",
