@@ -9,7 +9,11 @@ import json
 import os
 from display import draw_validation_transition
 from network import download_rom, download_from_1fichier, is_1fichier_url
-from utils import load_games, check_extension_before_download, is_extension_supported, load_extensions_json, play_random_music, sanitize_filename, load_api_key_1fichier, save_music_config
+from utils import (
+    load_games, check_extension_before_download, is_extension_supported,
+    load_extensions_json, play_random_music, sanitize_filename,
+    load_api_key_1fichier, save_music_config
+)
 from history import load_history, clear_history, add_to_history, save_history
 import logging
 from language import _  # Import de la fonction de traduction

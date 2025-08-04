@@ -7,12 +7,22 @@ import logging
 import requests
 import queue
 import datetime
-from display import init_display, draw_loading_screen, draw_error_screen, draw_platform_grid, draw_progress_screen, draw_controls, draw_virtual_keyboard, draw_popup_result_download, draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list, draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog, draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, draw_gradient, THEME_COLORS
+from display import (
+    init_display, draw_loading_screen, draw_error_screen, draw_platform_grid,
+    draw_progress_screen, draw_controls, draw_virtual_keyboard, draw_popup_result_download,
+    draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list,
+    draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog,
+    draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, draw_gradient,
+    THEME_COLORS
+)
 from language import handle_language_menu_events, _
 from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates
 from controls import handle_controls, validate_menu_state, process_key_repeats
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
-from utils import detect_non_pc, load_sources, check_extension_before_download, extract_zip_data, play_random_music, load_accessibility_settings, load_music_config
+from utils import (
+    detect_non_pc, load_sources, check_extension_before_download, extract_zip_data,
+    play_random_music, load_accessibility_settings, load_music_config
+)
 from history import load_history, save_history
 import config
 from config import OTA_data_ZIP
