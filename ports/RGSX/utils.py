@@ -11,7 +11,6 @@ import threading
 import zipfile
 import time
 import random
-import random
 from config import JSON_EXTENSIONS, SAVE_FOLDER
 
 def load_accessibility_settings():
@@ -37,8 +36,6 @@ def save_accessibility_settings(settings):
         logger.error(f"Erreur lors de la sauvegarde de accessibility.json: {str(e)}")
 from history import save_history
 from language import _  # Import de la fonction de traduction
-from datetime import datetime
-
 from datetime import datetime
 
 
@@ -642,12 +639,12 @@ def handle_ps3(dest_dir):
                     for f in files:
                         try:
                             os.chmod(os.path.join(root, f), 0o644)
-                        except:
+                        except (OSError, PermissionError):
                             pass
                     for d in dirs:
                         try:
                             os.chmod(os.path.join(root, d), 0o755)
-                        except:
+                        except (OSError, PermissionError):
                             pass
 
                 if os.path.exists(new_path):
@@ -873,3 +870,7 @@ def save_music_config():
     except Exception as e:
         logger.error(f"Erreur lors de la sauvegarde de music_config.json: {str(e)}")
 
+
+def normalize_platform_name(platform):
+    """Normalise un nom de plateforme en supprimant espaces et convertissant en minuscules."""
+    return platform.lower().replace(" ", "")

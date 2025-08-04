@@ -12,7 +12,7 @@ from language import handle_language_menu_events, _
 from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates
 from controls import handle_controls, validate_menu_state, process_key_repeats
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
-from utils import detect_non_pc, load_sources, check_extension_before_download, extract_zip_data, play_random_music
+from utils import detect_non_pc, load_sources, check_extension_before_download, extract_zip_data, play_random_music, load_accessibility_settings, load_music_config
 from history import load_history, save_history
 import config
 from config import OTA_data_ZIP
@@ -34,9 +34,8 @@ except Exception as e:
 
 logger = logging.getLogger(__name__)
 
-# Initialisation de Pygame et des polices
+# Initialisation de Pygame
 pygame.init()
-config.init_font()
 pygame.joystick.init()
 logger.debug("--------------------------------------------------------------------")
 logger.debug("---------------------------DEBUT LOG--------------------------------")
@@ -44,7 +43,6 @@ logger.debug("------------------------------------------------------------------
 
 
 # Chargement des paramètres d'accessibilité
-from utils import load_accessibility_settings
 config.accessibility_settings = load_accessibility_settings()
 for i, scale in enumerate(config.font_scale_options):
     if scale == config.accessibility_settings.get("font_scale", 1.0):
@@ -138,7 +136,6 @@ if pygame.joystick.get_count() > 0:
 # Initialisation du mixer Pygame
 pygame.mixer.pre_init(44100, -16, 2, 4096)
 pygame.mixer.init()
-from utils import load_music_config
 load_music_config()
 
 
