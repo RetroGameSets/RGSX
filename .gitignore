@@ -10,3 +10,4 @@ ports/gamelist.xml
 *.rar
 *.zip
 .vscode/
+ports/RGSX.bat

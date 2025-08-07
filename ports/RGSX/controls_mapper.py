@@ -277,24 +277,22 @@ def load_controls_config():
     try:
         if os.path.exists(CONTROLS_CONFIG_PATH):
             with open(CONTROLS_CONFIG_PATH, "r") as f:
-                config = json.load(f)
-                logger.debug(f"Configuration des contrôles chargée : {config}")
-                return config
+                config_data = json.load(f)
+                logger.debug(f"Configuration des contrôles chargée : {config_data}")
+                
+                # Vérifier que la configuration contient les éléments essentiels
+                essential_controls = ["confirm", "cancel", "up", "down", "left", "right"]
+                if all(action in config_data for action in essential_controls):
+                    return config_data
+                else:
+                    logger.warning("Configuration incomplète trouvée dans controls.json")
+                    return {}  # Retourner un dictionnaire vide au lieu de None
         else:
-            logger.debug("Aucun fichier controls.json trouvé, tentative d'importation depuis EmulationStation")
-            # Essayer d'importer depuis EmulationStation
-            from es_input_parser import parse_es_input_config
-            es_config = parse_es_input_config()
-            if es_config:
-                logger.info("Configuration importée depuis EmulationStation")
-                save_controls_config(es_config)
-                return es_config
-            else:
-                logger.debug("Importation depuis EmulationStation échouée, configuration par défaut")
-                return {}
+            logger.debug("Aucun fichier controls.json trouvé")
+            return {}  # Retourner un dictionnaire vide au lieu de None
     except Exception as e:
         logger.error(f"Erreur lors du chargement de controls.json : {e}")
-        return {}
+        return {}  # Retourner un dictionnaire vide au lieu de None
 
 def save_controls_config(controls_config):
     """Enregistre la configuration des contrôles dans controls.json"""
@@ -302,9 +300,11 @@ def save_controls_config(controls_config):
         os.makedirs(os.path.dirname(CONTROLS_CONFIG_PATH), exist_ok=True)
         with open(CONTROLS_CONFIG_PATH, "w") as f:
             json.dump(controls_config, f, indent=4)
-        logger.debug(f"Configuration des contrôles enregistrée : {controls_config}")
+        logger.info(f"Configuration des contrôles enregistrée avec {len(controls_config)} actions")
+        logger.debug(f"Contrôles sauvegardés : {list(controls_config.keys())}")
     except Exception as e:
         logger.error(f"Erreur lors de l'enregistrement de controls.json : {e}")
+        raise
 
 def get_readable_input_name(event):
     """Retourne un nom lisible pour une entrée (touche, bouton, axe, hat, ou souris)"""

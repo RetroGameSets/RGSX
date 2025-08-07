@@ -18,8 +18,8 @@ from display import (
 )
 from language import handle_language_menu_events, _
 from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates
-from controls import handle_controls, validate_menu_state, process_key_repeats
-from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, ACTIONS
+from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls
+from controls_mapper import load_controls_config, save_controls_config, map_controls, draw_controls_mapping, ACTIONS
 from utils import (
     detect_non_pc, load_sources, check_extension_before_download, extract_zip_data,
     play_random_music, load_accessibility_settings, load_music_config
@@ -125,17 +125,48 @@ logger.debug(f"Historique de téléchargement : {len(config.history)} entrées")
 # Vérification et chargement de la configuration des contrôles
 config.controls_config = load_controls_config()
 
-# Vérifier si la configuration est vide (pas de fichier ou importation échouée)
-if not config.controls_config:
-    # Si pas de configuration, on commence par les configurer
-    config.menu_state = "controls_mapping"
-    config.needs_redraw = True  # Forcer le redraw immédiatement
-    logger.info("Aucune configuration de contrôles disponible, configuration manuelle nécessaire")
-    logger.debug("Menu initial: mappage des contrôles")
+# S'assurer que config.controls_config n'est jamais None
+if config.controls_config is None:
+    config.controls_config = {}
+    logger.debug("Initialisation de config.controls_config avec un dictionnaire vide")
+
+# Vérifier si la configuration contient au minimum les contrôles essentiels
+essential_controls = ["confirm", "cancel", "up", "down", "left", "right"]
+has_essential_controls = all(
+    config.controls_config and 
+    action in config.controls_config and 
+    config.controls_config[action].get("type") is not None
+    for action in essential_controls
+)
+
+if not config.controls_config or not has_essential_controls:
+    # Correction : vérifier si config.controls_config n'est pas None avant d'appeler .keys()
+    controls_present = list(config.controls_config.keys()) if config.controls_config else []
+    logger.warning(f"Configuration des contrôles incomplète ou absente. Contrôles présents: {controls_present}")
+    
+    # Essayer d'importer depuis EmulationStation
+    try:
+        from es_input_parser import parse_es_input_config
+        es_config = parse_es_input_config()
+        if es_config and all(action in es_config for action in essential_controls):
+            logger.info("Configuration importée depuis EmulationStation avec succès")
+            config.controls_config = es_config
+            save_controls_config(es_config)
+            config.menu_state = "loading"
+        else:
+            logger.warning("Import EmulationStation échoué ou incomplet, configuration manuelle nécessaire")
+            # Ajouter une configuration minimale de secours pour pouvoir naviguer
+            config.controls_config = get_emergency_controls()
+            config.menu_state = "controls_mapping"
+            config.needs_redraw = True
+    except Exception as e:
+        logger.error(f"Erreur lors de l'import EmulationStation: {e}")
+        config.controls_config = get_emergency_controls()
+        config.menu_state = "controls_mapping"
+        config.needs_redraw = True
 else:
-    # Sinon, chargement normal
     config.menu_state = "loading"
-    logger.debug("Menu chargement normal")
+    logger.debug("Configuration des contrôles valide, chargement normal")
 
 # Initialisation du gamepad
 joystick = None
@@ -629,6 +660,11 @@ async def main():
                     logger.debug("Fichier controls.json existe déjà, passage direct à l'état loading")
                     config.needs_redraw = True
                 else:
+                    # Initialiser config.controls_config avec un dictionnaire vide s'il est None
+                    if config.controls_config is None:
+                        config.controls_config = {}
+                        logger.debug("Initialisation de config.controls_config avec un dictionnaire vide")
+                    
                     # Forcer l'affichage de l'interface de mappage des contrôles
                     action = ACTIONS[0]
                     draw_controls_mapping(screen, action, None, True, 0.0)

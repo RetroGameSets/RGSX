@@ -1140,3 +1140,18 @@ def process_key_repeats(sources, joystick, screen):
             
             # Forcer le redessinage
             config.needs_redraw = True
+
+def get_emergency_controls():
+    """Retourne une configuration de contrôles de secours pour permettre la navigation de base."""
+    return {
+        "confirm": {"type": "key", "key": pygame.K_RETURN},
+        "cancel": {"type": "key", "key": pygame.K_ESCAPE},
+        "up": {"type": "key", "key": pygame.K_UP},
+        "down": {"type": "key", "key": pygame.K_DOWN},
+        "left": {"type": "key", "key": pygame.K_LEFT},
+        "right": {"type": "key", "key": pygame.K_RIGHT},
+        "start": {"type": "key", "key": pygame.K_p},
+        # Ajouter aussi les contrôles manette de base si disponible
+        "confirm_joy": {"type": "button", "button": 0},  # A/Croix
+        "cancel_joy": {"type": "button", "button": 1},   # B/Rond
+    }
