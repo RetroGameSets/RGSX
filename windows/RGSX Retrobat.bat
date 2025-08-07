@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-:: Définir le fichier de log
+:: Fichier de log
 if not exist %CD%\logs MD %CD%\logs
 set LOG_FILE=%CD%\logs\Retrobat_RGSX_log.txt
 
