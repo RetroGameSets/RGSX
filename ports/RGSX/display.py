@@ -1251,55 +1251,14 @@ def draw_pause_menu(screen, selected_option):
 def draw_controls_help(screen, previous_state):
     """Affiche la liste des contrôles avec un style moderne."""
     # Définir les noms d'actions traduits en dehors des f-strings pour éviter les problèmes de syntaxe
-    confirm_text = _("controls_action_confirm")
-    cancel_text = _("controls_action_cancel")
     start_text = _("controls_action_start")
     progress_text = _("controls_action_progress")
     up_text = _("controls_action_up")
     down_text = _("controls_action_down")
-    page_up_text = _("controls_action_page_up")
-    page_down_text = _("controls_action_page_down")
     filter_text = _("controls_action_filter")
     history_text = _("controls_action_history")
     delete_text = _("controls_action_delete")
     space_text = _("controls_action_space")
-    
-    common_controls = {
-        "confirm": lambda action: f"{get_control_display('confirm', 'A')} : {action}",
-        "cancel": lambda action: f"{get_control_display('cancel', 'B')} : {action}",
-        "start": lambda: f"{get_control_display('start', 'Start')} : {start_text}",
-        "progress": lambda action: f"{get_control_display('progress', 'X')} : {action}",
-        "up": lambda action: f"{get_control_display('up', '↑')} : {action}",
-        "down": lambda action: f"{get_control_display('down', '↓')} : {action}",
-        "left": lambda action: f"{get_control_display('left', '←')} : {action}",
-        "right": lambda action: f"{get_control_display('right', '→')} : {action}",
-        "page_up": lambda action: f"{get_control_display('page_up', 'LB')} : {action}",
-        "page_down": lambda action: f"{get_control_display('page_down', 'RB')} : {action}",
-        "filter": lambda action: f"{get_control_display('filter', 'Select')} : {action}",
-        "history": lambda action: f"{get_control_display('history', 'Y')} : {action}",
-        "delete": lambda: f"{get_control_display('delete', 'Suppr')} : {delete_text}",
-        "space": lambda: f"{get_control_display('space', 'Espace')} : {space_text}"
-    }
-
-    # Utiliser des variables pour les traductions d'actions
-    action_translations = {
-        "retry": _("action_retry"),
-        "quit": _("action_quit"),
-        "select": _("action_select"),
-        "history": _("action_history"),
-        "progress": _("action_progress"),
-        "download": _("action_download"),
-        "filter": _("action_filter"),
-        "cancel": _("action_cancel"),
-        "back": _("action_back"),
-        "navigate": _("action_navigate"),
-        "page": _("action_page"),
-        "cancel_download": _("action_cancel_download"),
-        "background": _("action_background"),
-        "confirm": _("action_confirm"),
-        "redownload": _("action_redownload"),
-        "clear_history": _("action_clear_history")
-    }
     
     # Catégories de contrôles
     nav_text = _("controls_navigation")

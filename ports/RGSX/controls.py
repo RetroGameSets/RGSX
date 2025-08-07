@@ -9,17 +9,17 @@ import json
 import os
 from display import draw_validation_transition
 from network import download_rom, download_from_1fichier, is_1fichier_url
-from utils import load_games, check_extension_before_download, is_extension_supported, load_extensions_json, play_random_music, sanitize_filename, load_api_key_1fichier, save_music_config
+from utils import (
+    load_games, check_extension_before_download, is_extension_supported,
+    load_extensions_json, play_random_music, sanitize_filename,
+    load_api_key_1fichier, save_music_config
+)
 from history import load_history, clear_history, add_to_history, save_history
 import logging
 from language import _  # Import de la fonction de traduction
 
 logger = logging.getLogger(__name__)
 
-
-# Délais spécifiques pour les contrôles
-JOYHAT_DEBOUNCE = 150  # Délai anti-rebond pour JOYHATMOTION (ms)
-JOYAXIS_DEBOUNCE = 150  # Délai anti-rebond pour JOYAXISMOTION (ms)
 
 # Variables globales pour la répétition
 key_states = {}  # Dictionnaire pour suivre l'état des touches
@@ -33,7 +33,6 @@ VALID_STATES = [
 ]
 
 def validate_menu_state(state):
-    valid_states = ["platform", "game", "download_progress", "download_result", "confirm_exit", "extension_warning", "pause_menu", "controls_help", "controls_mapping", "redownload_game_cache", "restart_popup", "confirm_clear_history", "language_select"]
     if state not in VALID_STATES:
         logger.debug(f"État invalide {state}, retour à platform")
         return "platform"

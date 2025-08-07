@@ -8,7 +8,7 @@ import zipfile
 import asyncio
 import config
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
-from utils import sanitize_filename, extract_zip, extract_rar, load_api_key_1fichier
+from utils import sanitize_filename, extract_zip, extract_rar, load_api_key_1fichier, normalize_platform_name
 from history import save_history
 import logging
 import datetime
@@ -179,11 +179,11 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             dest_dir = None
             for platform_dict in config.platform_dicts:
                 if platform_dict["platform"] == platform:
-                    dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder", platform.lower().replace(" ", "")))
+                    dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder", normalize_platform_name(platform)))
                     logger.debug(f"Répertoire de destination trouvé pour {platform}: {dest_dir}")
                     break
             if not dest_dir:
-                dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform.lower().replace(" ", ""))
+                dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), normalize_platform_name(platform))
             
             os.makedirs(dest_dir, exist_ok=True)
             if not os.access(dest_dir, os.W_OK):
@@ -380,7 +380,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             dest_dir = None
             for platform_dict in config.platform_dicts:
                 if platform_dict["platform"] == platform:
-                    dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder", platform.lower().replace(" ", "")))
+                    dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder", normalize_platform_name(platform)))
                     break
             if not dest_dir:
                 logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform}")
