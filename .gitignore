@@ -9,3 +9,4 @@ ports/gamelist.xml
 *.log
 *.rar
 *.zip
+.vscode/

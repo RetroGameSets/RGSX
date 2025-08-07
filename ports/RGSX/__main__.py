@@ -1,6 +1,7 @@
 import os
 os.environ["SDL_FBDEV"] = "/dev/fb0"
 import pygame # type: ignore
+# type: ignore[reportAttributeAccessIssue]
 import asyncio
 import platform
 import logging
