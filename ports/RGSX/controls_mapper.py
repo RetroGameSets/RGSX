@@ -273,26 +273,19 @@ HOLD_DURATION = 1000
 JOYHAT_DEBOUNCE = 200  # Délai anti-rebond pour JOYHATMOTION (ms)
 
 def load_controls_config():
-    """Charge la configuration des contrôles depuis controls.json ou EmulationStation"""
+    """Charge la configuration des contrôles depuis controls.json"""
     try:
         if os.path.exists(CONTROLS_CONFIG_PATH):
             with open(CONTROLS_CONFIG_PATH, "r") as f:
                 config_data = json.load(f)
                 logger.debug(f"Configuration des contrôles chargée : {config_data}")
-                
-                # Vérifier que la configuration contient les éléments essentiels
-                essential_controls = ["confirm", "cancel", "up", "down", "left", "right"]
-                if all(action in config_data for action in essential_controls):
-                    return config_data
-                else:
-                    logger.warning("Configuration incomplète trouvée dans controls.json")
-                    return {}  # Retourner un dictionnaire vide au lieu de None
+                return config_data
         else:
             logger.debug("Aucun fichier controls.json trouvé")
-            return {}  # Retourner un dictionnaire vide au lieu de None
+            return {}
     except Exception as e:
         logger.error(f"Erreur lors du chargement de controls.json : {e}")
-        return {}  # Retourner un dictionnaire vide au lieu de None
+        return {}
 
 def save_controls_config(controls_config):
     """Enregistre la configuration des contrôles dans controls.json"""

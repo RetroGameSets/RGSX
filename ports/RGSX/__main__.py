@@ -130,43 +130,16 @@ if config.controls_config is None:
     config.controls_config = {}
     logger.debug("Initialisation de config.controls_config avec un dictionnaire vide")
 
-# Vérifier si la configuration contient au minimum les contrôles essentiels
-essential_controls = ["confirm", "cancel", "up", "down", "left", "right"]
-has_essential_controls = all(
-    config.controls_config and 
-    action in config.controls_config and 
-    config.controls_config[action].get("type") is not None
-    for action in essential_controls
-)
-
-if not config.controls_config or not has_essential_controls:
-    # Correction : vérifier si config.controls_config n'est pas None avant d'appeler .keys()
-    controls_present = list(config.controls_config.keys()) if config.controls_config else []
-    logger.warning(f"Configuration des contrôles incomplète ou absente. Contrôles présents: {controls_present}")
-    
-    # Essayer d'importer depuis EmulationStation
-    try:
-        from es_input_parser import parse_es_input_config
-        es_config = parse_es_input_config()
-        if es_config and all(action in es_config for action in essential_controls):
-            logger.info("Configuration importée depuis EmulationStation avec succès")
-            config.controls_config = es_config
-            save_controls_config(es_config)
-            config.menu_state = "loading"
-        else:
-            logger.warning("Import EmulationStation échoué ou incomplet, configuration manuelle nécessaire")
-            # Ajouter une configuration minimale de secours pour pouvoir naviguer
-            config.controls_config = get_emergency_controls()
-            config.menu_state = "controls_mapping"
-            config.needs_redraw = True
-    except Exception as e:
-        logger.error(f"Erreur lors de l'import EmulationStation: {e}")
-        config.controls_config = get_emergency_controls()
-        config.menu_state = "controls_mapping"
-        config.needs_redraw = True
+# Vérifier simplement si le fichier controls.json existe
+if not os.path.exists(config.CONTROLS_CONFIG_PATH) or not config.controls_config:
+    logger.warning("Fichier controls.json manquant ou vide, configuration manuelle nécessaire")
+    # Ajouter une configuration minimale de secours pour pouvoir naviguer
+    config.controls_config = get_emergency_controls()
+    config.menu_state = "controls_mapping"
+    config.needs_redraw = True
 else:
     config.menu_state = "loading"
-    logger.debug("Configuration des contrôles valide, chargement normal")
+    logger.debug("Configuration des contrôles trouvée, chargement normal")
 
 # Initialisation du gamepad
 joystick = None
