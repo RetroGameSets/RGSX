@@ -11,7 +11,6 @@ import threading
 import zipfile
 import time
 import random
-import random
 from config import JSON_EXTENSIONS, SAVE_FOLDER
 
 def load_accessibility_settings():
@@ -37,8 +36,6 @@ def save_accessibility_settings(settings):
         logger.error(f"Erreur lors de la sauvegarde de accessibility.json: {str(e)}")
 from history import save_history
 from language import _  # Import de la fonction de traduction
-from datetime import datetime
-
 from datetime import datetime
 
 
@@ -164,21 +161,6 @@ def load_games(platform_id):
     try:
         with open(games_path, 'r', encoding='utf-8') as f:
             games = json.load(f)
-        
-        #  Tester la première URL si la liste n'est pas vide
-        # if games and len(games) > 0 and len(games[0]) > 1:
-        #     first_url = games[0][1]
-        #     try:
-        #         response = requests.head(first_url, timeout=5, allow_redirects=True)
-        #         if response.status_code not in (200, 303):  # Ne logger que les codes autres que 200 et 303
-        #             logger.debug(f"https://{first_url} \"HEAD {first_url} HTTP/1.1\" {response.status_code} 0")
-        #         if response.status_code == 404:
-        #             logger.error(f"URL non accessible pour {platform_id} : {first_url} (code 404)")
-        #             unavailable_systems.append(platform_id)  # Assurez-vous que unavailable_systems est défini
-        #     except requests.RequestException as e:
-        #         logger.error(f"Erreur lors du test de l'URL pour {platform_id} : {first_url} ({str(e)})")
-        # else:
-        #     logger.debug(f"Aucune URL à tester pour {platform_id} (liste vide ou mal formée)")
         
         logger.debug(f"Jeux chargés pour {platform_id}: {len(games)} jeux")
         return games
@@ -642,12 +624,12 @@ def handle_ps3(dest_dir):
                     for f in files:
                         try:
                             os.chmod(os.path.join(root, f), 0o644)
-                        except:
+                        except (OSError, PermissionError):
                             pass
                     for d in dirs:
                         try:
                             os.chmod(os.path.join(root, d), 0o755)
-                        except:
+                        except (OSError, PermissionError):
                             pass
 
                 if os.path.exists(new_path):
@@ -873,3 +855,7 @@ def save_music_config():
     except Exception as e:
         logger.error(f"Erreur lors de la sauvegarde de music_config.json: {str(e)}")
 
+
+def normalize_platform_name(platform):
+    """Normalise un nom de plateforme en supprimant espaces et convertissant en minuscules."""
+    return platform.lower().replace(" ", "")
