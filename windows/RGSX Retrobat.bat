@@ -16,20 +16,27 @@ echo [%DATE% %TIME%] Exécution de __main__.py pour RetroBat >> "%LOG_FILE%"
 :: Définir les chemins relatifs et les convertir en absolus
 set CURRENT_DIR=%CD%
 set PYTHON_EXE=python.exe
-set MAIN_SCRIPT=__main__.py
+
+:: Détecter le répertoire racine en remontant de deux niveaux depuis le script
+pushd "%CURRENT_DIR%\..\.."
+set "ROOT_DIR=%CD%"
+popd
+
+:: Définir le chemin du script principal selon les spécifications
+set "MAIN_SCRIPT=%ROOT_DIR%\roms\ports\__main__.py"
 
 :: Convertir les chemins relatifs en absolus avec pushd/popd
-pushd "%CURRENT_DIR%\..\..\system\tools\Python"
+pushd "%ROOT_DIR%\system\tools\Python"
 set "PYTHON_EXE_FULL=%CD%\!PYTHON_EXE!"
 popd
 
-pushd "%CURRENT_DIR%\..\ports\RGSX"
-set "MAIN_SCRIPT_FULL=%CD%\!MAIN_SCRIPT!"
-popd
+set "MAIN_SCRIPT_FULL=!MAIN_SCRIPT!"
 
 :: Afficher et logger les variables
 echo CURRENT_DIR : !CURRENT_DIR!
 echo [%DATE% %TIME%] CURRENT_DIR : !CURRENT_DIR! >> "%LOG_FILE%"
+echo ROOT_DIR : !ROOT_DIR!
+echo [%DATE% %TIME%] ROOT_DIR : !ROOT_DIR! >> "%LOG_FILE%"
 echo PYTHON_EXE_FULL : !PYTHON_EXE_FULL!
 echo [%DATE% %TIME%] PYTHON_EXE_FULL : !PYTHON_EXE_FULL! >> "%LOG_FILE%"
 echo MAIN_SCRIPT_FULL : !MAIN_SCRIPT_FULL!
@@ -43,9 +50,7 @@ if not exist "!PYTHON_EXE_FULL!" (
     echo [%DATE% %TIME%] Python.exe non trouvé. Préparation du téléchargement... >> "%LOG_FILE%"
     
     :: Créer le dossier Python s'il n'existe pas
-    pushd "%CURRENT_DIR%\..\..\..\system\tools"
-    set "TOOLS_FOLDER_FULL=%CD%"
-    popd
+    set "TOOLS_FOLDER_FULL=!ROOT_DIR!\system\tools"
     
     if not exist "!TOOLS_FOLDER_FULL!\Python" (
         echo Création du dossier !TOOLS_FOLDER_FULL!\Python...
