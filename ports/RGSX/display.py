@@ -1250,23 +1250,15 @@ def draw_pause_menu(screen, selected_option):
 # Menu aide contrôles
 def draw_controls_help(screen, previous_state):
     """Affiche la liste des contrôles avec un style moderne."""
-    # Définir les noms d'actions traduits en dehors des f-strings pour éviter les problèmes de syntaxe
     start_text = _("controls_action_start")
-    progress_text = _("controls_action_progress")
-    up_text = _("controls_action_up")
-    down_text = _("controls_action_down")
-    filter_text = _("controls_action_filter")
     history_text = _("controls_action_history")
     delete_text = _("controls_action_delete")
     space_text = _("controls_action_space")
-    
-    # Catégories de contrôles
     nav_text = _("controls_navigation")
     pages_text = _("controls_pages")
     confirm_select_text = _("controls_confirm_select")
     cancel_back_text = _("controls_cancel_back")
-    history_text = _("controls_history")
-    clear_history_text = _("controls_clear_history")
+    clear_history_text = _("controls_action_delete_history")
     filter_search_text = _("controls_filter_search")
     
     control_categories = {

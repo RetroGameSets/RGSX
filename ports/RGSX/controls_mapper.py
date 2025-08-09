@@ -3,6 +3,7 @@ import json
 import os
 import logging
 import config
+import language
 from config import CONTROLS_CONFIG_PATH
 from display import draw_gradient
 import xml.etree.ElementTree as ET
@@ -13,22 +14,36 @@ logger = logging.getLogger(__name__)
 CONTROLS_CONFIG_PATH = os.path.join(config.SAVE_FOLDER, "controls.json")
 
 # Actions internes de RGSX à mapper
-ACTIONS = [
-    {"name": "confirm", "display": "Confirmer", "description": "Valider (Recommandé: Entrée, A/Croix)"},
-    {"name": "cancel", "display": "Annuler", "description": "Annuler/Retour (Recommandé: Retour Arrière, B/Rond)"},
-    {"name": "up", "display": "Haut", "description": "Naviguer vers le haut"},
-    {"name": "down", "display": "Bas", "description": "Naviguer vers le bas"},
-    {"name": "left", "display": "Gauche", "description": "Naviguer à gauche"},
-    {"name": "right", "display": "Droite", "description": "Naviguer à droite"},    
-    {"name": "start", "display": "Start", "description": "Menu pause / Paramètres (Recommandé: Start, AltGr)"},
-    {"name": "filter", "display": "Filtrer", "description": "Ouvrir filtre (Recommandé: F, Select)"},
-    {"name": "page_up", "display": "Page Précédente", "description": "Page précédente/Défilement Rapide Haut (Recommandé: PageUp, LB/L1)"},
-    {"name": "page_down", "display": "Page Suivante", "description": "Page suivante/Défilement Rapide Bas (Recommandé: PageDown, RB/R1)"},
-    {"name": "history", "display": "Historique", "description": "Ouvrir l'historique (Recommandé: H, Y/Carré)"},
-    {"name": "progress", "display": "Progression", "description": "Historique : Effacer la liste (Recommandé: X/Triangle)"},
-    {"name": "delete", "display": "Supprimer", "description": "Mode Fitre : Supprimer caractère en mode recherche (Recommandé: DEL, LT/L2)"},
-    {"name": "space", "display": "Espace", "description": "Mode Filtre : Ajouter espace (Recommandé: Espace, RT/R2)"},
+
+# Actions internes de RGSX à mapper (labels et descriptions traduits dynamiquement)
+ACTION_DEFS = [
+    {"name": "confirm"},
+    {"name": "cancel"},
+    {"name": "up"},
+    {"name": "down"},
+    {"name": "left"},
+    {"name": "right"},
+    {"name": "start"},
+    {"name": "filter"},
+    {"name": "page_up"},
+    {"name": "page_down"},
+    {"name": "history"},
+    {"name": "progress"},
+    {"name": "delete"},
+    {"name": "space"},
 ]
+
+def get_actions(lang=None):
+    """Retourne la liste des actions avec labels/descriptions traduits selon la langue courante."""
+    actions = []
+    for a in ACTION_DEFS:
+        name = a["name"]
+        display = language.get_text(f"controls_action_{name}", name.capitalize())
+        description = language.get_text(f"controls_desc_{name}", "")
+        actions.append({"name": name, "display": display, "description": description})
+    return actions
+
+# ...existing code...
 
 # Mappage des valeurs SDL vers les constantes Pygame
 SDL_TO_PYGAME_KEY = {
@@ -335,10 +350,11 @@ def map_controls(screen):
     held_hats = {}
     held_mouse_buttons = set()
     
-    while current_action_index < len(ACTIONS):
+    actions = get_actions()
+    while current_action_index < len(actions):
         if config.needs_redraw:
             progress = min(input_held_time / HOLD_DURATION, 1.0) if current_input else 0.0
-            draw_controls_mapping(screen, ACTIONS[current_action_index], last_input_name, current_input is not None, progress)
+            draw_controls_mapping(screen, actions[current_action_index], last_input_name, current_input is not None, progress)
             pygame.display.flip()
             config.needs_redraw = False
         
@@ -450,7 +466,7 @@ def map_controls(screen):
         if current_input:
             input_held_time += delta_time
             if input_held_time >= HOLD_DURATION:
-                action_name = ACTIONS[current_action_index]["name"]
+                action_name = actions[current_action_index]["name"]
                 
                 # Sauvegarder avec la structure attendue par controls.py
                 if current_input["type"] == "key":
@@ -522,22 +538,24 @@ def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_pr
     border_width = 4
     shadow_offset = 8
 
-    # Titre principal
-    title_text = "Configuration des contrôles"
+    # Titre principal (traduction)
+    title_text = language.get_text("controls_mapping_title", "Configuration des contrôles")
     title_surface = config.title_font.render(title_text, True, (255, 255, 255))
     title_rect = title_surface.get_rect(center=(config.screen_width // 2, 80))
     screen.blit(title_surface, title_rect)
 
-    # Instructions
-    instruction_text = "Maintenez pendant 3s pour configurer :"
-    description_text = action['description']
+    # Instructions (traduction)
+    instruction_text = language.get_text("controls_mapping_instruction", "Maintenez pendant 3s pour configurer :")
+    description_text = action.get('description', '')
     instruction_surface = config.small_font.render(instruction_text, True, (255, 255, 255))
     description_surface = config.font.render(description_text, True, (200, 200, 200))
     instruction_width, instruction_height = instruction_surface.get_size()
     description_width, description_height = description_surface.get_size()
 
-    # Input détecté
-    input_text = last_input or (f"En attente d'une touche ou bouton..." if waiting_for_input else "Appuyez sur une touche ou un bouton")
+    # Input détecté (traduction)
+    waiting_text = language.get_text("controls_mapping_waiting", "En attente d'une touche ou bouton...")
+    press_text = language.get_text("controls_mapping_press", "Appuyez sur une touche ou un bouton")
+    input_text = last_input or (waiting_text if waiting_for_input else press_text)
     input_surface = config.small_font.render(input_text, True, (0, 255, 0) if last_input else (255, 255, 255))
     input_width, input_height = input_surface.get_size()
 

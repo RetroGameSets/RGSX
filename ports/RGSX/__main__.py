@@ -19,7 +19,7 @@ from display import (
 from language import handle_language_menu_events, _
 from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates
 from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls
-from controls_mapper import load_controls_config, save_controls_config, map_controls, draw_controls_mapping, ACTIONS
+from controls_mapper import load_controls_config, save_controls_config, map_controls, draw_controls_mapping, get_actions
 from utils import (
     detect_non_pc, load_sources, check_extension_before_download, extract_zip_data,
     play_random_music, load_accessibility_settings, load_music_config
@@ -639,7 +639,7 @@ async def main():
                         logger.debug("Initialisation de config.controls_config avec un dictionnaire vide")
                     
                     # Forcer l'affichage de l'interface de mappage des contrôles
-                    action = ACTIONS[0]
+                    action = get_actions()[0]
                     draw_controls_mapping(screen, action, None, True, 0.0)
                     pygame.display.flip()
                     logger.debug("Interface de mappage des contrôles affichée")

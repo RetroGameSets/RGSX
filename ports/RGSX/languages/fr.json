@@ -92,7 +92,7 @@
     "controls_action_right": "Droite",
     "controls_action_page_up": "Page Précédente",
     "controls_action_page_down": "Page Suivante",
-    "controls_action_progress": "Progression",
+    "controls_action_delete_history": "Vider Historique",
     "controls_action_history": "Historique",
     "controls_action_filter": "Filtrer",
     "controls_action_delete": "Supprimer",
@@ -107,7 +107,7 @@
     "controls_desc_right": "Naviguer à droite",
     "controls_desc_page_up": "Page précédente/Défilement Rapide Haut (ex: PageUp, LB)",
     "controls_desc_page_down": "Page suivante/Défilement Rapide Bas (ex: PageDown, RB)",
-    "controls_desc_progress": "Voir progression (ex: X)",
+    "controls_desc_delete_history": "Effacer Historique (ex: X)",
     "controls_desc_history": "Ouvrir l'historique (ex: H, Y)",
     "controls_desc_filter": "Ouvrir filtre (ex: F, Select)",
     "controls_desc_delete": "Supprimer caractère (ex: LT, Suppr)",
@@ -176,5 +176,9 @@
     "utils_permission_denied": "Permission refusée lors de l'extraction: {0}",
     "utils_extraction_failed": "Échec de l'extraction: {0}",
     "utils_unrar_unavailable": "Commande unrar non disponible",
-    "utils_rar_list_failed": "Échec de la liste des fichiers RAR: {0}"
+    "utils_rar_list_failed": "Échec de la liste des fichiers RAR: {0}",
+    "controls_mapping_title": "Controls configuration",
+    "controls_mapping_instruction": "Hold for 3s to configure:",
+    "controls_mapping_waiting": "Waiting for a key or button...",
+    "controls_mapping_press": "Press a key or button"
 }

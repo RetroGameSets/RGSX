@@ -354,65 +354,76 @@ def extract_zip(zip_path, dest_dir, url):
             zip_ref.testzip()  # Vérifier l'intégrité de l'archive
             total_size = sum(info.file_size for info in zip_ref.infolist() if not info.is_dir())
             logger.info(f"Taille totale à extraire: {total_size} octets")
-            if total_size == 0:
-                logger.warning("ZIP vide ou ne contenant que des dossiers")
-                return True, "ZIP vide extrait avec succès"
+            lock = threading.Lock()
+            # Lister les ISO avant extraction
+            iso_before = set()
+            for root, dirs, files in os.walk(dest_dir):
+                for file in files:
+                    if file.lower().endswith('.iso'):
+                        iso_before.add(os.path.abspath(os.path.join(root, file)))
 
-            extracted_size = 0
-            os.makedirs(dest_dir, exist_ok=True)
-            chunk_size = 2048  # Réduire pour plus de mises à jour
-            last_save_time = time.time()
-            save_interval = 0.5  # Sauvegarder toutes les 0.5 secondes
-            for info in zip_ref.infolist():
-                if info.is_dir():
-                    continue
-                file_path = os.path.join(dest_dir, info.filename)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
-                    file_size = info.file_size
-                    file_extracted = 0
-                    while True:
-                        chunk = source.read(chunk_size)
-                        if not chunk:
-                            break
-                        dest.write(chunk)
-                        file_extracted += len(chunk)
-                        extracted_size += len(chunk)
-                        current_time = time.time()
-                        with lock:
-                            # Vérifier si config.history est une liste avant d'itérer
-                            if isinstance(config.history, list):
-                                for entry in config.history:
-                                    # Vérifier si l'entrée a les clés nécessaires et correspond à notre téléchargement
-                                    if "status" in entry and entry["status"] in ["Téléchargement", "Extracting", "downloading"]:
-                                        # Chercher par URL si disponible
-                                        if "url" in entry and entry["url"] == url:
-                                            # Calculer le pourcentage correctement et le limiter entre 0 et 100
-                                            progress_percent = int(extracted_size / total_size * 100) if total_size > 0 else 0
-                                            progress_percent = max(0, min(100, progress_percent))
-                                            
-                                            entry["status"] = "Extracting"
-                                            entry["progress"] = progress_percent
-                                            entry["message"] = "Extraction en cours"
-                                            
-                                            if current_time - last_save_time >= save_interval:
-                                                save_history(config.history)
-                                                last_save_time = current_time
-                                                # logger.debug(f"Extraction en cours: {info.filename}, file_extracted={file_extracted}/{file_size}, total_extracted={extracted_size}/{total_size}, progression={progress_percent:.1f}%")
-                                            
-                                            config.needs_redraw = True
-                                            break
-                os.chmod(file_path, 0o644)
-        # Vérifier si c'est un dossier xbox et le traiter si nécessaire
-        xbox_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), "xbox")
-        if dest_dir == xbox_dir:
-            success, error_msg = handle_xbox(dest_dir)
-            if not success:
-                return False, error_msg
-            
-        for root, dirs, files in os.walk(dest_dir):
-            for dir_name in dirs:
-                os.chmod(os.path.join(root, dir_name), 0o755)
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.testzip()  # Vérifier l'intégrité de l'archive
+                total_size = sum(info.file_size for info in zip_ref.infolist() if not info.is_dir())
+                logger.info(f"Taille totale à extraire: {total_size} octets")
+                if total_size == 0:
+                    logger.warning("ZIP vide ou ne contenant que des dossiers")
+                    return True, "ZIP vide extrait avec succès"
+
+                extracted_size = 0
+                os.makedirs(dest_dir, exist_ok=True)
+                chunk_size = 2048  # Réduire pour plus de mises à jour
+                last_save_time = time.time()
+                save_interval = 0.5  # Sauvegarder toutes les 0.5 secondes
+                for info in zip_ref.infolist():
+                    if info.is_dir():
+                        continue
+                    file_path = os.path.join(dest_dir, info.filename)
+                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                    with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
+                        file_size = info.file_size
+                        file_extracted = 0
+                        while True:
+                            chunk = source.read(chunk_size)
+                            if not chunk:
+                                break
+                            dest.write(chunk)
+                            file_extracted += len(chunk)
+                            extracted_size += len(chunk)
+                            current_time = time.time()
+                            with lock:
+                                if isinstance(config.history, list):
+                                    for entry in config.history:
+                                        if "status" in entry and entry["status"] in ["Téléchargement", "Extracting", "downloading"]:
+                                            if "url" in entry and entry["url"] == url:
+                                                progress_percent = int(extracted_size / total_size * 100) if total_size > 0 else 0
+                                                progress_percent = max(0, min(100, progress_percent))
+                                                entry["status"] = "Extracting"
+                                                entry["progress"] = progress_percent
+                                                entry["message"] = "Extraction en cours"
+                                                if current_time - last_save_time >= save_interval:
+                                                    save_history(config.history)
+                                                    last_save_time = current_time
+                                                config.needs_redraw = True
+                                                break
+                    os.chmod(file_path, 0o644)
+            # Vérifier si c'est un dossier xbox et le traiter si nécessaire
+            xbox_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), "xbox")
+            if dest_dir == xbox_dir:
+                # Lister les ISO après extraction
+                iso_after = set()
+                for root, dirs, files in os.walk(dest_dir):
+                    for file in files:
+                        if file.lower().endswith('.iso'):
+                            iso_after.add(os.path.abspath(os.path.join(root, file)))
+                new_isos = list(iso_after - iso_before)
+                if new_isos:
+                    success, error_msg = handle_xbox(dest_dir, new_isos)
+                    if not success:
+                        return False, error_msg
+                else:
+                    logger.warning("Aucun nouvel ISO détecté après extraction pour conversion Xbox.")
+                    # On ne retourne pas d'erreur fatale ici, on continue
 
         try:
             os.remove(zip_path)
@@ -657,7 +668,7 @@ def handle_ps3(dest_dir):
         return True, None
 
 
-def handle_xbox(dest_dir):
+def handle_xbox(dest_dir, iso_files):
     """Gère la conversion des fichiers Xbox extraits."""
     logger.debug(f"Traitement spécifique Xbox dans: {dest_dir}")
     
