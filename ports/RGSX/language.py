@@ -7,7 +7,7 @@ import config
 logger = logging.getLogger(__name__)
 
 # Langue par défaut et variables globales
-DEFAULT_LANGUAGE = "fr"
+DEFAULT_LANGUAGE = "en"
 current_language = DEFAULT_LANGUAGE
 translations = {}
 show_language_selector_on_startup = False
