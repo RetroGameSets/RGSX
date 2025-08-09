@@ -23,24 +23,20 @@ set "ROOT_DIR=%CD%"
 popd
 
 :: Définir le chemin du script principal selon les spécifications
-set "MAIN_SCRIPT=%ROOT_DIR%\roms\ports\__main__.py"
+set "MAIN_SCRIPT=%ROOT_DIR%\roms\ports\RGSX\__main__.py"
 
 :: Convertir les chemins relatifs en absolus avec pushd/popd
 pushd "%ROOT_DIR%\system\tools\Python"
-set "PYTHON_EXE_FULL=%CD%\!PYTHON_EXE!"
+set "PYTHON_EXE_FULL=%ROOT_DIR%\system\tools\Python\!PYTHON_EXE!"
 popd
 
-set "MAIN_SCRIPT_FULL=!MAIN_SCRIPT!"
-
 :: Afficher et logger les variables
-echo CURRENT_DIR : !CURRENT_DIR!
-echo [%DATE% %TIME%] CURRENT_DIR : !CURRENT_DIR! >> "%LOG_FILE%"
-echo ROOT_DIR : !ROOT_DIR!
-echo [%DATE% %TIME%] ROOT_DIR : !ROOT_DIR! >> "%LOG_FILE%"
-echo PYTHON_EXE_FULL : !PYTHON_EXE_FULL!
-echo [%DATE% %TIME%] PYTHON_EXE_FULL : !PYTHON_EXE_FULL! >> "%LOG_FILE%"
-echo MAIN_SCRIPT_FULL : !MAIN_SCRIPT_FULL!
-echo [%DATE% %TIME%] MAIN_SCRIPT_FULL : !MAIN_SCRIPT_FULL! >> "%LOG_FILE%"
+
+echo  ROOT_DIR : %ROOT_DIR% >> "%LOG_FILE%"
+echo  CURRENT_DIR : !CURRENT_DIR! >> "%LOG_FILE%"
+echo  ROOT_DIR : !ROOT_DIR! >> "%LOG_FILE%"
+echo  PYTHON_EXE_FULL : !PYTHON_EXE_FULL! >> "%LOG_FILE%"
+echo  MAIN_SCRIPT : !MAIN_SCRIPT! >> "%LOG_FILE%"
 
 :: Vérifier si l'exécutable Python existe
 echo Vérification de python.exe...
@@ -72,7 +68,7 @@ if not exist "!PYTHON_EXE_FULL!" (
     if exist "!ZIP_FILE!" (
         echo Téléchargement terminé. Extraction de python.zip...
         echo [%DATE% %TIME%] Téléchargement terminé. Extraction de python.zip vers !TOOLS_FOLDER_FULL!... >> "%LOG_FILE%"
-        tar -xf "!ZIP_FILE!" -C "!TOOLS_FOLDER_FULL!" --strip-components=0
+        tar -xf "!ZIP_FILE!" -C "!TOOLS_FOLDER_FULL!\Python" --strip-components=0
         echo Extraction terminée.
         echo [%DATE% %TIME%] Extraction terminée. >> "%LOG_FILE%"
         del /q "!ZIP_FILE!"
@@ -96,10 +92,10 @@ echo [%DATE% %TIME%] python.exe trouvé. >> "%LOG_FILE%"
 
 :: Vérifier si le script Python existe
 echo Vérification de __main__.py...
-echo [%DATE% %TIME%] Vérification de __main__.py à !MAIN_SCRIPT_FULL! >> "%LOG_FILE%"
-if not exist "!MAIN_SCRIPT_FULL!" (
-    echo Erreur : __main__.py n'a pas été trouvé à !MAIN_SCRIPT_FULL!.
-    echo [%DATE% %TIME%] Erreur : __main__.py n'a pas été trouvé à !MAIN_SCRIPT_FULL! >> "%LOG_FILE%"
+echo [%DATE% %TIME%] Vérification de __main__.py à !MAIN_SCRIPT! >> "%LOG_FILE%"
+if not exist "!MAIN_SCRIPT!" (
+    echo Erreur : __main__.py n'a pas été trouvé à !MAIN_SCRIPT!.
+    echo [%DATE% %TIME%] Erreur : __main__.py n'a pas été trouvé à !MAIN_SCRIPT! >> "%LOG_FILE%"
     goto :error
 )
 echo __main__.py trouvé.
@@ -107,8 +103,8 @@ echo [%DATE% %TIME%] __main__.py trouvé. >> "%LOG_FILE%"
 
 :: Exécuter le script Python
 echo Exécution de __main__.py...
-echo [%DATE% %TIME%] Exécution de __main__.py avec !PYTHON_EXE_FULL! >> "%LOG_FILE%"
-"!PYTHON_EXE_FULL!" "!MAIN_SCRIPT_FULL!"
+echo [%DATE% %TIME%] Exécution de "!MAIN_SCRIPT!" avec !PYTHON_EXE_FULL! >> "%LOG_FILE%"
+"!PYTHON_EXE_FULL!" "!MAIN_SCRIPT!" >> "%LOG_FILE%" 2>&1
 if %ERRORLEVEL% equ 0 (
     echo Exécution terminée avec succès.
     echo [%DATE% %TIME%] Exécution de __main__.py terminée avec succès. >> "%LOG_FILE%"
