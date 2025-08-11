@@ -248,14 +248,14 @@ def get_control_display(action, default):
     if control_type == 'key':
         key_code = control_config.get('key')
         key_names = {
-            pygame.K_RETURN: "Entrée",
+            pygame.K_RETURN: "Enter",
             pygame.K_ESCAPE: "Échap",
             pygame.K_SPACE: "Espace",
-            pygame.K_UP: "Flèche Haut",
-            pygame.K_DOWN: "Flèche Bas",
-            pygame.K_LEFT: "Flèche Gauche",
-            pygame.K_RIGHT: "Flèche Droite",
-            pygame.K_BACKSPACE: "Retour Arrière",
+            pygame.K_UP: "↑",
+            pygame.K_DOWN: "↓",
+            pygame.K_LEFT: "←",
+            pygame.K_RIGHT: "→",
+            pygame.K_BACKSPACE: "Backspace",
             pygame.K_TAB: "Tab",
             pygame.K_LALT: "Alt",
             pygame.K_RALT: "AltGR",
@@ -304,23 +304,23 @@ def get_control_display(action, default):
             pygame.K_7: "7",
             pygame.K_8: "8",
             pygame.K_9: "9",
-            pygame.K_KP0: "Pavé 0",
-            pygame.K_KP1: "Pavé 1",
-            pygame.K_KP2: "Pavé 2",
-            pygame.K_KP3: "Pavé 3",
-            pygame.K_KP4: "Pavé 4",
-            pygame.K_KP5: "Pavé 5",
-            pygame.K_KP6: "Pavé 6",
-            pygame.K_KP7: "Pavé 7",
-            pygame.K_KP8: "Pavé 8",
-            pygame.K_KP9: "Pavé 9",
-            pygame.K_KP_PERIOD: "Pavé .",
-            pygame.K_KP_DIVIDE: "Pavé /",
-            pygame.K_KP_MULTIPLY: "Pavé *",
-            pygame.K_KP_MINUS: "Pavé -",
-            pygame.K_KP_PLUS: "Pavé +",
-            pygame.K_KP_ENTER: "Pavé Entrée",
-            pygame.K_KP_EQUALS: "Pavé =",
+            pygame.K_KP0: "Num 0",
+            pygame.K_KP1: "Num 1",
+            pygame.K_KP2: "Num 2",
+            pygame.K_KP3: "Num 3",
+            pygame.K_KP4: "Num 4",
+            pygame.K_KP5: "Num 5",
+            pygame.K_KP6: "Num 6",
+            pygame.K_KP7: "Num 7",
+            pygame.K_KP8: "Num 8",
+            pygame.K_KP9: "Num 9",
+            pygame.K_KP_PERIOD: "Num .",
+            pygame.K_KP_DIVIDE: "Num /",
+            pygame.K_KP_MULTIPLY: "Num *",
+            pygame.K_KP_MINUS: "Num -",
+            pygame.K_KP_PLUS: "Num +",
+            pygame.K_KP_ENTER: "Num Enter",
+            pygame.K_KP_EQUALS: "Num =",
             pygame.K_F1: "F1",
             pygame.K_F2: "F2",
             pygame.K_F3: "F3",
@@ -340,9 +340,9 @@ def get_control_display(action, default):
             pygame.K_DELETE: "Suppr",
             pygame.K_HOME: "Début",
             pygame.K_END: "Fin",
-            pygame.K_PAGEUP: "Page Haut",
-            pygame.K_PAGEDOWN: "Page Bas",
-            pygame.K_PRINT: "Impr Écran",
+            pygame.K_PAGEUP: "Page+",
+            pygame.K_PAGEDOWN: "Page-",
+            pygame.K_PRINT: "Printscreen",
             pygame.K_SYSREQ: "SysReq",
             pygame.K_BREAK: "Pause",
             pygame.K_PAUSE: "Pause",
@@ -1249,121 +1249,161 @@ def draw_pause_menu(screen, selected_option):
 
 # Menu aide contrôles
 def draw_controls_help(screen, previous_state):
-    """Affiche la liste des contrôles avec un style moderne."""
-    start_text = _("controls_action_start")
-    history_text = _("controls_action_history")
-    delete_text = _("controls_action_delete")
-    space_text = _("controls_action_space")
-    nav_text = _("controls_navigation")
-    pages_text = _("controls_pages")
-    confirm_select_text = _("controls_confirm_select")
-    cancel_back_text = _("controls_cancel_back")
-    clear_history_text = _("controls_action_delete_history")
-    filter_search_text = _("controls_filter_search")
-    
+    """Affiche la liste des contrôles (aide) avec mise en page adaptative."""
+    # Contenu des catégories
     control_categories = {
         _("controls_category_navigation"): [
-            f"{get_control_display('up', '↑')} {get_control_display('down', '↓')} {get_control_display('left', '←')} {get_control_display('right', '→')} : {nav_text}",
-            f"{get_control_display('page_up', 'LB')} {get_control_display('page_down', 'RB')} : {pages_text}"
+            f"{get_control_display('up', '↑')} {get_control_display('down', '↓')} {get_control_display('left', '←')} {get_control_display('right', '→')} : {_('controls_navigation')}",
+            f"{get_control_display('page_up', 'LB')} {get_control_display('page_down', 'RB')} : {_('controls_pages')}",
         ],
         _("controls_category_main_actions"): [
-            f"{get_control_display('confirm', 'A')} : {confirm_select_text}",
-            f"{get_control_display('cancel', 'B')} : {cancel_back_text}",
-            f"{get_control_display('start', 'Start')} : {start_text}"
+            f"{get_control_display('confirm', 'A')} : {_('controls_confirm_select')}",
+            f"{get_control_display('cancel', 'B')} : {_('controls_cancel_back')}",
+            f"{get_control_display('start', 'Start')} : {_('controls_action_start')}",
         ],
         _("controls_category_downloads"): [
-            f"{get_control_display('history', 'Y')} : {history_text}",
-            f"{get_control_display('progress', 'X')} : {clear_history_text}"
+            f"{get_control_display('history', 'Y')} : {_('controls_action_history')}",
+            f"{get_control_display('clear_history', 'X')} : {_('controls_action_clear_history')}",
         ],
-        _("controls_category_search"): [            
-            f"{get_control_display('filter', 'Select')} : {filter_search_text}",
-            f"{get_control_display('delete', 'Suppr')} : {delete_text}",
-            f"{get_control_display('space', 'Espace')} : {space_text}"
-        ]
-    }
-    
-    state_controls = {
-        "error": control_categories,
-        "platform": control_categories,
-        "game": control_categories,
-        "download_progress": control_categories,
-        "download_result": control_categories,
-        "confirm_exit": control_categories,
-        "extension_warning": control_categories,
-        "history": control_categories
+        _("controls_category_search"): [
+            f"{get_control_display('filter', 'Select')} : {_('controls_filter_search')}",
+            f"{get_control_display('delete', 'Suppr')} : {_('controls_action_delete')}",
+            f"{get_control_display('space', 'Espace')} : {_('controls_action_space')}",
+        ],
     }
 
-    control_columns = state_controls.get(previous_state, {})
-    if not control_columns:
-
+    # États autorisés (même logique qu'avant)
+    allowed_states = {
+        "error", "platform", "game", "download_result", "confirm_exit",
+        "extension_warning", "history", "clear_history"
+    }
+    if previous_state not in allowed_states:
         return
 
     screen.blit(OVERLAY, (0, 0))
 
-    # Organisation en 2x2
-    categories = list(control_columns.keys())
-    col1 = [categories[0], categories[2]]  # Navigation, Historique/Téléchargements
-    col2 = [categories[1], categories[3]]  # Actions principales, Recherche / Filtre
-    
-    # Calculer la largeur nécessaire
-    max_text_width = 0
-    for category, controls in control_columns.items():
-        for control in controls:
-            text_width = config.small_font.size(control)[0]
-            max_text_width = max(max_text_width, text_width)
-    
-    col_width = max_text_width + 40
-    popup_width = col_width * 2 + 100  # Plus d'espace entre colonnes
-    popup_height = 320
-    popup_x = (config.screen_width - popup_width) // 2
-    popup_y = (config.screen_height - popup_height) // 2
+    # Paramètres d'affichage
+    font = config.small_font
+    title_font = config.title_font
+    section_font = config.font
+    line_spacing = max(4, font.get_height() // 6)
+    section_spacing = font.get_height() // 2
+    title_spacing = font.get_height()
+    padding = 24
+    inter_col_spacing = 48
+    max_panel_width = int(config.screen_width * 0.9)
+    max_panel_height = int(config.screen_height * 0.9)
 
-    # Fond principal
-    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (popup_x, popup_y, popup_width, popup_height), border_radius=12)
-    pygame.draw.rect(screen, THEME_COLORS["border"], (popup_x, popup_y, popup_width, popup_height), 2, border_radius=12)
+    # Découpage en 2 colonnes (équilibré)
+    categories_list = list(control_categories.items())
+    mid = len(categories_list) // 2
+    col1_categories = categories_list[:mid]
+    col2_categories = categories_list[mid:]
+
+    # Largeur cible par colonne (avant wrapping)
+    target_col_width = (max_panel_width - 2 * padding - inter_col_spacing) // 2
+
+    def wrap_lines_for_column(cat_pairs):
+        wrapped = []  # liste de (is_section_title, surface)
+        max_width = 0
+        total_height = 0
+        for section_title, lines in cat_pairs:
+            # Titre section
+            sec_surf = section_font.render(section_title, True, THEME_COLORS["fond_lignes"])
+            wrapped.append((True, sec_surf))
+            total_height += sec_surf.get_height() + line_spacing
+
+            for raw_line in lines:
+                # Wrap par mots
+                words = raw_line.split()
+                cur = ""
+                for word in words:
+                    test = (cur + " " + word).strip()
+                    if font.size(test)[0] <= target_col_width:
+                        cur = test
+                    else:
+                        if cur:
+                            line_surf = font.render(cur, True, THEME_COLORS["text"])
+                            wrapped.append((False, line_surf))
+                            total_height += line_surf.get_height() + line_spacing
+                            max_width = max(max_width, line_surf.get_width())
+                        cur = word
+                if cur:
+                    line_surf = font.render(cur, True, THEME_COLORS["text"])
+                    wrapped.append((False, line_surf))
+                    total_height += line_surf.get_height() + line_spacing
+                    max_width = max(max_width, line_surf.get_width())
+
+            total_height += section_spacing  # espace après section
+            max_width = max(max_width, sec_surf.get_width())
+
+        if wrapped and not wrapped[-1][0]:
+            total_height -= section_spacing  # retirer excédent final
+        return wrapped, max_width, total_height
+
+    col1_wrapped, col1_w, col1_h = wrap_lines_for_column(col1_categories)
+    col2_wrapped, col2_w, col2_h = wrap_lines_for_column(col2_categories)
+
+    col_widths_sum = col1_w + col2_w + inter_col_spacing
+    content_width = min(max_panel_width - 2 * padding, max(col_widths_sum, col1_w + col2_w + inter_col_spacing))
+    panel_width = content_width + 2 * padding
+
+    title_surf = title_font.render(_("controls_help_title"), True, THEME_COLORS["text"])
+    title_height = title_surf.get_height()
+
+    content_height = max(col1_h, col2_h)
+    panel_height = title_height + title_spacing + content_height + 2 * padding
+    if panel_height > max_panel_height:
+        panel_height = max_panel_height
+        enable_clip = True
+    else:
+        enable_clip = False
+
+    panel_x = (config.screen_width - panel_width) // 2
+    panel_y = (config.screen_height - panel_height) // 2
+
+    # Fond panel
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (panel_x, panel_y, panel_width, panel_height), border_radius=16)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (panel_x, panel_y, panel_width, panel_height), 2, border_radius=16)
 
     # Titre
-    title_text = _("controls_help_title")
-    title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
-    title_rect = title_surface.get_rect(center=(config.screen_width // 2, popup_y + 25))
-    screen.blit(title_surface, title_rect)
+    title_rect = title_surf.get_rect(center=(panel_x + panel_width // 2, panel_y + padding + title_height // 2))
+    screen.blit(title_surf, title_rect)
 
-    # Affichage en colonnes
-    start_y = popup_y + 60
-    
-    # Colonne 1
-    current_y = start_y
-    for category in col1:
-        controls = control_columns[category]
-        # Titre
-        cat_surface = config.font.render(category, True, THEME_COLORS["fond_lignes"])
-        cat_rect = cat_surface.get_rect(x=popup_x + 20, y=current_y)
-        screen.blit(cat_surface, cat_rect)
-        current_y += 30  # Plus d'espace après titre
-        # Contrôles
-        for control in controls:
-            ctrl_surface = config.small_font.render(f"• {control}", True, THEME_COLORS["text"])
-            ctrl_rect = ctrl_surface.get_rect(x=popup_x + 30, y=current_y)
-            screen.blit(ctrl_surface, ctrl_rect)
-            current_y += 20
-        current_y += 20  # Plus d'espace entre sections
-    
-    # Colonne 2
-    current_y = start_y
-    for category in col2:
-        controls = control_columns[category]
-        # Titre
-        cat_surface = config.font.render(category, True, THEME_COLORS["fond_lignes"])
-        cat_rect = cat_surface.get_rect(x=popup_x + col_width + 40, y=current_y)  # Plus d'espace entre colonnes
-        screen.blit(cat_surface, cat_rect)
-        current_y += 30  # Plus d'espace après titre
-        # Contrôles
-        for control in controls:
-            ctrl_surface = config.small_font.render(f"• {control}", True, THEME_COLORS["text"])
-            ctrl_rect = ctrl_surface.get_rect(x=popup_x + col_width + 50, y=current_y)  # Plus d'espace entre colonnes
-            screen.blit(ctrl_surface, ctrl_rect)
-            current_y += 20
-        current_y += 20  # Plus d'espace entre sections
+    # Zones de colonnes
+    col_top = panel_y + padding + title_height + title_spacing
+    col1_x = panel_x + padding
+    col2_x = panel_x + panel_width - padding - col2_w
+
+    # Clip si nécessaire
+    prev_clip = None
+    if enable_clip:
+        prev_clip = screen.get_clip()
+        clip_rect = pygame.Rect(panel_x + padding, col_top, panel_width - 2 * padding, panel_height - (col_top - panel_y) - padding)
+        screen.set_clip(clip_rect)
+
+    # Dessin colonne 1
+    y1 = col_top
+    last_section = False
+    for is_section, surf in col1_wrapped:
+        if is_section:
+            y1 += 0
+        if y1 + surf.get_height() > panel_y + panel_height - padding:
+            break
+        screen.blit(surf, (col1_x, y1))
+        y1 += surf.get_height() + (section_spacing if is_section else line_spacing)
+
+    # Dessin colonne 2
+    y2 = col_top
+    for is_section, surf in col2_wrapped:
+        if y2 + surf.get_height() > panel_y + panel_height - padding:
+            break
+        screen.blit(surf, (col2_x, y2))
+        y2 += surf.get_height() + (section_spacing if is_section else line_spacing)
+
+    if enable_clip and prev_clip is not None:
+        screen.set_clip(prev_clip)
+
 
 # Menu Quitter Appli
 def draw_confirm_dialog(screen):

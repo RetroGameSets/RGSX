@@ -1,7 +1,33 @@
 import pygame #type:ignore
 import config
-from utils import save_accessibility_settings
+import os
+import json
+from logging import getLogger
 from language import _
+
+logger = getLogger(__name__)
+
+def load_accessibility_settings():
+    """Charge les paramètres d'accessibilité depuis accessibility.json."""
+    accessibility_path = os.path.join(config.SAVE_FOLDER, "accessibility.json")
+    try:
+        if os.path.exists(accessibility_path):
+            with open(accessibility_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Erreur lors du chargement de accessibility.json: {str(e)}")
+    return {"font_scale": 1.0}
+
+def save_accessibility_settings(settings):
+    """Sauvegarde les paramètres d'accessibilité dans accessibility.json."""
+    accessibility_path = os.path.join(config.SAVE_FOLDER, "accessibility.json")
+    try:
+        os.makedirs(config.SAVE_FOLDER, exist_ok=True)
+        with open(accessibility_path, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2)
+        logger.debug(f"Paramètres d'accessibilité sauvegardés: {settings}")
+    except Exception as e:
+        logger.error(f"Erreur lors de la sauvegarde de accessibility.json: {str(e)}")
 
 def draw_accessibility_menu(screen):
     """Affiche le menu d'accessibilité avec curseur pour la taille de police."""

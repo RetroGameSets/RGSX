@@ -28,7 +28,7 @@ ACTION_DEFS = [
     {"name": "page_up"},
     {"name": "page_down"},
     {"name": "history"},
-    {"name": "delete_history"},
+    {"name": "clear_history"},
     {"name": "delete"},
     {"name": "space"},
 ]
@@ -60,14 +60,14 @@ SDL_TO_PYGAME_KEY = {
 
 # Noms lisibles pour les touches clavier
 KEY_NAMES = {
-    pygame.K_RETURN: "Entrée",
+    pygame.K_RETURN: "Enter",
     pygame.K_ESCAPE: "Échap",
     pygame.K_SPACE: "Espace",
-    pygame.K_UP: "Flèche Haut",
-    pygame.K_DOWN: "Flèche Bas",
-    pygame.K_LEFT: "Flèche Gauche",
-    pygame.K_RIGHT: "Flèche Droite",
-    pygame.K_BACKSPACE: "Retour Arrière",
+    pygame.K_UP: "↑",
+    pygame.K_DOWN: "↓",
+    pygame.K_LEFT: "←",
+    pygame.K_RIGHT: "→",
+    pygame.K_BACKSPACE: "Backspace",
     pygame.K_TAB: "Tab",
     pygame.K_LALT: "Alt",
     pygame.K_RALT: "AltGR",
@@ -116,23 +116,23 @@ KEY_NAMES = {
     pygame.K_7: "7",
     pygame.K_8: "8",
     pygame.K_9: "9",
-    pygame.K_KP0: "Pavé 0",
-    pygame.K_KP1: "Pavé 1",
-    pygame.K_KP2: "Pavé 2",
-    pygame.K_KP3: "Pavé 3",
-    pygame.K_KP4: "Pavé 4",
-    pygame.K_KP5: "Pavé 5",
-    pygame.K_KP6: "Pavé 6",
-    pygame.K_KP7: "Pavé 7",
-    pygame.K_KP8: "Pavé 8",
-    pygame.K_KP9: "Pavé 9",
-    pygame.K_KP_PERIOD: "Pavé .",
-    pygame.K_KP_DIVIDE: "Pavé /",
-    pygame.K_KP_MULTIPLY: "Pavé *",
-    pygame.K_KP_MINUS: "Pavé -",
-    pygame.K_KP_PLUS: "Pavé +",
-    pygame.K_KP_ENTER: "Pavé Entrée",
-    pygame.K_KP_EQUALS: "Pavé =",
+    pygame.K_KP0: "Num 0",
+    pygame.K_KP1: "Num 1",
+    pygame.K_KP2: "Num 2",
+    pygame.K_KP3: "Num 3",
+    pygame.K_KP4: "Num 4",
+    pygame.K_KP5: "Num 5",
+    pygame.K_KP6: "Num 6",
+    pygame.K_KP7: "Num 7",
+    pygame.K_KP8: "Num 8",
+    pygame.K_KP9: "Num 9",
+    pygame.K_KP_PERIOD: "Num .",
+    pygame.K_KP_DIVIDE: "Num /",
+    pygame.K_KP_MULTIPLY: "Num *",
+    pygame.K_KP_MINUS: "Num -",
+    pygame.K_KP_PLUS: "Num +",
+    pygame.K_KP_ENTER: "Num Enter",
+    pygame.K_KP_EQUALS: "Num =",
     pygame.K_F1: "F1",
     pygame.K_F2: "F2",
     pygame.K_F3: "F3",
@@ -152,9 +152,9 @@ KEY_NAMES = {
     pygame.K_DELETE: "Suppr",
     pygame.K_HOME: "Début",
     pygame.K_END: "Fin",
-    pygame.K_PAGEUP: "Page Haut",
-    pygame.K_PAGEDOWN: "Page Bas",
-    pygame.K_PRINT: "Impr Écran",
+    pygame.K_PAGEUP: "Page+",
+    pygame.K_PAGEDOWN: "Page-",
+    pygame.K_PRINT: "PrintScreen",
     pygame.K_SYSREQ: "SysReq",
     pygame.K_BREAK: "Pause",
     pygame.K_PAUSE: "Pause",
@@ -286,17 +286,36 @@ HOLD_DURATION = 1000
 
 JOYHAT_DEBOUNCE = 200  # Délai anti-rebond pour JOYHATMOTION (ms)
 
-def load_controls_config():
+def load_controls_config(path=CONTROLS_CONFIG_PATH):
     """Charge la configuration des contrôles depuis controls.json"""
     try:
-        if os.path.exists(CONTROLS_CONFIG_PATH):
-            with open(CONTROLS_CONFIG_PATH, "r") as f:
-                config_data = json.load(f)
-                logger.debug(f"Configuration des contrôles chargée : {config_data}")
-                return config_data
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if not isinstance(data, dict):
+                    data = {}
         else:
-            logger.debug("Aucun fichier controls.json trouvé")
-            return {}
+            data = {}
+        changed = False
+
+        # Normaliser les alias vers l’action canonique "clear_history"
+        # Votre controls.json a "delete_history": mappez-le vers "clear_history"
+        if "delete_history" in data and "clear_history" not in data:
+            data["clear_history"] = data["delete_history"]
+            changed = True
+        # Ancien alias éventuel
+        if "progress" in data and "clear_history" not in data:
+            data["clear_history"] = data["progress"]
+            changed = True
+
+        # Compléter avec des valeurs par défaut si nécessaire (facultatif selon votre implémentation)
+        # ...existing code de complétion si présent...
+
+        if changed:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        return data
     except Exception as e:
         logger.error(f"Erreur lors du chargement de controls.json : {e}")
         return {}

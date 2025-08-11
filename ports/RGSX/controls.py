@@ -26,7 +26,7 @@ key_states = {}  # Dictionnaire pour suivre l'état des touches
 
 # Liste des états valides
 VALID_STATES = [
-    "platform", "game", "download_progress", "download_result", "confirm_exit",
+    "platform", "game", "download_result", "confirm_exit",
     "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
     "redownload_game_cache", "restart_popup", "error", "loading", "confirm_clear_history",
     "language_select"
@@ -52,7 +52,7 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
         "up": {"type": "key", "key": pygame.K_UP},
         "down": {"type": "key", "key": pygame.K_DOWN},
         "start": {"type": "key", "key": pygame.K_p},
-        "progress": {"type": "key", "key": pygame.K_x},
+        "clear_history": {"type": "key", "key": pygame.K_x},
         "history": {"type": "key", "key": pygame.K_h},
         "page_up": {"type": "key", "key": pygame.K_PAGEUP},
         "page_down": {"type": "key", "key": pygame.K_PAGEDOWN},
@@ -62,17 +62,27 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
     }
     
     try:
-        with open(path, "r") as f:
-            config_data = json.load(f)
-            # Vérifier et compléter les actions manquantes
-            for action, default_mapping in default_config.items():
-                if action not in config_data:
-                    logger.warning(f"Action {action} manquante dans {path}, utilisation de la valeur par défaut")
-                    config_data[action] = default_mapping
-            return config_data
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error(f"Erreur lors de la lecture de {path} : {e}, utilisation de la configuration par défaut")
-        return default_config
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if not isinstance(data, dict):
+                    data = {}
+        else:
+            data = {}
+        changed = False
+        for k, v in default_config.items():
+            if k not in data:
+                data[k] = v
+                changed = True
+        if changed:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            logging.getLogger(__name__).debug(f"controls.json complété avec les actions manquantes: {path}")
+        return data
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Erreur load_controls_config: {e}")
+        return default_config.copy()
 
 # Fonction pour vérifier si un événement correspond à une action
 def is_input_matched(event, action_name):
@@ -254,11 +264,6 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_start_time = 0
                     config.repeat_last_action = current_time
                     config.needs_redraw = True
-            elif is_input_matched(event, "progress"):
-                if config.download_tasks:
-                    config.menu_state = "download_progress"
-                    config.needs_redraw = True
-                    logger.debug("Retour à download_progress depuis platform")
             elif is_input_matched(event, "history"):
                 config.menu_state = "history"
                 config.needs_redraw = True
@@ -356,20 +361,20 @@ def handle_controls(event, sources, joystick, screen):
                     config.scroll_offset = 0
                     config.needs_redraw = True
                     logger.debug("Sortie du mode recherche")
-                elif is_input_matched(event, "filter") or is_input_matched(event, "confirm"):
+                elif is_input_matched(event, "filter"):
                     config.search_mode = False
                     config.filter_active = bool(config.search_query)
                     config.needs_redraw = True
                     logger.debug(f"Validation du filtre avec manette: query={config.search_query}, filter_active={config.filter_active}")  
             elif config.search_mode and not config.is_non_pc:
                 # Gestion de la recherche sur PC (clavier et manette)
-                if is_input_matched(event, "filter"):
+                if is_input_matched(event, "confirm"):
                     config.search_mode = False
                     config.filter_active = True
                     config.current_game = 0
                     config.scroll_offset = 0
                     config.needs_redraw = True
-                    logger.debug(f"Validation du filtre avec bouton filter sur PC: query={config.search_query}")
+                    logger.debug(f"Validation du filtre avec bouton entree sur PC: query={config.search_query}")
                 elif is_input_matched(event, "cancel"):
                     config.search_mode = False
                     config.search_query = ""
@@ -397,31 +402,7 @@ def handle_controls(event, sources, joystick, screen):
                             config.scroll_offset = 0
                             config.needs_redraw = True
                             logger.debug(f"Suppression caractère: query={config.search_query}, jeux filtrés={len(config.filtered_games)}")
-                   # Gestion de la validation
-                    elif is_input_matched(event, "confirm"):
-                        config.search_mode = False
-                        config.filter_active = True  # Conserver le filtre actif
-                        config.current_game = 0
-                        config.scroll_offset = 0
-                        config.needs_redraw = True
-                        logger.debug(f"Validation de la recherche: query={config.search_query}, jeux filtrés={len(config.filtered_games)}")
-                    # Gestion de l'annulation
-                    elif is_input_matched(event, "cancel"):
-                        config.search_mode = False
-                        config.search_query = ""
-                        config.filtered_games = config.games
-                        config.current_game = 0
-                        config.scroll_offset = 0
-                        config.needs_redraw = True
-                        logger.debug("Sortie du mode recherche")
-                    # Gestion de la validation avec le bouton filter
-                    elif is_input_matched(event, "filter"):
-                        config.search_mode = False
-                        config.filter_active = True
-                        config.current_game = 0
-                        config.scroll_offset = 0
-                        config.needs_redraw = True
-                        logger.debug(f"Validation du filtre avec bouton filter: query={config.search_query}, jeux filtrés={len(config.filtered_games)}")
+                  
      
             else:
                 if is_input_matched(event, "up"):
@@ -462,13 +443,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.scroll_offset = 0
                     config.selected_key = (0, 0)
                     config.needs_redraw = True
-                    logger.debug("Entrée en mode recherche")
-                elif is_input_matched(event, "progress"):
-                    if config.download_tasks:
-                        config.previous_menu_state = config.menu_state
-                        config.menu_state = "download_progress"
-                        config.needs_redraw = True
-                        logger.debug(f"Retour à download_progress depuis {config.previous_menu_state}")
+                    logger.debug("Entrée en mode recherche") 
                 elif is_input_matched(event, "history"):
                     config.menu_state = "history"
                     config.needs_redraw = True
@@ -683,7 +658,9 @@ def handle_controls(event, sources, joystick, screen):
                 config.repeat_last_action = current_time
                 config.needs_redraw = True
                 #logger.debug("Page suivante dans l'historique")
-            elif is_input_matched(event, "progress"):
+            elif (is_input_matched(event, "clear_history")
+                    or is_input_matched(event, "delete_history")
+                    or is_input_matched(event, "progress")):
                 config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                 config.menu_state = "confirm_clear_history"
                 config.confirm_clear_selection = 0  # 0 pour "Non", 1 pour "Oui"
@@ -782,12 +759,12 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "cancel"):
                 config.menu_state = "history"
                 config.needs_redraw = True
-        
-        # Confirmation vider l'historique"
+
+        # Confirmation vider l'historique   
         elif config.menu_state == "confirm_clear_history":
             logger.debug(f"État confirm_clear_history, confirm_clear_selection={config.confirm_clear_selection}, événement={event.type}, valeur={getattr(event, 'value', None)}")
             if is_input_matched(event, "confirm"):
-                logger.debug(f"Action confirm détectée dans confirm_clear_history")
+                # 0 = Non, 1 = Oui
                 if config.confirm_clear_selection == 1:  # Oui
                     clear_history()
                     config.history = []
@@ -799,38 +776,13 @@ def handle_controls(event, sources, joystick, screen):
                 else:  # Non
                     config.menu_state = "history"
                     config.needs_redraw = True
-                    logger.debug("Annulation du vidage de l'historique, retour à history")
-            elif is_input_matched(event, "left"):
-                #logger.debug(f"Action left détectée dans confirm_clear_history")
-                config.confirm_clear_selection = 1  # Sélectionner "Non"
+            elif is_input_matched(event, "left") or is_input_matched(event, "right"):
+                config.confirm_clear_selection = 1 - config.confirm_clear_selection
                 config.needs_redraw = True
-                #logger.debug(f"Changement sélection confirm_clear_history: {config.confirm_clear_selection}")
-            elif is_input_matched(event, "right"):
-                #logger.debug(f"Action right détectée dans confirm_clear_history")
-                config.confirm_clear_selection = 0  # Sélectionner "Oui"
-                config.needs_redraw = True
-                #logger.debug(f"Changement sélection confirm_clear_history: {config.confirm_clear_selection}")
             elif is_input_matched(event, "cancel"):
-                #logger.debug(f"Action cancel détectée dans confirm_clear_history")
                 config.menu_state = "history"
                 config.needs_redraw = True
                 logger.debug("Annulation du vidage de l'historique, retour à history")
-        
-        # Progression téléchargement
-        elif config.menu_state == "download_progress":
-            if is_input_matched(event, "cancel"):
-                for task in config.download_tasks:
-                    task.cancel()
-                config.download_tasks.clear()
-                config.download_progress.clear()
-                config.pending_download = None
-                config.menu_state = validate_menu_state(config.previous_menu_state)
-                config.needs_redraw = True
-                logger.debug(f"Téléchargement annulé, retour à {config.menu_state}")
-            elif is_input_matched(event, "progress"):
-                config.menu_state = validate_menu_state(config.previous_menu_state)
-                config.needs_redraw = True
-                logger.debug(f"Retour à {config.menu_state} depuis download_progress")
 
         # Résultat téléchargement
         elif config.menu_state == "download_result":
@@ -958,7 +910,6 @@ def handle_controls(event, sources, joystick, screen):
                 if config.redownload_confirm_selection == 1:  # Oui
                     logger.debug("Début du redownload des jeux")
                     config.download_tasks.clear()
-                    config.download_progress.clear()
                     config.pending_download = None
                     if os.path.exists(config.APP_FOLDER + "/sources.json"):
                         try:
@@ -1151,7 +1102,11 @@ def get_emergency_controls():
         "left": {"type": "key", "key": pygame.K_LEFT},
         "right": {"type": "key", "key": pygame.K_RIGHT},
         "start": {"type": "key", "key": pygame.K_p},
-        # Ajouter aussi les contrôles manette de base si disponible
-        "confirm_joy": {"type": "button", "button": 0},  # A/Croix
-        "cancel_joy": {"type": "button", "button": 1},   # B/Rond
+        "history": {"type": "key", "key": pygame.K_h},
+        "clear_history": {"type": "key", "key": pygame.K_x},
+        "page_up": {"type": "key", "key": pygame.K_PAGEUP},
+        "page_down": {"type": "key", "key": pygame.K_PAGEDOWN},
+        # manette basique
+        "confirm_joy": {"type": "button", "button": 0},
+        "cancel_joy": {"type": "button", "button": 1},
     }

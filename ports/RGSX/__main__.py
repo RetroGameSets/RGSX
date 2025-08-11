@@ -1,13 +1,14 @@
 import os
 os.environ["SDL_FBDEV"] = "/dev/fb0"
 import pygame # type: ignore
-# type: ignore[reportAttributeAccessIssue]
 import asyncio
 import platform
 import logging
 import requests
 import queue
 import datetime
+import config
+
 from display import (
     init_display, draw_loading_screen, draw_error_screen, draw_platform_grid,
     draw_progress_screen, draw_controls, draw_virtual_keyboard, draw_popup_result_download,
@@ -19,14 +20,14 @@ from display import (
 from language import handle_language_menu_events, _
 from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates
 from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls
-from controls_mapper import load_controls_config, save_controls_config, map_controls, draw_controls_mapping, get_actions
+from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, get_actions
 from utils import (
     detect_non_pc, load_sources, check_extension_before_download, extract_zip_data,
-    play_random_music, load_accessibility_settings, load_music_config
+    play_random_music, load_music_config
 )
 from history import load_history, save_history
-import config
 from config import OTA_data_ZIP
+from accessibility import  load_accessibility_settings
 
 # Configuration du logging
 try:
@@ -267,7 +268,15 @@ async def main():
 
             if config.menu_state == "confirm_clear_history":
                 action = handle_controls(event, sources, joystick, screen)
-                config.needs_redraw = True
+                if action == "confirm":
+                    config.history.clear()
+                    save_history(config.history)
+                    config.menu_state = "history"
+                    config.needs_redraw = True
+                    logger.debug("Historique effacé")
+                elif action == "cancel":
+                    config.menu_state = "history"
+                    config.needs_redraw = True
                 continue
 
             if config.menu_state == "confirm_cancel_download":
@@ -314,7 +323,7 @@ async def main():
                         logger.debug("Téléchargement annulé, retour à l'état précédent")
                 continue
 
-            if config.menu_state in ["platform", "game", "error", "confirm_exit", "download_progress", "download_result", "history"]:
+            if config.menu_state in ["platform", "game", "error", "confirm_exit", "download_result", "history"]:
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 if action == "quit":
@@ -456,7 +465,13 @@ async def main():
                                     config.needs_redraw = True
                                     logger.debug(f"Retéléchargement terminé pour {game_name}, succès={success}, message={message}")
                             break
-        
+                elif action in ("clear_history", "delete_history") and config.menu_state == "history":
+                    # Ouvrir le dialogue de confirmation
+                    config.previous_menu_state = config.menu_state
+                    config.menu_state = "confirm_clear_history"
+                    config.confirm_selection = 0
+                    config.needs_redraw = True
+                    continue
         
         
         

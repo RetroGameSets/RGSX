@@ -12,28 +12,6 @@ import zipfile
 import time
 import random
 from config import JSON_EXTENSIONS, SAVE_FOLDER
-
-def load_accessibility_settings():
-    """Charge les paramètres d'accessibilité depuis accessibility.json."""
-    accessibility_path = os.path.join(SAVE_FOLDER, "accessibility.json")
-    try:
-        if os.path.exists(accessibility_path):
-            with open(accessibility_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-    except Exception as e:
-        logger.error(f"Erreur lors du chargement de accessibility.json: {str(e)}")
-    return {"font_scale": 1.0}
-
-def save_accessibility_settings(settings):
-    """Sauvegarde les paramètres d'accessibilité dans accessibility.json."""
-    accessibility_path = os.path.join(SAVE_FOLDER, "accessibility.json")
-    try:
-        os.makedirs(SAVE_FOLDER, exist_ok=True)
-        with open(accessibility_path, 'w', encoding='utf-8') as f:
-            json.dump(settings, f, indent=2)
-        logger.debug(f"Paramètres d'accessibilité sauvegardés: {settings}")
-    except Exception as e:
-        logger.error(f"Erreur lors de la sauvegarde de accessibility.json: {str(e)}")
 from history import save_history
 from language import _  # Import de la fonction de traduction
 from datetime import datetime
@@ -59,7 +37,7 @@ def detect_non_pc():
     except (subprocess.SubprocessError, FileNotFoundError):
         logger.debug(f"batocera-es-swissknife non disponible, utilisation de platform.machine(): {arch}")
     
-    is_non_pc = arch not in ["x86_64", "amd64"]
+    is_non_pc = arch not in ["x86_64", "amd64", "AMD64"]
     logger.debug(f"Système détecté: {platform.system()}, architecture: {arch}, is_non_pc={is_non_pc}")
     return is_non_pc
 

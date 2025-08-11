@@ -28,7 +28,7 @@ def parse_es_input_config():
             "right": "right",
             "pageup": "page_up",
             "pagedown": "page_down",
-            "y": "progress",
+            "y": "clear_history",
             "x": "history",
             "select": "filter",
             "leftshoulder": "delete",
@@ -129,7 +129,7 @@ def parse_es_input_config():
                         controls_config["start"] = {"type": "key", "key": pygame.K_p}
                         controls_config["filter"] = {"type": "key", "key": pygame.K_f}
                         controls_config["history"] = {"type": "key", "key": pygame.K_h}
-                        controls_config["progress"] = {"type": "key", "key": pygame.K_x}
+                        controls_config["clear_history"] = {"type": "key", "key": pygame.K_x}
                         controls_config["page_up"] = {"type": "key", "key": pygame.K_PAGEUP}
                         controls_config["page_down"] = {"type": "key", "key": pygame.K_PAGEDOWN}
                 
@@ -143,7 +143,7 @@ def parse_es_input_config():
                     "right": {"type": "key", "key": pygame.K_RIGHT},
                     "page_up": {"type": "key", "key": pygame.K_PAGEUP},
                     "page_down": {"type": "key", "key": pygame.K_PAGEDOWN},
-                    "progress": {"type": "key", "key": pygame.K_x},
+                    "clear_history": {"type": "key", "key": pygame.K_x},
                     "history": {"type": "key", "key": pygame.K_h},
                     "filter": {"type": "key", "key": pygame.K_f},
                     "delete": {"type": "key", "key": pygame.K_DELETE},
