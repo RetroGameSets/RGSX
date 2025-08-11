@@ -12,16 +12,15 @@
     
     "loading_test_connection": "Testing connection...",
     "loading_update_check": "Checking for updates... Please wait...",
-    "loading_download_data": "Downloading games and images...",
-    "loading_download_initial": "Downloading initial Data Folder...",
-    "loading_extract_initial": "Extracting initial Data Folder...",
+    "loading_download_data": "Downloading initial Data folder...",
+    "loading_extract_initial": "Extracting initial Data folder...",
     "loading_systems": "Loading systems...",
     "loading_progress": "Progress: {0}%",
     
-    "error_no_internet": "No internet connection. Please check your network.",
+    "error_no_internet": "No Internet connection. Check your network.",
     "error_load_sources": "Failed to load sources.json",
     "error_controls_mapping": "Failed to map controls",
-    "error_download_data": "Failed to download/extract Data Folder: {0}",
+    "error_download_data": "Failed to download or extract the initial Data folder.",
     "error_api_key": "Please enter your API key (premium only) in the file {0}",
     "error_api_key_extended": "Please enter your API key (premium only) in the file /userdata/saves/ports/rgsx/1fichierAPI.txt by opening it in a text editor and pasting your API key",
     "error_invalid_download_data": "Invalid download data",
@@ -118,7 +117,6 @@
     "controls_desc_space": "Add space (e.g. RT, Space)",
     "controls_desc_start": "Open pause menu (e.g. Start, AltGr)",
     
-    "footer_version": "RGSX v{0} - {1}: Options - {2}: History - {3}: Filter",
     
     "action_retry": "Retry",
     "action_quit": "Quit",

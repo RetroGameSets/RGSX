@@ -3,6 +3,7 @@ import json
 import pygame #type: ignore
 import logging
 import config
+import subprocess 
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,18 @@ DEFAULT_LANGUAGE = "en"
 current_language = DEFAULT_LANGUAGE
 translations = {}
 show_language_selector_on_startup = False
+
+# Mapping optionnel pour normaliser les locales Batocera -> codes 2 lettres
+BATOCERA_LOCALE_MAP = {
+    "en_US": "en",
+    "en_GB": "en",
+    "fr_FR": "fr",
+    "de_DE": "de",
+    "es_ES": "es",
+    "it_IT": "it",
+    "tr_TR": "tr",
+    "zh_CN": "zh",
+}
 
 def load_language(lang_code=None):
     """Charge les traductions pour la langue spécifiée ou la langue par défaut."""
@@ -316,6 +329,40 @@ def update_valid_states():
         VALID_STATES.append("language_select")
         logger.debug("État language_select ajouté aux états valides")
 
+def detect_batocera_language():
+    """Tente de lire la langue système de Batocera et retourne un code à 2 lettres, sinon None."""
+    try:
+        batocera_conf = "/userdata/system/batocera.conf"
+        if not os.path.exists(batocera_conf):
+            logger.debug("batocera.conf introuvable, détection Batocera ignorée")
+            return None
+
+        # batocera-settings-get system.language -> ex: en_US, fr_FR, ...
+        res = subprocess.run(
+            ["batocera-settings-get", "system.language"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if res.returncode != 0:
+            logger.warning(f"Lecture batocera-settings-get échouée (code {res.returncode}): {res.stderr.strip()}")
+            return None
+
+        locale_val = res.stdout.strip()
+        if not locale_val:
+            logger.warning("Langue Batocera vide")
+            return None
+
+        lang2 = BATOCERA_LOCALE_MAP.get(locale_val, locale_val.split("_")[0].lower())
+        logger.info(f"Langue Batocera détectée: {locale_val} -> {lang2}")
+        return lang2
+    except FileNotFoundError:
+        logger.debug("Commande batocera-settings-get introuvable")
+        return None
+    except Exception as e:
+        logger.error(f"Erreur lors de la détection de la langue Batocera: {e}")
+        return None
+
 def initialize_language():
     """Initialise la langue au démarrage de l'application."""
     global show_language_selector_on_startup
@@ -323,19 +370,23 @@ def initialize_language():
     # Vérifier si le fichier de préférence de langue existe
     language_file_exists = os.path.exists(config.LANGUAGE_CONFIG_PATH)
     
-    # Si le fichier n'existe pas, créer un fichier avec le français par défaut
     if not language_file_exists:
-        logger.info("Aucun fichier de préférence de langue trouvé, création avec le français par défaut")
-        save_language_preference(DEFAULT_LANGUAGE)
-        show_language_selector_on_startup = False  # Ne pas afficher le sélecteur au démarrage
+        # Tentative de détection Batocera
+        detected = detect_batocera_language()
+        if detected:
+            logger.info(f"Préférence de langue initialisée depuis Batocera: {detected}")
+            save_language_preference(detected)
+        else:
+            logger.info(f"Aucune préférence trouvée, utilisation de la langue par défaut: {DEFAULT_LANGUAGE}")
+            save_language_preference(DEFAULT_LANGUAGE)
+        show_language_selector_on_startup = False
     else:
-        # Le fichier existe, charger normalement
-        show_language_selector_on_startup = False  # Ne jamais afficher le sélecteur au démarrage
-    
+        show_language_selector_on_startup = False  # Comportement actuel
+
     # Charger la préférence de langue
     lang_code = load_language_preference()
     
-    # Charger la langue par défaut ou préférée
+    # Charger la langue préférée (avec fallback interne déjà géré)
     if load_language(lang_code):
         logger.info(f"Langue chargée au démarrage: {lang_code}")
     else:

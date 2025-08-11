@@ -4,7 +4,7 @@ import sys
 import logging
 
 # Version actuelle de l'application
-app_version = "1.9.8.5"
+app_version = "1.9.8.6"
 
 def get_application_root():
     """Détermine le dossier de l'application de manière portable."""

@@ -28,7 +28,7 @@ ACTION_DEFS = [
     {"name": "page_up"},
     {"name": "page_down"},
     {"name": "history"},
-    {"name": "progress"},
+    {"name": "delete_history"},
     {"name": "delete"},
     {"name": "space"},
 ]
@@ -43,7 +43,6 @@ def get_actions(lang=None):
         actions.append({"name": name, "display": display, "description": description})
     return actions
 
-# ...existing code...
 
 # Mappage des valeurs SDL vers les constantes Pygame
 SDL_TO_PYGAME_KEY = {

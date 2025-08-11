@@ -668,7 +668,7 @@ async def main():
         elif config.menu_state == "loading":
             if loading_step == "none":
                 loading_step = "test_internet"
-                config.current_loading_system = "Test de connexion..."
+                config.current_loading_system = _("loading_test_internet")
                 config.loading_progress = 0.0
                 config.needs_redraw = True
                 logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
@@ -676,13 +676,13 @@ async def main():
                 #logger.debug("Exécution de test_internet()")
                 if test_internet():
                     loading_step = "check_ota"
-                    config.current_loading_system = "Verification Mise à jour en cours... Patientez..."
+                    config.current_loading_system = _("loading_check_updates")
                     config.loading_progress = 20.0
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
                 else:
                     config.menu_state = "error"
-                    config.error_message = "Pas de connexion Internet. Vérifiez votre réseau."
+                    config.error_message = _("error_no_internet")
                     config.needs_redraw = True
                     logger.debug(f"Erreur : {config.error_message}")
             elif loading_step == "check_ota":
@@ -691,12 +691,13 @@ async def main():
                 logger.debug(f"Résultat de check_for_updates : success={success}, message={message}")
                 if not success:
                     config.menu_state = "error"
-                    config.error_message = message
+                    # Garder message (déjà fourni par check_for_updates), sinon fallback
+                    config.error_message = message or _("error_check_updates_failed")
                     config.needs_redraw = True
                     logger.debug(f"Erreur OTA : {message}")
                 else:
                     loading_step = "check_data"
-                    config.current_loading_system = "Téléchargement des jeux et images ..."
+                    config.current_loading_system = _("loading_downloading_games_images")
                     config.loading_progress = 50.0
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
@@ -704,7 +705,7 @@ async def main():
                 games_data_dir = os.path.join(config.APP_FOLDER, "games")
                 is_data_empty = not os.path.exists(games_data_dir) or not any(os.scandir(games_data_dir))
                 if is_data_empty:
-                    config.current_loading_system = "Téléchargement du Dossier Data initial..."
+                    config.current_loading_system = _("loading_download_data")
                     config.loading_progress = 30.0
                     config.needs_redraw = True
                     logger.debug("Dossier Data vide, début du téléchargement du ZIP")
@@ -733,7 +734,7 @@ async def main():
                                         await asyncio.sleep(0)
                             logger.debug(f"ZIP téléchargé : {zip_path}")
 
-                        config.current_loading_system = "Extraction du Dossier Data initial..."
+                        config.current_loading_system = _("loading_extracting_data")
                         config.loading_progress = 60.0
                         config.needs_redraw = True
                         dest_dir = config.APP_FOLDER
@@ -747,7 +748,8 @@ async def main():
                     except Exception as e:
                         logger.error(f"Erreur lors du téléchargement/extraction du Dossier Data : {str(e)}")
                         config.menu_state = "error"
-                        config.error_message = f"Échec du téléchargement/extraction du Dossier Data : {str(e)}"
+                        # Message UI générique (les détails restent dans les logs)
+                        config.error_message = _("error_extract_data_failed")
                         config.needs_redraw = True
                         loading_step = "load_sources"
                         if os.path.exists(zip_path):
@@ -757,13 +759,13 @@ async def main():
                         os.remove(zip_path)
                         logger.debug(f"Fichier ZIP {zip_path} supprimé")
                     loading_step = "load_sources"
-                    config.current_loading_system = "Chargement des systèmes..."
+                    config.current_loading_system = _("loading_load_systems")
                     config.loading_progress = 80.0
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
                 else:
                     loading_step = "load_sources"
-                    config.current_loading_system = "Chargement des systèmes..."
+                    config.current_loading_system = _("loading_load_systems")
                     config.loading_progress = 80.0
                     config.needs_redraw = True
                     logger.debug(f"Dossier Data non vide, passage à {loading_step}")
@@ -771,7 +773,7 @@ async def main():
                 sources = load_sources()
                 if not sources:
                     config.menu_state = "error"
-                    config.error_message = "Échec du chargement de sources.json"
+                    config.error_message = _("error_sources_load_failed")
                     config.needs_redraw = True
                     logger.debug("Erreur : Échec du chargement de sources.json")
                 else:

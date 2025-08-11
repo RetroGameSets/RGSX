@@ -17,6 +17,14 @@
     "loading_extract_initial": "Extrahieren des initialen Datenordners...",
     "loading_systems": "Systeme werden geladen...",
     "loading_progress": "Fortschritt: {0}%",
+    "loading_test_internet": "Verbindung wird getestet...",
+    "loading_check_updates": "Aktualisierungen werden geprüft... Bitte warten...",
+    "error_check_updates_failed": "Überprüfung auf Updates fehlgeschlagen.",
+    "loading_downloading_games_images": "Spiele und Bilder werden heruntergeladen...",
+    "loading_extracting_data": "Der initiale Datenordner wird entpackt...",
+    "loading_load_systems": "Systeme werden geladen...",
+    "error_extract_data_failed": "Herunterladen oder Entpacken des initialen Datenordners fehlgeschlagen.",
+    "error_sources_load_failed": "sources.json konnte nicht geladen werden",
     
     "error_no_internet": "Keine Internetverbindung. Überprüfe dein Netzwerk.",
     "error_load_sources": "Fehler beim Laden von sources.json",
@@ -118,7 +126,6 @@
     "controls_desc_space": "Leerzeichen hinzufügen (z.B.: RT, Leertaste)",
     "controls_desc_start": "Pausenmenü öffnen (z.B.: Start, AltGr)",
     
-    "footer_version": "RGSX v{0} - {1}: Optionen - {2}: Verlauf - {3}: Filtern",
     
     "action_retry": "Wiederholen",
     "action_quit": "Beenden",

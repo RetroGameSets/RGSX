@@ -17,6 +17,16 @@
     "loading_extract_initial": "Extrayendo la carpeta de datos inicial...",
     "loading_systems": "Cargando sistemas...",
     "loading_progress": "Progreso: {0}%",
+        
+    "loading_test_internet": "Probando la conexión...",
+    "loading_check_updates": "Buscando actualizaciones... Espere...",
+    "error_check_updates_failed": "Error al comprobar actualizaciones.",
+    "loading_downloading_games_images": "Descargando juegos e imágenes...",
+    "loading_extracting_data": "Extrayendo la carpeta de datos inicial...",
+    "loading_load_systems": "Cargando sistemas...",
+    "error_extract_data_failed": "Error al descargar o extraer la carpeta de datos inicial.",
+    "error_sources_load_failed": "Error al cargar sources.json",
+
     
     "error_no_internet": "Sin conexión a Internet. Verifica tu red.",
     "error_load_sources": "Error al cargar sources.json",
@@ -118,7 +128,6 @@
     "controls_desc_space": "Añadir espacio (ej: RT, Espacio)",
     "controls_desc_start": "Abrir el menú de pausa (ej: Start, AltGr)",
     
-    "footer_version": "RGSX v{0} - {1} : Opciones - {2} : Historial - {3} : Filtrar",
     
     "action_retry": "Reintentar",
     "action_quit": "Salir",
