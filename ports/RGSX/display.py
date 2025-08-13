@@ -1229,8 +1229,8 @@ def draw_pause_menu(screen, selected_option):
         _("menu_accessibility"),
         _("menu_redownload_cache"),
         music_option,  # Ici l'option dynamique
-        _("menu_quit"),
-        symlink_option
+        symlink_option,
+        _("menu_quit")
     ]
 
     menu_width = int(config.screen_width * 0.8)

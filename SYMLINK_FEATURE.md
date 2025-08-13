@@ -19,7 +19,7 @@ This allows users to create symlinks from the platform folder to external storag
 ## Usage
 
 1. Open the pause menu (P key or Start button)
-2. Navigate to "Symlink Option" (last option in the menu)
+2. Navigate to "Symlink Option" (second to last option, before Quit)
 3. Press Enter to toggle the option on/off
 4. The menu will show the current status: "Symlink option enabled" or "Symlink option disabled"
 
