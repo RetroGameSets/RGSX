@@ -814,7 +814,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.selected_option = max(0, config.selected_option - 1)
                 config.needs_redraw = True
             elif is_input_matched(event, "down"):
-                config.selected_option = min(7, config.selected_option + 1)  # 7 options maintenant
+                config.selected_option = min(8, config.selected_option + 1)  # 9 options maintenant (0-8)
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
                 if config.selected_option == 0:  # Controls
