@@ -177,5 +177,11 @@
     "controls_cancel_back": "Cancel/Back",
     "controls_history": "History",
     "controls_clear_history": "Clear History",
-    "controls_filter_search": "Filter/Search"
+    "controls_filter_search": "Filter/Search",
+    
+    "menu_symlink_option": "Symlink Option",
+    "symlink_option_enabled": "Symlink option enabled",
+    "symlink_option_disabled": "Symlink option disabled",
+    "symlink_settings_saved_successfully": "Symlink settings saved successfully",
+    "symlink_settings_save_error": "Error saving symlink settings"
 }

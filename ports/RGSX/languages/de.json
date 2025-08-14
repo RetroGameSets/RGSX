@@ -186,5 +186,11 @@
     "utils_permission_denied": "Berechtigung während der Extraktion verweigert: {0}",
     "utils_extraction_failed": "Extraktion fehlgeschlagen: {0}",
     "utils_unrar_unavailable": "Befehl unrar nicht verfügbar",
-    "utils_rar_list_failed": "Fehler beim Auflisten der RAR-Dateien: {0}"
+    "utils_rar_list_failed": "Fehler beim Auflisten der RAR-Dateien: {0}",
+    
+    "menu_symlink_option": "Symlink-Option",
+    "symlink_option_enabled": "Symlink-Option aktiviert",
+    "symlink_option_disabled": "Symlink-Option deaktiviert",
+    "symlink_settings_saved_successfully": "Symlink-Einstellungen erfolgreich gespeichert",
+    "symlink_settings_save_error": "Fehler beim Speichern der Symlink-Einstellungen"
 }

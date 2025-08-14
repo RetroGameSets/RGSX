@@ -814,7 +814,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.selected_option = max(0, config.selected_option - 1)
                 config.needs_redraw = True
             elif is_input_matched(event, "down"):
-                config.selected_option = min(7, config.selected_option + 1)  # 7 options maintenant
+                config.selected_option = min(8, config.selected_option + 1)  # 9 options maintenant (0-8)
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
                 if config.selected_option == 0:  # Controls
@@ -874,7 +874,15 @@ def handle_controls(event, sources, joystick, screen):
                         pygame.mixer.music.stop()
                     config.needs_redraw = True
                     logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via menu pause")
-                elif config.selected_option == 7:  # Quit
+                elif config.selected_option == 7:  # Symlink option
+                    from symlink_settings import set_symlink_option, get_symlink_option
+                    current_status = get_symlink_option()
+                    success, message = set_symlink_option(not current_status)
+                    config.popup_message = message
+                    config.popup_timer = 3000 if success else 5000
+                    config.needs_redraw = True
+                    logger.info(f"Symlink option {'activée' if not current_status else 'désactivée'} via menu pause")
+                elif config.selected_option == 8:  # Quit
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "confirm_exit"
                     config.confirm_selection = 0

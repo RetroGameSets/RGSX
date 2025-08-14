@@ -1214,6 +1214,13 @@ def draw_pause_menu(screen, selected_option):
     else:
         music_option = _("menu_music_disabled")
 
+    # Option symlink dynamique
+    from symlink_settings import get_symlink_option
+    if get_symlink_option():
+        symlink_option = _("symlink_option_enabled")
+    else:
+        symlink_option = _("symlink_option_disabled")
+
     options = [
         _("menu_controls"),
         _("menu_remap_controls"),
@@ -1222,6 +1229,7 @@ def draw_pause_menu(screen, selected_option):
         _("menu_accessibility"),
         _("menu_redownload_cache"),
         music_option,  # Ici l'option dynamique
+        symlink_option,
         _("menu_quit")
     ]
 

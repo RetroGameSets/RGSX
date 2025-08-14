@@ -187,5 +187,11 @@
     "controls_mapping_title": "Controls configuration",
     "controls_mapping_instruction": "Hold for 3s to configure:",
     "controls_mapping_waiting": "Waiting for a key or button...",
-    "controls_mapping_press": "Press a key or button"
+    "controls_mapping_press": "Press a key or button",
+    
+    "menu_symlink_option": "Option Symlink",
+    "symlink_option_enabled": "Option symlink activée",
+    "symlink_option_disabled": "Option symlink désactivée",
+    "symlink_settings_saved_successfully": "Paramètres symlink sauvegardés avec succès",
+    "symlink_settings_save_error": "Erreur lors de la sauvegarde des paramètres symlink"
 }
