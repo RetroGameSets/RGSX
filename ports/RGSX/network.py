@@ -176,14 +176,19 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     def download_thread():
         logger.debug(f"Thread téléchargement démarré pour {url}, task_id={task_id}")
         try:
+            # Use symlink path if enabled
+            from symlink_settings import apply_symlink_path
+            
             dest_dir = None
             for platform_dict in config.platform_dicts:
                 if platform_dict["platform"] == platform:
-                    dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder", normalize_platform_name(platform)))
+                    platform_folder = platform_dict.get("folder", normalize_platform_name(platform))
+                    dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
                     logger.debug(f"Répertoire de destination trouvé pour {platform}: {dest_dir}")
                     break
             if not dest_dir:
-                dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), normalize_platform_name(platform))
+                platform_folder = normalize_platform_name(platform)
+                dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
             
             os.makedirs(dest_dir, exist_ok=True)
             if not os.access(dest_dir, os.W_OK):
@@ -377,14 +382,19 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
         try:
             link = url.split('&af=')[0]
             logger.debug(f"URL nettoyée: {link}")
+            # Use symlink path if enabled
+            from symlink_settings import apply_symlink_path
+            
             dest_dir = None
             for platform_dict in config.platform_dicts:
                 if platform_dict["platform"] == platform:
-                    dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder", normalize_platform_name(platform)))
+                    platform_folder = platform_dict.get("folder", normalize_platform_name(platform))
+                    dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
                     break
             if not dest_dir:
                 logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform}")
-                dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform)
+                platform_folder = normalize_platform_name(platform)
+                dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
             logger.debug(f"Répertoire destination déterminé: {dest_dir}")
 
             logger.debug(f"Vérification répertoire destination: {dest_dir}")
