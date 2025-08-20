@@ -4,7 +4,7 @@ import sys
 import logging
 
 # Version actuelle de l'application
-app_version = "1.9.8.8."
+app_version = "1.9.8.8"
 
 def get_application_root():
     """Détermine le dossier de l'application de manière portable."""
@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 log_dir = os.path.join(APP_FOLDER, "logs")
 log_file = os.path.join(log_dir, "RGSX.log")
 
-# Chemins de base
+# Chemins (suite)
 UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")
 GAMELISTXML = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms", "ports", "gamelist.xml")
 IMAGES_FOLDER = os.path.join(APP_FOLDER, "images", "systemes")
@@ -64,6 +64,7 @@ HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
 LANGUAGE_CONFIG_PATH = os.path.join(SAVE_FOLDER, "language.json")
 JSON_EXTENSIONS = os.path.join(APP_FOLDER, "rom_extensions.json")
 MUSIC_CONFIG_PATH = os.path.join(SAVE_FOLDER, "music_config.json")
+SYMLINK_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "symlink_settings.json")
 UNRAR_EXE = os.path.join(APP_FOLDER,"assets", "unrar.exe")
 XDVDFS_EXE = os.path.join(APP_FOLDER,"assets", "xdvdfs.exe")
 XDVDFS_LINUX = os.path.join(APP_FOLDER,"assets", "xdvdfs")

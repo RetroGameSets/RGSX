@@ -7,13 +7,13 @@ from language import _
 logger = logging.getLogger(__name__)
 
 # Path for symlink settings
-SYMLINK_SETTINGS_PATH = os.path.join(config.SAVE_FOLDER, "symlink_settings.json")
+
 
 def load_symlink_settings():
     """Load symlink settings from file."""
     try:
-        if os.path.exists(SYMLINK_SETTINGS_PATH):
-            with open(SYMLINK_SETTINGS_PATH, 'r', encoding='utf-8') as f:
+        if os.path.exists(config.SYMLINK_SETTINGS_PATH):
+            with open(config.SYMLINK_SETTINGS_PATH, 'r', encoding='utf-8') as f:
                 settings = json.load(f)
                 if not isinstance(settings, dict):
                     settings = {}
@@ -30,7 +30,7 @@ def save_symlink_settings(settings):
     """Save symlink settings to file."""
     try:
         os.makedirs(config.SAVE_FOLDER, exist_ok=True)
-        with open(SYMLINK_SETTINGS_PATH, 'w', encoding='utf-8') as f:
+        with open(config.SYMLINK_SETTINGS_PATH, 'w', encoding='utf-8') as f:
             json.dump(settings, f, indent=2)
         logger.debug(f"Symlink settings saved: {settings}")
         return True
