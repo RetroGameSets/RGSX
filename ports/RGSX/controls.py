@@ -428,6 +428,13 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_start_time = 0
                     config.repeat_last_action = current_time
                     config.needs_redraw = True
+                elif is_input_matched(event, "left"):
+                    config.current_game = max(0, config.current_game - config.visible_games)
+                    config.repeat_action = None
+                    config.repeat_key = None
+                    config.repeat_start_time = 0
+                    config.repeat_last_action = current_time
+                    config.needs_redraw = True
                 elif is_input_matched(event, "page_down"):
                     config.current_game = min(len(games) - 1, config.current_game + config.visible_games)
                     config.repeat_action = None
@@ -435,6 +442,13 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_start_time = 0
                     config.repeat_last_action = current_time
                     config.needs_redraw = True
+                elif is_input_matched(event, "right"):
+                    config.current_game = min(len(games) - 1, config.current_game + config.visible_games)
+                    config.repeat_action = None
+                    config.repeat_key = None
+                    config.repeat_start_time = 0
+                    config.repeat_last_action = current_time
+                    config.needs_redraw = True                    
                 elif is_input_matched(event, "filter"):
                     config.search_mode = True
                     config.search_query = ""
