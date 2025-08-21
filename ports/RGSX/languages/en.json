@@ -88,7 +88,7 @@
     
     "button_yes": "Yes",
     "button_no": "No",
-    "button_validate": "Validate",
+    "button_validate": "OK",
     
     "controls_hold_message": "Hold for 3s for: '{0}'",
     "controls_skip_message": "Press Esc to skip (PC only)",

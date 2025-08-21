@@ -89,7 +89,7 @@
     
     "button_yes": "Sí",
     "button_no": "No",
-    "button_validate": "Validar",
+    "button_validate": "OK",
     
     "controls_hold_message": "Mantén presionado durante 3s para: '{0}'",
     "controls_skip_message": "Presiona Esc para omitir (solo PC)",

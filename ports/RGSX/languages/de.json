@@ -88,7 +88,7 @@
     
     "button_yes": "Ja",
     "button_no": "Nein",
-    "button_validate": "Bestätigen",
+    "button_validate": "OK",
     
     "controls_hold_message": "3 Sekunden halten für: '{0}'",
     "controls_skip_message": "Drücke Esc, um zu überspringen (nur PC)",

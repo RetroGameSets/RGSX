@@ -25,29 +25,102 @@ cache = {}
 CACHE_TTL = 3600  # 1 heure
         
 def test_internet():
-    """Teste la connexion Internet de manière portable pour Windows et Linux/Batocera."""
-    logger.debug("Test de connexion Internet")
+    """Teste la connexion Internet de manière complète et portable pour Windows et Linux/Batocera."""
+    logger.debug("=== Début test de connexion Internet complet ===")
     
-    # Choisir l'option ping en fonction de la plateforme
+    # Test 1: Ping vers serveurs DNS publics
     ping_option = '-n' if sys.platform.startswith("win") else '-c'
-    logger.debug(f"Utilisation de ping avec option {ping_option}")
+    dns_servers = ['8.8.8.8', '1.1.1.1', '208.67.222.222']  # Google, Cloudflare, OpenDNS
     
+    ping_success = False
+    for dns_server in dns_servers:
+        logger.debug(f"Test ping vers {dns_server} avec option {ping_option}")
+        try:
+            result = subprocess.run(
+                ['ping', ping_option, '2', dns_server],
+                capture_output=True,
+                text=True,
+                timeout=8
+            )
+            if result.returncode == 0:
+                logger.debug(f"[OK] Ping vers {dns_server} réussi")
+                ping_success = True
+                break
+            else:
+                logger.debug(f"[FAIL] Ping vers {dns_server} échoué (code: {result.returncode})")
+                if result.stderr:
+                    logger.debug(f"Erreur ping: {result.stderr.strip()}")
+        except subprocess.TimeoutExpired:
+            logger.debug(f"[FAIL] Timeout ping vers {dns_server}")
+        except Exception as e:
+            logger.debug(f"[FAIL] Exception ping vers {dns_server}: {str(e)}")
+    
+    # Test 2: Tentative de résolution DNS
+    dns_success = False
     try:
-        result = subprocess.run(
-            ['ping', ping_option, '4', '8.8.8.8'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            logger.debug("Connexion Internet OK (ping)")
-            return True
-        else:
-            logger.debug(f"Échec ping 8.8.8.8, code retour: {result.returncode}")
-            return False
+        import socket
+        logger.debug("Test de résolution DNS pour google.com")
+        socket.gethostbyname('google.com')
+        logger.debug("[OK] Résolution DNS réussie")
+        dns_success = True
+    except socket.gaierror as e:
+        logger.debug(f"[FAIL] Erreur résolution DNS: {str(e)}")
     except Exception as e:
-        logger.debug(f"Erreur test Internet (ping): {str(e)}")
+        logger.debug(f"[FAIL] Exception résolution DNS: {str(e)}")
+    
+    # Test 3: Tentative de connexion HTTP
+    http_success = False
+    test_urls = [
+        'http://www.google.com',
+        'http://www.cloudflare.com',
+        'https://httpbin.org/get'
+    ]
+    
+    for test_url in test_urls:
+        logger.debug(f"Test connexion HTTP vers {test_url}")
+        try:
+            response = requests.get(test_url, timeout=5, allow_redirects=True)
+            if response.status_code == 200:
+                logger.debug(f"[OK] Connexion HTTP vers {test_url} réussie (code: {response.status_code})")
+                http_success = True
+                break
+            else:
+                logger.debug(f"[FAIL] Connexion HTTP vers {test_url} échouée (code: {response.status_code})")
+        except requests.exceptions.Timeout:
+            logger.debug(f"[FAIL] Timeout connexion HTTP vers {test_url}")
+        except requests.exceptions.ConnectionError as e:
+            logger.debug(f"[FAIL] Erreur connexion HTTP vers {test_url}: {str(e)}")
+        except Exception as e:
+            logger.debug(f"[FAIL] Exception connexion HTTP vers {test_url}: {str(e)}")
+    
+    # Analyse des résultats
+    total_tests = 3
+    passed_tests = sum([ping_success, dns_success, http_success])
+    
+    logger.debug(f"=== Résultats test Internet: {passed_tests}/{total_tests} tests réussis ===")
+    logger.debug(f"Ping: {'[OK]' if ping_success else '[FAIL]'}")
+    logger.debug(f"DNS:  {'[OK]' if dns_success else '[FAIL]'}")
+    logger.debug(f"HTTP: {'[OK]' if http_success else '[FAIL]'}")
+    
+    # Diagnostic et conseils
+    if passed_tests == 0:
+        logger.error("Aucune connexion Internet détectée. Vérifiez:")
+        logger.error("- Câble réseau ou WiFi connecté")
+        logger.error("- Configuration proxy/firewall")
+        logger.error("- Paramètres réseau système")
         return False
+    elif passed_tests < total_tests:
+        logger.warning(f"Connexion Internet partielle ({passed_tests}/{total_tests})")
+        if not ping_success:
+            logger.warning("- Ping échoué: possible blocage ICMP par firewall")
+        if not dns_success:
+            logger.warning("- DNS échoué: problème serveurs DNS")
+        if not http_success:
+            logger.warning("- HTTP échoué: possible blocage proxy/firewall")
+        return True  # Connexion partielle acceptable
+    else:
+        logger.debug("[OK] Connexion Internet complète et fonctionnelle")
+        return True
 
 
 async def check_for_updates():

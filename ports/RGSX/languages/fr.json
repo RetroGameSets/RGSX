@@ -85,7 +85,7 @@
     
     "button_yes": "Oui",
     "button_no": "Non",
-    "button_validate": "Valider",
+    "button_validate": "OK",
     
     "controls_hold_message": "Maintenez pendant 3s pour : '{0}'",
     "controls_skip_message": "Appuyez sur Échap pour passer(Pc only)",

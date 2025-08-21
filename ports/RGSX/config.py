@@ -1,10 +1,18 @@
 import pygame # type: ignore
 import os
-import sys
 import logging
+import platform
+from rgsx_settings import load_rgsx_settings, save_rgsx_settings, migrate_old_settings
 
 # Version actuelle de l'application
 app_version = "1.9.9.0"
+
+def get_operating_system():
+    """Renvoie le nom du système d'exploitation."""
+    return platform.system()
+#log dans la console le système d'exploitation
+print(f"Système d'exploitation : {get_operating_system()}")
+
 
 def get_application_root():
     """Détermine le dossier de l'application de manière portable."""
@@ -13,38 +21,47 @@ def get_application_root():
         current_file = os.path.abspath(__file__)
         # Remonter au dossier parent de config.py (par exemple, dossier de l'application)
         app_root = os.path.dirname(os.path.dirname(current_file))
+        print(f"Dossier de l'application : {app_root}")
         return app_root
-        
     except NameError:
         # Si __file__ n'est pas défini (par exemple, exécution dans un REPL)
         return os.path.abspath(os.getcwd())
 
 def get_system_root():
+    OPERATING_SYSTEM = get_operating_system()
     """Détermine le dossier racine du système de fichiers (par exemple, /userdata ou C:\\)."""
     try:
-        if sys.platform.startswith("win"):
+        if OPERATING_SYSTEM == "Windows":
             # Sur Windows, extraire la lettre de disque
             current_path = os.path.abspath(__file__)
             drive, _ = os.path.splitdrive(current_path)
             system_root = drive + os.sep
+            print(f"Dossier racine du système : {system_root}")
             return system_root
-        else:
-            # Sur Linux/Batocera, remonter jusqu'à atteindre /userdata ou /
-            current_path = os.path.abspath(__file__)
-            current_dir = current_path
-            while current_dir != os.path.dirname(current_dir):  # Tant qu'on peut remonter
-                parent_dir = os.path.dirname(current_dir)
-                if os.path.basename(parent_dir) == "userdata":  # Vérifier si le parent est userdata
-                    system_root = parent_dir
-                    return system_root
-                current_dir = parent_dir
-            # Si userdata n'est pas trouvé, retourner /
-            return "/"
+        elif OPERATING_SYSTEM == "Linux":
+            # tester si c'est batocera :
+            if os.path.exists("/usr/share/batocera"):
+                OPERATING_SYSTEM = "Batocera"
+                #remonter jusqu'à atteindre /userdata
+                current_path = os.path.abspath(__file__)
+                current_dir = current_path
+                while current_dir != os.path.dirname(current_dir):  # Tant qu'on peut remonter
+                    parent_dir = os.path.dirname(current_dir)
+                    if os.path.basename(parent_dir) == "userdata":  # Vérifier si le parent est userdata
+                        system_root = parent_dir
+                        print(f"Dossier racine du système : {system_root}")
+                        return system_root
+                    current_dir = parent_dir
+                # Si userdata n'est pas trouvé, retourner /
+                return "/"
+            else:
+                return "/"
     except NameError:
-        # Si __file__ n'est pas défini, utiliser le répertoire de travail actuel
-        return "/" if not sys.platform.startswith("win") else os.path.splitdrive(os.getcwd())[0] + os.sep
+        
+        return "/" if not OPERATING_SYSTEM == "Windows" else os.path.splitdrive(os.getcwd())[0] + os.sep
 
 # Chemins de base
+
 SYSTEM_FOLDER = get_system_root()
 APP_FOLDER = os.path.join(get_application_root(), "RGSX")
 ROMS_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms")
@@ -86,8 +103,7 @@ XDVDFS_LINUX = os.path.join(APP_FOLDER,"assets", "xdvdfs")
 unrar_download_exe = os.path.join(OTA_SERVER_URL, "unrar.exe")
 xdvdfs_download_exe = os.path.join(OTA_SERVER_URL, "xdvdfs.exe")
 
-# Import des fonctions de gestion des paramètres RGSX
-from rgsx_settings import load_rgsx_settings, save_rgsx_settings, migrate_old_settings
+
 xdvdfs_download_linux = os.path.join(OTA_SERVER_URL, "xdvdfs")
 
 # Constantes pour la répétition automatique dans pause_menu
