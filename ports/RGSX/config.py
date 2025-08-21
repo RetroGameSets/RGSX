@@ -4,7 +4,7 @@ import sys
 import logging
 
 # Version actuelle de l'application
-app_version = "1.9.8.9"
+app_version = "1.9.9.0"
 
 def get_application_root():
     """Détermine le dossier de l'application de manière portable."""
@@ -59,35 +59,23 @@ UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")
 GAMELISTXML = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms", "ports", "gamelist.xml")
 IMAGES_FOLDER = os.path.join(APP_FOLDER, "images", "systemes")
 GAMES_FOLDER = os.path.join(APP_FOLDER, "games")
-LANGUAGES_FOLDER = os.path.join(APP_FOLDER, "languages")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
 HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
-JSON_EXTENSIONS = os.path.join(APP_FOLDER, "rom_extensions.json")
-
-# Nouveau fichier unifié pour les paramètres RGSX
-RGSX_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
-
-# Anciens chemins des fichiers de config (conservés temporairement pour la migration)
-ACCESSIBILITY_FOLDER = os.path.join(SAVE_FOLDER, "accessibility.json")
 LANGUAGE_CONFIG_PATH = os.path.join(SAVE_FOLDER, "language.json")
+JSON_EXTENSIONS = os.path.join(APP_FOLDER, "rom_extensions.json")
 MUSIC_CONFIG_PATH = os.path.join(SAVE_FOLDER, "music_config.json")
-SYMLINK_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "symlink_settings.json")
+UNRAR_EXE = os.path.join(APP_FOLDER,"assets", "unrar.exe")
+XDVDFS_EXE = os.path.join(APP_FOLDER,"assets", "xdvdfs.exe")
+XDVDFS_LINUX = os.path.join(APP_FOLDER,"assets", "xdvdfs")
+
 
 # URL
 OTA_SERVER_URL = "https://retrogamesets.fr/softs/"
 OTA_VERSION_ENDPOINT = os.path.join(OTA_SERVER_URL, "version.json")
 OTA_UPDATE_ZIP = os.path.join(OTA_SERVER_URL, "RGSX.zip")
 OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "rgsx-data.zip")
-
-#CHEMINS DES EXECUTABLES
-UNRAR_EXE = os.path.join(APP_FOLDER,"assets", "unrar.exe")
-XDVDFS_EXE = os.path.join(APP_FOLDER,"assets", "xdvdfs.exe")
-XDVDFS_LINUX = os.path.join(APP_FOLDER,"assets", "xdvdfs")
 unrar_download_exe = os.path.join(OTA_SERVER_URL, "unrar.exe")
 xdvdfs_download_exe = os.path.join(OTA_SERVER_URL, "xdvdfs.exe")
-
-# Import des fonctions de gestion des paramètres RGSX
-from rgsx_settings import load_rgsx_settings, save_rgsx_settings, migrate_old_settings
 xdvdfs_download_linux = os.path.join(OTA_SERVER_URL, "xdvdfs")
 
 # Constantes pour la répétition automatique dans pause_menu
