@@ -17,8 +17,6 @@
     "loading_extract_initial": "Extrayendo la carpeta de datos inicial...",
     "loading_systems": "Cargando sistemas...",
     "loading_progress": "Progreso: {0}%",
-        
-    "loading_test_internet": "Probando la conexión...",
     "loading_check_updates": "Buscando actualizaciones... Espere...",
     "error_check_updates_failed": "Error al comprobar actualizaciones.",
     "loading_downloading_games_images": "Descargando juegos e imágenes...",

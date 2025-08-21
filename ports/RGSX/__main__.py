@@ -104,6 +104,13 @@ config.repeat_last_action = 0
 # Initialisation des variables pour la popup de musique
 
 
+# Initialisation du mixer Pygame
+pygame.mixer.pre_init(44100, -16, 2, 4096)
+pygame.mixer.init()
+
+# Charger la configuration de la musique AVANT de lancer la musique
+load_music_config()
+
 # Dossier musique Batocera
 music_folder = os.path.join(config.APP_FOLDER, "assets", "music")
 music_files = [f for f in os.listdir(music_folder) if f.lower().endswith(('.ogg', '.mp3'))]
@@ -112,8 +119,12 @@ config.music_folder = music_folder
 config.music_files = music_files
 config.current_music = current_music
 
-if music_files:
+# Lancer la musique seulement si elle est activée dans la configuration
+if music_files and config.music_enabled:
     current_music = play_random_music(music_files, music_folder, current_music)
+    logger.debug("Musique lancée car activée dans la configuration")
+elif music_files and not config.music_enabled:
+    logger.debug("Musique désactivée dans la configuration, pas de lecture")
 else:
     logger.debug("Aucune musique trouvée dans config.APP_FOLDER/assets/music")
 
@@ -148,11 +159,6 @@ if pygame.joystick.get_count() > 0:
     joystick = pygame.joystick.Joystick(0)
     joystick.init()
     logger.debug("Gamepad initialisé")
-
-# Initialisation du mixer Pygame
-pygame.mixer.pre_init(44100, -16, 2, 4096)
-pygame.mixer.init()
-load_music_config()
 
 
 # Boucle principale
@@ -683,7 +689,7 @@ async def main():
         elif config.menu_state == "loading":
             if loading_step == "none":
                 loading_step = "test_internet"
-                config.current_loading_system = _("loading_test_internet")
+                config.current_loading_system = _("loading_test_connection")
                 config.loading_progress = 0.0
                 config.needs_redraw = True
                 logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")

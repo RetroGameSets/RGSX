@@ -4,6 +4,7 @@ import pygame #type: ignore
 import logging
 import config
 import subprocess 
+from rgsx_settings import load_rgsx_settings, save_rgsx_settings
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,7 @@ DEFAULT_LANGUAGE = "en"
 current_language = DEFAULT_LANGUAGE
 translations = {}
 show_language_selector_on_startup = False
+
 
 # Mapping optionnel pour normaliser les locales Batocera -> codes 2 lettres
 BATOCERA_LOCALE_MAP = {
@@ -42,6 +44,7 @@ def load_language(lang_code=None):
             else:
                 logger.error(f"Fichier de langue par défaut {lang_file} non trouvé")
                 return False
+        
         
         with open(lang_file, 'r', encoding='utf-8') as f:
             translations = json.load(f)
@@ -74,14 +77,13 @@ def get_text(key, default=None):
 
 def get_available_languages():
     """Récupère la liste des langues disponibles."""
-    languages_dir = os.path.join(config.APP_FOLDER, "languages")
     
-    if not os.path.exists(languages_dir):
-        logger.warning(f"Dossier des langues {languages_dir} non trouvé")
+    if not os.path.exists(config.LANGUAGES_FOLDER):
+        logger.warning(f"Dossier des langues {config.LANGUAGES_FOLDER} non trouvé")
         return []
     
     languages = []
-    for file in os.listdir(languages_dir):
+    for file in os.listdir(config.LANGUAGES_FOLDER):
         if file.endswith(".json"):
             lang_code = os.path.splitext(file)[0]
             languages.append(lang_code)
@@ -97,14 +99,11 @@ def set_language(lang_code):
     return False
 
 def save_language_preference(lang_code):
-    """Sauvegarde la préférence de langue dans un fichier."""
+    """Sauvegarde la préférence de langue dans rgsx_settings.json."""
     try:
-        # S'assurer que le dossier existe
-        os.makedirs(os.path.dirname(config.LANGUAGE_CONFIG_PATH), exist_ok=True)
-        
-        # Sauvegarder la préférence
-        with open(config.LANGUAGE_CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump({"language": lang_code}, f)
+        settings = load_rgsx_settings()
+        settings["language"] = lang_code
+        save_rgsx_settings(settings)
         
         logger.debug(f"Préférence de langue sauvegardée: {lang_code}")
         return True
@@ -113,26 +112,13 @@ def save_language_preference(lang_code):
         return False
 
 def load_language_preference():
-    """Charge la préférence de langue depuis le fichier."""
+    """Charge la préférence de langue depuis rgsx_settings.json."""
     global show_language_selector_on_startup
     
     try:
-        if not os.path.exists(config.LANGUAGE_CONFIG_PATH):
-            logger.info("Aucune préférence de langue trouvée, utilisation du français par défaut")
-            # Créer le fichier avec le français par défaut
-            save_language_preference(DEFAULT_LANGUAGE)
-            return DEFAULT_LANGUAGE
-        
-        with open(config.LANGUAGE_CONFIG_PATH, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            lang_code = data.get("language", DEFAULT_LANGUAGE)
-            
+        settings = load_rgsx_settings()
+        lang_code = settings.get("language", DEFAULT_LANGUAGE)
         return lang_code
-    except json.JSONDecodeError:
-        logger.warning("Fichier de préférence de langue corrompu, utilisation du français par défaut")
-        # Recréer le fichier avec le français par défaut
-        save_language_preference(DEFAULT_LANGUAGE)
-        return DEFAULT_LANGUAGE
     except Exception as e:
         logger.error(f"Erreur lors du chargement de la préférence de langue: {str(e)}")
         # Recréer le fichier avec le français par défaut
@@ -368,7 +354,7 @@ def initialize_language():
     global show_language_selector_on_startup
     
     # Vérifier si le fichier de préférence de langue existe
-    language_file_exists = os.path.exists(config.LANGUAGE_CONFIG_PATH)
+    language_file_exists = os.path.exists(config.RGSX_SETTINGS_PATH)
     
     if not language_file_exists:
         # Tentative de détection Batocera

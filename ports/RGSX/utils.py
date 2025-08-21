@@ -8,6 +8,7 @@ import platform
 import subprocess
 import config
 import threading
+from rgsx_settings import load_rgsx_settings, save_rgsx_settings
 import zipfile
 import time
 import random
@@ -820,29 +821,25 @@ def load_api_key_1fichier():
         return ""
 
 def load_music_config():
-    """Charge la configuration musique depuis music_config.json."""
-    path = config.MUSIC_CONFIG_PATH
+    """Charge la configuration musique depuis rgsx_settings.json."""
     try:
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                config.music_enabled = data.get("music_enabled", True)
-                return config.music_enabled
+        settings = load_rgsx_settings()
+        config.music_enabled = settings.get("music_enabled", True)
+        return config.music_enabled
     except Exception as e:
-        logger.error(f"Erreur lors du chargement de music_config.json: {str(e)}")
+        logger.error(f"Erreur lors du chargement de la configuration musique: {str(e)}")
     config.music_enabled = True
     return True
 
 def save_music_config():
-    """Sauvegarde la configuration musique dans music_config.json."""
-    path = config.MUSIC_CONFIG_PATH
+    """Sauvegarde la configuration musique dans rgsx_settings.json."""
     try:
-        os.makedirs(config.SAVE_FOLDER, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"music_enabled": config.music_enabled}, f, indent=2)
+        settings = load_rgsx_settings()
+        settings["music_enabled"] = config.music_enabled
+        save_rgsx_settings(settings)
         logger.debug(f"Configuration musique sauvegardée: {config.music_enabled}")
     except Exception as e:
-        logger.error(f"Erreur lors de la sauvegarde de music_config.json: {str(e)}")
+        logger.error(f"Erreur lors de la sauvegarde de la configuration musique: {str(e)}")
 
 
 def normalize_platform_name(platform):

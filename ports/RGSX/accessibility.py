@@ -1,33 +1,31 @@
 import pygame #type:ignore
 import config
-import os
-import json
+from rgsx_settings import load_rgsx_settings, save_rgsx_settings
 from logging import getLogger
 from language import _
 
 logger = getLogger(__name__)
 
 def load_accessibility_settings():
-    """Charge les paramètres d'accessibilité depuis accessibility.json."""
-    accessibility_path = os.path.join(config.SAVE_FOLDER, "accessibility.json")
+    """Charge les paramètres d'accessibilité depuis rgsx_settings.json."""
+    
     try:
-        if os.path.exists(accessibility_path):
-            with open(accessibility_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+        settings = load_rgsx_settings()
+        return settings.get("accessibility", {"font_scale": 1.0})
     except Exception as e:
-        logger.error(f"Erreur lors du chargement de accessibility.json: {str(e)}")
+        logger.error(f"Erreur lors du chargement des paramètres d'accessibilité: {str(e)}")
     return {"font_scale": 1.0}
 
-def save_accessibility_settings(settings):
-    """Sauvegarde les paramètres d'accessibilité dans accessibility.json."""
-    accessibility_path = os.path.join(config.SAVE_FOLDER, "accessibility.json")
+def save_accessibility_settings(accessibility_settings):
+    """Sauvegarde les paramètres d'accessibilité dans rgsx_settings.json."""
+    
     try:
-        os.makedirs(config.SAVE_FOLDER, exist_ok=True)
-        with open(accessibility_path, 'w', encoding='utf-8') as f:
-            json.dump(settings, f, indent=2)
-        logger.debug(f"Paramètres d'accessibilité sauvegardés: {settings}")
+        settings = load_rgsx_settings()
+        settings["accessibility"] = accessibility_settings
+        save_rgsx_settings(settings)
+        logger.debug(f"Paramètres d'accessibilité sauvegardés: {accessibility_settings}")
     except Exception as e:
-        logger.error(f"Erreur lors de la sauvegarde de accessibility.json: {str(e)}")
+        logger.error(f"Erreur lors de la sauvegarde des paramètres d'accessibilité: {str(e)}")
 
 def draw_accessibility_menu(screen):
     """Affiche le menu d'accessibilité avec curseur pour la taille de police."""

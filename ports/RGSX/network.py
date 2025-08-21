@@ -177,7 +177,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
         logger.debug(f"Thread téléchargement démarré pour {url}, task_id={task_id}")
         try:
             # Use symlink path if enabled
-            from symlink_settings import apply_symlink_path
+            from rgsx_settings import apply_symlink_path
             
             dest_dir = None
             for platform_dict in config.platform_dicts:
@@ -383,7 +383,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             link = url.split('&af=')[0]
             logger.debug(f"URL nettoyée: {link}")
             # Use symlink path if enabled
-            from symlink_settings import apply_symlink_path
+            from rgsx_settings import apply_symlink_path
             
             dest_dir = None
             for platform_dict in config.platform_dicts:

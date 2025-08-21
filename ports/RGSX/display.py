@@ -1215,7 +1215,7 @@ def draw_pause_menu(screen, selected_option):
         music_option = _("menu_music_disabled")
 
     # Option symlink dynamique
-    from symlink_settings import get_symlink_option
+    from rgsx_settings import get_symlink_option
     if get_symlink_option():
         symlink_option = _("symlink_option_enabled")
     else:

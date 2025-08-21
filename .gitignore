@@ -11,3 +11,4 @@ ports/gamelist.xml
 *.zip
 .vscode/
 ports/RGSX.bat
+.venv/

@@ -13,7 +13,6 @@
     "loading_extract_initial": "Extraction du dossier de données initial...",
     "loading_systems": "Chargement des systèmes...",
     "loading_progress": "Progression : {0}%",
-    "loading_test_internet": "Test de la connexion...",
     "loading_check_updates": "Vérification des mises à jour... Veuillez patienter...",
     "error_check_updates_failed": "Échec de la vérification des mises à jour.",
     "loading_downloading_games_images": "Téléchargement des jeux et images...",

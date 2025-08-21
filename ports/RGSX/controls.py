@@ -889,7 +889,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.needs_redraw = True
                     logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via menu pause")
                 elif config.selected_option == 7:  # Symlink option
-                    from symlink_settings import set_symlink_option, get_symlink_option
+                    from rgsx_settings import set_symlink_option, get_symlink_option
                     current_status = get_symlink_option()
                     success, message = set_symlink_option(not current_status)
                     config.popup_message = message

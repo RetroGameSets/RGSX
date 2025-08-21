@@ -7,11 +7,10 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 # Chemin par défaut pour history.json
-DEFAULT_HISTORY_PATH = os.path.join(config.SAVE_FOLDER, "history.json")
 
 def init_history():
     """Initialise le fichier history.json s'il n'existe pas."""
-    history_path = getattr(config, 'HISTORY_PATH', DEFAULT_HISTORY_PATH)
+    history_path = getattr(config, 'HISTORY_PATH')
     # Vérifie si le fichier history.json existe, sinon le crée
     if not os.path.exists(history_path):
         try:
@@ -27,7 +26,7 @@ def init_history():
 
 def load_history():
     """Charge l'historique depuis history.json."""
-    history_path = getattr(config, 'HISTORY_PATH', DEFAULT_HISTORY_PATH)
+    history_path = getattr(config, 'HISTORY_PATH')
     try:
         if not os.path.exists(history_path):
             logger.debug(f"Aucun fichier d'historique trouvé à {history_path}")
@@ -47,7 +46,7 @@ def load_history():
 
 def save_history(history):
     """Sauvegarde l'historique dans history.json."""
-    history_path = getattr(config, 'HISTORY_PATH', DEFAULT_HISTORY_PATH)
+    history_path = getattr(config, 'HISTORY_PATH')
     try:
         os.makedirs(os.path.dirname(history_path), exist_ok=True)
         with open(history_path, "w", encoding='utf-8') as f:
@@ -76,7 +75,7 @@ def add_to_history(platform, game_name, status, url=None, progress=0, message=No
 
 def clear_history():
     """Vide l'historique."""
-    history_path = getattr(config, 'HISTORY_PATH', DEFAULT_HISTORY_PATH)
+    history_path = getattr(config, 'HISTORY_PATH')
     try:
         with open(history_path, "w", encoding='utf-8') as f:
             json.dump([], f)
