@@ -2,158 +2,163 @@
 
 ## SUPPORT / HELP : https://discord.gg/Vph9jwg3VV
 
-RGSX est une application developpée en Python basée sur Pygame pour la partie graphique pour la communautée par RetroGameSets. Elle est entièrement gratuite.
+RGSX is a Python application developed using Pygame for graphics, created for the community by RetroGameSets. It is completely free.
 
-L'application prend en charge plusieures sources comme myrient, 1fichier. Ces sources pourront être mises à jour fréquemment.
-
----
-
-## ✨ Fonctionnalités
-
-- **Téléchargement de jeux** : Prise en charge des fichiers ZIP et gestion des extensions non supportées grâce au fichier `info.txt` dans chaque dossier (batocera), qui extrait automatiquement si le systeme ne supporte pas les archives.
-  - Les téléchargements ne nécessitent aucune authentification ni compte pour la plupart.
-  - Les systèmes notés `(1fichier)` dans le nom ne seront accessibles que si vous renseignez votre clé API 1fichier (voir plus bas).
-- **Historique des téléchargements** : Consultez et retéléchargez les anciens fichiers.
-- **Personnalisation des contrôles** : Remappez les touches du clavier ou de la manette à votre convenance avec détection automatique des noms de boutons depuis EmulationStation(beta).
-- **Changement de taille de police** : Si vous trouvez les ecritures trop petites/trop grosses, vous pouvez le changer dans le menu.
-- **Mode recherche** : Filtrez les jeux par nom pour une navigation rapide avec clavier virtuel sur manette.
-- **Support multilingue** : Interface disponible en plusieurs langues. Vous pourrez choisir la langue dans le menu
-- **Gestion des erreurs** avec messages informatifs et fichier de LOG
-- **Interface adaptatative** : L'interface s'adapte à toutes résolutions de 800x600 à 4K (non testé au-delà de 1920x1080).
-- **Mise à jour automatique**  : l'application doit être relancée après une mise à jour.
+The application supports multiple sources like myrient and 1fichier. These sources can be updated frequently.
 
 ---
 
-## 🖥️ Prérequis
+## ✨ Features
 
-### Système d'exploitation
-- Batocera / Knulli ou Retrobat
+- **Game downloads** : Support for ZIP files and handling of unsupported extensions thanks to the `info.txt` file in each folder (batocera), which automatically extracts if the system doesn't support archives.
+  - Downloads require no authentication or account for most sources.
+  - Systems marked `(1fichier)` in the name will only be accessible if you provide your 1fichier API key (see below).
+- **Download history** : View and re-download previous files.
+- **Control customization** : Remap keyboard or controller keys to your preference with automatic button name detection from EmulationStation (beta).
+- **Font size adjustment** : If you find the text too small/too large, you can change it in the menu.
+- **Search mode** : Filter games by name for quick navigation with virtual keyboard on controller.
+- **Multilingual support** : Interface available in multiple languages. You can choose the language in the menu.
+- **Error handling** with informative messages and LOG file.
+- **Adaptive interface** : The interface adapts to all resolutions from 800x600 to 4K (not tested beyond 1920x1080).
+- **Automatic updates** : the application must be restarted after an update.
 
-### Matériel
-- PC, Raspberry, console portable ....
-- Manette (optionnelle, mais recommandée pour une expérience optimale) ou Clavier.
-- Connexion internet active
+---
 
-### Espace disque
-- 100 mo pour l'application.
+## 🖥️ Requirements
+
+### Operating System
+- Batocera / Knulli or Retrobat
+
+### Hardware
+- PC, Raspberry Pi, handheld console...
+- Controller (optional, but recommended for optimal experience) or Keyboard.
+- Active internet connection
+
+### Disk Space
+- 100 MB for the application.
 
 ---
 
 ## 🚀 Installation
 
-### Méthode 1 : Installation automatique en ligne de commande pour Batocera/Knulli
+### Method 1: Automatic command line installation for Batocera/Knulli
 
-- Sur batocera x86 PC acceder à F1>Applications>xTERM  ou
-- Depuis un autre pc sur le réseau avec application Putty, powershell SSH ou autre
+- On batocera x86 PC access F1>Applications>xTERM or
+- From another PC on the network with Putty, powershell SSH or other application
 
-Entrez la commande :
+Enter the command:
 ## `curl -L bit.ly/rgsx-install | sh`
   
-Patientez et regardez le retour à l'écran ou sur la commande (à améliorer).  
-Mettez à jour la liste des jeux via : `Menu > Paramètres de jeux > Mettre à jour la liste des jeux `.  
-Vous trouverez RGSX dans le système "PORTS" ou "Jeux Amateurs et portages" et dans `/roms/ports/RGSX`
+Wait and watch the return on screen or on the command (to be improved).  
+Update the game list via: `Menu > Game Settings > Update game list`.  
+You will find RGSX in the "PORTS" system or "Homebrew and ports" and in `/roms/ports/RGSX`
 
 ---
 
-### Méthode 2 : Copie manuelle (Methode obligatoire sur retrobat)
+### Method 2: Manual copy (Mandatory method on retrobat)
 
-- Téléchargez le contenu du dépôt en zip : https://github.com/RetroGameSets/RGSX/archive/refs/heads/main.zip
-- Extrayez le fichier zip dans le dossier ROMS (pour Batocera, seul le dossier PORTS sera utilisé pour Retrobat il faudra extraire PORTS et WINDOWS)
-- Mettez à jour la liste des jeux via le menu :  
-  `Paramètres de jeux > Mettre à jour la liste`.
+- Download the repository content as zip: https://github.com/RetroGameSets/RGSX/archive/refs/heads/main.zip
+- Extract the zip file into the ROMS folder (for Batocera, only the PORTS folder will be used, for Retrobat you will need to extract PORTS and WINDOWS)
+- Update the game list via the menu:  
+  `Game Settings > Update list`.
 
 
-## 🏁 1er démarrage
+## 🏁 First startup
 ---
 > ## IMPORTANT
-> Si vous avez une clé API 1Fichier, vous devez la renseigner dans  
+> If you have a 1Fichier API key, you must enter it in  
 > `/saves/ports/rgsx/1FichierAPI.txt`  
-> si vous souhaitez télécharger depuis des liens 1Fichier.
+> if you want to download from 1Fichier links.
 ---
 
-- Lancez RGSX depuis ports sur batocera, depuis Windows sur Retrobat.
-- Au premier lancement, l'application importera automatiquement la configuration des contrôles depuis EmulationStation si disponible.
-- Configurez les contrôles si nécessaire. Ils pourront être reconfigurés via le menu pause par la suite.
-- Supprimez le fichier `/saves/ports/rgsx/controls.json` en cas de problème puis relancez l'application.
-- L'application téléchargera toutes les données nécessaires automatiquement ensuite.
+- Launch RGSX from ports on batocera, from Windows on Retrobat.
+- On first launch, the application will automatically import the control configuration from EmulationStation if available.
+- Configure controls if necessary. They can be reconfigured via the pause menu later.
+- Delete the `/saves/ports/rgsx/controls.json` file in case of problems then restart the application.
+- The application will then automatically download all necessary data.
 
-INFO : pour retrobat au 1er lancement, l'application téléchargera Python dans le dossier /system/tools/python qui est necessaire pour faire fonctionner l'application. Le fichier fait environ 50mo et va assez vite a télécharger mais il n'y a aucun retour visuel a l'ecran, qui va rester figé sur le chargement de RGSX pendant quelques secondes.
+INFO: for retrobat on first launch, the application will download Python in the /system/tools/python folder which is necessary to run the application. The file is about 50MB and downloads quite quickly but there is no visual feedback on screen, which will remain frozen on the RGSX loading for a few seconds.
 ---
 
-## 🕹️ Utilisation
+## 🕹️ Usage
 
-### Navigation dans les menus
+### Menu navigation
 
-- Utilisez les touches directionnelles (D-Pad, flèches du clavier) pour naviguer entre les plateformes, jeux et options.
-- Appuyez sur la touche configurée comme start (par défaut, **P** ou bouton Start sur la manette) pour ouvrir le menu pause.
-- Depuis le menu pause, accédez à l'historique, à l'aide des contrôles (l'affichage des contrôles change suivant le menu où vous êtes) ou à la reconfiguration des touches, des langues, de la taille de la police.
-- Vous pouvez aussi, depuis le menu, régénérer le cache de la liste des systèmes/jeux/images pour être sûr d'avoir les dernières mises à jour.
-
----
-
-### Téléchargement
-
-- Sélectionnez une plateforme, puis un jeu.
-- Appuyez sur la touche configurée confirm (par défaut, **Entrée** ou bouton **A**) pour lancer le téléchargement.
-- Suivez la progression dans le menu `HISTORIQUE`.
+- Use the directional keys (D-Pad, keyboard arrows) to navigate between platforms, games and options.
+- Press the key configured as start (default, **P** or Start button on controller) to open the pause menu.
+- From the pause menu, access history, control help (control display changes depending on which menu you're in) or reconfiguration of keys, languages, font size.
+- You can also, from the menu, regenerate the cache of the systems/games/images list to be sure to have the latest updates.
 
 ---
 
-### Personnalisation des contrôles
+### Download
 
-- Dans le menu pause, sélectionnez **Reconfigurer controls**.
-- Suivez les instructions à l'écran pour mapper chaque action en maintenant la touche ou le bouton pendant 3 secondes.
-- Les noms des boutons s'affichent automatiquement selon votre manette (A, B, X, Y, LB, RB, LT, RT, etc.).
-- La configuration est compatible avec toutes les manettes supportées par EmulationStation.
+- Select a platform, then a game.
+- Press the confirm key (default, **Enter** or **A** button) to start the download.
+- Follow the progress in the `HISTORY` menu.
 
 ---
 
-### Historique
+### Control customization
 
-- Accédez à l'historique des téléchargements via le menu pause ou en appuyant sur la touche historique (par défaut, **H**).
-- Sélectionnez un jeu pour le retélécharger si nécessaire en cas d'erreur ou annulation.
-- Videz tout l'historique via le bouton **EFFACER** dans le menu historique. Les jeux ne sont pas effacés seulement la liste
-- Annulez un téléchargement avec le bouton **RETOUR**
+- In the pause menu, select **Reconfigure controls**.
+- Follow the on-screen instructions to map each action by holding the key or button for 3 seconds.
+- Button names are automatically displayed according to your controller (A, B, X, Y, LB, RB, LT, RT, etc.).
+- The configuration is compatible with all controllers supported by EmulationStation.
+
+---
+
+### History
+
+- Access download history via the pause menu or by pressing the history key (default, **H**).
+- Select a game to re-download it if necessary in case of error or cancellation.
+- Clear all history via the **CLEAR** button in the history menu. Games are not deleted, only the list.
+- Cancel a download with the **BACK** button.
 
 ---
 
 ### Logs
 
-Les logs sont enregistrés dans `roms/ports/RGSX/logs/RGSX.log` sur batocera et sur Retrobat  pour diagnostiquer les problèmes et seront a partager pour tout support.
+Logs are saved in `roms/ports/RGSX/logs/RGSX.log` on batocera and on Retrobat to diagnose problems and should be shared for any support.
 
 ---
 
-## 📁 Structure du projet
+## 📁 Project structure
 ```
-
 /roms/windows/RGSX
 │
-├── RGSX Retrobat.bat    #Raccourci pour lancer l'application RGSX pour retrobat uniquement, non necessaire pour batocera/knulli
+├── RGSX Retrobat.bat    # Shortcut to launch RGSX application for retrobat only, not necessary for batocera/knulli
 
 /roms/ports/
-RGSX-INSTALL.log         # LOG d'installation uniquement pour une premiere installation en ligne de commande.
+RGSX-INSTALL.log         # Installation LOG only for a first command line installation.
 RGSX/
 │
-├── main.py              # Point d'entrée principal de l'application.
-├── controls.py          # Gestion des événements clavier/manette/souris et navigation dans les menus.
-├── controls_mapper.py   # Configuration des contrôles avec détection automatique des noms de boutons.
-├── es_input_parser.py   # Parseur de configuration EmulationStation pour l'import automatique des contrôles.
-├── display.py           # Rendu des interfaces graphiques avec Pygame.
-├── config.py            # Configuration globale (chemins, paramètres, etc.).
-├── network.py           # Gestion des téléchargements de jeux.
-├── history.py           # Gestion de l'historique des téléchargements.
-├── language.py          # Gestion du support multilingue.
-├── utils.py             # Fonctions utilitaires (wrap du texte, troncage etc.).
+├── __main__.py          # Main entry point of the application.
+├── controls.py          # Keyboard/controller/mouse event handling and menu navigation.
+├── controls_mapper.py   # Control configuration with automatic button name detection.
+├── es_input_parser.py   # EmulationStation configuration parser for automatic control import.
+├── display.py           # Pygame graphics interface rendering.
+├── config.py            # Global configuration (paths, parameters, etc.).
+├── rgsx_settings.py     # Unified application settings management.
+├── network.py           # Game download management.
+├── history.py           # Download history management.
+├── language.py          # Multilingual support management.
+├── accessibility.py     # Accessibility settings management.
+├── utils.py             # Utility functions (text wrap, truncation etc.).
+├── update_gamelist.py   # Game list update.
+├── assets/              # Application resources (fonts, executables, music).
+├── games/               # Game system configuration files.
+├── images/              # System images.
+├── languages/           # Translation files.
 └── logs/
-    └── RGSX.log         # Fichier de logs.
+    └── RGSX.log         # Log file.
 
 /saves/ports/RGSX/
 │
-├── controls.json        # Fichier de mappage des contrôles  (généré après le 1er demarrage)
-├── history.json         # Base de données de l'historique de téléchargements (généré après le 1er téléchargement)
-├── language.json        # Contient la langue configurée 
-└── 1FichierAPI.txt      # Clé API 1fichier (compte premium et + uniquement) (vide par defaut)
-
+├── rgsx_settings.json   # Unified configuration file (settings, accessibility, language, music, symlinks).
+├── controls.json        # Control mapping file (generated after first startup).
+├── history.json         # Download history database (generated after first download).
+└── 1FichierAPI.txt      # 1fichier API key (premium account and + only) (empty by default).
 ```
 
 
@@ -162,35 +167,37 @@ RGSX/
 
 ---
 
-## 🤝 Contribution
+## 🤝 Contributing
 
-### Signaler un bug
+### Report a bug
 
-1. Consultez les logs dans `/roms/ports/RGSX/logs/RGSX.log`.
-2. Ouvrez une issue sur GitHub avec une description détaillée et les logs pertinents.
+1. Check the logs in `/roms/ports/RGSX/logs/RGSX.log`.
+2. Open an issue on GitHub with a detailed description and relevant logs.
 
-### Proposer une fonctionnalité
+### Propose a feature
 
-- Soumettez une issue avec une description claire de la fonctionnalité proposée.
-- Expliquez comment elle s'intègre dans l'application.
+- Submit an issue with a clear description of the proposed feature.
+- Explain how it integrates into the application.
 
-### Contribuer au code
+### Contribute to the code
 
-1. Forkez le dépôt et créez une branche pour votre fonctionnalité ou correction :
-git checkout -b feature/nom-de-votre-fonctionnalité
-2. Testez vos modifications sur Batocera.
-3. Soumettez une pull request avec une description détaillée.
-
----
-
-## ⚠️ Problèmes connus / À implémenter
-
-- Gestion des téléchargements multiples
+1. Fork the repository and create a branch for your feature or fix:
+```bash
+git checkout -b feature/your-feature-name
+```
+2. Test your changes on Batocera.
+3. Submit a pull request with a detailed description.
 
 ---
 
-## 📝 Licence
+## ⚠️ Known issues / To implement
 
-Ce projet est libre. Vous êtes libre de l'utiliser, le modifier et le distribuer selon les termes de cette licence.
+- Multiple download management
 
-Développé avec ❤️ pour les amateurs de jeux rétro.
+---
+
+## 📝 License
+
+This project is free. You are free to use, modify and distribute it under the terms of this license.
+
+Developed with ❤️ for retro gaming enthusiasts.
