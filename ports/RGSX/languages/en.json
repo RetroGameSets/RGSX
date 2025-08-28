@@ -11,11 +11,7 @@
     "disclaimer_line5": "and does not host ROMs.",
     
     "loading_test_connection": "Testing connection...",
-    "loading_update_check": "Checking for updates... Please wait...",
     "loading_download_data": "Downloading initial Data folder...",
-    "loading_download_initial": "Downloading initial Data folder...",
-    "loading_extract_initial": "Extracting initial Data folder...",
-    "loading_systems": "Loading systems...",
     "loading_progress": "Progress: {0}%",
     "loading_check_updates": "Checking for updates... Please wait...",
     "error_check_updates_failed": "Failed to check updates.",
@@ -26,9 +22,7 @@
     "error_sources_load_failed": "Failed to load sources.json",
     
     "error_no_internet": "No Internet connection. Check your network.",
-    "error_load_sources": "Failed to load sources.json",
     "error_controls_mapping": "Failed to map controls",
-    "error_download_data": "Failed to download or extract the initial Data folder.",
     "error_api_key": "Please enter your API key (premium only) in the file {0}",
     "error_api_key_extended": "Please enter your API key (premium only) in the file /userdata/saves/ports/rgsx/1fichierAPI.txt by opening it in a text editor and pasting your API key",
     "error_invalid_download_data": "Invalid download data",
@@ -88,7 +82,7 @@
     
     "button_yes": "Yes",
     "button_no": "No",
-    "button_validate": "OK",
+    "button_OK": "OK",
     
     "controls_hold_message": "Hold for 3s for: '{0}'",
     "controls_skip_message": "Press Esc to skip (PC only)",
@@ -171,6 +165,7 @@
     "utils_extraction_failed": "Extraction failed: {0}",
     "utils_unrar_unavailable": "Unrar command not available",
     "utils_rar_list_failed": "Failed to list RAR files: {0}",
+    "utils_xdvdfs_unavailable": "xdvdfs tool unavailable (missing or permission denied)",
     "download_initializing": "Initializing...",
     "accessibility_font_size": "Font size: {0}",
     "confirm_cancel_download": "Cancel current download?",

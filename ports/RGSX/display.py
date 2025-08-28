@@ -232,7 +232,7 @@ def draw_error_screen(screen):
         text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
         screen.blit(text, text_rect)
 
-    draw_stylized_button(screen, _("button_validate"), rect_x + rect_width // 2 - 80, rect_y + text_height + margin_top_bottom, 160, button_height, selected=True)
+    draw_stylized_button(screen, _("button_OK"), rect_x + rect_width // 2 - 80, rect_y + text_height + margin_top_bottom, 160, button_height, selected=True)
 
 # Récupérer les noms d'affichage des contrôles
 def get_control_display(action, default):

@@ -7,11 +7,7 @@
     "disclaimer_line5": "et n'heberge pas de ROMs.",
     
     "loading_test_connection": "Test de la connexion...",
-    "loading_update_check": "Vérification des mises à jour... Veuillez patienter...",
     "loading_download_data": "Téléchargement des jeux et images...",
-    "loading_download_initial": "Téléchargement du dossier de données initial...",
-    "loading_extract_initial": "Extraction du dossier de données initial...",
-    "loading_systems": "Chargement des systèmes...",
     "loading_progress": "Progression : {0}%",
     "loading_check_updates": "Vérification des mises à jour... Veuillez patienter...",
     "error_check_updates_failed": "Échec de la vérification des mises à jour.",
@@ -23,9 +19,7 @@
     
     
     "error_no_internet": "Pas de connexion Internet. Vérifiez votre réseau.",
-    "error_load_sources": "Échec du chargement de sources.json",
     "error_controls_mapping": "Échec du mappage des contrôles",
-    "error_download_data": "Échec du téléchargement/extraction du Dossier Data : {0}",
     "error_api_key": "Attention il faut renseigner sa clé API (premium only) dans le fichier {0}",
     "error_api_key_extended": "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichierAPI.txt à ouvrir dans un éditeur de texte et coller la clé API",
     "error_invalid_download_data": "Données de téléchargement invalides",
@@ -85,7 +79,7 @@
     
     "button_yes": "Oui",
     "button_no": "Non",
-    "button_validate": "OK",
+    "button_OK": "OK",
     
     "controls_hold_message": "Maintenez pendant 3s pour : '{0}'",
     "controls_skip_message": "Appuyez sur Échap pour passer(Pc only)",
@@ -183,6 +177,7 @@
     "utils_extraction_failed": "Échec de l'extraction: {0}",
     "utils_unrar_unavailable": "Commande unrar non disponible",
     "utils_rar_list_failed": "Échec de la liste des fichiers RAR: {0}",
+    "utils_xdvdfs_unavailable": "Outil xdvdfs indisponible (manquant ou permission refusée)",
     "controls_mapping_title": "Controls configuration",
     "controls_mapping_instruction": "Hold for 3s to configure:",
     "controls_mapping_waiting": "Waiting for a key or button...",

@@ -11,11 +11,7 @@
     "disclaimer_line5": "y no aloja ROMs.",
     
     "loading_test_connection": "Probando conexión...",
-    "loading_update_check": "Verificando actualización en curso... Por favor, espera...",
     "loading_download_data": "Descargando juegos e imágenes...",
-    "loading_download_initial": "Descargando la carpeta de datos inicial...",
-    "loading_extract_initial": "Extrayendo la carpeta de datos inicial...",
-    "loading_systems": "Cargando sistemas...",
     "loading_progress": "Progreso: {0}%",
     "loading_check_updates": "Buscando actualizaciones... Espere...",
     "error_check_updates_failed": "Error al comprobar actualizaciones.",
@@ -27,9 +23,7 @@
 
     
     "error_no_internet": "Sin conexión a Internet. Verifica tu red.",
-    "error_load_sources": "Error al cargar sources.json",
     "error_controls_mapping": "Error al mapear los controles",
-    "error_download_data": "Error al descargar/extraer la carpeta de datos: {0}",
     "error_api_key": "Atención, debes ingresar tu clave API (solo premium) en el archivo {0}",
     "error_api_key_extended": "Atención, debes ingresar tu clave API (solo premium) en el archivo /userdata/saves/ports/rgsx/1fichierAPI.txt, abrirlo en un editor de texto y pegar la clave API",
     "error_invalid_download_data": "Datos de descarga no válidos",
@@ -89,7 +83,7 @@
     
     "button_yes": "Sí",
     "button_no": "No",
-    "button_validate": "OK",
+    "button_OK": "OK",
     
     "controls_hold_message": "Mantén presionado durante 3s para: '{0}'",
     "controls_skip_message": "Presiona Esc para omitir (solo PC)",
@@ -187,6 +181,7 @@
     "utils_extraction_failed": "Error en la extracción: {0}",
     "utils_unrar_unavailable": "Comando unrar no disponible",
     "utils_rar_list_failed": "Error al listar los archivos RAR: {0}",
+    "utils_xdvdfs_unavailable": "Herramienta xdvdfs no disponible (faltante o sin permisos)",
     
     "menu_symlink_option": "Opción Symlink",
     "symlink_option_enabled": "Opción symlink habilitada",

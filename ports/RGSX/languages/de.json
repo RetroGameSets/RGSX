@@ -11,11 +11,7 @@
     "disclaimer_line5": "und hostet keine ROMs.",
     
     "loading_test_connection": "Verbindung wird getestet...",
-    "loading_update_check": "Prüfung auf Updates läuft... Bitte warten...",
     "loading_download_data": "Spiele und Bilder werden heruntergeladen...",
-    "loading_download_initial": "Download des initialen Datenordners...",
-    "loading_extract_initial": "Extrahieren des initialen Datenordners...",
-    "loading_systems": "Systeme werden geladen...",
     "loading_progress": "Fortschritt: {0}%",
     "loading_check_updates": "Aktualisierungen werden geprüft... Bitte warten...",
     "error_check_updates_failed": "Überprüfung auf Updates fehlgeschlagen.",
@@ -26,9 +22,7 @@
     "error_sources_load_failed": "sources.json konnte nicht geladen werden",
     
     "error_no_internet": "Keine Internetverbindung. Überprüfe dein Netzwerk.",
-    "error_load_sources": "Fehler beim Laden von sources.json",
     "error_controls_mapping": "Fehler beim Zuordnen der Steuerung",
-    "error_download_data": "Fehler beim Herunterladen/Extrahieren des Datenordners: {0}",
     "error_api_key": "Achtung, du musst deinen API-Schlüssel (nur Premium) in der Datei {0} eingeben",
     "error_api_key_extended": "Achtung, du musst deinen API-Schlüssel (nur Premium) in der Datei /userdata/saves/ports/rgsx/1fichierAPI.txt einfügen. Öffne die Datei in einem Texteditor und füge den API-Schlüssel ein",
     "error_invalid_download_data": "Ungültige Downloaddaten",
@@ -88,7 +82,7 @@
     
     "button_yes": "Ja",
     "button_no": "Nein",
-    "button_validate": "OK",
+    "button_OK": "OK",
     
     "controls_hold_message": "3 Sekunden halten für: '{0}'",
     "controls_skip_message": "Drücke Esc, um zu überspringen (nur PC)",
@@ -186,6 +180,7 @@
     "utils_extraction_failed": "Extraktion fehlgeschlagen: {0}",
     "utils_unrar_unavailable": "Befehl unrar nicht verfügbar",
     "utils_rar_list_failed": "Fehler beim Auflisten der RAR-Dateien: {0}",
+    "utils_xdvdfs_unavailable": "xdvdfs-Tool nicht verfügbar (fehlend oder keine Berechtigung)",
     
     "menu_symlink_option": "Symlink-Option",
     "symlink_option_enabled": "Symlink-Option aktiviert",
