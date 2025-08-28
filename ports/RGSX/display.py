@@ -624,8 +624,12 @@ def draw_game_list(screen):
 
     for i in range(config.scroll_offset, min(config.scroll_offset + items_per_page, len(games))):
         game_name = games[i][0] if isinstance(games[i], (list, tuple)) else games[i]
-        color = THEME_COLORS["fond_lignes"] if i == config.current_game else THEME_COLORS["text"]
-        game_text = truncate_text_middle(game_name, config.small_font, rect_width - 40, is_filename=False)
+        is_marked = i in getattr(config, 'selected_games', set())
+        # Couleur verte si jeu sous curseur OU marqué en multi-sélection
+        color = THEME_COLORS["fond_lignes"] if (i == config.current_game or is_marked) else THEME_COLORS["text"]
+        # Préfixe ASCII pour distinguer les jeux marqués (éviter collision glyphes)
+        prefix = "[X] " if is_marked else "    "
+        game_text = truncate_text_middle(prefix + game_name, config.small_font, rect_width - 40, is_filename=False)
         text_surface = config.small_font.render(game_text, True, color)
         text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + (i - config.scroll_offset) * line_height + line_height // 2))
         if i == config.current_game:
@@ -714,6 +718,13 @@ def draw_history_list(screen):
     extra_margin_top = 40
     extra_margin_bottom = 80
     title_height = config.title_font.get_height() + 20
+
+    # Sécuriser current_history_item pour éviter IndexError
+    if history:
+        if config.current_history_item < 0 or config.current_history_item >= len(history):
+            config.current_history_item = max(0, min(len(history) - 1, config.current_history_item))
+    else:
+        config.current_history_item = 0
 
     speed = 0.0
     if history and history[config.current_history_item].get("status") in ["Téléchargement", "downloading"]:
@@ -1019,37 +1030,7 @@ def draw_progress_screen(screen):
         progress_width = int(bar_width * (min(100, max(0, progress_percent)) / 100))
 
 
-# Écran popup résultat téléchargement
-def draw_popup_result_download(screen, message, is_error):
-    """Affiche une popup flottante centrée avec un message de résultat et un compte à rebours."""    
-    if message is None:
-        message = _("download_canceled")
-    logger.debug(f"Message popup : {message}, is_error={is_error}")
-
-    screen.blit(OVERLAY, (0, 0))
-
-    popup_width = int(config.screen_width * 0.8)
-    line_height = config.small_font.get_height() + 10
-    wrapped_message = wrap_text(message, config.small_font, popup_width - 40)
-    text_height = len(wrapped_message) * line_height
-    margin_top_bottom = 20
-    popup_height = text_height + 2 * margin_top_bottom + line_height
-    popup_x = (config.screen_width - popup_width) // 2
-    popup_y = (config.screen_height - popup_height) // 2
-
-    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (popup_x, popup_y, popup_width, popup_height), border_radius=12)
-    pygame.draw.rect(screen, THEME_COLORS["border"], (popup_x, popup_y, popup_width, popup_height), 2, border_radius=12)
-
-    for i, line in enumerate(wrapped_message):
-        text_surface = config.small_font.render(line, True, THEME_COLORS["error_text"] if is_error else THEME_COLORS["text"])
-        text_rect = text_surface.get_rect(center=(config.screen_width // 2, popup_y + margin_top_bottom + i * line_height + line_height // 2))
-        screen.blit(text_surface, text_rect)
-
-    remaining_time = 3
-    countdown_text = _("popup_countdown").format(remaining_time, 's' if remaining_time != 1 else '')
-    countdown_surface = config.small_font.render(countdown_text, True, THEME_COLORS["text"])
-    countdown_rect = countdown_surface.get_rect(center=(config.screen_width // 2, popup_y + margin_top_bottom + len(wrapped_message) * line_height + line_height // 2))
-    screen.blit(countdown_surface, countdown_rect)
+## Ancienne fonction draw_popup_result_download supprimée (popup de fin de téléchargement retiré)
 
 # Écran avertissement extension non supportée téléchargement
 def draw_extension_warning(screen):
@@ -1282,7 +1263,7 @@ def draw_controls_help(screen, previous_state):
 
     # États autorisés (même logique qu'avant)
     allowed_states = {
-        "error", "platform", "game", "download_result", "confirm_exit",
+        "error", "platform", "game", "confirm_exit",
         "extension_warning", "history", "clear_history"
     }
     if previous_state not in allowed_states:

@@ -15,6 +15,7 @@ The application supports multiple sources like myrient and 1fichier. These sourc
   - Downloads require no authentication or account for most sources.
   - Systems marked `(1fichier)` in the name will only be accessible if you provide your 1fichier API key (see below).
 - **Download history** : View and re-download previous files.
+- **Multi-select downloads** : Mark multiple games in the game list with the key mapped to Clear History (default X) to enqueue several downloads in one batch. Press Confirm to start batch.
 - **Control customization** : Remap keyboard or controller keys to your preference with automatic button name detection from EmulationStation (beta).
 - **Font size adjustment** : If you find the text too small/too large, you can change it in the menu.
 - **Search mode** : Filter games by name for quick navigation with virtual keyboard on controller.
@@ -96,6 +97,7 @@ INFO: for retrobat on first launch, the application will download Python in the 
 
 - Select a platform, then a game.
 - Press the confirm key (default, **Enter** or **A** button) to start the download.
+- Optional: Press the key mapped to Clear History (default **X**) on several games to toggle multi-selection ([X] marker). Then press Confirm to launch a sequential batch download.
 - Follow the progress in the `HISTORY` menu.
 
 ---
@@ -193,7 +195,7 @@ git checkout -b feature/your-feature-name
 
 ## ⚠️ Known issues / To implement
 
-- Multiple download management
+- (None currently listed)
 
 ---
 

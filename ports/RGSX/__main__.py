@@ -11,7 +11,7 @@ import config
 
 from display import (
     init_display, draw_loading_screen, draw_error_screen, draw_platform_grid,
-    draw_progress_screen, draw_controls, draw_virtual_keyboard, draw_popup_result_download,
+    draw_progress_screen, draw_controls, draw_virtual_keyboard,
     draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list,
     draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog,
     draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, draw_gradient,
@@ -329,7 +329,7 @@ async def main():
                         logger.debug("Téléchargement annulé, retour à l'état précédent")
                 continue
 
-            if config.menu_state in ["platform", "game", "error", "confirm_exit", "download_result", "history"]:
+            if config.menu_state in ["platform", "game", "error", "confirm_exit", "history"]:
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 if action == "quit":
@@ -442,14 +442,14 @@ async def main():
                                     config.previous_menu_state = config.menu_state
                                     logger.debug(f"Previous menu state défini: {config.previous_menu_state}")
                                     success, message = download_from_1fichier(url, platform, game_name, is_zip_non_supported)
+                                    # Ancien popup download_result supprimé : retour direct à l'historique
                                     config.download_result_message = message
                                     config.download_result_error = not success
-                                    config.download_result_start_time = pygame.time.get_ticks()
-                                    config.menu_state = "download_result"
                                     config.download_progress.clear()
                                     config.pending_download = None
+                                    config.menu_state = "history"
                                     config.needs_redraw = True
-                                    logger.debug(f"Retéléchargement 1fichier terminé pour {game_name}, succès={success}, message={message}")
+                                    logger.debug(f"Retéléchargement 1fichier terminé pour {game_name}, succès={success}, message={message}, retour direct history")
                             else:
                                 is_supported, message, is_zip_non_supported = check_extension_before_download(url, platform, game_name)
                                 if not is_supported:
@@ -464,12 +464,11 @@ async def main():
                                     success, message = download_rom(url, platform, game_name, is_zip_non_supported)
                                     config.download_result_message = message
                                     config.download_result_error = not success
-                                    config.download_result_start_time = pygame.time.get_ticks()
-                                    config.menu_state = "download_result"
                                     config.download_progress.clear()
                                     config.pending_download = None
+                                    config.menu_state = "history"
                                     config.needs_redraw = True
-                                    logger.debug(f"Retéléchargement terminé pour {game_name}, succès={success}, message={message}")
+                                    logger.debug(f"Retéléchargement terminé pour {game_name}, succès={success}, message={message}, retour direct history")
                             break
                 elif action in ("clear_history", "delete_history") and config.menu_state == "history":
                     # Ouvrir le dialogue de confirmation
@@ -500,10 +499,9 @@ async def main():
                                 break
                         config.download_result_message = message
                         config.download_result_error = not success
-                        config.download_result_start_time = pygame.time.get_ticks()
-                        config.menu_state = "download_result"
                         config.download_progress.clear()
                         config.pending_download = None
+                        config.menu_state = "history"
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
                     except Exception as e:
@@ -521,10 +519,9 @@ async def main():
                                 break
                         config.download_result_message = message
                         config.download_result_error = True
-                        config.download_result_start_time = pygame.time.get_ticks()
-                        config.menu_state = "download_result"
                         config.download_progress.clear()
                         config.pending_download = None
+                        config.menu_state = "history"
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
                 else:
@@ -567,13 +564,7 @@ async def main():
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
 
-        # Gestion de la fin du popup download_result
-        if config.menu_state == "download_result" and current_time - config.download_result_start_time > 3000:
-            config.menu_state = "history"  # Rester dans l'historique après le popup
-            config.download_progress.clear()
-            config.pending_download = None
-            config.needs_redraw = True
-            logger.debug(f"Fin popup download_result, retour à history")
+    # Popup download_result supprimé : plus de temporisation de 3s
 
         # Affichage
         if config.needs_redraw:
@@ -588,7 +579,9 @@ async def main():
             elif config.menu_state == "error":
                 draw_error_screen(screen)
             elif config.menu_state == "update_result":
-                draw_popup_result_download(screen, config.update_result_message, config.update_result_error)
+                # Ancien popup supprimé : afficher directement l'historique
+                config.menu_state = "history"
+                draw_history_list(screen)
             elif config.menu_state == "platform":
                 draw_platform_grid(screen)
             elif config.menu_state == "game":
@@ -600,8 +593,7 @@ async def main():
                         draw_virtual_keyboard(screen)
             elif config.menu_state == "download_progress":
                 draw_progress_screen(screen)
-            elif config.menu_state == "download_result":
-                draw_popup_result_download(screen, config.download_result_message, config.download_result_error)
+            # État download_result supprimé
             elif config.menu_state == "confirm_exit":
                 draw_confirm_dialog(screen)
             elif config.menu_state == "extension_warning":

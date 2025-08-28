@@ -308,8 +308,6 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
             data["clear_history"] = data["progress"]
             changed = True
 
-        # Compléter avec des valeurs par défaut si nécessaire (facultatif selon votre implémentation)
-        # ...existing code de complétion si présent...
 
         if changed:
             os.makedirs(os.path.dirname(path), exist_ok=True)

@@ -20,13 +20,16 @@ from language import _  # Import de la fonction de traduction
 
 logger = logging.getLogger(__name__)
 
+# Extensions d'archives pour lesquelles on ignore l'avertissement d'extension non supportée
+ARCHIVE_EXTENSIONS = {'.zip', '.7z', '.rar', '.tar', '.gz', '.xz', '.bz2'}
+
 
 # Variables globales pour la répétition
 key_states = {}  # Dictionnaire pour suivre l'état des touches
 
 # Liste des états valides
 VALID_STATES = [
-    "platform", "game", "download_result", "confirm_exit",
+    "platform", "game", "confirm_exit",
     "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
     "redownload_game_cache", "restart_popup", "error", "loading", "confirm_clear_history",
     "language_select"
@@ -462,6 +465,16 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "history"
                     config.needs_redraw = True
                     logger.debug("Ouverture history depuis game")
+                # Bascule de sélection multiple avec la touche clear_history (réutilisée)
+                elif is_input_matched(event, "clear_history"):
+                    if games:
+                        idx = config.current_game
+                        if idx in config.selected_games:
+                            config.selected_games.remove(idx)
+                        else:
+                            config.selected_games.add(idx)
+                        config.needs_redraw = True
+                        logger.debug(f"Multi-select toggle index={idx}, now selected={len(config.selected_games)}")
                 elif is_input_matched(event, "cancel"):
                     config.menu_state = "platform"
                     config.current_game = 0
@@ -473,9 +486,68 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "redownload_game_cache"
                     config.needs_redraw = True
                     logger.debug("Passage à redownload_game_cache depuis game")
-                # Sélectionner un jeu, événement confirm
+                # Télécharger les jeux sélectionnés (multi) ou le jeu courant
                 elif is_input_matched(event, "confirm"):
-                    if games:
+                    # Batch multi-sélection
+                    if games and config.selected_games:
+                        config.batch_download_indices = sorted({i for i in config.selected_games if 0 <= i < len(games)})
+                        config.selected_games.clear()
+                        config.batch_in_progress = True
+                        config.batch_pending_game = None
+
+                        def process_next_batch_item():
+                            # si un jeu attend encore confirmation, ne pas avancer
+                            if config.batch_pending_game:
+                                return False
+                            while config.batch_download_indices:
+                                idx = config.batch_download_indices.pop(0)
+                                g = games[idx]
+                                url = g[1]
+                                game_name = g[0]
+                                platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
+                                logger.debug(f"Batch step: {game_name} idx={idx} restants={len(config.batch_download_indices)}")
+                                config.pending_download = check_extension_before_download(url, platform, game_name)
+                                if not config.pending_download:
+                                    continue  # passe au suivant
+                                is_supported = is_extension_supported(
+                                    sanitize_filename(game_name),
+                                    platform,
+                                    load_extensions_json()
+                                )
+                                ext = os.path.splitext(url)[1].lower()
+                                if not is_supported and ext not in ARCHIVE_EXTENSIONS:
+                                    # Stocker comme pending sans dupliquer l'entrée
+                                    config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
+                                    config.previous_menu_state = config.menu_state
+                                    config.menu_state = "extension_warning"
+                                    config.extension_confirm_selection = 0
+                                    config.needs_redraw = True
+                                    return False
+                                # Téléchargement direct
+                                config.history.append(add_to_history(platform, game_name, "downloading", url, 0, "Téléchargement en cours"))
+                                config.current_history_item = len(config.history) -1
+                                task_id = str(pygame.time.get_ticks())
+                                if is_1fichier_url(url):
+                                    config.API_KEY_1FICHIER = load_api_key_1fichier()
+                                    if not config.API_KEY_1FICHIER:
+                                        config.history[-1]["status"] = "Erreur"
+                                        config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
+                                        save_history(config.history)
+                                        continue
+                                    task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
+                                else:
+                                    task = asyncio.create_task(download_rom(url, platform, game_name, config.pending_download[3], task_id))
+                                config.download_tasks[task_id] = (task, url, game_name, platform)
+                                # passer à l'élément suivant (boucle while)
+                            return True  # fin lot
+
+                        process_next_batch_item()
+                        # Aller à l'historique si pas d'avertissement en attente
+                        if config.menu_state == "game" and not config.batch_pending_game:
+                            config.menu_state = "history"
+                        config.needs_redraw = True
+                        action = "download"
+                    elif games:
                         url = games[config.current_game][1]
                         game_name = games[config.current_game][0]
                         platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
@@ -516,7 +588,8 @@ def handle_controls(event, sources, joystick, screen):
                                     platform,
                                     load_extensions_json()
                                 )
-                                if not is_supported:
+                                ext = os.path.splitext(url)[1].lower()
+                                if not is_supported and ext not in ARCHIVE_EXTENSIONS:
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "extension_warning"
                                     config.extension_confirm_selection = 0
@@ -548,7 +621,8 @@ def handle_controls(event, sources, joystick, screen):
                                     platform,
                                     load_extensions_json()
                                 )
-                                if not is_supported:
+                                ext = os.path.splitext(url)[1].lower()
+                                if not is_supported and ext not in ARCHIVE_EXTENSIONS:
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "extension_warning"
                                     config.extension_confirm_selection = 0
@@ -616,6 +690,55 @@ def handle_controls(event, sources, joystick, screen):
                         logger.debug(f"Téléchargement confirmé après avertissement: {game_name} pour {platform} depuis {url}, task_id={task_id}")
                         config.pending_download = None
                         action = "download"
+                        # Reprendre batch si présent
+                        # Reprise batch si un jeu était en attente
+                        if config.batch_pending_game:
+                            config.batch_pending_game = None
+                        if config.batch_in_progress:
+                            config.menu_state = "game"
+                            # Relancer la progression du lot
+                            # Appeler la fonction locale si disponible (ré-implémentation légère ici)
+                            try:
+                                games = config.filtered_games if config.filter_active or config.search_mode else config.games
+                                while config.batch_download_indices and not config.batch_pending_game:
+                                    idx = config.batch_download_indices.pop(0)
+                                    if idx < 0 or idx >= len(games):
+                                        continue
+                                    g = games[idx]
+                                    url = g[1]; game_name = g[0]
+                                    platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
+                                    config.pending_download = check_extension_before_download(url, platform, game_name)
+                                    if not config.pending_download:
+                                        continue
+                                    is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
+                                    ext = os.path.splitext(url)[1].lower()
+                                    if not is_supported and ext not in ARCHIVE_EXTENSIONS:
+                                        config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
+                                        config.previous_menu_state = config.menu_state
+                                        config.menu_state = "extension_warning"
+                                        config.extension_confirm_selection = 0
+                                        config.needs_redraw = True
+                                        break
+                                    config.history.append(add_to_history(platform, game_name, "downloading", url, 0, "Téléchargement en cours"))
+                                    config.current_history_item = len(config.history) -1
+                                    task_id = str(pygame.time.get_ticks())
+                                    if is_1fichier_url(url):
+                                        config.API_KEY_1FICHIER = load_api_key_1fichier()
+                                        if not config.API_KEY_1FICHIER:
+                                            config.history[-1]["status"] = "Erreur"
+                                            config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
+                                            save_history(config.history)
+                                            continue
+                                        task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
+                                    else:
+                                        task = asyncio.create_task(download_rom(url, platform, game_name, config.pending_download[3], task_id))
+                                    config.download_tasks[task_id] = (task, url, game_name, platform)
+                                if not config.batch_download_indices and not config.batch_pending_game:
+                                    # Batch terminé
+                                    config.batch_in_progress = False
+                                    config.menu_state = "history"
+                            except Exception as e:
+                                logger.error(f"Erreur reprise batch après warning: {e}")
                     else:
                         config.menu_state = "error"
                         config.error_message = _("error_invalid_download_data")
@@ -628,6 +751,52 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = validate_menu_state(config.previous_menu_state)
                     config.needs_redraw = True
                     logger.debug(f"Retour à {config.menu_state} depuis extension_warning")
+                    if config.batch_pending_game:
+                        # Annulation de ce jeu -> on le saute
+                        config.batch_pending_game = None
+                    if config.batch_in_progress:
+                        config.menu_state = "game"
+                        # Reprise similaire à ci-dessus
+                        try:
+                            games = config.filtered_games if config.filter_active or config.search_mode else config.games
+                            while config.batch_download_indices and not config.batch_pending_game:
+                                idx = config.batch_download_indices.pop(0)
+                                if idx < 0 or idx >= len(games):
+                                    continue
+                                g = games[idx]
+                                url = g[1]; game_name = g[0]
+                                platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
+                                config.pending_download = check_extension_before_download(url, platform, game_name)
+                                if not config.pending_download:
+                                    continue
+                                is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
+                                ext = os.path.splitext(url)[1].lower()
+                                if not is_supported and ext not in ARCHIVE_EXTENSIONS:
+                                    config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
+                                    config.previous_menu_state = config.menu_state
+                                    config.menu_state = "extension_warning"
+                                    config.extension_confirm_selection = 0
+                                    config.needs_redraw = True
+                                    break
+                                config.history.append(add_to_history(platform, game_name, "downloading", url, 0, "Téléchargement en cours"))
+                                config.current_history_item = len(config.history) -1
+                                task_id = str(pygame.time.get_ticks())
+                                if is_1fichier_url(url):
+                                    config.API_KEY_1FICHIER = load_api_key_1fichier()
+                                    if not config.API_KEY_1FICHIER:
+                                        config.history[-1]["status"] = "Erreur"
+                                        config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
+                                        save_history(config.history)
+                                        continue
+                                    task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
+                                else:
+                                    task = asyncio.create_task(download_rom(url, platform, game_name, config.pending_download[3], task_id))
+                                config.download_tasks[task_id] = (task, url, game_name, platform)
+                            if not config.batch_download_indices and not config.batch_pending_game:
+                                config.batch_in_progress = False
+                                config.menu_state = "history"
+                        except Exception as e:
+                            logger.error(f"Erreur reprise batch annulation warning: {e}")
             elif is_input_matched(event, "left") or is_input_matched(event, "right"):
                 config.extension_confirm_selection = 1 - config.extension_confirm_selection
                 config.needs_redraw = True
@@ -636,6 +805,10 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = validate_menu_state(config.previous_menu_state)
                 config.needs_redraw = True
                 logger.debug(f"Retour à {config.menu_state} depuis extension_warning")
+                if config.batch_pending_game:
+                    config.batch_pending_game = None
+                if config.batch_in_progress:
+                    config.menu_state = "game"
 
         #Historique            
         elif config.menu_state == "history":
@@ -690,7 +863,7 @@ def handle_controls(event, sources, joystick, screen):
                             config.pending_download = check_extension_before_download(game[1], platform, game_name)
                             if config.pending_download:
                                 url, platform, game_name, is_zip_non_supported = config.pending_download
-                                if is_zip_non_supported:
+                                if is_zip_non_supported and os.path.splitext(url)[1].lower() not in ARCHIVE_EXTENSIONS:
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "extension_warning"
                                     config.extension_confirm_selection = 0
@@ -798,14 +971,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 logger.debug("Annulation du vidage de l'historique, retour à history")
 
-        # Résultat téléchargement
-        elif config.menu_state == "download_result":
-            if is_input_matched(event, "confirm"):
-                config.menu_state = validate_menu_state(config.previous_menu_state)
-                config.popup_timer = 0
-                config.pending_download = None
-                config.needs_redraw = True
-                logger.debug(f"Retour à {config.menu_state} depuis download_result")
+    # État download_result supprimé
 
         # Confirmation quitter
         elif config.menu_state == "confirm_exit":

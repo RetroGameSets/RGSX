@@ -5,7 +5,7 @@ import platform
 from rgsx_settings import load_rgsx_settings, save_rgsx_settings, migrate_old_settings
 
 # Version actuelle de l'application
-app_version = "1.9.9.0"
+app_version = "1.9.9.1"
 
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""
@@ -178,6 +178,10 @@ popup_timer = 0  # Temps restant pour le popup en millisecondes (0 = inactif)
 last_frame_time = pygame.time.get_ticks()
 current_music_name = None
 music_popup_start_time = 0
+selected_games = set()  # Indices des jeux sélectionnés pour un téléchargement multiple (menu game)
+batch_download_indices = []  # File d'attente des indices de jeux à traiter en lot
+batch_in_progress = False  # Indique qu'un lot est en cours
+batch_pending_game = None  # Données du jeu en attente de confirmation d'extension
 
 
 GRID_COLS = 3  # Number of columns in the platform grid

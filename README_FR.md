@@ -14,6 +14,7 @@ L'application prend en charge plusieurs sources comme myrient, 1fichier. Ces sou
   - Les téléchargements ne nécessitent aucune authentification ni compte pour la plupart.
   - Les systèmes notés `(1fichier)` dans le nom ne seront accessibles que si vous renseignez votre clé API 1fichier (voir plus bas).
 - **Historique des téléchargements** : Consultez et retéléchargez les anciens fichiers.
+- **Téléchargements multi-sélection** : Marquez plusieurs jeux dans la liste avec la touche associée à Vider Historique (par défaut X) pour préparer un lot. Appuyez ensuite sur Confirmer pour lancer les téléchargements en séquence.
 - **Personnalisation des contrôles** : Remappez les touches du clavier ou de la manette à votre convenance avec détection automatique des noms de boutons depuis EmulationStation(beta).
 - **Changement de taille de police** : Si vous trouvez les écritures trop petites/trop grosses, vous pouvez le changer dans le menu.
 - **Mode recherche** : Filtrez les jeux par nom pour une navigation rapide avec clavier virtuel sur manette.
@@ -94,6 +95,7 @@ INFO : pour retrobat au premier lancement, l'application téléchargera Python d
 
 - Sélectionnez une plateforme, puis un jeu.
 - Appuyez sur la touche configurée confirm (par défaut, **Entrée** ou bouton **A**) pour lancer le téléchargement.
+- Option : appuyez sur la touche Vider Historique (par défaut **X**) sur plusieurs jeux pour activer/désactiver leur sélection (marqueur [X]). Puis validez pour lancer un lot de téléchargements.
 - Suivez la progression dans le menu `HISTORIQUE`.
 
 ---
@@ -187,7 +189,7 @@ git checkout -b feature/nom-de-votre-fonctionnalité
 
 ## ⚠️ Problèmes connus / À implémenter
 
-- Gestion des téléchargements multiples
+- (Aucun listé actuellement)
 
 ---
 
