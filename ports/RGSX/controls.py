@@ -1099,9 +1099,9 @@ def handle_controls(event, sources, joystick, screen):
                     logger.debug("Début du redownload des jeux")
                     config.download_tasks.clear()
                     config.pending_download = None
-                    if os.path.exists(config.APP_FOLDER + "/sources.json"):
+                    if os.path.exists(config.SOURCES_FILE):
                         try:
-                            os.remove(config.APP_FOLDER + "/sources.json")
+                            os.remove(config.SOURCES_FILE)
                             logger.debug("Fichier sources.json supprimé avec succès")
                             if os.path.exists(config.GAMES_FOLDER):
                                 shutil.rmtree(config.GAMES_FOLDER)

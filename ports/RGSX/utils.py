@@ -109,7 +109,7 @@ def is_extension_supported(filename, platform, extensions_data):
 # Fonction pour charger sources.json
 def load_sources():
     """Charge les sources depuis sources.json et initialise les plateformes."""
-    sources_path = os.path.join(config.APP_FOLDER, "sources.json")
+    sources_path = os.path.join(config.SOURCES_FILE)
     logger.debug(f"Chargement de {sources_path}")
     try:
         with open(sources_path, 'r', encoding='utf-8') as f:

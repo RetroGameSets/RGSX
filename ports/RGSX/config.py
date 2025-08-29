@@ -61,25 +61,30 @@ def get_system_root():
         return "/" if not OPERATING_SYSTEM == "Windows" else os.path.splitdrive(os.getcwd())[0] + os.sep
 
 # Chemins de base
-
 SYSTEM_FOLDER = get_system_root()
 APP_FOLDER = os.path.join(get_application_root(), "RGSX")
 ROMS_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms")
 SAVE_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "saves", "ports", "rgsx")
+
 # Configuration du logging
 logger = logging.getLogger(__name__)
 log_dir = os.path.join(APP_FOLDER, "logs")
 log_file = os.path.join(log_dir, "RGSX.log")
 
 # Chemins de base
-UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")
 GAMELISTXML = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms", "ports", "gamelist.xml")
-IMAGES_FOLDER = os.path.join(APP_FOLDER, "images", "systemes")
-GAMES_FOLDER = os.path.join(APP_FOLDER, "games")
+
+#Dossier /roms/ports/rgsx
+UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")
 LANGUAGES_FOLDER = os.path.join(APP_FOLDER, "languages")
+JSON_EXTENSIONS = os.path.join(APP_FOLDER, "rom_extensions.json")
+
+#Dossier /saves/ports/rgsx
+IMAGES_FOLDER = os.path.join(SAVE_FOLDER, "images", "systemes")
+GAMES_FOLDER = os.path.join(SAVE_FOLDER, "games")
+SOURCES_FILE = os.path.join(SAVE_FOLDER, "sources.json")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
 HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
-JSON_EXTENSIONS = os.path.join(APP_FOLDER, "rom_extensions.json")
 
 # Nouveau fichier unifié pour les paramètres RGSX
 RGSX_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
