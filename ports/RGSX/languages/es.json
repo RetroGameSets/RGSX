@@ -19,7 +19,7 @@
     "loading_extracting_data": "Extrayendo la carpeta de datos inicial...",
     "loading_load_systems": "Cargando sistemas...",
     "error_extract_data_failed": "Error al descargar o extraer la carpeta de datos inicial.",
-    "error_sources_load_failed": "Error al cargar sources.json",
+    "error_sources_load_failed": "Error al cargar las fuentes. Abre el menú y selecciona Volver a descargar la caché de juegos",
 
     
     "error_no_internet": "Sin conexión a Internet. Verifica tu red.",

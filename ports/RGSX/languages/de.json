@@ -19,7 +19,7 @@
     "loading_extracting_data": "Der initiale Datenordner wird entpackt...",
     "loading_load_systems": "Systeme werden geladen...",
     "error_extract_data_failed": "Herunterladen oder Entpacken des initialen Datenordners fehlgeschlagen.",
-    "error_sources_load_failed": "sources.json konnte nicht geladen werden",
+    "error_sources_load_failed": "Quellen konnten nicht geladen werden. Öffne das Menü und wähle dann Spiele-Cache erneut herunterladen",
     
     "error_no_internet": "Keine Internetverbindung. Überprüfe dein Netzwerk.",
     "error_controls_mapping": "Fehler beim Zuordnen der Steuerung",

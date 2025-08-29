@@ -19,7 +19,7 @@
     "loading_extracting_data": "Extracting initial Data folder...",
     "loading_load_systems": "Loading systems...",
     "error_extract_data_failed": "Failed to download or extract the initial Data folder.",
-    "error_sources_load_failed": "Failed to load sources.json",
+    "error_sources_load_failed": "Failed to load sources. Open the menu then select Redownload Games cache",
     
     "error_no_internet": "No Internet connection. Check your network.",
     "error_controls_mapping": "Failed to map controls",

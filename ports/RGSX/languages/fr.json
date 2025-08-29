@@ -15,7 +15,7 @@
     "loading_extracting_data": "Extraction du dossier de données initial...",
     "loading_load_systems": "Chargement des systèmes...",
     "error_extract_data_failed": "Échec du téléchargement ou de l'extraction du dossier de données initial.",
-    "error_sources_load_failed": "Échec du chargement de sources.json",
+    "error_sources_load_failed": "Échec de chargement des sources, ouvrir le menu puis sélectionner Retélécharger le cache des jeux",
     
     
     "error_no_internet": "Pas de connexion Internet. Vérifiez votre réseau.",
