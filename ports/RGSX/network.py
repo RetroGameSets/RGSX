@@ -185,7 +185,11 @@ async def check_for_updates():
 
             # Configurer la popup pour afficher le message de succès
             config.menu_state = "update_result"
+            # Message succès de mise à jour
             config.update_result_message = _("network_update_success").format(latest_version)
+            # Utiliser aussi le système générique de popup pour affichage
+            config.popup_message = config.update_result_message
+            config.popup_timer = 5000  # 5 secondes
             config.update_result_error = False
             config.update_result_start_time = pygame.time.get_ticks()
             config.needs_redraw = True
@@ -200,6 +204,8 @@ async def check_for_updates():
         logger.error(f"Erreur OTA : {str(e)}")
         config.menu_state = "update_result"
         config.update_result_message = _("network_update_error").format(str(e))
+        config.popup_message = config.update_result_message
+        config.popup_timer = 5000
         config.update_result_error = True
         config.update_result_start_time = pygame.time.get_ticks()
         config.needs_redraw = True

@@ -579,9 +579,7 @@ async def main():
             elif config.menu_state == "error":
                 draw_error_screen(screen)
             elif config.menu_state == "update_result":
-                # Ancien popup supprimé : afficher directement l'historique
-                config.menu_state = "history"
-                draw_history_list(screen)
+                draw_popup(screen)
             elif config.menu_state == "platform":
                 draw_platform_grid(screen)
             elif config.menu_state == "game":
