@@ -715,15 +715,14 @@ async def main():
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
             elif loading_step == "check_data":
-                games_data_dir = os.path.join(config.APP_FOLDER, "games")
-                is_data_empty = not os.path.exists(games_data_dir) or not any(os.scandir(games_data_dir))
+                is_data_empty = not os.path.exists(config.GAMES_FOLDER) or not any(os.scandir(config.GAMES_FOLDER))
                 if is_data_empty:
                     config.current_loading_system = _("loading_download_data")
                     config.loading_progress = 30.0
                     config.needs_redraw = True
                     logger.debug("Dossier Data vide, début du téléchargement du ZIP")
                     try:
-                        zip_path = os.path.join(config.APP_FOLDER, "data_download.zip")
+                        zip_path = os.path.join(config.SAVE_FOLDER, "data_download.zip")
                         headers = {'User-Agent': 'Mozilla/5.0'}
                         with requests.get(OTA_data_ZIP, stream=True, headers=headers, timeout=30) as response:
                             response.raise_for_status()
@@ -750,7 +749,7 @@ async def main():
                         config.current_loading_system = _("loading_extracting_data")
                         config.loading_progress = 60.0
                         config.needs_redraw = True
-                        dest_dir = config.APP_FOLDER
+                        dest_dir = config.SAVE_FOLDER
                         success, message = extract_zip_data(zip_path, dest_dir, OTA_data_ZIP)
                         if success:
                             logger.debug(f"Extraction réussie : {message}")
@@ -784,17 +783,11 @@ async def main():
                     logger.debug(f"Dossier Data non vide, passage à {loading_step}")
             elif loading_step == "load_sources":
                 sources = load_sources()
-                if not sources:
-                    config.menu_state = "error"
-                    config.error_message = _("error_sources_load_failed")
-                    config.needs_redraw = True
-                    logger.debug("Erreur : Échec du chargement de sources.json")
-                else:
-                    config.menu_state = "platform"
-                    config.loading_progress = 100.0
-                    config.current_loading_system = ""
-                    config.needs_redraw = True
-                    logger.debug(f"Fin chargement, passage à platform, progress={config.loading_progress}")
+                config.menu_state = "platform"
+                config.loading_progress = 100.0
+                config.current_loading_system = ""
+                config.needs_redraw = True
+                logger.debug(f"Fin chargement, passage à platform, progress={config.loading_progress}")
 
         # Gestion de l'état de transition
         if config.transition_state == "to_game":
