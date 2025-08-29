@@ -59,9 +59,9 @@
     
     "confirm_exit": "Exit application?",
     "confirm_clear_history": "Clear history?",
-    "confirm_redownload_cache": "Redownload games cache?",
+    "confirm_redownload_cache": "Update games list?",
     
-    "popup_redownload_success": "Games redownloaded successfully.\nPlease restart the application to see the changes.",
+    "popup_redownload_success": "Cache cleared, please restart the application",
     "popup_no_cache": "No cache found.\nPlease restart the application to load games.",
     "popup_countdown": "This message will close in {0} second{1}",
     
@@ -74,7 +74,7 @@
     "menu_history": "History",
     "menu_language": "Language",
     "menu_accessibility": "Accessibility",
-    "menu_redownload_cache": "Redownload Games cache",
+    "menu_redownload_cache": "Update games list",
     "menu_music_toggle": "Toggle music",
     "menu_music_enabled": "Music enabled: {0}",
     "menu_music_disabled": "Music disabled",

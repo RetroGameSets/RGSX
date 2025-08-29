@@ -56,9 +56,9 @@
     
     "confirm_exit": "Quitter l'application ?",
     "confirm_clear_history": "Vider l'historique ?",
-    "confirm_redownload_cache": "Retélécharger le cache des jeux ?",
+    "confirm_redownload_cache": "Mettre à jour la liste des jeux ?",
     
-    "popup_redownload_success": "Redownload des jeux effectué.\nVeuillez redémarrer l'application pour voir les changements.",
+    "popup_redownload_success": "Le cache a été effacé, merci de relancer l'application",
     "popup_no_cache": "Aucun cache trouvé.\nVeuillez redémarrer l'application pour charger les jeux.",
     "popup_countdown": "Ce message se fermera dans {0} seconde{1}",
     
@@ -71,7 +71,7 @@
     "menu_history": "Historique",
     "menu_language": "Langue",
     "menu_accessibility": "Accessibilité",
-    "menu_redownload_cache": "Retélécharger le cache des jeux",
+    "menu_redownload_cache": "Mettre à jour la liste des jeux",
     "menu_quit": "Quitter",
     "menu_music_toggle": "Activer/Désactiver la musique",
     "menu_music_enabled": "Musique activée : {0}",
