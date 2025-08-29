@@ -135,7 +135,7 @@ def load_sources():
 
 def load_games(platform_id):
     """Charge les jeux pour une plateforme donnée en utilisant platform_id et teste la première URL."""
-    games_path = os.path.join(config.APP_FOLDER, "games", f"{platform_id}.json")
+    games_path = os.path.join(config.GAMES_FOLDER, f"{platform_id}.json")
     #logger.debug(f"Chargement des jeux pour {platform_id} depuis {games_path}")
     try:
         with open(games_path, 'r', encoding='utf-8') as f:
