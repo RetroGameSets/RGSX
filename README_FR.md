@@ -137,7 +137,6 @@ RGSX/
 ├── __main__.py          # Point d'entrée principal de l'application.
 ├── controls.py          # Gestion des événements clavier/manette/souris et navigation dans les menus.
 ├── controls_mapper.py   # Configuration des contrôles avec détection automatique des noms de boutons.
-├── es_input_parser.py   # Parseur de configuration EmulationStation pour l'import automatique des contrôles.
 ├── display.py           # Rendu des interfaces graphiques avec Pygame.
 ├── config.py            # Configuration globale (chemins, paramètres, etc.).
 ├── rgsx_settings.py     # Gestion unifiée des paramètres de l'application.
