@@ -1458,8 +1458,13 @@ def draw_redownload_game_cache_dialog(screen):
         text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
         screen.blit(text, text_rect)
 
-    draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - 180, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.redownload_confirm_selection == 1)
-    draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 20, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.redownload_confirm_selection == 0)
+    # Calcule une largeur de bouton cohérente avec la boîte et centre les deux boutons
+    button_width = min(160, (rect_width - 60) // 2)
+    yes_x = rect_x + rect_width // 2 - button_width - 10
+    no_x = rect_x + rect_width // 2 + 10
+    buttons_y = rect_y + text_height + margin_top_bottom
+    draw_stylized_button(screen, _("button_yes"), yes_x, buttons_y, button_width, button_height, selected=config.redownload_confirm_selection == 1)
+    draw_stylized_button(screen, _("button_no"), no_x, buttons_y, button_width, button_height, selected=config.redownload_confirm_selection == 0)
 
 # Popup avec compte à rebours
 def draw_popup(screen):
