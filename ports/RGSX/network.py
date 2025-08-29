@@ -262,6 +262,11 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             if not dest_dir:
                 platform_folder = normalize_platform_name(platform)
                 dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
+
+            # Spécifique: si le système est "00 BIOS" on force le dossier BIOS
+            if platform == "00 BIOS":
+                dest_dir = config.BIOS_FOLDER
+                logger.debug(f"Plateforme '00 BIOS' détectée, destination forcée vers BIOS_FOLDER: {dest_dir}")
             
             os.makedirs(dest_dir, exist_ok=True)
             if not os.access(dest_dir, os.W_OK):
@@ -469,6 +474,11 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 platform_folder = normalize_platform_name(platform)
                 dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
             logger.debug(f"Répertoire destination déterminé: {dest_dir}")
+
+            # Spécifique: si le système est "00 BIOS" on force le dossier BIOS
+            if platform == "00 BIOS":
+                dest_dir = config.BIOS_FOLDER
+                logger.debug(f"Plateforme '00 BIOS' détectée, destination forcée vers BIOS_FOLDER: {dest_dir}")
 
             logger.debug(f"Vérification répertoire destination: {dest_dir}")
             os.makedirs(dest_dir, exist_ok=True)

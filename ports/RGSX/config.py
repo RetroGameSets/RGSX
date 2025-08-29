@@ -5,7 +5,7 @@ import platform
 from rgsx_settings import load_rgsx_settings, save_rgsx_settings, migrate_old_settings
 
 # Version actuelle de l'application
-app_version = "1.9.9.2"
+app_version = "1.9.9.3"
 
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""
@@ -65,6 +65,13 @@ SYSTEM_FOLDER = get_system_root()
 APP_FOLDER = os.path.join(get_application_root(), "RGSX")
 ROMS_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms")
 SAVE_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "saves", "ports", "rgsx")
+BIOS_FOLDER = os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER)))
+
+print(f"BIOS_FOLDER: {BIOS_FOLDER}")
+print(f"ROMS_FOLDER: {ROMS_FOLDER}")
+print(f"SAVE_FOLDER: {SAVE_FOLDER}")
+print(f"RGSX APP_FOLDER: {APP_FOLDER}")
+
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
