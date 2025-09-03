@@ -1467,14 +1467,27 @@ def draw_redownload_game_cache_dialog(screen):
 
 # Popup avec compte à rebours
 def draw_popup(screen):
-    """Dessine un popup avec un message et un compte à rebours."""
+    """Dessine un popup avec un message (adapté en largeur) et un compte à rebours."""
     screen.blit(OVERLAY, (0, 0))
 
+    # Largeur de base (peut s'élargir un peu si très petit écran)
     popup_width = int(config.screen_width * 0.8)
-    line_height = config.small_font.get_height() + 10
-    text_lines = config.popup_message.split('\n')
-    text_height = len(text_lines) * line_height
-    margin_top_bottom = 20
+    max_inner_width = popup_width - 60  # padding horizontal interne pour le texte
+    line_height = config.small_font.get_height() + 8
+    margin_top_bottom = 24
+
+    raw_segments = config.popup_message.split('\n') if config.popup_message else []
+    wrapped_lines = []
+    for seg in raw_segments:
+        if seg.strip() == "":
+            wrapped_lines.append("")
+        else:
+            wrapped_lines.extend(wrap_text(seg, config.small_font, max_inner_width))
+    if not wrapped_lines:
+        wrapped_lines = [""]
+
+    text_height = len(wrapped_lines) * line_height
+    # Ajouter une ligne pour le compte à rebours
     popup_height = text_height + 2 * margin_top_bottom + line_height
     popup_x = (config.screen_width - popup_width) // 2
     popup_y = (config.screen_height - popup_height) // 2
@@ -1482,7 +1495,8 @@ def draw_popup(screen):
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (popup_x, popup_y, popup_width, popup_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (popup_x, popup_y, popup_width, popup_height), 2, border_radius=12)
 
-    for i, line in enumerate(text_lines):
+    for i, line in enumerate(wrapped_lines):
+        # Alignment centre horizontal global
         text_surface = config.small_font.render(line, True, THEME_COLORS["text"])
         text_rect = text_surface.get_rect(center=(config.screen_width // 2, popup_y + margin_top_bottom + i * line_height + line_height // 2))
         screen.blit(text_surface, text_rect)
@@ -1490,6 +1504,6 @@ def draw_popup(screen):
     remaining_time = max(0, config.popup_timer // 1000)
     countdown_text = _("popup_countdown").format(remaining_time, 's' if remaining_time != 1 else '')
     countdown_surface = config.small_font.render(countdown_text, True, THEME_COLORS["text"])
-    countdown_rect = countdown_surface.get_rect(center=(config.screen_width // 2, popup_y + margin_top_bottom + len(text_lines) * line_height + line_height // 2))
+    countdown_rect = countdown_surface.get_rect(center=(config.screen_width // 2, popup_y + margin_top_bottom + len(wrapped_lines) * line_height + line_height // 2))
     screen.blit(countdown_surface, countdown_rect)
 
