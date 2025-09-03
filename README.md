@@ -108,6 +108,7 @@ INFO: for retrobat on first launch, the application will download Python in the 
 - Follow the on-screen instructions to map each action by holding the key or button for 3 seconds.
 - Button names are automatically displayed according to your controller (A, B, X, Y, LB, RB, LT, RT, etc.).
 - The configuration is compatible with all controllers supported by EmulationStation.
+- If controls behave incorrectly or mapping is corrupted, delete the file: `/saves/ports/rgsx/controls.json` then restart the application (it will be recreated).
 
 ---
 
@@ -203,3 +204,51 @@ git checkout -b feature/your-feature-name
 This project is free. You are free to use, modify and distribute it under the terms of this license.
 
 Developed with ❤️ for retro gaming enthusiasts.
+
+## 🔄 Changelog
+
+### 1.9.9.4 (2025-09-03)
+- Game Source toggle (RGSX / Custom) with info popups
+- No fallback when custom source invalid (empty list + message)
+- Pause menu reorder (Game Source before Update)
+- Symlink status messages and minor translations
+- Popup timer fix and path placeholders
+
+### 1.9.9.3
+- Symlink option added (nested platform folders)
+- Persistent symlink setting and translations
+
+### 1.9.9.2
+- Unified settings file rgsx_settings.json (language, music, accessibility, symlink, sources)
+- Automatic migration of legacy JSON configs
+
+### 1.9.9.1
+- Batch (multi-select) downloads & improved history
+- Archive handling warnings & better error popups
+
+### 1.9.9.0
+- Accessibility font scale, language selector, controls help, OTA update system
+
+### 1.9.8.x
+- Initial public features (downloads, controller mapping, adaptive UI, logging)
+
+---
+
+## 🌐 Custom Game Sources
+You can switch source mode in the pause menu (Game Source: RGSX / Custom).
+
+Custom mode expects a ZIP URL (HTTP/HTTPS) pointing to a sources archive with the same structure as the default. Configure it in:
+`{rgsx_settings path}` → key: `sources.custom_url`
+
+Behavior:
+- If custom mode selected and URL missing/invalid → empty list + popup (no fallback)
+- Fix the URL then use "Update games list" and restart if required
+
+Example snippet in rgsx_settings.json:
+```json
+"sources": {
+  "mode": "custom",
+  "custom_url": "https://example.com/my-sources.zip"
+}
+```
+Switch back to RGSX mode anytime via pause menu.

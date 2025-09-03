@@ -106,6 +106,7 @@ INFO : pour retrobat au premier lancement, l'application téléchargera Python d
 - Suivez les instructions à l'écran pour mapper chaque action en maintenant la touche ou le bouton pendant 3 secondes.
 - Les noms des boutons s'affichent automatiquement selon votre manette (A, B, X, Y, LB, RB, LT, RT, etc.).
 - La configuration est compatible avec toutes les manettes supportées par EmulationStation.
+- En cas de problème de contrôles ou configuration corrompue, supprimez le fichier : `/saves/ports/rgsx/controls.json` puis redémarrez l'application (il sera recréé automatiquement).
 
 ---
 
@@ -121,6 +122,56 @@ INFO : pour retrobat au premier lancement, l'application téléchargera Python d
 ### Logs
 
 Les logs sont enregistrés dans `roms/ports/RGSX/logs/RGSX.log` sur batocera et sur Retrobat pour diagnostiquer les problèmes et seront à partager pour tout support.
+
+---
+
+## 🔄 Journal des modifications
+
+### 1.9.9.4 (2025-09-03)
+- Bascule Source des jeux (RGSX / Personnalisée) + popups
+- Pas de fallback si source personnalisée invalide (liste vide + message)
+- Réorganisation menu pause (Source avant Mise à jour)
+- Messages d’état symlink + traductions mineures
+- Correction minuterie popup et placeholders de chemin
+
+### 1.9.9.3
+- Ajout option symlink (dossiers plateformes imbriqués)
+- Persistance et traductions symlink
+
+### 1.9.9.2
+- Fichier unifié rgsx_settings.json (langue, musique, accessibilité, symlink, sources)
+- Migration automatique anciens JSON
+
+### 1.9.9.1
+- Téléchargements multi-sélection & historique amélioré
+- Gestion archives + meilleures popups d’erreur
+
+### 1.9.9.0
+- Taille de police (accessibilité), sélection langue, aide contrôles, système de mise à jour
+
+### 1.9.8.x
+- Fonctionnalités initiales publiques (téléchargements, remapping manette, interface adaptative, logs)
+
+---
+
+## 🌐 Sources de jeux personnalisées
+Vous pouvez changer la source dans le menu pause (Source des jeux : RGSX / Personnalisée).
+
+Le mode personnalisé attend une URL ZIP (HTTP/HTTPS) pointant vers une archive des sources avec la même structure que celle par défaut. À configurer dans :
+`{chemin rgsx_settings}` → clé : `sources.custom_url`
+
+Comportement :
+- Si mode personnalisé sélectionné et URL vide/invalide → liste vide + popup (aucun fallback)
+- Corrigez l’URL puis utilisez "Mettre à jour la liste des jeux" et redémarrez si nécessaire
+
+Exemple dans rgsx_settings.json :
+```json
+"sources": {
+  "mode": "custom",
+  "custom_url": "https://exemple.com/mes-sources.zip"
+}
+```
+Revenez au mode RGSX à tout moment via le menu pause.
 
 ---
 
