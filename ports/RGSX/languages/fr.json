@@ -188,4 +188,12 @@
     "symlink_option_disabled": "Option symlink désactivée",
     "symlink_settings_saved_successfully": "Paramètres symlink sauvegardés avec succès",
     "symlink_settings_save_error": "Erreur lors de la sauvegarde des paramètres symlink"
+    ,
+    "menu_games_source_prefix": "Source des jeux",
+    "games_source_rgsx": "RGSX",
+    "sources_mode_rgsx_select_info": "RGSX : mettre à jour la liste des jeux",
+    "games_source_custom": "Personnalisée",
+    "sources_mode_custom_select_info": "Mode personnalisé : définir l'URL dans {0} puis mettre à jour la liste des jeux",
+    "sources_mode_custom_missing_url": "Aucune URL personnalisée définie (modifier {0})",
+    "sources_mode_custom_download_error": "Échec du téléchargement de la source personnalisée"
 }

@@ -5,7 +5,7 @@ import platform
 from rgsx_settings import load_rgsx_settings, save_rgsx_settings, migrate_old_settings
 
 # Version actuelle de l'application
-app_version = "1.9.9.3"
+app_version = "1.9.9.4"
 
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""
@@ -147,6 +147,8 @@ transition_duration = 18
 games_count = {}
 music_enabled = True  # Par défaut la musique est activée
 API_KEY_1FICHIER = ""  # Initialisation de la variable globale pour la clé API
+sources_mode = "rgsx"  # Mode des sources de jeux (rgsx/custom)
+custom_sources_url = ""  # URL personnalisée si mode custom
 
 # Variables pour la sélection de langue
 selected_language_index = 0

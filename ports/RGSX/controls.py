@@ -994,7 +994,9 @@ def handle_controls(event, sources, joystick, screen):
                 config.selected_option = max(0, config.selected_option - 1)
                 config.needs_redraw = True
             elif is_input_matched(event, "down"):
-                config.selected_option = min(8, config.selected_option + 1)  # 9 options maintenant (0-8)
+                # Nombre d'options dynamique (inclut éventuellement l'option source des jeux)
+                total = getattr(config, 'pause_menu_total_options', 9)  # fallback 9
+                config.selected_option = min(total - 1, config.selected_option + 1)
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
                 if config.selected_option == 0:  # Controls
@@ -1034,18 +1036,32 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "accessibility_menu"
                     config.needs_redraw = True
                     logger.debug("Passage au menu accessibilité")
-                elif config.selected_option == 5:  # Redownload game cache
+                elif config.selected_option == 5:  # Source toggle
+                    try:
+                        from rgsx_settings import get_sources_mode, set_sources_mode
+                        current_mode = get_sources_mode()
+                        new_mode = set_sources_mode('custom' if current_mode == 'rgsx' else 'rgsx')
+                        config.sources_mode = new_mode
+                        if new_mode == 'custom':
+                            config.popup_message = _("sources_mode_custom_select_info").format(config.RGSX_SETTINGS_PATH)
+                            config.popup_timer = 10000
+                        else:
+                            config.popup_message = _("sources_mode_rgsx_select_info")
+                            config.popup_timer = 4000
+                        config.needs_redraw = True
+                        logger.info(f"Changement du mode des sources vers {new_mode}")
+                    except Exception as e:
+                        logger.error(f"Erreur changement mode sources: {e}")
+                elif config.selected_option == 6:  # Redownload game cache
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "redownload_game_cache"
                     config.redownload_confirm_selection = 0
                     config.needs_redraw = True
                     logger.debug(f"Passage à redownload_game_cache depuis pause_menu")
-                elif config.selected_option == 6:  # Music toggle
+                elif config.selected_option == 7:  # Music toggle
                     config.music_enabled = not config.music_enabled
                     save_music_config()
                     if config.music_enabled:
-                        # Relancer la musique si activée
-                        # Utilise les variables globales si elles existent
                         music_files = getattr(config, "music_files", None)
                         music_folder = getattr(config, "music_folder", None)
                         if music_files and music_folder:
@@ -1054,7 +1070,7 @@ def handle_controls(event, sources, joystick, screen):
                         pygame.mixer.music.stop()
                     config.needs_redraw = True
                     logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via menu pause")
-                elif config.selected_option == 7:  # Symlink option
+                elif config.selected_option == 8:  # Symlink option
                     from rgsx_settings import set_symlink_option, get_symlink_option
                     current_status = get_symlink_option()
                     success, message = set_symlink_option(not current_status)
@@ -1062,7 +1078,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.popup_timer = 3000 if success else 5000
                     config.needs_redraw = True
                     logger.info(f"Symlink option {'activée' if not current_status else 'désactivée'} via menu pause")
-                elif config.selected_option == 8:  # Quit
+                elif config.selected_option == 9:  # Quit
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "confirm_exit"
                     config.confirm_selection = 0

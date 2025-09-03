@@ -28,6 +28,10 @@ def load_rgsx_settings():
         "symlink": {
             "enabled": False,
             "target_directory": ""
+        },
+        "sources": {  # Nouvelle section pour la source des jeux
+            "mode": "rgsx",       # "rgsx" ou "custom"
+            "custom_url": ""      # URL personnalisée pour le ZIP des sources
         }
     }
     
@@ -217,3 +221,38 @@ def apply_symlink_path(base_path, platform_folder):
     else:
         # Return original path
         return os.path.join(base_path, platform_folder)
+
+# ----------------------- Sources (RGSX / Custom) ----------------------- #
+
+def get_sources_mode(settings=None):
+    """Retourne le mode des sources: 'rgsx' (par défaut) ou 'custom'."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return settings.get("sources", {}).get("mode", "rgsx")
+
+def set_sources_mode(mode):
+    """Définit le mode des sources et sauvegarde le fichier."""
+    if mode not in ("rgsx", "custom"):
+        mode = "rgsx"
+    settings = load_rgsx_settings()
+    sources = settings.setdefault("sources", {})
+    sources["mode"] = mode
+    save_rgsx_settings(settings)
+    return mode
+
+def get_custom_sources_url(settings=None):
+    """Retourne l'URL personnalisée configurée (ou chaîne vide)."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return settings.get("sources", {}).get("custom_url", "").strip()
+
+def get_sources_zip_url(fallback_url):
+    """Retourne l'URL ZIP à utiliser selon le mode. Fallback sur l'URL standard si custom invalide."""
+    settings = load_rgsx_settings()
+    if get_sources_mode(settings) == "custom":
+        custom = get_custom_sources_url(settings)
+        if custom.startswith("http://") or custom.startswith("https://"):
+            return custom
+        # Pas de fallback : retourner None pour signaler une source vide
+        return None
+    return fallback_url

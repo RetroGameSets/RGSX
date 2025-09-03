@@ -27,6 +27,7 @@ from utils import (
 )
 from history import load_history, save_history
 from config import OTA_data_ZIP
+from rgsx_settings import get_sources_mode, get_custom_sources_url, get_sources_zip_url
 from accessibility import  load_accessibility_settings
 
 # Configuration du logging
@@ -64,6 +65,10 @@ for i, scale in enumerate(config.font_scale_options):
 # Chargement et initialisation de la langue
 from language import initialize_language
 initialize_language()
+# Initialiser le mode sources et URL personnalisée
+config.sources_mode = get_sources_mode()
+config.custom_sources_url = get_custom_sources_url()
+logger.debug(f"Mode sources initial: {config.sources_mode}, URL custom: {config.custom_sources_url}")
 
 # Détection du système non-PC
 config.is_non_pc = detect_non_pc()
@@ -624,6 +629,10 @@ async def main():
                 config.needs_redraw = True
                 logger.error(f"État de menu non valide détecté: {config.menu_state}, retour à platform")
             draw_controls(screen, config.menu_state, getattr(config, 'current_music_name', None), getattr(config, 'music_popup_start_time', 0))
+
+            # Popup générique (affiché dans n'importe quel état si timer actif), sauf si un état popup dédié déjà l'affiche
+            if config.popup_timer > 0 and config.popup_message and config.menu_state not in ["update_result", "restart_popup"]:
+                draw_popup(screen)
             
             pygame.display.flip()
             
@@ -722,45 +731,60 @@ async def main():
                     try:
                         zip_path = os.path.join(config.SAVE_FOLDER, "data_download.zip")
                         headers = {'User-Agent': 'Mozilla/5.0'}
-                        with requests.get(OTA_data_ZIP, stream=True, headers=headers, timeout=30) as response:
-                            response.raise_for_status()
-                            total_size = int(response.headers.get('content-length', 0))
-                            logger.debug(f"Taille totale du ZIP : {total_size} octets")
-                            downloaded = 0
-                            os.makedirs(os.path.dirname(zip_path), exist_ok=True)
-                            with open(zip_path, 'wb') as f:
-                                for chunk in response.iter_content(chunk_size=8192):
-                                    if chunk:
-                                        f.write(chunk)
-                                        downloaded += len(chunk)
-                                        config.download_progress[OTA_data_ZIP] = {
-                                            "downloaded_size": downloaded,
-                                            "total_size": total_size,
-                                            "status": "Téléchargement",
-                                            "progress_percent": (downloaded / total_size * 100) if total_size > 0 else 0
-                                        }
-                                        config.loading_progress = 15.0 + (35.0 * downloaded / total_size) if total_size > 0 else 15.0
-                                        config.needs_redraw = True
-                                        await asyncio.sleep(0)
-                            logger.debug(f"ZIP téléchargé : {zip_path}")
-
-                        config.current_loading_system = _("loading_extracting_data")
-                        config.loading_progress = 60.0
-                        config.needs_redraw = True
-                        dest_dir = config.SAVE_FOLDER
-                        success, message = extract_zip_data(zip_path, dest_dir, OTA_data_ZIP)
-                        if success:
-                            logger.debug(f"Extraction réussie : {message}")
-                            config.loading_progress = 70.0
-                            config.needs_redraw = True
+                        # Déterminer l'URL à utiliser selon le mode (RGSX ou custom)
+                        sources_zip_url = get_sources_zip_url(OTA_data_ZIP)
+                        if sources_zip_url is None:
+                            # Mode custom sans URL valide -> pas de téléchargement, jeux vides
+                            logger.warning("Mode custom actif mais aucune URL valide fournie. Liste de jeux vide.")
+                            config.popup_message = _("sources_mode_custom_missing_url").format(config.RGSX_SETTINGS_PATH)
+                            config.popup_timer = 5000
                         else:
-                            raise Exception(f"Échec de l'extraction : {message}")
+                            try:
+                                with requests.get(sources_zip_url, stream=True, headers=headers, timeout=30) as response:
+                                    response.raise_for_status()
+                                    total_size = int(response.headers.get('content-length', 0))
+                                    logger.debug(f"Taille totale du ZIP : {total_size} octets")
+                                    downloaded = 0
+                                    os.makedirs(os.path.dirname(zip_path), exist_ok=True)
+                                    with open(zip_path, 'wb') as f:
+                                        for chunk in response.iter_content(chunk_size=8192):
+                                            if chunk:
+                                                f.write(chunk)
+                                                downloaded += len(chunk)
+                                                config.download_progress[sources_zip_url] = {
+                                                    "downloaded_size": downloaded,
+                                                    "total_size": total_size,
+                                                    "status": "Téléchargement",
+                                                    "progress_percent": (downloaded / total_size * 100) if total_size > 0 else 0
+                                                }
+                                                config.loading_progress = 15.0 + (35.0 * downloaded / total_size) if total_size > 0 else 15.0
+                                                config.needs_redraw = True
+                                                await asyncio.sleep(0)
+                                    logger.debug(f"ZIP téléchargé : {zip_path}")
+
+                                config.current_loading_system = _("loading_extracting_data")
+                                config.loading_progress = 60.0
+                                config.needs_redraw = True
+                                dest_dir = config.SAVE_FOLDER
+                                success, message = extract_zip_data(zip_path, dest_dir, sources_zip_url)
+                                if success:
+                                    logger.debug(f"Extraction réussie : {message}")
+                                    config.loading_progress = 70.0
+                                    config.needs_redraw = True
+                                else:
+                                    raise Exception(f"Échec de l'extraction : {message}")
+                            except Exception as de:
+                                logger.error(f"Erreur téléchargement custom source: {de}")
+                                config.popup_message = _("sources_mode_custom_download_error")
+                                config.popup_timer = 5000
+                                # Pas d'arrêt : continuer avec jeux vides
                     except Exception as e:
                         logger.error(f"Erreur lors du téléchargement/extraction du Dossier Data : {str(e)}")
-                        config.menu_state = "error"
-                        # Message UI générique (les détails restent dans les logs)
-                        config.error_message = _("error_extract_data_failed")
-                        config.needs_redraw = True
+                        # En mode custom on ne bloque pas le chargement ; en mode RGSX (sources_zip_url non None et OTA) on affiche une erreur
+                        if sources_zip_url is not None:
+                            config.menu_state = "error"
+                            config.error_message = _("error_extract_data_failed")
+                            config.needs_redraw = True
                         loading_step = "load_sources"
                         if os.path.exists(zip_path):
                             os.remove(zip_path)
@@ -797,6 +821,17 @@ async def main():
                 config.needs_redraw = True
                 logger.debug("Transition terminée, passage à game")
 
+        # Mise à jour du timer popup générique (en dehors des états spéciaux) AVANT mise à jour last_frame_time
+        if config.popup_timer > 0 and config.popup_message and config.menu_state not in ["update_result", "restart_popup"]:
+            delta = current_time - config.last_frame_time
+            if delta > 0:
+                config.popup_timer -= delta
+            # Forcer redraw pour mettre à jour le compte à rebours
+            config.needs_redraw = True
+            if config.popup_timer <= 0:
+                config.popup_timer = 0
+                config.popup_message = ""
+        # Mettre à jour last_frame_time après tous les calculs dépendants
         config.last_frame_time = current_time
         clock.tick(60)
         await asyncio.sleep(0.01)

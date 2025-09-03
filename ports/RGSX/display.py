@@ -1187,33 +1187,27 @@ def draw_language_menu(screen):
 def draw_pause_menu(screen, selected_option):
     """Dessine le menu pause avec un style moderne."""
     screen.blit(OVERLAY, (0, 0))
-
-    # Option musique dynamique
+    from rgsx_settings import get_symlink_option, get_sources_mode
+    mode = get_sources_mode()
+    source_label = _("games_source_rgsx") if mode == "rgsx" else _("games_source_custom")
     if config.music_enabled:
         music_name = config.current_music_name or ""
         music_option = _("menu_music_enabled").format(music_name)
     else:
         music_option = _("menu_music_disabled")
-
-    # Option symlink dynamique
-    from rgsx_settings import get_symlink_option
-    if get_symlink_option():
-        symlink_option = _("symlink_option_enabled")
-    else:
-        symlink_option = _("symlink_option_disabled")
-
+    symlink_option = _("symlink_option_enabled") if get_symlink_option() else _("symlink_option_disabled")
     options = [
-        _("menu_controls"),
-        _("menu_remap_controls"),
-        _("menu_history"),
-        _("menu_language"),
-        _("menu_accessibility"),
-        _("menu_redownload_cache"),
-        music_option,  # Ici l'option dynamique
-        symlink_option,
-        _("menu_quit")
+        _("menu_controls"),            # 0
+        _("menu_remap_controls"),      # 1
+        _("menu_history"),             # 2
+        _("menu_language"),            # 3
+        _("menu_accessibility"),       # 4
+        f"{_('menu_games_source_prefix')}: {source_label}",  # 5
+        _("menu_redownload_cache"),    # 6
+        music_option,                   # 7
+        symlink_option,                 # 8
+        _("menu_quit")                 # 9
     ]
-
     menu_width = int(config.screen_width * 0.8)
     line_height = config.font.get_height() + 10
     button_height = int(config.screen_height * 0.0463)
@@ -1235,6 +1229,8 @@ def draw_pause_menu(screen, selected_option):
             button_height,
             selected=i == selected_option
         )
+    # Stocker le nombre total d'options pour la navigation dynamique
+    config.pause_menu_total_options = len(options)
 
 # Menu aide contrôles
 def draw_controls_help(screen, previous_state):
@@ -1313,6 +1309,9 @@ def draw_controls_help(screen, previous_state):
                     else:
                         if cur:
                             line_surf = font.render(cur, True, THEME_COLORS["text"])
+
+
+
                             wrapped.append((False, line_surf))
                             total_height += line_surf.get_height() + line_spacing
                             max_width = max(max_width, line_surf.get_width())

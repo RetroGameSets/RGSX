@@ -188,4 +188,13 @@
     "symlink_option_disabled": "Opción symlink deshabilitada",
     "symlink_settings_saved_successfully": "Configuración symlink guardada con éxito",
     "symlink_settings_save_error": "Error al guardar la configuración symlink"
+    ,
+    "menu_games_source_prefix": "Origen de juegos",
+    "games_source_rgsx": "RGSX",
+    "sources_mode_rgsx_select_info": "RGSX: actualizar la lista de juegos",
+    "games_source_custom": "Personalizado"
+    ,
+    "sources_mode_custom_select_info": "Modo personalizado: define la URL en {0} y actualiza la lista de juegos",
+    "sources_mode_custom_missing_url": "No se ha establecido URL personalizada (editar {0})",
+    "sources_mode_custom_download_error": "Fallo en la descarga de la fuente personalizada"
 }

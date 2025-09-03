@@ -187,4 +187,13 @@
     "symlink_option_disabled": "Symlink option disabled",
     "symlink_settings_saved_successfully": "Symlink settings saved successfully",
     "symlink_settings_save_error": "Error saving symlink settings"
+    ,
+    "menu_games_source_prefix": "Game source",
+    "games_source_rgsx": "RGSX",
+    "sources_mode_rgsx_select_info": "RGSX: update the games list",
+    "games_source_custom": "Custom"
+    ,
+    "sources_mode_custom_select_info": "Custom mode: set URL in {0} then update games list",
+    "sources_mode_custom_missing_url": "No custom URL set (edit {0})",
+    "sources_mode_custom_download_error": "Custom source download failed"
 }

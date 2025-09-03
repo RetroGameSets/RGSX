@@ -187,4 +187,13 @@
     "symlink_option_disabled": "Symlink-Option deaktiviert",
     "symlink_settings_saved_successfully": "Symlink-Einstellungen erfolgreich gespeichert",
     "symlink_settings_save_error": "Fehler beim Speichern der Symlink-Einstellungen"
+    ,
+    "menu_games_source_prefix": "Spielquelle",
+    "games_source_rgsx": "RGSX",
+    "sources_mode_rgsx_select_info": "RGSX: Spieleliste aktualisieren",
+    "games_source_custom": "Benutzerdefiniert"
+    ,
+    "sources_mode_custom_select_info": "Benutzerdefiniert: URL in {0} setzen und Spieleliste aktualisieren",
+    "sources_mode_custom_missing_url": "Keine benutzerdefinierte URL gesetzt (bearbeite {0})",
+    "sources_mode_custom_download_error": "Download der benutzerdefinierten Quelle fehlgeschlagen"
 }
