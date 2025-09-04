@@ -37,6 +37,8 @@
     "game_count": "{0} ({1} jogos)",
     "game_filter": "Filtro ativo: {0}",
     "game_search": "Filtro: {0}",
+    "game_header_name": "Nome",
+    "game_header_size": "Tamanho",
     
     "history_title": "Downloads ({0})",
     "history_empty": "Nenhum download no histórico",
@@ -78,6 +80,14 @@
     "menu_music_toggle": "Ativar/Desativar música",
     "menu_music_enabled": "Música ativada: {0}",
     "menu_music_disabled": "Música desativada",
+    "menu_filter_platforms": "Filtrar sistemas",
+    "filter_platforms_title": "Visibilidade dos sistemas",
+    "filter_all": "Mostrar todos",
+    "filter_none": "Ocultar todos",
+    "filter_apply": "Aplicar",
+    "filter_back": "Voltar",
+    "filter_platforms_info": "Visíveis: {0} | Ocultos: {1} / Total: {2}",
+    "filter_unsaved_warning": "Alterações não salvas",
     "menu_quit": "Sair",
     
     "button_yes": "Sim",

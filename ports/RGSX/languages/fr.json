@@ -188,17 +188,17 @@
     "utils_unrar_unavailable": "Commande unrar non disponible",
     "utils_rar_list_failed": "Échec de la liste des fichiers RAR: {0}",
     "utils_xdvdfs_unavailable": "Outil xdvdfs indisponible (manquant ou permission refusée)",
-    "controls_mapping_title": "Controls configuration",
-    "controls_mapping_instruction": "Hold for 3s to configure:",
-    "controls_mapping_waiting": "Waiting for a key or button...",
-    "controls_mapping_press": "Press a key or button",
+    "controls_mapping_title": "Configuration des contrôles",
+    "controls_mapping_instruction": "Maintenir 3s pour configurer :",
+    "controls_mapping_waiting": "En attente d'une touche ou d'un bouton...",
+    "controls_mapping_press": "Appuyez sur une touche ou un bouton",
     
     "menu_symlink_option": "Option Symlink",
     "symlink_option_enabled": "Option symlink activée",
     "symlink_option_disabled": "Option symlink désactivée",
     "symlink_settings_saved_successfully": "Paramètres symlink sauvegardés avec succès",
-    "symlink_settings_save_error": "Erreur lors de la sauvegarde des paramètres symlink"
-    ,
+    "symlink_settings_save_error": "Erreur lors de la sauvegarde des paramètres symlink",
+    
     "menu_games_source_prefix": "Source des jeux",
     "games_source_rgsx": "RGSX",
     "sources_mode_rgsx_select_info": "RGSX : mettre à jour la liste des jeux",
