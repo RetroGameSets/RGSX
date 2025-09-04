@@ -260,7 +260,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             
             dest_dir = None
             for platform_dict in config.platform_dicts:
-                if platform_dict["platform"] == platform:
+                if platform_dict.get("platform_name") == platform:
                     platform_folder = platform_dict.get("folder", normalize_platform_name(platform))
                     dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
                     logger.debug(f"Répertoire de destination trouvé pour {platform}: {dest_dir}")
@@ -298,9 +298,82 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             download_headers = headers.copy()
             download_headers['Accept'] = 'application/octet-stream, */*'
             download_headers['Referer'] = 'https://myrient.erista.me/'
-            response = session.get(url, stream=True, timeout=30, allow_redirects=True, headers=download_headers)
-            logger.debug(f"Status code: {response.status_code}")
-            response.raise_for_status()
+
+            # Préparation spécifique archive.org : récupérer quelques pages pour obtenir cookies éventuels
+            if 'archive.org/download/' in url:
+                try:
+                    pre_id = url.split('/download/')[1].split('/')[0]
+                    session.get('https://archive.org/robots.txt', timeout=10)
+                    session.get(f'https://archive.org/metadata/{pre_id}', timeout=10)
+                    logger.debug(f"Pré-chargement cookies/metadata archive.org pour {pre_id}")
+                except Exception as e:
+                    logger.debug(f"Pré-chargement archive.org ignoré: {e}")
+            # Tentatives multiples avec variations d'en-têtes pour contourner certains 401/403 (archive.org / hotlink protection)
+            header_variants = [
+                download_headers,
+                {  # Variante sans Referer spécifique
+                    'User-Agent': headers['User-Agent'],
+                    'Accept': 'application/octet-stream,*/*;q=0.8',
+                    'Accept-Language': headers['Accept-Language'],
+                    'Connection': 'keep-alive'
+                },
+                {  # Variante minimaliste type curl
+                    'User-Agent': 'curl/8.4.0',
+                    'Accept': '*/*'
+                },
+                {  # Variante avec Referer archive.org
+                    'User-Agent': headers['User-Agent'],
+                    'Accept': '*/*',
+                    'Referer': 'https://archive.org/'
+                }
+            ]
+            response = None
+            last_status = None
+            for attempt, hv in enumerate(header_variants, start=1):
+                try:
+                    logger.debug(f"Tentative téléchargement {attempt}/{len(header_variants)} avec headers: {hv}")
+                    r = session.get(url, stream=True, timeout=30, allow_redirects=True, headers=hv)
+                    last_status = r.status_code
+                    logger.debug(f"Status code tentative {attempt}: {r.status_code}")
+                    if r.status_code in (401, 403):
+                        # Lire un petit bout pour voir si message utile
+                        try:
+                            snippet = r.text[:200]
+                            logger.debug(f"Réponse {r.status_code} snippet: {snippet}")
+                        except Exception:
+                            pass
+                        continue  # Essayer variante suivante
+                    r.raise_for_status()
+                    response = r
+                    break
+                except requests.RequestException as e:
+                    logger.debug(f"Erreur tentative {attempt}: {e}")
+                    # Si ce n'est pas une erreur auth explicite et qu'on a un code => on sort
+                    if isinstance(e, requests.HTTPError) and last_status not in (401, 403):
+                        break
+            if response is None:
+                # Fallback metadata archive.org pour message clair
+                if 'archive.org/download/' in url:
+                    try:
+                        identifier = url.split('/download/')[1].split('/')[0]
+                        meta_resp = session.get(f'https://archive.org/metadata/{identifier}', timeout=15)
+                        if meta_resp.status_code == 200:
+                            meta_json = meta_resp.json()
+                            if meta_json.get('is_dark'):
+                                raise requests.HTTPError(f"Item archive.org restreint (is_dark=true): {identifier}")
+                            if not meta_json.get('files'):
+                                raise requests.HTTPError(f"Item archive.org sans fichiers listés: {identifier}")
+                            # Fichier peut avoir un nom différent : informer
+                            available = [f.get('name') for f in meta_json.get('files', [])][:10]
+                            raise requests.HTTPError(f"Accès refusé (HTTP {last_status}). Fichiers disponibles exemples: {available}")
+                        else:
+                            raise requests.HTTPError(f"HTTP {last_status} & metadata {meta_resp.status_code} pour {identifier}")
+                    except requests.HTTPError:
+                        raise
+                    except Exception as e:
+                        raise requests.HTTPError(f"HTTP {last_status} après variations; metadata échec: {e}")
+                auth_msg = f"HTTP {last_status} après variations d'en-têtes" if last_status else "Aucune réponse valide"
+                raise requests.HTTPError(auth_msg)
             
             total_size = int(response.headers.get('content-length', 0))
             logger.debug(f"Taille totale: {total_size} octets")
@@ -471,7 +544,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             
             dest_dir = None
             for platform_dict in config.platform_dicts:
-                if platform_dict["platform"] == platform:
+                if platform_dict.get("platform_name") == platform:
                     platform_folder = platform_dict.get("folder", normalize_platform_name(platform))
                     dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
                     break

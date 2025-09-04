@@ -29,9 +29,9 @@ def load_rgsx_settings():
             "enabled": False,
             "target_directory": ""
         },
-        "sources": {  # Nouvelle section pour la source des jeux
-            "mode": "rgsx",       # "rgsx" ou "custom"
-            "custom_url": ""      # URL personnalisée pour le ZIP des sources
+        "sources": {  
+            "mode": "rgsx",       
+            "custom_url": ""      
         }
     }
     
@@ -44,12 +44,6 @@ def load_rgsx_settings():
                     if key not in settings:
                         settings[key] = value
                 return settings
-        else:
-            # Tenter de migrer depuis les anciens fichiers
-            migrated_settings = migrate_old_settings()
-            if migrated_settings:
-                save_rgsx_settings(migrated_settings)
-                return migrated_settings
     except Exception as e:
         print(f"Erreur lors du chargement de rgsx_settings.json: {str(e)}")
     
@@ -67,96 +61,6 @@ def save_rgsx_settings(settings):
     except Exception as e:
         print(f"Erreur lors de la sauvegarde de rgsx_settings.json: {str(e)}")
 
-
-def migrate_old_settings():
-    """Migre les anciens fichiers de configuration vers le nouveau format."""
-    from config import LANGUAGE_CONFIG_PATH, MUSIC_CONFIG_PATH, ACCESSIBILITY_FOLDER, SYMLINK_SETTINGS_PATH
-    
-    migrated_settings = {
-        "language": "en",
-        "music_enabled": True,
-        "accessibility": {
-            "font_scale": 1.0
-        },
-        "symlink": {
-            "enabled": False,
-            "target_directory": ""
-        }
-    }
-    
-    files_to_remove = []  # Liste des fichiers à supprimer après migration réussie
-    
-    # Migrer language.json
-    if os.path.exists(LANGUAGE_CONFIG_PATH):
-        try:
-            with open(LANGUAGE_CONFIG_PATH, 'r', encoding='utf-8') as f:
-                content = f.read().strip()
-                # Gérer le cas où le fichier contient juste une chaîne (pas de JSON)
-                if content.startswith('"') and content.endswith('"'):
-                    migrated_settings["language"] = content.strip('"')
-                elif not content.startswith('{'):
-                    # Fichier texte simple sans guillemets
-                    migrated_settings["language"] = content
-                else:
-                    # Fichier JSON normal
-                    lang_data = json.loads(content)
-                    migrated_settings["language"] = lang_data.get("language", "en")
-            files_to_remove.append(LANGUAGE_CONFIG_PATH)
-        except:
-            pass
-    
-    # Migrer music_config.json
-    if os.path.exists(MUSIC_CONFIG_PATH):
-        try:
-            with open(MUSIC_CONFIG_PATH, 'r', encoding='utf-8') as f:
-                content = f.read().strip()
-                # Gérer le cas où le fichier contient juste un booléen
-                if content.lower() in ['true', 'false']:
-                    migrated_settings["music_enabled"] = content.lower() == 'true'
-                else:
-                    # Fichier JSON normal
-                    music_data = json.loads(content)
-                    migrated_settings["music_enabled"] = music_data.get("music_enabled", True)
-            files_to_remove.append(MUSIC_CONFIG_PATH)
-        except:
-            pass
-    
-    # Migrer accessibility.json
-    if os.path.exists(ACCESSIBILITY_FOLDER):
-        try:
-            with open(ACCESSIBILITY_FOLDER, 'r', encoding='utf-8') as f:
-                acc_data = json.load(f)
-                migrated_settings["accessibility"] = {
-                    "font_scale": acc_data.get("font_scale", 1.0)
-                }
-            files_to_remove.append(ACCESSIBILITY_FOLDER)
-        except:
-            pass
-    
-    # Migrer symlink_settings.json
-    if os.path.exists(SYMLINK_SETTINGS_PATH):
-        try:
-            with open(SYMLINK_SETTINGS_PATH, 'r', encoding='utf-8') as f:
-                symlink_data = json.load(f)
-                migrated_settings["symlink"] = {
-                    "enabled": symlink_data.get("use_symlink_path", False),
-                    "target_directory": symlink_data.get("target_directory", "")
-                }
-            files_to_remove.append(SYMLINK_SETTINGS_PATH)
-        except:
-            pass
-    
-    # Supprimer les anciens fichiers après migration réussie
-    if files_to_remove:
-        print(f"Migration réussie. Suppression des anciens fichiers de configuration...")
-        for file_path in files_to_remove:
-            try:
-                os.remove(file_path)
-                print(f"  - Supprimé: {os.path.basename(file_path)}")
-            except Exception as e:
-                print(f"  - Erreur lors de la suppression de {os.path.basename(file_path)}: {e}")
-    
-    return migrated_settings
 
 
 def load_symlink_settings():

@@ -83,8 +83,20 @@ def draw_stylized_button(screen, text, x, y, width, height, selected=False):
 
 # Transition d'image lors de la sélection d'un système
 def draw_validation_transition(screen, platform_index):
-    """Affiche une animation de transition fluide pour la sélection d’une plateforme."""
-    platform_dict = config.platform_dicts[platform_index]
+    """Affiche une animation de transition fluide pour la sélection d’une plateforme.
+    Utilise le mapping par nom pour éviter les décalages d'image si l'ordre d'affichage
+    diffère de l'ordre de stockage."""
+    # Récupérer le nom affiché correspondant à l'index trié
+    if platform_index < 0 or platform_index >= len(config.platforms):
+        return
+    platform_name = config.platforms[platform_index]
+    platform_dict = getattr(config, 'platform_dict_by_name', {}).get(platform_name)
+    if not platform_dict:
+        # Fallback index direct si mapping absent
+        try:
+            platform_dict = config.platform_dicts[platform_index]
+        except Exception:
+            return
     image = load_system_image(platform_dict)
     if not image:
         return
@@ -468,8 +480,16 @@ def draw_platform_grid(screen):
         scale_base = 1.5 if is_selected else 1.0
         scale = scale_base + pulse if is_selected else scale_base
             
-        platform_dict = config.platform_dicts[idx]
-        platform_id = platform_dict.get("platform", str(idx))
+        # Récupération robuste du dict via nom
+        display_name = config.platforms[idx]
+        platform_dict = getattr(config, 'platform_dict_by_name', {}).get(display_name)
+        if not platform_dict:
+            # Fallback index brut
+            if idx < len(config.platform_dicts):
+                platform_dict = config.platform_dicts[idx]
+            else:
+                continue
+        platform_id = platform_dict.get("platform_name") or platform_dict.get("platform") or display_name
         
         # Utiliser le cache d'images pour éviter de recharger/redimensionner à chaque frame
         cache_key = f"{platform_id}_{scale:.2f}"
@@ -570,15 +590,17 @@ def draw_game_list(screen):
         return
 
     line_height = config.small_font.get_height() + 10
+    header_height = line_height  # hauteur de l'en-tête identique à une ligne
     margin_top_bottom = 20
     extra_margin_top = 20
     extra_margin_bottom = 60
     title_height = config.title_font.get_height() + 20
 
-    available_height = config.screen_height - title_height - extra_margin_top - extra_margin_bottom - 2 * margin_top_bottom
-    items_per_page = available_height // line_height
+    # Réserver de l'espace pour l'en-tête (header_height)
+    available_height = config.screen_height - title_height - extra_margin_top - extra_margin_bottom - 2 * margin_top_bottom - header_height
+    items_per_page = max(1, available_height // line_height)
 
-    rect_height = items_per_page * line_height + 2 * margin_top_bottom
+    rect_height = header_height + items_per_page * line_height + 2 * margin_top_bottom
     rect_width = int(0.95 * config.screen_width)
     rect_x = (config.screen_width - rect_width) // 2
     rect_y = title_height + extra_margin_top + (config.screen_height - title_height - extra_margin_top - extra_margin_bottom - rect_height) // 2
@@ -622,21 +644,60 @@ def draw_game_list(screen):
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
 
+    # Largeur colonne taille (15%) mini 120px, reste pour nom
+    size_col_width = max(120, int(rect_width * 0.15))
+    name_col_width = rect_width - 40 - size_col_width  # padding horizontal 40
+
+    # ---- En-tête ----
+    header_name = _("game_header_name")
+    header_size = _("game_header_size")
+    header_y_center = rect_y + margin_top_bottom + header_height // 2
+    # Nom aligné gauche
+    header_name_surface = config.small_font.render(header_name, True, THEME_COLORS["text"])
+    header_name_rect = header_name_surface.get_rect()
+    header_name_rect.midleft = (rect_x + 20, header_y_center)
+    # Taille alignée droite
+    header_size_surface = config.small_font.render(header_size, True, THEME_COLORS["text"])
+    header_size_rect = header_size_surface.get_rect()
+    header_size_rect.midright = (rect_x + rect_width - 20, header_y_center)
+    screen.blit(header_name_surface, header_name_rect)
+    screen.blit(header_size_surface, header_size_rect)
+    # Ligne de séparation sous l'en-tête
+    separator_y = rect_y + margin_top_bottom + header_height
+    pygame.draw.line(screen, THEME_COLORS["border"], (rect_x + 20, separator_y), (rect_x + rect_width - 20, separator_y), 2)
+
+    # Position de départ des lignes après l'en-tête
+    list_start_y = rect_y + margin_top_bottom + header_height
+
     for i in range(config.scroll_offset, min(config.scroll_offset + items_per_page, len(games))):
-        game_name = games[i][0] if isinstance(games[i], (list, tuple)) else games[i]
+        item = games[i]
+        if isinstance(item, (list, tuple)) and item:
+            game_name = item[0]
+            size_val = item[2] if len(item) > 2 else None
+        else:
+            game_name = str(item)
+            size_val = None
+        size_text = size_val if (isinstance(size_val, str) and size_val.strip()) else "N/A"
         is_marked = i in getattr(config, 'selected_games', set())
-        # Couleur verte si jeu sous curseur OU marqué en multi-sélection
         color = THEME_COLORS["fond_lignes"] if (i == config.current_game or is_marked) else THEME_COLORS["text"]
-        # Préfixe ASCII pour distinguer les jeux marqués (éviter collision glyphes)
         prefix = "[X] " if is_marked else "    "
-        game_text = truncate_text_middle(prefix + game_name, config.small_font, rect_width - 40, is_filename=False)
-        text_surface = config.small_font.render(game_text, True, color)
-        text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + (i - config.scroll_offset) * line_height + line_height // 2))
+        truncated_name = truncate_text_middle(prefix + game_name, config.small_font, name_col_width, is_filename=False)
+        name_surface = config.small_font.render(truncated_name, True, color)
+        size_surface = config.small_font.render(size_text, True, THEME_COLORS["text"])
+        row_center_y = list_start_y + (i - config.scroll_offset) * line_height + line_height // 2
+        # Position nom (aligné à gauche dans la boite)
+        name_rect = name_surface.get_rect()
+        name_rect.midleft = (rect_x + 20, row_center_y)
+        size_rect = size_surface.get_rect()
+        size_rect.midright = (rect_x + rect_width - 20, row_center_y)
         if i == config.current_game:
-            glow_surface = pygame.Surface((text_rect.width + 20, text_rect.height + 10), pygame.SRCALPHA)
-            pygame.draw.rect(glow_surface, THEME_COLORS["fond_lignes"] + (50,), (10, 5, text_rect.width, text_rect.height), border_radius=8)
-            screen.blit(glow_surface, (text_rect.left - 10, text_rect.top - 5))
-        screen.blit(text_surface, text_rect)
+            glow_width = rect_width - 40
+            glow_height = name_rect.height + 10
+            glow_surface = pygame.Surface((glow_width, glow_height), pygame.SRCALPHA)
+            pygame.draw.rect(glow_surface, THEME_COLORS["fond_lignes"] + (50,), (0, 0, glow_width, glow_height), border_radius=8)
+            screen.blit(glow_surface, (rect_x + 20, row_center_y - glow_height // 2))
+        screen.blit(name_surface, name_rect)
+        screen.blit(size_surface, size_rect)
 
     if len(games) > items_per_page:
         try:
@@ -1202,6 +1263,7 @@ def draw_pause_menu(screen, selected_option):
         _("menu_history"),             # 2
         _("menu_language"),            # 3
         _("menu_accessibility"),       # 4
+    _("menu_filter_platforms"),    # 5 new filter option
         f"{_('menu_games_source_prefix')}: {source_label}",  # 5
         _("menu_redownload_cache"),    # 6
         music_option,                   # 7
@@ -1231,6 +1293,116 @@ def draw_pause_menu(screen, selected_option):
         )
     # Stocker le nombre total d'options pour la navigation dynamique
     config.pause_menu_total_options = len(options)
+
+def draw_filter_platforms_menu(screen):
+    """Affiche le menu de filtrage des plateformes (afficher/masquer)."""
+    from rgsx_settings import load_rgsx_settings
+    screen.blit(OVERLAY, (0, 0))
+    settings = load_rgsx_settings()
+    hidden = set(settings.get("hidden_platforms", [])) if isinstance(settings, dict) else set()
+
+    # Initialiser la copie de travail si vide ou taille différente
+    if not config.filter_platforms_selection or len(config.filter_platforms_selection) != len(config.platform_dicts):
+        # Liste alphabétique complète (sans filtrer hidden existant)
+        all_names = sorted([d.get("platform_name", "") for d in config.platform_dicts if d.get("platform_name")])
+        config.filter_platforms_selection = [(name, name in hidden) for name in all_names]
+        config.selected_filter_index = 0
+        config.filter_platforms_scroll_offset = 0
+        config.filter_platforms_dirty = False
+
+    title_text = _("filter_platforms_title")
+    title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
+    title_rect_inflated = title_rect.inflate(80, 40)
+    title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
+    screen.blit(title_surface, title_rect)
+
+    # Zone liste
+    list_width = int(config.screen_width * 0.7)
+    list_height = int(config.screen_height * 0.6)
+    list_x = (config.screen_width - list_width) // 2
+    list_y = title_rect_inflated.bottom + 20
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (list_x, list_y, list_width, list_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (list_x, list_y, list_width, list_height), 2, border_radius=12)
+
+    line_height = config.small_font.get_height() + 8
+    visible_items = list_height // line_height - 1  # laisser un peu d'espace bas
+    total_items = len(config.filter_platforms_selection)
+    if config.selected_filter_index < 0:
+        config.selected_filter_index = 0
+    # Ne pas forcer la réduction si on est sur les boutons (indices >= total_items)
+    # Laisser controls.py gérer la borne max étendue
+    # Ajuster scroll
+    if config.selected_filter_index < config.filter_platforms_scroll_offset:
+        config.filter_platforms_scroll_offset = config.selected_filter_index
+    elif config.selected_filter_index >= config.filter_platforms_scroll_offset + visible_items:
+        config.filter_platforms_scroll_offset = config.selected_filter_index - visible_items + 1
+
+    # Dessiner items
+    for i in range(config.filter_platforms_scroll_offset, min(config.filter_platforms_scroll_offset + visible_items, total_items)):
+        name, is_hidden = config.filter_platforms_selection[i]
+        idx_on_screen = i - config.filter_platforms_scroll_offset
+        y_center = list_y + 10 + idx_on_screen * line_height + line_height // 2
+        selected = (i == config.selected_filter_index)
+        checkbox = "[ ]" if is_hidden else "[X]"  # inversé: coché signifie visible
+        # Correction: on veut [X] si visible => is_hidden False
+        checkbox = "[X]" if not is_hidden else "[ ]"
+        display_text = f"{checkbox} {name}"
+        color = THEME_COLORS["fond_lignes"] if selected else THEME_COLORS["text"]
+        text_surface = config.small_font.render(display_text, True, color)
+        text_rect = text_surface.get_rect(midleft=(list_x + 20, y_center))
+        if selected:
+            glow_surface = pygame.Surface((list_width - 40, line_height), pygame.SRCALPHA)
+            pygame.draw.rect(glow_surface, THEME_COLORS["fond_lignes"] + (50,), (0, 0, list_width - 40, line_height), border_radius=8)
+            screen.blit(glow_surface, (list_x + 20, y_center - line_height // 2))
+        screen.blit(text_surface, text_rect)
+
+    # Scrollbar
+    if total_items > visible_items:
+        scroll_height = int((visible_items / total_items) * (list_height - 20))
+        scroll_y = int((config.filter_platforms_scroll_offset / max(1, total_items - visible_items)) * (list_height - 20 - scroll_height))
+        pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], (list_x + list_width - 25, list_y + 10 + scroll_y, 10, scroll_height), border_radius=4)
+
+    # Boutons d'action
+    btn_width = 220
+    btn_height = int(config.screen_height * 0.0463)
+    spacing = 30
+    buttons_y = list_y + list_height + 20
+    center_x = config.screen_width // 2
+    actions = [
+        ("filter_all", -2),
+        ("filter_none", -3),
+        ("filter_apply", -4),
+        ("filter_back", -5)
+    ]
+    # Indice spécial sélection boutons quand selected_filter_index >= total_items
+    extra_index_base = total_items
+    # Ajuster selected_filter_index max pour inclure boutons
+    extended_max = total_items + len(actions) - 1
+    if config.selected_filter_index > extended_max:
+        config.selected_filter_index = extended_max
+
+    for idx, (key, offset) in enumerate(actions):
+        btn_x = center_x - (len(actions) * (btn_width + spacing) - spacing) // 2 + idx * (btn_width + spacing)
+        is_selected = (config.selected_filter_index == total_items + idx)
+        label = _(key)
+        draw_stylized_button(screen, label, btn_x, buttons_y, btn_width, btn_height, selected=is_selected)
+
+    # Infos bas
+    hidden_count = sum(1 for _, h in config.filter_platforms_selection if h)
+    visible_count = total_items - hidden_count
+    info_text = _("filter_platforms_info").format(visible_count, hidden_count, total_items)
+    info_surface = config.small_font.render(info_text, True, THEME_COLORS["text"])
+    info_rect = info_surface.get_rect(center=(config.screen_width // 2, buttons_y + btn_height + 30))
+    screen.blit(info_surface, info_rect)
+
+    if config.filter_platforms_dirty:
+        dirty_text = _("filter_unsaved_warning")
+        dirty_surface = config.small_font.render(dirty_text, True, THEME_COLORS["warning_text"])
+        dirty_rect = dirty_surface.get_rect(center=(config.screen_width // 2, info_rect.bottom + 25))
+        screen.blit(dirty_surface, dirty_rect)
 
 # Menu aide contrôles
 def draw_controls_help(screen, previous_state):

@@ -2,10 +2,10 @@ import pygame # type: ignore
 import os
 import logging
 import platform
-from rgsx_settings import load_rgsx_settings, save_rgsx_settings, migrate_old_settings
+from rgsx_settings import load_rgsx_settings, save_rgsx_settings
 
 # Version actuelle de l'application
-app_version = "1.9.9.4"
+app_version = "2.0.0.0"
 
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""
@@ -85,28 +85,22 @@ GAMELISTXML = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_F
 UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")
 LANGUAGES_FOLDER = os.path.join(APP_FOLDER, "languages")
 JSON_EXTENSIONS = os.path.join(APP_FOLDER, "rom_extensions.json")
+MUSIC_FOLDER = os.path.join(APP_FOLDER, "assets", "music")
 
 #Dossier /saves/ports/rgsx
-IMAGES_FOLDER = os.path.join(SAVE_FOLDER, "images", "systemes")
+IMAGES_FOLDER = os.path.join(SAVE_FOLDER, "images")
 GAMES_FOLDER = os.path.join(SAVE_FOLDER, "games")
-SOURCES_FILE = os.path.join(SAVE_FOLDER, "sources.json")
+SOURCES_FILE = os.path.join(SAVE_FOLDER, "systems_list.json")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
 HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
-
-# Nouveau fichier unifié pour les paramètres RGSX
+API_KEY_1FICHIER = os.path.join(SAVE_FOLDER, "1fichierAPI.txt")
 RGSX_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
-
-# Anciens chemins des fichiers de config (conservés temporairement pour la migration)
-ACCESSIBILITY_FOLDER = os.path.join(SAVE_FOLDER, "accessibility.json")
-LANGUAGE_CONFIG_PATH = os.path.join(SAVE_FOLDER, "language.json")
-MUSIC_CONFIG_PATH = os.path.join(SAVE_FOLDER, "music_config.json")
-SYMLINK_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "symlink_settings.json")
 
 # URL
 OTA_SERVER_URL = "https://retrogamesets.fr/softs/"
 OTA_VERSION_ENDPOINT = os.path.join(OTA_SERVER_URL, "version.json")
 OTA_UPDATE_ZIP = os.path.join(OTA_SERVER_URL, "RGSX.zip")
-OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "rgsx-data.zip")
+OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "test.zip")
 
 #CHEMINS DES EXECUTABLES
 UNRAR_EXE = os.path.join(APP_FOLDER,"assets", "unrar.exe")
@@ -196,6 +190,12 @@ selected_games = set()  # Indices des jeux sélectionnés pour un téléchargeme
 batch_download_indices = []  # File d'attente des indices de jeux à traiter en lot
 batch_in_progress = False  # Indique qu'un lot est en cours
 batch_pending_game = None  # Données du jeu en attente de confirmation d'extension
+
+# --- Filtre plateformes (UI) ---
+selected_filter_index = 0  # index dans la liste visible triée
+filter_platforms_scroll_offset = 0  # défilement si liste longue
+filter_platforms_dirty = False  # indique si modifications non sauvegardées
+filter_platforms_selection = []  # copie de travail des plateformes visibles (bool masque?) structure: list of (name, hidden_bool)
 
 
 GRID_COLS = 3  # Number of columns in the platform grid

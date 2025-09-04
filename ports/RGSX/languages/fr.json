@@ -23,7 +23,7 @@
     "error_api_key": "Attention il faut renseigner sa clé API (premium only) dans le fichier {0}",
     "error_api_key_extended": "Attention il faut renseigner sa clé API (premium only) dans le fichier /userdata/saves/ports/rgsx/1fichierAPI.txt à ouvrir dans un éditeur de texte et coller la clé API",
     "error_invalid_download_data": "Données de téléchargement invalides",
-    "error_delete_sources": "Erreur lors de la suppression du fichier sources.json ou dossiers",
+    "error_delete_sources": "Erreur lors de la suppression du fichier systems_list.json ou dossiers",
     "error_extension": "Extension non supportée ou erreur de téléchargement",
     "error_no_download": "Aucun téléchargement en attente.",
     
@@ -34,6 +34,8 @@
     "game_count": "{0} ({1} jeux)",
     "game_filter": "Filtre actif : {0}",
     "game_search": "Filtrer : {0}",
+    "game_header_name": "Nom",
+    "game_header_size": "Taille",
     
     "history_title": "Téléchargements ({0})",
     "history_empty": "Aucun téléchargement dans l'historique",
@@ -76,6 +78,14 @@
     "menu_music_toggle": "Activer/Désactiver la musique",
     "menu_music_enabled": "Musique activée : {0}",
     "menu_music_disabled": "Musique désactivée",       
+    "menu_filter_platforms": "Filtrer les systèmes",
+    "filter_platforms_title": "Affichage des systèmes",
+    "filter_all": "Tout afficher",
+    "filter_none": "Tout masquer",
+    "filter_apply": "Appliquer",
+    "filter_back": "Retour",
+    "filter_platforms_info": "Visibles: {0} | Masqués: {1} / Total: {2}",
+    "filter_unsaved_warning": "Modifications non sauvegardées",
     
     "button_yes": "Oui",
     "button_no": "Non",

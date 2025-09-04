@@ -26,7 +26,7 @@
     "error_api_key": "Achtung, du musst deinen API-Schlüssel (nur Premium) in der Datei {0} eingeben",
     "error_api_key_extended": "Achtung, du musst deinen API-Schlüssel (nur Premium) in der Datei /userdata/saves/ports/rgsx/1fichierAPI.txt einfügen. Öffne die Datei in einem Texteditor und füge den API-Schlüssel ein",
     "error_invalid_download_data": "Ungültige Downloaddaten",
-    "error_delete_sources": "Fehler beim Löschen der Datei sources.json oder Ordner",
+    "error_delete_sources": "Fehler beim Löschen der Datei systems_list.json oder Ordner",
     "error_extension": "Nicht unterstützte Erweiterung oder Downloadfehler",
     "error_no_download": "Keine Downloads ausstehend.",
     
@@ -37,6 +37,8 @@
     "game_count": "{0} ({1} Spiele)",
     "game_filter": "Aktiver Filter: {0}",
     "game_search": "Filtern: {0}",
+    "game_header_name": "Name",
+    "game_header_size": "Größe",
     
     "history_title": "Downloads ({0})",
     "history_empty": "Keine Downloads im Verlauf",
@@ -78,6 +80,14 @@
     "menu_music_toggle": "Musik ein/aus",
     "menu_music_enabled": "Musik aktiviert: {0}",
     "menu_music_disabled": "Musik deaktiviert",
+    "menu_filter_platforms": "Systeme filtern",
+    "filter_platforms_title": "Systemsichtbarkeit",
+    "filter_all": "Alle anzeigen",
+    "filter_none": "Alle ausblenden",
+    "filter_apply": "Anwenden",
+    "filter_back": "Zurück",
+    "filter_platforms_info": "Sichtbar: {0} | Versteckt: {1} / Gesamt: {2}",
+    "filter_unsaved_warning": "Ungespeicherte Änderungen",
     "menu_quit": "Beenden",
     
     "button_yes": "Ja",

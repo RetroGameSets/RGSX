@@ -12,9 +12,9 @@ from rgsx_settings import load_rgsx_settings, save_rgsx_settings
 import zipfile
 import time
 import random
-from config import JSON_EXTENSIONS, SAVE_FOLDER
+import config
 from history import save_history
-from language import _  # Import de la fonction de traduction
+from language import _ 
 from datetime import datetime
 
 
@@ -47,10 +47,10 @@ def detect_non_pc():
 def load_extensions_json():
     """Charge le fichier JSON contenant les extensions supportées."""
     try:
-        with open(JSON_EXTENSIONS, 'r', encoding='utf-8') as f:
+        with open(config.JSON_EXTENSIONS, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
-        logger.error(f"Erreur lors de la lecture de {JSON_EXTENSIONS}: {e}")
+        logger.error(f"Erreur lors de la lecture de {config.JSON_EXTENSIONS}: {e}")
         return []
     
 def check_extension_before_download(url, platform, game_name):
@@ -59,7 +59,7 @@ def check_extension_before_download(url, platform, game_name):
         sanitized_name = sanitize_filename(game_name)
         extensions_data = load_extensions_json()
         if not extensions_data:
-            logger.error(f"Fichier {JSON_EXTENSIONS} vide ou introuvable")
+            logger.error(f"Fichier {config.JSON_EXTENSIONS} vide ou introuvable")
             return None
 
         is_supported = is_extension_supported(sanitized_name, platform, extensions_data)
@@ -80,13 +80,15 @@ def check_extension_before_download(url, platform, game_name):
         return None
 
 # Fonction pour vérifier si l'extension est supportée pour une plateforme donnée
-def is_extension_supported(filename, platform, extensions_data):
-    """Vérifie si l'extension du fichier est supportée pour la plateforme donnée."""
+def is_extension_supported(filename, platform_key, extensions_data):
+    """Vérifie si l'extension du fichier est supportée pour la plateforme donnée.
+    platform_key correspond maintenant à l'identifiant utilisé dans config.platforms (platform_name)."""
     extension = os.path.splitext(filename)[1].lower()
-    
+
     dest_dir = None
     for platform_dict in config.platform_dicts:
-        if platform_dict["platform"] == platform:
+        # Nouveau schéma: platform_name
+        if platform_dict.get("platform_name") == platform_key:
             dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder"))
             break
     
@@ -108,43 +110,225 @@ def is_extension_supported(filename, platform, extensions_data):
 
 # Fonction pour charger sources.json
 def load_sources():
-    """Charge les sources depuis sources.json et initialise les plateformes."""
-    sources_path = os.path.join(config.SOURCES_FILE)
-    logger.debug(f"Chargement de {sources_path}")
+    """Charge la liste de base depuis systems_list.json puis ajoute les plateformes
+    implicites (fichiers de jeux *.json non listés) à la fin sans réordonner.
+
+    Schéma attendu dans systems_list.json:
+      [ {"platform_name": str, "folder": str, (optionnel) "platform_image"|"system_image": str }, ... ]
+
+    Règles d'ajout automatique:
+      - Chaque fichier <nom>.json dans config.GAMES_FOLDER est candidat.
+      - Si <nom> ne correspond à aucune entrée existante (case sensitive simple),
+        on ajoute {"platform_name": <nom>, "folder": <nom>} en fin de liste.
+      - Aucun tri n'est appliqué pour préserver l'ordre original défini par l'utilisateur.
+    """
     try:
-        with open(sources_path, 'r', encoding='utf-8') as f:
-            sources = json.load(f)
-        sources = sorted(sources, key=lambda x: x.get("nom", x.get("platform", "")).lower())
-        config.platforms = [source["platform"] for source in sources]
-        config.platform_dicts = sources
-        config.platform_names = {source["platform"]: source["nom"] for source in sources}
-        config.games_count = {platform: 0 for platform in config.platforms}  # Initialiser à 0
-        # Charger les jeux pour chaque plateforme
-        loaded_platforms = set()  # Pour suivre les plateformes déjà loguées
-        for platform in config.platforms:
-            games = load_games(platform)
-            config.games_count[platform] = len(games)
-            if platform not in loaded_platforms:
-                loaded_platforms.add(platform)
-        # Appeler write_unavailable_systems une seule fois après la boucle
-        write_unavailable_systems()  # Assurez-vous que cette fonction est définie
+        # Détection legacy: si sources.json (ancien format) existe encore, déclencher redownload automatique
+        legacy_path = os.path.join(config.SAVE_FOLDER, "sources.json")
+        if os.path.exists(legacy_path):
+            logger.warning("Ancien fichier sources.json détecté: déclenchement redownload cache jeux")
+            try:
+                # Supprimer ancien cache et forcer redémarrage logique comme dans l'option de menu
+                if os.path.exists(config.SOURCES_FILE):
+                    try:
+                        os.remove(config.SOURCES_FILE)
+                    except Exception:
+                        pass
+                if os.path.exists(config.GAMES_FOLDER):
+                    shutil.rmtree(config.GAMES_FOLDER, ignore_errors=True)
+                if os.path.exists(config.IMAGES_FOLDER):
+                    shutil.rmtree(config.IMAGES_FOLDER, ignore_errors=True)
+                # Renommer legacy pour éviter boucle
+                try:
+                    os.replace(legacy_path, legacy_path + ".bak")
+                except Exception:
+                    pass
+                # Préparer popup redémarrage si contexte graphique chargé
+                config.popup_message = _("popup_redownload_success") if hasattr(config, 'popup_message') else "Cache jeux réinitialisé"
+                config.popup_timer = 5000 if hasattr(config, 'popup_timer') else 0
+                config.menu_state = "restart_popup" if hasattr(config, 'menu_state') else getattr(config, 'menu_state', 'platform')
+                config.needs_redraw = True
+                logger.info("Redownload cache déclenché automatiquement (legacy sources.json)")
+                return []  # On sort pour laisser le processus de redémarrage gérer le rechargement
+            except Exception as e:
+                logger.error(f"Échec redownload automatique depuis legacy sources.json: {e}")
+        sources = []
+        if os.path.exists(config.SOURCES_FILE):
+            with open(config.SOURCES_FILE, 'r', encoding='utf-8') as f:
+                sources = json.load(f)
+            if not isinstance(sources, list):
+                logger.error("systems_list.json n'est pas une liste JSON valide")
+                sources = []
+        else:
+            logger.warning(f"Fichier systems_list absent: {config.SOURCES_FILE}")
+
+        # S'assurer que chaque entrée possède la clé platform_image (vide si absente)
+        for s in sources:
+            if "platform_image" not in s:
+                # Supporter ancienne clé system_image -> platform_image si présente
+                legacy = s.pop("system_image", "") if isinstance(s, dict) else ""
+                s["platform_image"] = legacy or ""
+
+        existing_names = {s.get("platform_name", "") for s in sources}
+        added = []
+        if os.path.isdir(config.GAMES_FOLDER):
+            for fname in sorted(os.listdir(config.GAMES_FOLDER)):
+                if not fname.lower().endswith('.json'):
+                    continue
+                pname = os.path.splitext(fname)[0]
+                if not pname or pname in existing_names:
+                    continue
+                new_entry = {"platform_name": pname, "folder": pname, "platform_image": ""}
+                sources.append(new_entry)
+                added.append(pname)
+                existing_names.add(pname)
+
+        # Déterminer les plateformes orphelines (fichier manquant)
+        existing_files = set()
+        if os.path.isdir(config.GAMES_FOLDER):
+            existing_files = {os.path.splitext(f)[0] for f in os.listdir(config.GAMES_FOLDER) if f.lower().endswith('.json')}
+        removed = []
+        filtered_sources = []
+        for entry in sources:
+            pname = entry.get("platform_name", "")
+            # Garder seulement si un fichier existe
+            if pname in existing_files:
+                filtered_sources.append(entry)
+            else:
+                # Ne retirer que si ce n'est pas un nom vide
+                if pname:
+                    removed.append(pname)
+        sources = filtered_sources
+
+        if added:
+            logger.info(f"Plateformes ajoutées automatiquement: {', '.join(added)}")
+        if removed:
+            logger.info(f"Plateformes supprimées (fichiers absents): {', '.join(removed)}")
+
+        # Persister si modifications (ajouts ou suppressions)
+        if added or removed:
+            try:
+                # Pas de tri avant persistance: conserver ordre d'origine + ajouts fins
+                os.makedirs(os.path.dirname(config.SOURCES_FILE), exist_ok=True)
+                with open(config.SOURCES_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(sources, f, ensure_ascii=False, indent=2)
+                logger.info("systems_list.json mis à jour (ajouts/suppressions, ordre conservé)")
+            except Exception as e:
+                logger.error(f"Échec écriture systems_list.json après maj auto: {e}")
+
+        # Pour l'affichage on veut un tri alphabétique sans toucher l'ordre de persistance
+        sorted_for_display = sorted(sources, key=lambda x: x.get("platform_name", "").lower())
+
+        # Construire structures config: platform_dicts = ordre fichier, platforms = tri (avec filtre masqués)
+        config.platform_dicts = sources  # ordre brut fichier
+        settings = load_rgsx_settings()
+        hidden = set(settings.get("hidden_platforms", [])) if isinstance(settings, dict) else set()
+        all_sorted_names = [s.get("platform_name", "") for s in sorted_for_display]
+        visible_names = [n for n in all_sorted_names if n and n not in hidden]
+        config.platforms = visible_names
+        config.platform_names = {p: p for p in config.platforms}
+        # Nouveau mapping par nom pour éviter décalages index après tri d'affichage
+        try:
+            config.platform_dict_by_name = {d.get("platform_name", ""): d for d in config.platform_dicts}
+        except Exception:
+            config.platform_dict_by_name = {}
+        config.games_count = {}
+        for platform_name in config.platforms:
+            games = load_games(platform_name)
+            config.games_count[platform_name] = len(games)
+
+        write_unavailable_systems()
         return sources
     except Exception as e:
-        logger.error(f"Erreur lors du chargement de sources.json : {str(e)}")
+        logger.error(f"Erreur fusion systèmes + détection jeux: {e}")
         return []
 
 def load_games(platform_id):
-    """Charge les jeux pour une plateforme donnée en utilisant platform_id et teste la première URL."""
-    games_path = os.path.join(config.GAMES_FOLDER, f"{platform_id}.json")
-    #logger.debug(f"Chargement des jeux pour {platform_id} depuis {games_path}")
+    """Charge la liste des jeux pour une plateforme.
+
+    Recherche des fichiers dans config.GAMES_FOLDER selon l'ordre:
+        1. <platform_id>.json (nom exact)
+        2. normalisé: normalize_platform_name(platform_id).json
+        3. <folder>.json (valeur 'folder' du dictionnaire de plateforme)
+
+    Format accepté du fichier JSON:
+        - liste de listes/tuples: [ [name, url], [name, url, size], ... ]
+        - liste de chaînes: [ name1, name2, ... ]
+        - liste de dicts: [ {"game_name"|"name"|"title": str, "url"|"download"|"link"|"href": str?, "size"|"filesize"|"length": str?}, ... ]
+        - dict contenant une clé 'games' avec un des formats ci-dessus
+
+    Retourne une liste normalisée de tuples (name, url_or_None, size_or_None).
+    """
     try:
-        with open(games_path, 'r', encoding='utf-8') as f:
-            games = json.load(f)
-        
-        logger.debug(f"Jeux chargés pour {platform_id}: {len(games)} jeux")
-        return games
+        # Retrouver l'objet plateforme pour accéder éventuellement à 'folder'
+        platform_dict = None
+        for pd in config.platform_dicts:
+            if pd.get("platform_name") == platform_id or pd.get("platform") == platform_id:
+                platform_dict = pd
+                break
+
+        candidates = []
+        # 1. Nom exact
+        candidates.append(os.path.join(config.GAMES_FOLDER, f"{platform_id}.json"))
+        # 2. Nom normalisé
+        norm = normalize_platform_name(platform_id)
+        if norm and norm != platform_id:
+            candidates.append(os.path.join(config.GAMES_FOLDER, f"{norm}.json"))
+        # 3. Folder déclaré
+        if platform_dict:
+            folder_name = platform_dict.get("folder")
+            if folder_name:
+                candidates.append(os.path.join(config.GAMES_FOLDER, f"{folder_name}.json"))
+
+        game_file = None
+        for c in candidates:
+            if os.path.exists(c):
+                game_file = c
+                break
+        if not game_file:
+            logger.warning(f"Aucun fichier de jeux trouvé pour {platform_id} (candidats: {candidates})")
+            return []
+
+        with open(game_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # Si dict avec clé 'games'
+        if isinstance(data, dict) and 'games' in data:
+            data = data['games']
+
+        normalized = []  # (name, url, size)
+
+        def extract_from_dict(d):
+            name = d.get('game_name') or d.get('name') or d.get('title') or d.get('game')
+            url = d.get('url') or d.get('download') or d.get('link') or d.get('href')
+            size = d.get('size') or d.get('filesize') or d.get('length')
+            if name:
+                normalized.append((str(name), url if isinstance(url, str) and url.strip() else None, str(size) if size else None))
+
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, (list, tuple)):
+                    if len(item) == 0:
+                        continue
+                    name = str(item[0])
+                    url = item[1] if len(item) > 1 and isinstance(item[1], str) and item[1].strip() else None
+                    size = item[2] if len(item) > 2 and isinstance(item[2], str) and item[2].strip() else None
+                    normalized.append((name, url, size))
+                elif isinstance(item, dict):
+                    extract_from_dict(item)
+                elif isinstance(item, str):
+                    normalized.append((item, None, None))
+                else:
+                    normalized.append((str(item), None, None))
+        elif isinstance(data, dict):  # dict sans 'games'
+            extract_from_dict(data)
+        else:
+            logger.warning(f"Format de fichier jeux inattendu pour {platform_id}: {type(data)}")
+
+        logger.debug(f"Jeux chargés pour {platform_id} depuis {os.path.basename(game_file)}: {len(normalized)} entrées")
+        return normalized
     except Exception as e:
-        logger.error(f"Erreur lors du chargement des jeux pour {platform_id} : {str(e)}")
+        logger.error(f"Erreur lors du chargement des jeux pour {platform_id}: {e}")
         return []
 
 def write_unavailable_systems():
@@ -156,12 +340,11 @@ def write_unavailable_systems():
     # Formater la date et l'heure pour le nom du fichier
     current_time = datetime.now()
     timestamp = current_time.strftime("%d-%m-%Y-%H-%M")
-    log_dir = os.path.join(os.path.dirname(config.APP_FOLDER), "logs", "RGSX")
-    log_file = os.path.join(log_dir, f"systemes_unavailable_{timestamp}.txt")
+    log_file = os.path.join(config.log_dir, f"systemes_unavailable_{timestamp}.txt")
     
     try:
         # Créer le répertoire s'il n'existe pas
-        os.makedirs(log_dir, exist_ok=True)
+        os.makedirs(config.log_dir, exist_ok=True)
         
         # Écrire les systèmes dans le fichier
         with open(log_file, 'w', encoding='utf-8') as f:
@@ -290,15 +473,28 @@ def wrap_text(text, font, max_width):
     return lines
     
 def load_system_image(platform_dict):
-    """Charge une image système depuis le chemin spécifié dans system_image."""
-    image_path = os.path.join(config.IMAGES_FOLDER, platform_dict.get("system_image", "default.png"))
-    platform_name = platform_dict.get("platform", "unknown")
-    #logger.debug(f"Chargement de l'image système pour {platform_name} depuis {image_path}")
+    """Charge une image système avec priorité:
+    1. Fichier nommé exactement <platform_name>.png
+    2. Champ platform_image si non vide
+    3. Fallback default.png"""
+    platform_name = platform_dict.get("platform_name", "unknown")
+    preferred_filename = f"{platform_name}.png"
+    preferred_path = os.path.join(config.IMAGES_FOLDER, preferred_filename)
+
+    # Normaliser platform_image pouvant être vide
+    platform_image_field = platform_dict.get("platform_image") or ""
+    explicit_image_path = os.path.join(config.IMAGES_FOLDER, platform_image_field) if platform_image_field else None
+    default_path = os.path.join(config.IMAGES_FOLDER, "default.png")
+
     try:
-        if not os.path.exists(image_path):
-            logger.error(f"Image introuvable pour {platform_name} à {image_path}")
-            return None
-        return pygame.image.load(image_path).convert_alpha()
+        if os.path.exists(preferred_path):
+            return pygame.image.load(preferred_path).convert_alpha()
+        if explicit_image_path and os.path.exists(explicit_image_path):
+            return pygame.image.load(explicit_image_path).convert_alpha()
+        if os.path.exists(default_path):
+            return pygame.image.load(default_path).convert_alpha()
+        logger.error(f"Aucune image trouvée pour {platform_name} (cherché: {preferred_path}, {explicit_image_path}, default.png)")
+        return None
     except Exception as e:
         logger.error(f"Erreur lors du chargement de l'image pour {platform_name} : {str(e)}")
         return None
@@ -447,16 +643,6 @@ def extract_rar(rar_path, dest_dir, url):
         if system_type == "Windows":
             # Sur Windows, utiliser directement config.UNRAR_EXE
             unrar_exe = config.UNRAR_EXE
-            if not os.path.exists(unrar_exe):
-                logger.warning("unrar.exe absent, téléchargement en cours...")
-                try:
-                    import urllib.request
-                    os.makedirs(os.path.dirname(unrar_exe), exist_ok=True)
-                    urllib.request.urlretrieve(config.unrar_download_exe, unrar_exe)
-                    logger.info(f"unrar.exe téléchargé dans {unrar_exe}")
-                except Exception as e:
-                    logger.error(f"Impossible de télécharger unrar.exe: {str(e)}")
-                    return False, _("utils_unrar_unavailable")
             unrar_cmd = [unrar_exe]
         else:
             # Linux/Batocera: utiliser 'unrar' du système
@@ -657,32 +843,11 @@ def handle_xbox(dest_dir, iso_files):
     if system_type == "Windows":
         # Sur Windows; telecharger le fichier exe
         XDVDFS_EXE = config.XDVDFS_EXE
-        if not os.path.exists(XDVDFS_EXE):
-            logger.warning("xdvdfs.exe absent, téléchargement en cours...")
-            try:
-                import urllib.request
-                os.makedirs(os.path.dirname(XDVDFS_EXE), exist_ok=True)
-                urllib.request.urlretrieve(config.xdvdfs_download_exe, XDVDFS_EXE)
-                logger.info(f"xdvdfs.exe téléchargé dans {XDVDFS_EXE}")
-            except Exception as e:
-                logger.error(f"Impossible de télécharger xdvdfs.exe: {str(e)}")
-                return False, _("utils_xdvdfs_unavailable")
         xdvdfs_cmd = [XDVDFS_EXE, "pack"]  # Liste avec 2 éléments
 
     else:
         # Linux/Batocera : télécharger le fichier xdvdfs  
         XDVDFS_LINUX = config.XDVDFS_LINUX
-        if not os.path.exists(XDVDFS_LINUX):
-            logger.warning("xdvdfs non trouvé, téléchargement en cours...")
-            try:
-                import urllib.request
-                os.makedirs(os.path.dirname(XDVDFS_LINUX), exist_ok=True)
-                urllib.request.urlretrieve(config.xdvdfs_download_linux, XDVDFS_LINUX)
-                os.chmod(XDVDFS_LINUX, 0o755)  # Rendre exécutable
-                logger.info(f"xdvdfs téléchargé dans {XDVDFS_LINUX}")
-            except Exception as e:
-                logger.error(f"Impossible de télécharger xdvdfs: {str(e)}")
-                return False, _("utils_xdvdfs_unavailable")    # Vérifier les permissions après le téléchargement
         try:
             stat_info = os.stat(XDVDFS_LINUX)
             mode = stat_info.st_mode
@@ -792,24 +957,24 @@ def set_music_popup(music_name):
 
 def load_api_key_1fichier():
     """Charge la clé API 1fichier depuis le dossier de sauvegarde, crée le fichier si absent."""
-    api_path = os.path.join(SAVE_FOLDER, "1fichierAPI.txt")
-    logger.debug(f"Tentative de chargement de la clé API depuis: {api_path}")
+  
+    logger.debug(f"Tentative de chargement de la clé API depuis: {config.API_KEY_1FICHIER}")
     try:
         # Vérifie si le fichier existe déjà 
-        if not os.path.exists(api_path):
+        if not os.path.exists(config.API_KEY_1FICHIER):
             # Crée le dossier parent si nécessaire
-            os.makedirs(SAVE_FOLDER, exist_ok=True)
+            os.makedirs(config.SAVE_FOLDER, exist_ok=True)
             # Crée le fichier vide si absent
-            with open(api_path, "w") as f:
+            with open(config.API_KEY_1FICHIER, "w") as f:
                 f.write("")
-            logger.info(f"Fichier de clé API créé : {api_path}")
+            logger.info(f"Fichier de clé API créé : {config.API_KEY_1FICHIER}")
             return ""
     except OSError as e:
         logger.error(f"Erreur lors de la création du fichier de clé API : {e}")
         return ""
     # Lit la clé API depuis le fichier
     try:
-        with open(api_path, "r", encoding="utf-8") as f:
+        with open(config.API_KEY_1FICHIER, "r", encoding="utf-8") as f:
             api_key = f.read().strip()
         logger.debug(f"Clé API 1fichier lue: '{api_key}' (longueur: {len(api_key)})")
         if not api_key:

@@ -265,6 +265,12 @@ async def main():
                 #logger.debug(f"Événement transmis à handle_controls dans pause_menu: {event.type}")
                 continue
 
+            # Gestion des événements pour le menu de filtrage des plateformes
+            if config.menu_state == "filter_platforms":
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
+                continue
+
             if config.menu_state == "accessibility_menu":
                 from accessibility import handle_accessibility_events
                 if handle_accessibility_events(event):
@@ -342,9 +348,14 @@ async def main():
                     logger.debug("Action quit détectée, arrêt de l'application")
                 elif action == "download" and config.menu_state == "game" and config.filtered_games:
                     game = config.filtered_games[config.current_game]
-                    game_name = game[0] if isinstance(game, (list, tuple)) else game
-                    platform = config.platforms[config.current_platform]["name"]  # Utiliser le nom de la plateforme
-                    url = game[1] if isinstance(game, (list, tuple)) and len(game) > 1 else None
+                    if isinstance(game, (list, tuple)):
+                        game_name = game[0]
+                        url = game[1] if len(game) > 1 else None
+                    else:  # fallback str
+                        game_name = str(game)
+                        url = None
+                    # Nouveau schéma: config.platforms contient déjà platform_name (string)
+                    platform = config.platforms[config.current_platform]
                     if url:
                         logger.debug(f"Vérification pour {game_name}, URL: {url}")
                         # Ajouter une entrée temporaire à l'historique
@@ -422,8 +433,12 @@ async def main():
                     platform = entry["platform"]
                     game_name = entry["game_name"]
                     for game in config.games:
-                        if game[0] == game_name and config.platforms[config.current_platform] == platform:
-                            url = game[1]
+                        if isinstance(game, (list, tuple)) and game and game[0] == game_name and config.platforms[config.current_platform] == platform:
+                            url = game[1] if len(game) > 1 else None
+                        else:
+                            continue
+                        if not url:
+                            continue
                             logger.debug(f"Vérification pour retéléchargement de {game_name}, URL: {url}")
                             if is_1fichier_url(url):
                                 if not config.API_KEY_1FICHIER:
@@ -604,6 +619,9 @@ async def main():
             elif config.menu_state == "pause_menu":
                 draw_pause_menu(screen, config.selected_option)
                 #logger.debug("Rendu de draw_pause_menu")
+            elif config.menu_state == "filter_platforms":
+                from display import draw_filter_platforms_menu
+                draw_filter_platforms_menu(screen)
             elif config.menu_state == "controls_help":
                 draw_controls_help(screen, config.previous_menu_state)
             elif config.menu_state == "history":

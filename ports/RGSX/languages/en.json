@@ -26,7 +26,7 @@
     "error_api_key": "Please enter your API key (premium only) in the file {0}",
     "error_api_key_extended": "Please enter your API key (premium only) in the file /userdata/saves/ports/rgsx/1fichierAPI.txt by opening it in a text editor and pasting your API key",
     "error_invalid_download_data": "Invalid download data",
-    "error_delete_sources": "Error deleting sources.json file or folders",
+    "error_delete_sources": "Error deleting systems_list.json file or folders",
     "error_extension": "Unsupported extension or download error",
     "error_no_download": "No pending download.",
     
@@ -37,6 +37,8 @@
     "game_count": "{0} ({1} games)",
     "game_filter": "Active filter: {0}",
     "game_search": "Filter: {0}",
+    "game_header_name": "Name",
+    "game_header_size": "Size",
     
     "history_title": "Downloads ({0})",
     "history_empty": "No downloads in history",
@@ -78,6 +80,14 @@
     "menu_music_toggle": "Toggle music",
     "menu_music_enabled": "Music enabled: {0}",
     "menu_music_disabled": "Music disabled",
+    "menu_filter_platforms": "Filter systems",
+    "filter_platforms_title": "Systems visibility",
+    "filter_all": "Show all",
+    "filter_none": "Hide all",
+    "filter_apply": "Apply",
+    "filter_back": "Back",
+    "filter_platforms_info": "Visible: {0} | Hidden: {1} / Total: {2}",
+    "filter_unsaved_warning": "Unsaved changes",
     "menu_quit": "Quit",
     
     "button_yes": "Yes",

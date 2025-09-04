@@ -27,7 +27,7 @@
     "error_api_key": "Atención, debes ingresar tu clave API (solo premium) en el archivo {0}",
     "error_api_key_extended": "Atención, debes ingresar tu clave API (solo premium) en el archivo /userdata/saves/ports/rgsx/1fichierAPI.txt, abrirlo en un editor de texto y pegar la clave API",
     "error_invalid_download_data": "Datos de descarga no válidos",
-    "error_delete_sources": "Error al eliminar el archivo sources.json o carpetas",
+    "error_delete_sources": "Error al eliminar el archivo systems_list.json o carpetas",
     "error_extension": "Extensión no soportada o error de descarga",
     "error_no_download": "No hay descargas pendientes.",
     
@@ -38,6 +38,8 @@
     "game_count": "{0} ({1} juegos)",
     "game_filter": "Filtro activo: {0}",
     "game_search": "Filtrar: {0}",
+    "game_header_name": "Nombre",
+    "game_header_size": "Tamaño",
     
     "history_title": "Descargas ({0})",
     "history_empty": "No hay descargas en el historial",
@@ -79,6 +81,14 @@
     "menu_music_toggle": "Activar/Desactivar música",
     "menu_music_enabled": "Música activada: {0}",
     "menu_music_disabled": "Música desactivada",
+    "menu_filter_platforms": "Filtrar sistemas",
+    "filter_platforms_title": "Visibilidad de sistemas",
+    "filter_all": "Mostrar todo",
+    "filter_none": "Ocultar todo",
+    "filter_apply": "Aplicar",
+    "filter_back": "Volver",
+    "filter_platforms_info": "Visibles: {0} | Ocultos: {1} / Total: {2}",
+    "filter_unsaved_warning": "Cambios no guardados",
     "menu_quit": "Salir",
     
     "button_yes": "Sí",

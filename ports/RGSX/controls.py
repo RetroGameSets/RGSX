@@ -32,7 +32,7 @@ VALID_STATES = [
     "platform", "game", "confirm_exit",
     "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
     "redownload_game_cache", "restart_popup", "error", "loading", "confirm_clear_history",
-    "language_select"
+    "language_select", "filter_platforms"
 ]
 
 def validate_menu_state(state):
@@ -1036,7 +1036,13 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "accessibility_menu"
                     config.needs_redraw = True
                     logger.debug("Passage au menu accessibilité")
-                elif config.selected_option == 5:  # Source toggle
+                elif config.selected_option == 5:  # Filter platforms
+                    # Ne pas écraser previous_menu_state; il référence l'état avant l'ouverture du pause menu
+                    config.menu_state = "filter_platforms"
+                    config.selected_filter_index = 0
+                    config.filter_platforms_scroll_offset = 0
+                    config.needs_redraw = True
+                elif config.selected_option == 6:  # Source toggle (index shifted by new option)
                     try:
                         from rgsx_settings import get_sources_mode, set_sources_mode
                         current_mode = get_sources_mode()
@@ -1052,13 +1058,13 @@ def handle_controls(event, sources, joystick, screen):
                         logger.info(f"Changement du mode des sources vers {new_mode}")
                     except Exception as e:
                         logger.error(f"Erreur changement mode sources: {e}")
-                elif config.selected_option == 6:  # Redownload game cache
+                elif config.selected_option == 7:  # Redownload game cache
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "redownload_game_cache"
                     config.redownload_confirm_selection = 0
                     config.needs_redraw = True
                     logger.debug(f"Passage à redownload_game_cache depuis pause_menu")
-                elif config.selected_option == 7:  # Music toggle
+                elif config.selected_option == 8:  # Music toggle
                     config.music_enabled = not config.music_enabled
                     save_music_config()
                     if config.music_enabled:
@@ -1070,7 +1076,7 @@ def handle_controls(event, sources, joystick, screen):
                         pygame.mixer.music.stop()
                     config.needs_redraw = True
                     logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via menu pause")
-                elif config.selected_option == 8:  # Symlink option
+                elif config.selected_option == 9:  # Symlink option
                     from rgsx_settings import set_symlink_option, get_symlink_option
                     current_status = get_symlink_option()
                     success, message = set_symlink_option(not current_status)
@@ -1078,7 +1084,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.popup_timer = 3000 if success else 5000
                     config.needs_redraw = True
                     logger.info(f"Symlink option {'activée' if not current_status else 'désactivée'} via menu pause")
-                elif config.selected_option == 9:  # Quit
+                elif config.selected_option == 10:  # Quit
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "confirm_exit"
                     config.confirm_selection = 0
@@ -1117,8 +1123,12 @@ def handle_controls(event, sources, joystick, screen):
                     config.pending_download = None
                     if os.path.exists(config.SOURCES_FILE):
                         try:
-                            os.remove(config.SOURCES_FILE)
-                            logger.debug("Fichier sources.json supprimé avec succès")
+                            if os.path.exists(config.SOURCES_FILE):
+                                os.remove(config.SOURCES_FILE)
+                                logger.debug("Fichier system_list.json supprimé avec succès")
+                            if os.path.exists(config.SAVE_FOLDER + "/sources.json"):
+                                os.remove(config.SAVE_FOLDER + "/sources.json")
+                                logger.debug("Fichier sources.json supprimé avec succès")
                             if os.path.exists(config.GAMES_FOLDER):
                                 shutil.rmtree(config.GAMES_FOLDER)
                                 logger.debug("Dossier games supprimé avec succès")
@@ -1202,6 +1212,71 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "pause_menu"
                 config.needs_redraw = True
                 logger.debug("Annulation de la sélection de langue, retour au menu pause")
+
+        # Menu filtre plateformes
+        elif config.menu_state == "filter_platforms":
+            total_items = len(config.filter_platforms_selection)
+            action_buttons = 4
+            extended_max = total_items + action_buttons - 1
+            if is_input_matched(event, "up"):
+                if config.selected_filter_index > 0:
+                    config.selected_filter_index -= 1
+                    config.needs_redraw = True
+                else:
+                    # Wrap vers les boutons (premier bouton) depuis le haut
+                    if total_items > 0:
+                        config.selected_filter_index = total_items
+                        config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                if config.selected_filter_index < extended_max:
+                    config.selected_filter_index += 1
+                    config.needs_redraw = True
+                else:
+                    # Wrap retour en haut de la liste
+                    config.selected_filter_index = 0
+                    config.needs_redraw = True
+            elif is_input_matched(event, "left"):
+                if config.selected_filter_index >= total_items:
+                    if config.selected_filter_index > total_items:
+                        config.selected_filter_index -= 1
+                        config.needs_redraw = True
+                # sinon ignorer
+            elif is_input_matched(event, "right"):
+                if config.selected_filter_index >= total_items:
+                    if config.selected_filter_index < extended_max:
+                        config.selected_filter_index += 1
+                        config.needs_redraw = True
+                # sinon ignorer
+            elif is_input_matched(event, "confirm"):
+                if config.selected_filter_index < total_items:
+                    name, hidden = config.filter_platforms_selection[config.selected_filter_index]
+                    config.filter_platforms_selection[config.selected_filter_index] = (name, not hidden)
+                    config.filter_platforms_dirty = True
+                    config.needs_redraw = True
+                else:
+                    btn_idx = config.selected_filter_index - total_items
+                    from rgsx_settings import load_rgsx_settings, save_rgsx_settings
+                    from utils import load_sources
+                    settings = load_rgsx_settings()
+                    if btn_idx == 0:  # all visible
+                        config.filter_platforms_selection = [(n, False) for n, _ in config.filter_platforms_selection]
+                        config.filter_platforms_dirty = True
+                    elif btn_idx == 1:  # none visible
+                        config.filter_platforms_selection = [(n, True) for n, _ in config.filter_platforms_selection]
+                        config.filter_platforms_dirty = True
+                    elif btn_idx == 2:  # apply
+                        hidden_list = [n for n, h in config.filter_platforms_selection if h]
+                        settings["hidden_platforms"] = hidden_list
+                        save_rgsx_settings(settings)
+                        load_sources()
+                        config.filter_platforms_dirty = False
+                        config.menu_state = "pause_menu"
+                    elif btn_idx == 3:  # back
+                        config.menu_state = "pause_menu"
+                    config.needs_redraw = True
+            elif is_input_matched(event, "cancel"):
+                config.menu_state = "pause_menu"
+                config.needs_redraw = True
 
 
     # Gestion des relâchements de touches
