@@ -110,18 +110,6 @@ def is_extension_supported(filename, platform_key, extensions_data):
 
 # Fonction pour charger sources.json
 def load_sources():
-    """Charge la liste de base depuis systems_list.json puis ajoute les plateformes
-    implicites (fichiers de jeux *.json non listés) à la fin sans réordonner.
-
-    Schéma attendu dans systems_list.json:
-      [ {"platform_name": str, "folder": str, (optionnel) "platform_image"|"system_image": str }, ... ]
-
-    Règles d'ajout automatique:
-      - Chaque fichier <nom>.json dans config.GAMES_FOLDER est candidat.
-      - Si <nom> ne correspond à aucune entrée existante (case sensitive simple),
-        on ajoute {"platform_name": <nom>, "folder": <nom>} en fin de liste.
-      - Aucun tri n'est appliqué pour préserver l'ordre original défini par l'utilisateur.
-    """
     try:
         # Détection legacy: si sources.json (ancien format) existe encore, déclencher redownload automatique
         legacy_path = os.path.join(config.SAVE_FOLDER, "sources.json")
@@ -249,21 +237,6 @@ def load_sources():
         return []
 
 def load_games(platform_id):
-    """Charge la liste des jeux pour une plateforme.
-
-    Recherche des fichiers dans config.GAMES_FOLDER selon l'ordre:
-        1. <platform_id>.json (nom exact)
-        2. normalisé: normalize_platform_name(platform_id).json
-        3. <folder>.json (valeur 'folder' du dictionnaire de plateforme)
-
-    Format accepté du fichier JSON:
-        - liste de listes/tuples: [ [name, url], [name, url, size], ... ]
-        - liste de chaînes: [ name1, name2, ... ]
-        - liste de dicts: [ {"game_name"|"name"|"title": str, "url"|"download"|"link"|"href": str?, "size"|"filesize"|"length": str?}, ... ]
-        - dict contenant une clé 'games' avec un des formats ci-dessus
-
-    Retourne une liste normalisée de tuples (name, url_or_None, size_or_None).
-    """
     try:
         # Retrouver l'objet plateforme pour accéder éventuellement à 'folder'
         platform_dict = None

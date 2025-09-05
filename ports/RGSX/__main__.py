@@ -438,7 +438,6 @@ async def main():
                         else:
                             continue
                         if not url:
-                            continue
                             logger.debug(f"Vérification pour retéléchargement de {game_name}, URL: {url}")
                             if is_1fichier_url(url):
                                 if not config.API_KEY_1FICHIER:
