@@ -207,6 +207,14 @@ Developed with ❤️ for retro gaming enthusiasts.
 
 ## 🔄 Changelog
 
+### 2.0.0.0 (2025-09-05)
+- Complete sources system overhaul: centralized management through `/saves/ports/rgsx/systems_list.json` (order preserved), automatic platform addition by dropping its JSON file into `/saves/ports/rgsx/games/` (auto-created if missing) — after first creation edit the generated "dossier" field so it matches your downloads folder structure.
+- Systems visibility filter menu (show/hide platforms with persistent hidden list in settings)
+- Game list header row (Name / Size) with translations
+- Automatic legacy sources.json detection triggers safe cache purge + restart popup (no migration)
+- Improved Arcade/Archive.org reliability: multi-header retry strategy + metadata preflight
+- Internal refactors: unified early-return in load_sources, safer cache rebuild path
+
 ### 1.9.9.4 (2025-09-03)
 - Game Source toggle (RGSX / Custom) with info popups
 - No fallback when custom source invalid (empty list + message)

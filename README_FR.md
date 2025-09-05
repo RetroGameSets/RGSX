@@ -127,6 +127,15 @@ Les logs sont enregistrés dans `roms/ports/RGSX/logs/RGSX.log` sur batocera et 
 
 ## 🔄 Journal des modifications
 
+### 2.0.0.0 (2025-09-05)
+- Refonte complète du système de sources : gestion centralisée via `/saves/ports/rgsx/systems_list.json` (ordre conservé), ajout automatique d’une plateforme en déposant son fichier JSON dans `/saves/ports/rgsx/games/` (création si absente) — pensez ensuite à éditer le champ "dossier" généré pour qu’il corresponde à votre organisation de téléchargements.
+- Nouveau menu de filtrage des systèmes (afficher/masquer plateformes avec persistance dans les paramètres)
+- En-tête de la liste des jeux (Nom / Taille) traduit
+- Détection automatique de l'ancien fichier sources.json → purge sécurisée du cache + popup de redémarrage (aucune migration)
+- Fiabilité améliorée des téléchargements Archive.org : stratégie de retry multi-entêtes + préchargement métadonnées
+- Synchronisation des traductions (FR/EN/ES/DE/PT) et complétion des clés manquantes
+- Refactors internes : early-return unifié dans load_sources, reconstruction de cache plus sûre
+
 ### 1.9.9.4 (2025-09-03)
 - Bascule Source des jeux (RGSX / Personnalisée) + popups
 - Pas de fallback si source personnalisée invalide (liste vide + message)
