@@ -5,7 +5,7 @@ import platform
 from rgsx_settings import load_rgsx_settings, save_rgsx_settings
 
 # Version actuelle de l'application
-app_version = "2.0.0.0"
+app_version = "2.0.0.1"
 
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""

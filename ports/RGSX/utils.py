@@ -935,29 +935,33 @@ def set_music_popup(music_name):
 
 def load_api_key_1fichier():
     """Charge la clé API 1fichier depuis le dossier de sauvegarde, crée le fichier si absent."""
-  
-    logger.debug(f"Tentative de chargement de la clé API depuis: {config.API_KEY_1FICHIER}")
+    API_KEY_1FICHIER = os.path.join(config.SAVE_FOLDER, "1FichierAPI.txt")
+    logger.debug(f"Chemin du fichier de clé API: {API_KEY_1FICHIER}")
+    logger.debug(f"Tentative de chargement de la clé API depuis: {API_KEY_1FICHIER}")
     try:
         # Vérifie si le fichier existe déjà 
-        if not os.path.exists(config.API_KEY_1FICHIER):
+        if not os.path.exists(API_KEY_1FICHIER):
+            logger.info(f"Fichier de clé API non trouvé")
             # Crée le dossier parent si nécessaire
             os.makedirs(config.SAVE_FOLDER, exist_ok=True)
             # Crée le fichier vide si absent
-            with open(config.API_KEY_1FICHIER, "w") as f:
+            with open(API_KEY_1FICHIER, "w") as f:
                 f.write("")
-            logger.info(f"Fichier de clé API créé : {config.API_KEY_1FICHIER}")
+            logger.info(f"Fichier de clé API créé : {API_KEY_1FICHIER}")
             return ""
     except OSError as e:
         logger.error(f"Erreur lors de la création du fichier de clé API : {e}")
         return ""
     # Lit la clé API depuis le fichier
     try:
-        with open(config.API_KEY_1FICHIER, "r", encoding="utf-8") as f:
+        with open(API_KEY_1FICHIER, "r", encoding="utf-8") as f:
             api_key = f.read().strip()
         logger.debug(f"Clé API 1fichier lue: '{api_key}' (longueur: {len(api_key)})")
         if not api_key:
             logger.warning("Clé API 1fichier vide, veuillez la renseigner dans le fichier pour pouvoir utiliser les fonctionnalités de téléchargement sur 1fichier.")
+        API_KEY_1FICHIER = api_key
         config.API_KEY_1FICHIER = api_key
+        logger.debug(f"Clé API 1fichier chargée dans la configuration : '{config.API_KEY_1FICHIER}'")
         return api_key
     except OSError as e:
         logger.error(f"Erreur lors de la lecture de la clé API : {e}")

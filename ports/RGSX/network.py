@@ -752,7 +752,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             if task_queue:
                 while not task_queue.empty():
                     data = task_queue.get()
-                    logger.debug(f"Données queue progression reçues: {data}")
+                    #logger.debug(f"Données queue progression reçues: {data}")
                     if isinstance(data[1], bool):  # Fin du téléchargement
                         success, message = data[1], data[2]
                         if isinstance(config.history, list):
