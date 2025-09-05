@@ -1269,6 +1269,17 @@ def handle_controls(event, sources, joystick, screen):
                         settings["hidden_platforms"] = hidden_list
                         save_rgsx_settings(settings)
                         load_sources()
+                        # Recalibrer la sélection et la page courante si elles dépassent la nouvelle liste visible
+                        try:
+                            systems_per_page = GRID_COLS * GRID_ROWS
+                            if config.current_page * systems_per_page >= len(config.platforms):
+                                config.current_page = 0
+                            if config.selected_platform >= len(config.platforms):
+                                config.selected_platform = 0
+                        except Exception:
+                            # Sécurité: en cas d'erreur on remet simplement à 0
+                            config.current_page = 0
+                            config.selected_platform = 0
                         config.filter_platforms_dirty = False
                         config.menu_state = "pause_menu"
                     elif btn_idx == 3:  # back
