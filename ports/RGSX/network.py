@@ -261,7 +261,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             dest_dir = None
             for platform_dict in config.platform_dicts:
                 if platform_dict.get("platform_name") == platform:
-                    platform_folder = platform_dict.get("folder", normalize_platform_name(platform))
+                    # Priorité: clé 'folder'; fallback legacy: 'dossier'; sinon normalisation du nom de plateforme
+                    platform_folder = platform_dict.get("folder") or platform_dict.get("dossier") or normalize_platform_name(platform)
                     dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
                     logger.debug(f"Répertoire de destination trouvé pour {platform}: {dest_dir}")
                     break
@@ -545,11 +546,11 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             dest_dir = None
             for platform_dict in config.platform_dicts:
                 if platform_dict.get("platform_name") == platform:
-                    platform_folder = platform_dict.get("folder", normalize_platform_name(platform))
+                    platform_folder = platform_dict.get("folder") or platform_dict.get("dossier") or normalize_platform_name(platform)
                     dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
                     break
             if not dest_dir:
-                logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform}")
+                logger.warning(f"Aucun dossier 'folder'/'dossier' trouvé pour la plateforme {platform}")
                 platform_folder = normalize_platform_name(platform)
                 dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
             logger.debug(f"Répertoire destination déterminé: {dest_dir}")

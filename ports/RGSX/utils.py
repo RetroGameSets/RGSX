@@ -168,6 +168,11 @@ def load_sources():
                 # Supporter ancienne clé system_image -> platform_image si présente
                 legacy = s.pop("system_image", "") if isinstance(s, dict) else ""
                 s["platform_image"] = legacy or ""
+            # Normaliser clé dossier -> folder si besoin (legacy francophone)
+            if isinstance(s, dict) and "folder" not in s:
+                legacy_folder = s.get("dossier") or s.get("folder_name")
+                if legacy_folder:
+                    s["folder"] = legacy_folder
 
         existing_names = {s.get("platform_name", "") for s in sources}
         added = []
