@@ -100,7 +100,7 @@ RGSX_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
 OTA_SERVER_URL = "https://retrogamesets.fr/softs/"
 OTA_VERSION_ENDPOINT = os.path.join(OTA_SERVER_URL, "version.json")
 OTA_UPDATE_ZIP = os.path.join(OTA_SERVER_URL, "RGSX.zip")
-OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "test.zip")
+OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "games.zip")
 
 #CHEMINS DES EXECUTABLES
 UNRAR_EXE = os.path.join(APP_FOLDER,"assets", "unrar.exe")
