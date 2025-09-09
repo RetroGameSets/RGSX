@@ -1,19 +1,49 @@
 #!/usr/bin/env python3
-"""
-Module de gestion des paramètres RGSX
-Gère le fichier unifié rgsx_settings.json qui remplace les anciens fichiers :
-- accessibility.json
-- language.json 
-- music_config.json
-- symlink_settings.json
-"""
-
 import json
 import os
 import logging
+import config
 
 logger = logging.getLogger(__name__)
 
+
+
+#Fonction pour supprimer les anciens fichiers de paramètres non utilisés
+def delete_old_files():
+    old_files_saves = [
+        "accessibility.json",
+        "language.json",
+        "music_config.json",
+        "symlink_settings.json",
+        "sources.json"
+    ]
+    old_files_app = [
+        "rom_extensions.json",
+        "es_input_parser.py",
+        "sources.json"
+    ]
+
+
+    for filename in old_files_saves:
+        file_path = os.path.join(config.SAVE_FOLDER, filename)
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"Ancien fichier supprimé : {file_path}")
+                logger.info(f"Ancien fichier supprimé : {file_path}")
+        except Exception as e:
+            print(f"Erreur lors de la suppression de {file_path} : {str(e)}")
+            logger.error(f"Erreur lors de la suppression de {file_path} : {str(e)}")
+    for filename in old_files_app:
+        file_path = os.path.join(config.APP_FOLDER, filename)
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"Ancien fichier supprimé : {file_path}")
+                logger.info(f"Ancien fichier supprimé : {file_path}")
+        except Exception as e:
+            print(f"Erreur lors de la suppression de {file_path} : {str(e)}")
+            logger.error(f"Erreur lors de la suppression de {file_path} : {str(e)}")
 
 def load_rgsx_settings():
     """Charge tous les paramètres depuis rgsx_settings.json."""

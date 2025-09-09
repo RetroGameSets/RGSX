@@ -31,6 +31,114 @@ unavailable_systems = []
 # Cache/process flags for extensions generation/loading
 
 
+def silence_alsa_warnings():
+    """Silence ALSA stderr spam (e.g., 'underrun occurred') on Linux by overriding the error handler.
+
+    Safe no-op on non-Linux or if libasound is unavailable.
+    """
+    try:
+        if platform.system() == "Linux":
+            import ctypes
+            import ctypes.util
+            lib = ctypes.util.find_library('asound')
+            if not lib:
+                return
+            asound = ctypes.CDLL(lib)
+            CErrorHandler = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p)
+
+            def py_error_handler(filename, line, function, err, fmt):
+                return
+
+            handler = CErrorHandler(py_error_handler)
+            try:
+                asound.snd_lib_error_set_handler(handler)
+                logger.info("ALSA warnings silenced via snd_lib_error_set_handler")
+            except Exception as inner:
+                logger.debug(f"snd_lib_error_set_handler not available: {inner}")
+    except Exception as e:
+        logger.debug(f"Unable to silence ALSA warnings: {e}")
+
+
+def enable_alsa_stderr_filter():
+    """Filter ALSA 'underrun occurred' spam from stderr by intercepting FD 2.
+
+    Works on Linux by routing stderr through a pipe and dropping matching lines.
+    No-op on non-Linux systems. Safe to call multiple times; installs once.
+    """
+    try:
+        if platform.system() != "Linux":
+            return
+        # Avoid double-install
+        if getattr(config, "_alsa_filter_installed", False):
+            return
+
+        import os as _os
+        import threading as _threading
+
+        patterns = [
+            "ALSA lib pcm.c:",
+            "snd_pcm_recover) underrun occurred",
+        ]
+
+        # Save original stderr fd and create pipe
+        save_fd = _os.dup(2)
+        rfd, wfd = _os.pipe()
+        _os.dup2(wfd, 2)  # redirect current process stderr to pipe writer
+        _os.close(wfd)
+
+        stop_event = _threading.Event()
+
+        def _reader():
+            try:
+                with _os.fdopen(rfd, 'rb', buffering=0) as r, _os.fdopen(save_fd, 'wb', buffering=0) as orig:
+                    buf = b''
+                    while not stop_event.is_set():
+                        chunk = r.read(1024)
+                        if not chunk:
+                            break
+                        buf += chunk
+                        while b"\n" in buf:
+                            line, buf = buf.split(b"\n", 1)
+                            try:
+                                s = line.decode('utf-8', errors='ignore')
+                                if not any(p in s for p in patterns):
+                                    orig.write(line + b"\n")
+                                    orig.flush()
+                            except Exception:
+                                # Swallow any decode/write errors; keep filtering
+                                pass
+                    if buf:
+                        try:
+                            s = buf.decode('utf-8', errors='ignore')
+                            if not any(p in s for p in patterns):
+                                orig.write(buf)
+                                orig.flush()
+                        except Exception:
+                            pass
+            except Exception as e:
+                try:
+                    # Best-effort: restore original stderr on failure
+                    _os.dup2(save_fd, 2)
+                except Exception:
+                    pass
+                logger.debug(f"ALSA stderr filter reader error: {e}")
+
+        t = _threading.Thread(target=_reader, daemon=True)
+        t.start()
+
+        def _restore():
+            try:
+                _os.dup2(save_fd, 2)
+            except Exception:
+                pass
+            stop_event.set()
+
+        # Expose restore in config for future use if needed
+        config._alsa_filter_installed = True
+        config._alsa_filter_restore = _restore
+        logger.info("ALSA underrun stderr filter installed")
+    except Exception as e:
+        logger.debug(f"Unable to install ALSA stderr filter: {e}")
 def restart_application(delay_ms: int = 2000):
     """Schedule a restart with a visible popup; actual restart happens in the main loop.
 
@@ -267,6 +375,15 @@ def check_extension_before_download(url, platform, game_name):
         # Déterminer si le système (dossier) est connu dans extensions_data
         dest_folder_name = _get_dest_folder_name(platform)
         system_known = any(s.get("folder") == dest_folder_name for s in extensions_data)
+
+        # Traitement spécifique BIOS: forcer extraction des archives même si le système n'est pas connu
+        try:
+            bios_like = {"BIOS", "- BIOS by TMCTV -", "- BIOS"}
+            if (dest_folder_name == "bios" or platform in bios_like) and is_archive:
+                logger.debug(f"Plateforme BIOS détectée pour {sanitized_name}, extraction auto forcée pour {extension}")
+                return (url, platform, game_name, True)
+        except Exception:
+            pass
 
         if is_supported:
             logger.debug(f"L'extension de {sanitized_name} est supportée pour {platform}")

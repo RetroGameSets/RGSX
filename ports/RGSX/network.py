@@ -275,7 +275,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
 
             # Spécifique: si le système est "BIOS" on force le dossier BIOS
-            if platform == "- BIOS by TMCTV":
+            if platform_folder == "bios" or platform == "BIOS" or platform == "- BIOS by TMCTV -":
                 dest_dir = config.RETROBAT_DATA_FOLDER
                 logger.debug(f"Plateforme 'BIOS' détectée, destination forcée vers RETROBAT_DATA_FOLDER: {dest_dir}")
             
@@ -417,7 +417,18 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             os.chmod(dest_path, 0o644)
             logger.debug(f"Téléchargement terminé: {dest_path}")
             
-            if is_zip_non_supported:
+            # Forcer extraction si plateforme BIOS même si le pré-check ne l'avait pas marqué
+            force_extract = is_zip_non_supported
+            if not force_extract:
+                try:
+                    bios_like = {"BIOS", "- BIOS by TMCTV -", "- BIOS"}
+                    if platform_folder == "bios" or platform in bios_like:
+                        force_extract = True
+                        logger.debug("Extraction forcée activée pour BIOS")
+                except Exception:
+                    pass
+
+            if force_extract:
                 logger.debug(f"Extraction automatique nécessaire pour {dest_path}")
                 extension = os.path.splitext(dest_path)[1].lower()
                 if extension == ".zip":
@@ -559,10 +570,10 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
             logger.debug(f"Répertoire destination déterminé: {dest_dir}")
 
-            # Spécifique: si le système est "00 BIOS" on force le dossier BIOS
-            if platform == "00 BIOS":
+            # Spécifique: si le système est "- BIOS by TMCTV -" on force le dossier BIOS
+            if platform_folder == "bios" or platform == "BIOS" or platform == "- BIOS by TMCTV -":
                 dest_dir = config.RETROBAT_DATA_FOLDER
-                logger.debug(f"Plateforme '00 BIOS' détectée, destination forcée vers RETROBAT_DATA_FOLDER: {dest_dir}")
+                logger.debug(f"Plateforme '- BIOS by TMCTV -' détectée, destination forcée vers RETROBAT_DATA_FOLDER: {dest_dir}")
 
             logger.debug(f"Vérification répertoire destination: {dest_dir}")
             os.makedirs(dest_dir, exist_ok=True)

@@ -26,7 +26,7 @@ from controls import handle_controls, validate_menu_state, process_key_repeats, 
 from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, get_actions
 from utils import (
     detect_non_pc, load_sources, check_extension_before_download, extract_zip_data,
-    play_random_music, load_music_config
+    play_random_music, load_music_config, silence_alsa_warnings, enable_alsa_stderr_filter
 )
 from history import load_history, save_history
 from config import OTA_data_ZIP
@@ -77,12 +77,22 @@ def _run_windows_gamelist_update():
 
 _run_windows_gamelist_update()
 
+
 # Initialisation de Pygame
 pygame.init()
 pygame.joystick.init()
 logger.debug("--------------------------------------------------------------------")
 logger.debug("---------------------------DEBUT LOG--------------------------------")
 logger.debug("--------------------------------------------------------------------")
+
+# Nettoyage des anciens fichiers de paramètres au démarrage
+try:
+    from rgsx_settings import delete_old_files
+    delete_old_files()
+    logger.info("Nettoyage des anciens fichiers effectué au démarrage")
+except Exception as e:
+    logger.exception(f"Échec du nettoyage des anciens fichiers: {e}")
+
 
 #Récupération des noms des joysticks si pas de joystick connecté, verifier si clavier connecté
 joystick_names = [pygame.joystick.Joystick(i).get_name() for i in range(pygame.joystick.get_count())]
@@ -185,6 +195,13 @@ config.repeat_last_action = 0
 
 # Initialisation des variables pour la popup de musique
 
+
+# Réduction du bruit ALSA (VM Batocera/alsa)
+try:
+    silence_alsa_warnings()
+    enable_alsa_stderr_filter()
+except Exception:
+    pass
 
 # Initialisation du mixer Pygame
 pygame.mixer.pre_init(44100, -16, 2, 4096)
