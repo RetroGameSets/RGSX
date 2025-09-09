@@ -1,8 +1,14 @@
 import os
-os.environ["SDL_FBDEV"] = "/dev/fb0"
-import pygame # type: ignore
-import asyncio
 import platform
+# Ne pas forcer SDL_FBDEV ici; si déjà défini par l'environnement, on le garde
+try:
+    if "SDL_FBDEV" in os.environ:
+        pass  # respecter la configuration existante
+except Exception:
+    pass
+import pygame # type: ignore
+import time
+import asyncio
 import logging
 import requests
 import queue
@@ -27,8 +33,8 @@ from controls import handle_controls, validate_menu_state, process_key_repeats, 
 from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
 from utils import (
-    detect_non_pc, load_sources, check_extension_before_download, extract_zip_data,
-    play_random_music, load_music_config, silence_alsa_warnings, enable_alsa_stderr_filter
+    load_sources, check_extension_before_download, extract_zip_data,
+    play_random_music, load_music_config
 )
 from history import load_history, save_history
 from config import OTA_data_ZIP
@@ -79,6 +85,37 @@ def _run_windows_gamelist_update():
 
 _run_windows_gamelist_update()
 
+# Vérifier et appliquer les mises à jour AVANT tout chargement des contrôles
+try:
+    # Internet rapide (synchrone) avant init graphique complète
+    if test_internet():
+        logger.debug("Pré-boot: connexion Internet OK, vérification des mises à jour")
+        # Initialiser un mini-contexte de chargement pour feedback si l'écran est prêt
+        config.menu_state = "loading"
+        config.current_loading_system = _("loading_check_updates")
+        config.loading_progress = 5.0
+        config.needs_redraw = True
+        # Lancer la vérification en mode synchrone via boucle temporaire
+        # Utilise une boucle d'événements courte pour permettre pygame d'initialiser
+        try:
+            # Créer une boucle asyncio ad-hoc si non présente
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            success, _msg = loop.run_until_complete(check_for_updates())
+            logger.debug(f"Pré-boot: check_for_updates terminé success={success}")
+        except Exception as e:
+            logger.error(f"Pré-boot: échec check_for_updates: {e}")
+        finally:
+            try:
+                loop.close()
+            except Exception:
+                pass
+        config.update_checked = True
+    else:
+        logger.debug("Pré-boot: pas d'Internet, pas de vérification des mises à jour")
+except Exception as e:
+    logger.exception(f"Pré-boot update check a échoué: {e}")
+
 
 # Initialisation de Pygame
 pygame.init()
@@ -96,56 +133,7 @@ except Exception as e:
     logger.exception(f"Échec du nettoyage des anciens fichiers: {e}")
 
 
-#Récupération des noms des joysticks si pas de joystick connecté, verifier si clavier connecté
-joystick_names = [pygame.joystick.Joystick(i).get_name() for i in range(pygame.joystick.get_count())]
-if not joystick_names:
-    joystick_names = ["Clavier"]
-    print("Aucun joystick détecté, utilisation du clavier par défaut")
-    logger.debug("Aucun joystick détecté, utilisation du clavier par défaut.")
-    config.joystick = False
-    config.keyboard = True
-else:
-    config.joystick = True
-    config.keyboard = False
-    print(f"Joysticks détectés: {joystick_names}")
-    logger.debug(f"Joysticks détectés: {joystick_names}, utilisation du joystick par défaut.")
-    # Test des boutons du joystick
-    for name in joystick_names:
-        if "Xbox" in name or "360" in name or "X-Box" in name:
-            config.xbox_controller = True
-            logger.debug(f"Controller detected : {name}")
-            print(f"Controller detected : {name}")
-            break
-        elif "PlayStation" in name:
-            config.playstation_controller = True
-            logger.debug(f"Controller detected : {name}")
-            print(f"Controller detected : {name}")
-            break
-        elif "Nintendo" in name:
-            config.nintendo_controller = True
-            logger.debug(f"Controller detected : {name}")
-            print(f"Controller detected : {name}")
-        elif "Logitech" in name:
-            config.logitech_controller = True
-            logger.debug(f"Controller detected : {name}")
-            print(f"Controller detected : {name}")
-        elif "8Bitdo" in name:
-            config.eightbitdo_controller = True
-            logger.debug(f"Controller detected : {name}")
-            print(f"Controller detected : {name}")
-        elif "Steam" in name:
-            config.steam_controller = True
-            logger.debug(f"Controller detected : {name}")
-            print(f"Controller detected : {name}")
-        elif "TRIMUI Smart Pro" in name:
-            config.trimui_controller = True
-            logger.debug(f"Controller detected : {name}")
-            print(f"Controller detected : {name}")
-        else:
-            config.generic_controller = True
-            logger.debug(f"Generic controller detected : {name}")
-            print(f"Generic controller detected : {name}")
-            
+          
 # Chargement des paramètres d'accessibilité
 config.accessibility_settings = load_accessibility_settings()
 # Appliquer la grille d'affichage depuis les paramètres
@@ -169,8 +157,22 @@ config.sources_mode = get_sources_mode()
 config.custom_sources_url = get_custom_sources_url()
 logger.debug(f"Mode sources initial: {config.sources_mode}, URL custom: {config.custom_sources_url}")
 
-# Détection du système non-PC
-config.is_non_pc = detect_non_pc()
+# Détection du système grace a une commande windows / linux (on oublie is non-pc c'est juste pour connaitre le materiel et le systeme d'exploitation)
+def detect_system_info():
+    """Détecte les informations système (OS, architecture) via des commandes appropriées."""
+    try:
+        if platform.system() == "Windows":
+            # Commande pour Windows
+            result = subprocess.run(["wmic", "os", "get", "caption"], capture_output=True, text=True)
+            if result.returncode == 0:
+                logger.info(f"Système détecté (Windows): {result.stdout.strip()}")
+        else:
+            # Commande pour Linux
+            result = subprocess.run(["lsb_release", "-d"], capture_output=True, text=True)
+            if result.returncode == 0:
+                logger.info(f"Système détecté (Linux): {result.stdout.strip()}")
+    except Exception as e:
+        logger.error(f"Erreur lors de la détection du système: {e}")
 
 # Initialisation de l’écran
 screen = init_display()
@@ -184,6 +186,64 @@ config.init_font()
 # Mise à jour de la résolution dans config
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
 logger.debug(f"Résolution d'écran : {config.screen_width}x{config.screen_height}")
+
+# Détection des joysticks après init_display (plus stable sur Batocera)
+try:
+    if platform.system() != "Windows":
+        time.sleep(0.05)  # petite latence pour stabiliser SDL sur certains builds
+    count = pygame.joystick.get_count()
+except Exception:
+    count = 0
+joystick_names = []
+for i in range(count):
+    try:
+        j = pygame.joystick.Joystick(i)
+        joystick_names.append(j.get_name())
+    except Exception as e:
+        logger.debug(f"Impossible de lire le nom du joystick {i}: {e}")
+normalized_names = [n.lower() for n in joystick_names]
+if not joystick_names:
+    joystick_names = ["Clavier"]
+    print("Aucun joystick détecté, utilisation du clavier par défaut")
+    logger.debug("Aucun joystick détecté, utilisation du clavier par défaut.")
+    config.joystick = False
+    config.keyboard = True
+else:
+    config.joystick = True
+    config.keyboard = False
+    print(f"Joysticks détectés: {joystick_names}")
+    logger.debug(f"Joysticks détectés: {joystick_names}, utilisation du joystick par défaut.")
+    for idx, name in enumerate(joystick_names):
+        lname = name.lower()
+        if ("xbox" in lname) or ("x-box" in lname) or ("xinput" in lname) or ("microsoft x-box" in lname) or ("x-box 360" in lname) or ("360" in lname):
+            config.xbox_controller = True
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
+            break
+        elif "playstation" in lname:
+            config.playstation_controller = True
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
+            break
+        elif "nintendo" in lname:
+            config.nintendo_controller = True
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
+        elif "logitech" in lname:
+            config.logitech_controller = True
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
+        elif "8bitdo" in name or "8-bitdo" in lname:
+            config.eightbitdo_controller = True
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
+        elif "steam" in lname:
+            config.steam_controller = True
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
+        # Note: virtual keyboard display now depends on controller presence (config.joystick)
+            print(f"Generic controller detected : {name}")
+    logger.debug(f"Flags contrôleur: xbox={config.xbox_controller}, ps={config.playstation_controller}, nintendo={config.nintendo_controller}, eightbitdo={config.eightbitdo_controller}, steam={config.steam_controller}, trimui={config.trimui_controller}, logitech={config.logitech_controller}, generic={config.generic_controller}")
 
 
 # Vérification des dossiers pour le débogage
@@ -205,19 +265,12 @@ config.repeat_key = None
 config.repeat_start_time = 0
 config.repeat_last_action = 0
 
-# Initialisation des variables pour la popup de musique
-
-
-# Réduction du bruit ALSA (VM Batocera/alsa)
-try:
-    silence_alsa_warnings()
-    enable_alsa_stderr_filter()
-except Exception:
-    pass
-
 # Initialisation du mixer Pygame
 pygame.mixer.pre_init(44100, -16, 2, 4096)
-pygame.mixer.init()
+try:
+    pygame.mixer.init()
+except Exception as e:
+    logger.warning(f"Échec init mixer: {e}")
 
 # Charger la configuration de la musique AVANT de lancer la musique
 load_music_config()
@@ -245,7 +298,7 @@ config.current_music = current_music  # Met à jour la musique en cours dans con
 config.history = load_history()
 logger.debug(f"Historique de téléchargement : {len(config.history)} entrées")
 
-# Vérification et chargement de la configuration des contrôles
+# Vérification et chargement de la configuration des contrôles (après mises à jour et détection manette)
 config.controls_config = load_controls_config()
 
 # S'assurer que config.controls_config n'est jamais None
@@ -267,14 +320,16 @@ else:
 # Initialisation du gamepad
 joystick = None
 if pygame.joystick.get_count() > 0:
-    joystick = pygame.joystick.Joystick(0)
-    joystick.init()
-    logger.debug("Gamepad initialisé")
+    try:
+        joystick = pygame.joystick.Joystick(0)
+        joystick.init()
+        logger.debug("Gamepad initialisé")
+    except Exception as e:
+        logger.warning(f"Échec initialisation gamepad: {e}")
 
 
 # Boucle principale
 async def main():
-    # amazonq-ignore-next-line
     global current_music, music_files, music_folder
     logger.debug("Début main")
     running = True
@@ -728,7 +783,7 @@ async def main():
                     draw_game_list(screen)
                 if config.search_mode:
                     draw_game_list(screen)
-                    if config.is_non_pc:
+                    if getattr(config, 'joystick', False):
                         draw_virtual_keyboard(screen)
             elif config.menu_state == "download_progress":
                 draw_progress_screen(screen)
@@ -847,6 +902,14 @@ async def main():
                     config.needs_redraw = True
                     logger.debug(f"Erreur : {config.error_message}")
             elif loading_step == "check_ota":
+                # Si mise à jour déjà vérifiée au pré-boot, sauter cette étape
+                if getattr(config, "update_checked", False):
+                    logger.debug("Mises à jour déjà vérifiées au pré-boot, on saute check_for_updates()")
+                    loading_step = "check_data"
+                    config.current_loading_system = _("loading_downloading_games_images")
+                    config.loading_progress = max(config.loading_progress, 50.0)
+                    config.needs_redraw = True
+                    continue
                 logger.debug("Exécution de check_for_updates()")
                 success, message = await check_for_updates()
                 logger.debug(f"Résultat de check_for_updates : success={success}, message={message}")
@@ -986,11 +1049,15 @@ async def main():
     pygame.quit()
     logger.debug("Application terminée")
 
-    result2 = subprocess.run(["batocera-es-swissknife", "--emukill"])
-    if result2 == 0:
-        logger.debug(f"Quitté avec succès")
-    else:
-        logger.debug("Error en essayant de quitter batocera-es-swissknife.")
+    try:
+        if platform.system() != "Windows":
+            result2 = subprocess.run(["batocera-es-swissknife", "--emukill"])
+            if result2 == 0:
+                logger.debug(f"Quitté avec succès")
+            else:
+                logger.debug("Error en essayant de quitter batocera-es-swissknife.")
+    except FileNotFoundError:
+        logger.debug("batocera-es-swissknife introuvable, saut de l'étape d'arrêt (environnement non Batocera)")
 
     
 

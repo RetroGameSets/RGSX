@@ -338,7 +338,7 @@ def handle_controls(event, sources, joystick, screen):
         # Jeux
         elif config.menu_state == "game":
             games = config.filtered_games if config.filter_active or config.search_mode else config.games
-            if config.search_mode and config.is_non_pc:
+            if config.search_mode and getattr(config, 'joystick', False):
                 keyboard_layout = [
                     ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
                     ['A', 'Z', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
@@ -416,7 +416,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.filter_active = bool(config.search_query)
                     config.needs_redraw = True
                     logger.debug(f"Validation du filtre avec manette: query={config.search_query}, filter_active={config.filter_active}")  
-            elif config.search_mode and not config.is_non_pc:
+            elif config.search_mode and not getattr(config, 'joystick', False):
                 # Gestion de la recherche sur PC (clavier et manette)
                 if is_input_matched(event, "confirm"):
                     config.search_mode = False

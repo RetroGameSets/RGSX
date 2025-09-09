@@ -4,7 +4,7 @@ import logging
 import platform
 
 # Version actuelle de l'application
-app_version = "2.2.0.0"
+app_version = "2.2.0.3"
 
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""
@@ -196,7 +196,6 @@ last_state_change_time = 0  # Temps du dernier changement d'état pour debounce
 debounce_delay = 200  # Délai de debounce en millisecondes
 platform_dicts = []  # Liste des dictionnaires de plateformes
 selected_key = (0, 0)  # Position du curseur dans le clavier virtuel
-is_non_pc = True  # Indicateur pour plateforme non-PC (par exemple, console)
 redownload_confirm_selection = 0  # Sélection pour la confirmation de redownload
 popup_message = ""  # Message à afficher dans les popups
 popup_timer = 0  # Temps restant pour le popup en millisecondes (0 = inactif)
@@ -207,6 +206,18 @@ selected_games = set()  # Indices des jeux sélectionnés pour un téléchargeme
 batch_download_indices = []  # File d'attente des indices de jeux à traiter en lot
 batch_in_progress = False  # Indique qu'un lot est en cours
 batch_pending_game = None  # Données du jeu en attente de confirmation d'extension
+
+# Indicateurs d'entrée (détectés au démarrage)
+joystick = False
+keyboard = False
+xbox_controller = False
+playstation_controller = False
+nintendo_controller = False
+logitech_controller = False
+eightbitdo_controller = False
+steam_controller = False
+trimui_controller = False
+generic_controller = False
 
 # --- Filtre plateformes (UI) ---
 selected_filter_index = 0  # index dans la liste visible triée
@@ -265,6 +276,9 @@ def init_font():
             title_font = None
             search_font = None
             small_font = None
+
+# Indique si une vérification/installation des mises à jour a déjà été effectuée au démarrage
+update_checked = False
 
 def validate_resolution():
     """Valide la résolution de l'écran par rapport aux capacités de l'écran."""
