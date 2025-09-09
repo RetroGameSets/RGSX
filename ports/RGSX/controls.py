@@ -47,7 +47,12 @@ def validate_menu_state(state):
 
 
 def load_controls_config(path=CONTROLS_CONFIG_PATH):
-    """Charge la configuration des contrôles depuis un fichier JSON."""
+    """Charge la configuration des contrôles.
+    Priorité:
+    1) Fichier utilisateur dans SAVE_FOLDER (controls.json)
+    2) Préréglage correspondant dans PRECONF_CONTROLS_PATH (sans copie)
+    3) Configuration clavier par défaut
+    """
     default_config = {
         "confirm": {"type": "key", "key": pygame.K_RETURN},
         "cancel": {"type": "key", "key": pygame.K_ESCAPE},
@@ -66,24 +71,65 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
     }
     
     try:
+        # 1) Fichier utilisateur
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if not isinstance(data, dict):
                     data = {}
-        else:
-            data = {}
-        changed = False
-        for k, v in default_config.items():
-            if k not in data:
-                data[k] = v
-                changed = True
-        if changed:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            logging.getLogger(__name__).debug(f"controls.json complété avec les actions manquantes: {path}")
-        return data
+            # Compléter les actions manquantes, et sauve seulement si le fichier utilisateur existe
+            changed = False
+            for k, v in default_config.items():
+                if k not in data:
+                    data[k] = v
+                    changed = True
+            if changed:
+                try:
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+                    logging.getLogger(__name__).debug(f"controls.json complété avec les actions manquantes: {path}")
+                except Exception as e:
+                    logging.getLogger(__name__).warning(f"Impossible d'écrire les actions manquantes dans {path}: {e}")
+            return data
+
+        # 2) Préréglages sans copie si aucun fichier utilisateur
+        try:
+            candidates = []
+            # Si aucun contrôleur détecté, privilégier le préréglage clavier
+            if not getattr(config, 'joystick', False) or getattr(config, 'keyboard', False):
+                candidates.append('keyboard.json')
+            # Déterminer les préréglages disponibles selon les flags détectés au démarrage
+            if getattr(config, 'steam_controller', False):
+                candidates.append('steam_controller.json')
+            if getattr(config, 'trimui_controller', False):
+                candidates.append('trimui_controller.json')
+            if getattr(config, 'xbox_controller', False):
+                candidates.append('xbox_controller.json')
+            if getattr(config, 'nintendo_controller', False):
+                candidates.append('nintendo_controller.json')
+            if getattr(config, 'eightbitdo_controller', False):
+                candidates.append('8bitdo_controller.json')
+            # Fallbacks génériques
+            if 'generic_controller.json' not in candidates:
+                candidates.append('generic_controller.json')
+            if 'xbox_controller.json' not in candidates:
+                candidates.append('xbox_controller.json')
+
+            for fname in candidates:
+                src = os.path.join(config.PRECONF_CONTROLS_PATH, fname)
+                if os.path.exists(src):
+                    with open(src, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, dict) and data:
+                            logging.getLogger(__name__).info(f"Chargement des contrôles préréglés: {fname}")
+                            return data
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Échec du chargement des contrôles préréglés: {e}")
+
+        # 3) Fallback clavier par défaut
+        logging.getLogger(__name__).info("Aucun fichier utilisateur ou préréglage trouvé, utilisation des contrôles par défaut")
+        return default_config.copy()
     except Exception as e:
         logging.getLogger(__name__).error(f"Erreur load_controls_config: {e}")
         return default_config.copy()

@@ -4,7 +4,7 @@ import logging
 import platform
 
 # Version actuelle de l'application
-app_version = "2.1.0.2"
+app_version = "2.2.0.0"
 
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""
@@ -87,6 +87,7 @@ IMAGES_FOLDER = os.path.join(SAVE_FOLDER, "images")
 GAMES_FOLDER = os.path.join(SAVE_FOLDER, "games")
 SOURCES_FILE = os.path.join(SAVE_FOLDER, "systems_list.json")
 JSON_EXTENSIONS = os.path.join(SAVE_FOLDER, "rom_extensions.json")
+PRECONF_CONTROLS_PATH = os.path.join(APP_FOLDER, "assets", "controls")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
 HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
 API_KEY_1FICHIER = os.path.join(SAVE_FOLDER, "1fichierAPI.txt")

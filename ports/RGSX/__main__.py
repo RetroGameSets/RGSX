@@ -10,6 +10,7 @@ import datetime
 import subprocess
 import sys
 import config
+import shutil
 
 from display import (
     init_display, draw_loading_screen, draw_error_screen, draw_platform_grid,
@@ -109,31 +110,41 @@ else:
     logger.debug(f"Joysticks détectés: {joystick_names}, utilisation du joystick par défaut.")
     # Test des boutons du joystick
     for name in joystick_names:
-        if "Xbox" in name or "PlayStation" in name or "Logitech" in name:
+        if "Xbox" in name:
             config.xbox_controller = True
-            logger.debug(f"Manette Xbox/PlayStation/Logitech détectée: {name}")
-            print(f"Manette Xbox/PlayStation/Logitech détectée: {name}")
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
+            break
+        elif "PlayStation" in name:
+            config.playstation_controller = True
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
             break
         elif "Nintendo" in name:
             config.nintendo_controller = True
-            logger.debug(f"Manette Nintendo détectée: {name}")
-            print(f"Manette Nintendo détectée: {name}")
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
+        elif "Logitech" in name:
+            config.logitech_controller = True
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
         elif "8Bitdo" in name:
             config.eightbitdo_controller = True
-            logger.debug(f"Manette 8Bitdo détectée: {name}")
-            print(f"Manette 8Bitdo détectée: {name}")
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
         elif "Steam" in name:
             config.steam_controller = True
-            logger.debug(f"Manette Steam détectée: {name}")
-            print(f"Manette Steam détectée: {name}")
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
         elif "TRIMUI Smart Pro" in name:
             config.trimui_controller = True
-            logger.debug(f"TRIMUI Smart Pro détectée: {name}")
-            print(f"TRIMUI Smart Pro détectée: {name}")
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
         else:
             config.generic_controller = True
-            logger.debug(f"Manette générique détectée: {name}")
-            print(f"Manette générique détectée: {name}")
+            logger.debug(f"Generic controller detected : {name}")
+            print(f"Generic controller detected : {name}")
+            
 # Chargement des paramètres d'accessibilité
 config.accessibility_settings = load_accessibility_settings()
 # Appliquer la grille d'affichage depuis les paramètres
@@ -233,6 +244,49 @@ config.current_music = current_music  # Met à jour la musique en cours dans con
 config.history = load_history()
 logger.debug(f"Historique de téléchargement : {len(config.history)} entrées")
 
+# Appliquer un préréglage de contrôles si une manette connue est détectée et qu'aucune config n'existe encore
+try:
+    # Copier uniquement si controls.json est absent ou vide
+    need_preset = (not os.path.exists(config.CONTROLS_CONFIG_PATH)) or (os.path.getsize(config.CONTROLS_CONFIG_PATH) == 0)
+    if need_preset:
+        os.makedirs(os.path.dirname(config.CONTROLS_CONFIG_PATH), exist_ok=True)
+
+        # Cartographie des flags -> fichiers de préconfig
+        preset_candidates = []
+        if getattr(config, 'steam_controller', False):
+            preset_candidates.append('steam_controller.json')
+        if getattr(config, 'trimui_controller', False):
+            preset_candidates.append('trimui_controller.json')
+        if getattr(config, 'xbox_controller', False):
+            preset_candidates.append('xbox_controller.json')
+        if getattr(config, 'playstation_controller', False):
+            preset_candidates.append('playstation_controller.json')
+        if getattr(config, 'logitech_controller', False):
+            preset_candidates.append('logitech_controller.json')
+        if getattr(config, 'nintendo_controller', False):
+            preset_candidates.append('nintendo_controller.json')
+        if getattr(config, 'eightbitdo_controller', False):
+            preset_candidates.append('8bitdo_controller.json')
+        if getattr(config, 'generic_controller', False):
+            preset_candidates.append('generic_controller.json')
+
+        # Toujours tenter un générique en dernier recours
+        if 'generic_controller.json' not in preset_candidates:
+            preset_candidates.append('generic_controller.json')
+
+        for fname in preset_candidates:
+            src = os.path.join(config.PRECONF_CONTROLS_PATH, fname)
+            if os.path.exists(src):
+                try:
+                    shutil.copyfile(src, config.CONTROLS_CONFIG_PATH)
+                    logger.info(f"Préconfiguration des contrôles appliquée depuis {src}")
+                    print(f"Préconfiguration des contrôles appliquée: {fname}")
+                    break
+                except Exception as e:
+                    logger.error(f"Échec de la copie du préréglage {src} -> {config.CONTROLS_CONFIG_PATH}: {e}")
+except Exception as e:
+    logger.error(f"Erreur lors de l'application d'un préréglage de contrôles: {e}")
+
 # Vérification et chargement de la configuration des contrôles
 config.controls_config = load_controls_config()
 
@@ -241,8 +295,8 @@ if config.controls_config is None:
     config.controls_config = {}
     logger.debug("Initialisation de config.controls_config avec un dictionnaire vide")
 
-# Vérifier simplement si le fichier controls.json existe
-if not os.path.exists(config.CONTROLS_CONFIG_PATH) or not config.controls_config:
+# Vérifier si une configuration utilisateur est absente ET qu'aucune config n'a été chargée (préréglage)
+if (not os.path.exists(config.CONTROLS_CONFIG_PATH)) and (not config.controls_config):
     logger.warning("Fichier controls.json manquant ou vide, configuration manuelle nécessaire")
     # Ajouter une configuration minimale de secours pour pouvoir naviguer
     config.controls_config = get_emergency_controls()

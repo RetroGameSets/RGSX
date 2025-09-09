@@ -1,0 +1,72 @@
+{
+    "confirm": {
+        "type": "key",
+        "key": 13,
+        "display": "Enter"
+    },
+    "cancel": {
+        "type": "key",
+        "key": 27,
+        "display": "\u00c9chap"
+    },
+    "up": {
+        "type": "key",
+        "key": 1073741906,
+        "display": "\u2191"
+    },
+    "down": {
+        "type": "key",
+        "key": 1073741905,
+        "display": "\u2193"
+    },
+    "left": {
+        "type": "key",
+        "key": 1073741904,
+        "display": "\u2190"
+    },
+    "right": {
+        "type": "key",
+        "key": 1073741903,
+        "display": "\u2192"
+    },
+    "start": {
+        "type": "key",
+        "key": 1073742054,
+        "display": "AltGR"
+    },
+    "filter": {
+        "type": "key",
+        "key": 102,
+        "display": "F"
+    },
+    "page_up": {
+        "type": "key",
+        "key": 1073741899,
+        "display": "Page+"
+    },
+    "page_down": {
+        "type": "key",
+        "key": 1073741902,
+        "display": "Page-"
+    },
+    "history": {
+        "type": "key",
+        "key": 104,
+        "display": "H"
+    },
+    "clear_history": {
+        "type": "key",
+        "key": 120,
+        "display": "X"
+    },
+    "delete": {
+        "type": "key",
+        "key": 8,
+        "display": "Backspace"
+    },
+    "space": {
+        "type": "key",
+        "key": 32,
+        "display": "Espace"
+    }
+}

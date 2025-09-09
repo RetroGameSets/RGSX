@@ -1,0 +1,74 @@
+{
+    "confirm": {
+        "type": "button",
+        "button": 3,
+        "display": "A"
+    },
+    "cancel": {
+        "type": "button",
+        "button": 4,
+        "display": "B"
+    },
+    "up": {
+        "type": "button",
+        "button": 16,
+        "display": "↑"
+    },
+    "down": {
+        "type": "button",
+        "button": 17,
+        "display": "↓"
+    },
+    "left": {
+        "type": "button",
+        "button": 18,
+        "display": "←"
+    },
+    "right": {
+        "type": "button",
+        "button": 19,
+        "display": "→"
+    },
+    "start": {
+        "type": "button",
+        "button": 12,
+        "display": "Start"
+    },
+    "filter": {
+        "type": "button",
+        "button": 11,
+        "display": "Select"
+    },
+    "page_up": {
+        "type": "axis",
+        "axis": 2,
+        "direction": -1,
+        "display": "L2"
+    },
+    "page_down": {
+        "type": "axis",
+        "axis": 5,
+        "direction": -1,
+        "display": "R2"
+    },
+    "history": {
+        "type": "button",
+        "button": 6,
+        "display": "Y"
+    },
+    "clear_history": {
+        "type": "button",
+        "button": 5,
+        "display": "X"
+    },
+    "delete": {
+        "type": "button",
+        "button": 7,
+        "display": "L1"
+    },
+    "space": {
+        "type": "button",
+        "button": 8,
+        "display": "R1"
+    }
+}

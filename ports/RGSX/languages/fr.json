@@ -9,7 +9,7 @@
     "loading_test_connection": "Test de la connexion...",
     "loading_download_data": "Téléchargement des jeux et images...",
     "loading_progress": "Progression : {0}%",
-    "loading_check_updates": "Vérification des mises à jour... Veuillez patienter...",
+    "loading_check_updates": "Mise à jour... Veuillez patienter...",
     "error_check_updates_failed": "Échec de la vérification des mises à jour.",
     "loading_downloading_games_images": "Téléchargement des jeux et images...",
     "loading_extracting_data": "Extraction du dossier de données initial...",
