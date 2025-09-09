@@ -258,6 +258,11 @@ def get_control_display(action, default):
     control_config = config.controls_config.get(action, {})
     control_type = control_config.get('type', '')
     
+    # Si un libellé personnalisé est défini dans controls.json, on le privilégie
+    custom_label = control_config.get('display')
+    if isinstance(custom_label, str) and custom_label.strip():
+        return custom_label
+    
     # Générer le nom d'affichage basé sur la configuration réelle
     if control_type == 'key':
         key_code = control_config.get('key')

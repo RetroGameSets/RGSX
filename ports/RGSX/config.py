@@ -4,7 +4,7 @@ import logging
 import platform
 
 # Version actuelle de l'application
-app_version = "2.1.0.1"
+app_version = "2.1.0.2"
 
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""

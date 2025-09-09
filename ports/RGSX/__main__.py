@@ -330,13 +330,7 @@ async def main():
         
         # Gestion des événements
         events = pygame.event.get()
-        for event in events:
-            # Gestion directe des événements pour le menu de langue
-            if config.menu_state == "language_select":
-                if handle_language_menu_events(event, screen):
-                    config.needs_redraw = True
-                continue
-                
+        for event in events:            
             if event.type == pygame.USEREVENT + 1:  # Événement de fin de musique
                 logger.debug("Fin de la musique détectée, lecture d'une nouvelle musique aléatoire")
                 current_music = play_random_music(music_files, music_folder, current_music)
@@ -384,6 +378,12 @@ async def main():
                 continue
             if config.menu_state == "display_menu":
                 # Les événements sont gérés dans controls.handle_controls
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
+                continue
+
+            if config.menu_state == "language_select":
+                # Gérer les événements du sélecteur de langue via le système unifié
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 continue
