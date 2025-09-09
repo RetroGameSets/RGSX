@@ -227,6 +227,7 @@ Developed with ❤️ for retro gaming enthusiasts.
 - Retrobat: automatic `gamelist.xml` update on launch to immediately show scraped images/videos in ES.
 - System image loading prioritizes explicit `platform_image` from systems JSON.
 - Auto-detect supported extensions by parsing `es_systems.cfg`; generate and cache `/saves/ports/rgsx/rom_extensions.json`.
+- Automatic restart after update configuration (beta)
 - Auto-hide unsupported platforms (missing ROM folder per `es_systems.cfg`) with a toggle in the Display menu.
 - New Display option to change systems grid layout (3x3, 3x4, 4x3, 4x4).
 - Pause menu reorganized to surface the most used items.
