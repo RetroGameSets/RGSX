@@ -111,7 +111,7 @@ else:
     logger.debug(f"Joysticks détectés: {joystick_names}, utilisation du joystick par défaut.")
     # Test des boutons du joystick
     for name in joystick_names:
-        if "Xbox" in name:
+        if "Xbox" in name or "360" in name or "X-Box" in name:
             config.xbox_controller = True
             logger.debug(f"Controller detected : {name}")
             print(f"Controller detected : {name}")
