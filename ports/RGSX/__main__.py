@@ -244,49 +244,6 @@ config.current_music = current_music  # Met à jour la musique en cours dans con
 config.history = load_history()
 logger.debug(f"Historique de téléchargement : {len(config.history)} entrées")
 
-# Appliquer un préréglage de contrôles si une manette connue est détectée et qu'aucune config n'existe encore
-try:
-    # Copier uniquement si controls.json est absent ou vide
-    need_preset = (not os.path.exists(config.CONTROLS_CONFIG_PATH)) or (os.path.getsize(config.CONTROLS_CONFIG_PATH) == 0)
-    if need_preset:
-        os.makedirs(os.path.dirname(config.CONTROLS_CONFIG_PATH), exist_ok=True)
-
-        # Cartographie des flags -> fichiers de préconfig
-        preset_candidates = []
-        if getattr(config, 'steam_controller', False):
-            preset_candidates.append('steam_controller.json')
-        if getattr(config, 'trimui_controller', False):
-            preset_candidates.append('trimui_controller.json')
-        if getattr(config, 'xbox_controller', False):
-            preset_candidates.append('xbox_controller.json')
-        if getattr(config, 'playstation_controller', False):
-            preset_candidates.append('playstation_controller.json')
-        if getattr(config, 'logitech_controller', False):
-            preset_candidates.append('logitech_controller.json')
-        if getattr(config, 'nintendo_controller', False):
-            preset_candidates.append('nintendo_controller.json')
-        if getattr(config, 'eightbitdo_controller', False):
-            preset_candidates.append('8bitdo_controller.json')
-        if getattr(config, 'generic_controller', False):
-            preset_candidates.append('generic_controller.json')
-
-        # Toujours tenter un générique en dernier recours
-        if 'generic_controller.json' not in preset_candidates:
-            preset_candidates.append('generic_controller.json')
-
-        for fname in preset_candidates:
-            src = os.path.join(config.PRECONF_CONTROLS_PATH, fname)
-            if os.path.exists(src):
-                try:
-                    shutil.copyfile(src, config.CONTROLS_CONFIG_PATH)
-                    logger.info(f"Préconfiguration des contrôles appliquée depuis {src}")
-                    print(f"Préconfiguration des contrôles appliquée: {fname}")
-                    break
-                except Exception as e:
-                    logger.error(f"Échec de la copie du préréglage {src} -> {config.CONTROLS_CONFIG_PATH}: {e}")
-except Exception as e:
-    logger.error(f"Erreur lors de l'application d'un préréglage de contrôles: {e}")
-
 # Vérification et chargement de la configuration des contrôles
 config.controls_config = load_controls_config()
 
