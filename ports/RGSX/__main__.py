@@ -24,7 +24,8 @@ from display import (
 from language import handle_language_menu_events, _
 from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates
 from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls
-from controls_mapper import load_controls_config, map_controls, draw_controls_mapping, get_actions
+from controls_mapper import map_controls, draw_controls_mapping, get_actions
+from controls import load_controls_config
 from utils import (
     detect_non_pc, load_sources, check_extension_before_download, extract_zip_data,
     play_random_music, load_music_config, silence_alsa_warnings, enable_alsa_stderr_filter
