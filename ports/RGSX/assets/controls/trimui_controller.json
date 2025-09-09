@@ -2,12 +2,12 @@
     "confirm": {
         "type": "button",
         "button": 0,
-        "display": "B"
+        "display": "A"
     },
     "cancel": {
         "type": "button",
         "button": 1,
-        "display": "A"
+        "display": "B"
     },
     "up": {
         "type": "hat",
@@ -44,22 +44,22 @@
     "start": {
         "type": "button",
         "button": 9,
-        "display": "Start"
+        "display": "START"
     },
     "filter": {
         "type": "button",
         "button": 8,
-        "display": "Select"
+        "display": "SELECT"
     },
     "page_up": {
         "type": "button",
-        "button": 7,
-        "display": "R2"
+        "button": 6,
+        "display": "L2"
     },
     "page_down": {
         "type": "button",
-        "button": 6,
-        "display": "L2"
+        "button": 7,
+        "display": "R2"
     },
     "history": {
         "type": "button",
@@ -73,12 +73,12 @@
     },
     "delete": {
         "type": "button",
-        "button": 5,
+        "button": 4,
         "display": "L1"
     },
     "space": {
         "type": "button",
-        "button": 4,
+        "button": 5,
         "display": "R1"
     }
 }

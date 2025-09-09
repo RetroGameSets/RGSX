@@ -85,36 +85,12 @@ def _run_windows_gamelist_update():
 
 _run_windows_gamelist_update()
 
-# Vérifier et appliquer les mises à jour AVANT tout chargement des contrôles
+# Pré-boot: Désactivé — pas de test Internet ni de mise à jour avant l'init
 try:
-    # Internet rapide (synchrone) avant init graphique complète
-    if test_internet():
-        logger.debug("Pré-boot: connexion Internet OK, vérification des mises à jour")
-        # Initialiser un mini-contexte de chargement pour feedback si l'écran est prêt
-        config.menu_state = "loading"
-        config.current_loading_system = _("loading_check_updates")
-        config.loading_progress = 5.0
-        config.needs_redraw = True
-        # Lancer la vérification en mode synchrone via boucle temporaire
-        # Utilise une boucle d'événements courte pour permettre pygame d'initialiser
-        try:
-            # Créer une boucle asyncio ad-hoc si non présente
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            success, _msg = loop.run_until_complete(check_for_updates())
-            logger.debug(f"Pré-boot: check_for_updates terminé success={success}")
-        except Exception as e:
-            logger.error(f"Pré-boot: échec check_for_updates: {e}")
-        finally:
-            try:
-                loop.close()
-            except Exception:
-                pass
-        config.update_checked = True
-    else:
-        logger.debug("Pré-boot: pas d'Internet, pas de vérification des mises à jour")
-except Exception as e:
-    logger.exception(f"Pré-boot update check a échoué: {e}")
+    logger.debug("Pré-boot: vérification des mises à jour désactivée")
+    config.update_checked = False
+except Exception:
+    pass
 
 
 # Initialisation de Pygame
@@ -187,6 +163,18 @@ config.init_font()
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
 logger.debug(f"Résolution d'écran : {config.screen_width}x{config.screen_height}")
 
+# Afficher un premier écran de chargement immédiatement pour éviter un écran noir
+try:
+    if config.menu_state not in ("loading", "error", "pause_menu"):
+        config.menu_state = "loading"
+    config.current_loading_system = _("loading_startup") if _ else "Chargement..."
+    config.loading_progress = 1.0
+    draw_loading_screen(screen)
+    pygame.display.flip()
+    pygame.event.pump()
+except Exception as e:
+    logger.debug(f"Impossible d'afficher l'écran de chargement initial: {e}")
+
 # Détection des joysticks après init_display (plus stable sur Batocera)
 try:
     if platform.system() != "Windows":
@@ -229,11 +217,15 @@ else:
             config.nintendo_controller = True
             logger.debug(f"Controller detected : {name}")
             print(f"Controller detected : {name}")
+        elif "trimui" in lname:
+            config.trimui_controller = True
+            logger.debug(f"Controller detected : {name}")
+            print(f"Controller detected : {name}")
         elif "logitech" in lname:
             config.logitech_controller = True
             logger.debug(f"Controller detected : {name}")
             print(f"Controller detected : {name}")
-        elif "8bitdo" in name or "8-bitdo" in lname:
+        elif "8bitdo" in lname or "8-bitdo" in lname:
             config.eightbitdo_controller = True
             logger.debug(f"Controller detected : {name}")
             print(f"Controller detected : {name}")
@@ -242,8 +234,14 @@ else:
             logger.debug(f"Controller detected : {name}")
             print(f"Controller detected : {name}")
         # Note: virtual keyboard display now depends on controller presence (config.joystick)
-            print(f"Generic controller detected : {name}")
     logger.debug(f"Flags contrôleur: xbox={config.xbox_controller}, ps={config.playstation_controller}, nintendo={config.nintendo_controller}, eightbitdo={config.eightbitdo_controller}, steam={config.steam_controller}, trimui={config.trimui_controller}, logitech={config.logitech_controller}, generic={config.generic_controller}")
+
+    # Si aucune marque spécifique détectée mais un joystick est présent, marquer comme générique
+    if not any([config.xbox_controller, config.playstation_controller, config.nintendo_controller,
+                config.eightbitdo_controller, config.steam_controller, config.trimui_controller,
+                config.logitech_controller]):
+        config.generic_controller = True
+        logger.debug("Aucun contrôleur spécifique détecté, utilisation du profil générique")
 
 
 # Vérification des dossiers pour le débogage
@@ -265,15 +263,18 @@ config.repeat_key = None
 config.repeat_start_time = 0
 config.repeat_last_action = 0
 
-# Initialisation du mixer Pygame
-pygame.mixer.pre_init(44100, -16, 2, 4096)
-try:
-    pygame.mixer.init()
-except Exception as e:
-    logger.warning(f"Échec init mixer: {e}")
-
-# Charger la configuration de la musique AVANT de lancer la musique
+# Charger la configuration de la musique AVANT d'initialiser l'audio
 load_music_config()
+
+# Initialisation du mixer Pygame (déférée/évitable si musique désactivée)
+if getattr(config, 'music_enabled', True):
+    pygame.mixer.pre_init(44100, -16, 2, 4096)
+    try:
+        pygame.mixer.init()
+    except Exception as e:
+        logger.warning(f"Échec init mixer: {e}")
+else:
+    logger.debug("Musique désactivée, on saute l'initialisation du mixer")
 
 # Dossier musique Batocera
 music_folder = os.path.join(config.APP_FOLDER, "assets", "music")
@@ -316,6 +317,31 @@ if (not os.path.exists(config.CONTROLS_CONFIG_PATH)) and (not config.controls_co
 else:
     config.menu_state = "loading"
     logger.debug("Configuration des contrôles trouvée, chargement normal")
+
+# Log de diagnostic: résumé des mappages actifs (type/valeur par action)
+try:
+    if config.controls_config:
+        summary = {}
+        for action, mapping in config.controls_config.items():
+            mtype = mapping.get("type")
+            val = None
+            if mtype == "key":
+                val = mapping.get("key")
+            elif mtype == "button":
+                val = mapping.get("button")
+            elif mtype == "axis":
+                val = (mapping.get("axis"), mapping.get("direction"))
+            elif mtype == "hat":
+                v = mapping.get("value")
+                if isinstance(v, list):
+                    v = tuple(v)
+                val = v
+            elif mtype == "mouse":
+                val = mapping.get("button")
+            summary[action] = {"type": mtype, "value": val, "display": mapping.get("display")}
+        logger.debug(f"Contrôles actifs: {summary}")
+except Exception as e:
+    logger.warning(f"Impossible de journaliser le résumé des contrôles: {e}")
 
 # Initialisation du gamepad
 joystick = None

@@ -381,9 +381,13 @@ def get_control_display(action, default):
     
     elif control_type == 'button':
         button_id = control_config.get('button')
+        # Étendre le mapping pour couvrir plus de manettes (incl. Trimui)
         button_names = {
             0: "A", 1: "B", 2: "X", 3: "Y",
-            4: "LB", 5: "RB", 6: "Select", 7: "Start"
+            4: "LB", 5: "RB",
+            6: "Select", 7: "Start",
+            8: "Select", 9: "Start",
+            10: "L3", 11: "R3",
         }
         return button_names.get(button_id, f"Btn{button_id}")
     
