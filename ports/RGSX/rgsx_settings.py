@@ -25,6 +25,9 @@ def load_rgsx_settings():
         "accessibility": {
             "font_scale": 1.0
         },
+        "display": {
+            "grid": "3x4"
+        },
         "symlink": {
             "enabled": False,
             "target_directory": ""
@@ -32,7 +35,8 @@ def load_rgsx_settings():
         "sources": {  
             "mode": "rgsx",       
             "custom_url": ""      
-        }
+    },
+    "show_unsupported_platforms": False
     }
     
     try:
@@ -160,3 +164,44 @@ def get_sources_zip_url(fallback_url):
         # Pas de fallback : retourner None pour signaler une source vide
         return None
     return fallback_url
+
+# ----------------------- Unsupported platforms toggle ----------------------- #
+
+def get_show_unsupported_platforms(settings=None):
+    """Retourne True si l'affichage des systèmes non supportés est activé."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return bool(settings.get("show_unsupported_platforms", False))
+
+
+def set_show_unsupported_platforms(enabled: bool):
+    """Active/désactive l'affichage des systèmes non supportés et sauvegarde."""
+    settings = load_rgsx_settings()
+    settings["show_unsupported_platforms"] = bool(enabled)
+    save_rgsx_settings(settings)
+    return settings["show_unsupported_platforms"]
+
+# ----------------------- Display layout (grid) ----------------------- #
+
+def get_display_grid(settings=None):
+    """Retourne (cols, rows) pour la grille d'affichage, par défaut (3,4)."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    disp = settings.get("display", {})
+    grid = disp.get("grid", "3x4")
+    try:
+        cols, rows = map(int, grid.lower().split("x"))
+        return cols, rows
+    except Exception:
+        return 3, 4
+
+def set_display_grid(cols: int, rows: int):
+    """Définit et sauvegarde la grille d'affichage (cols x rows) parmi options autorisées."""
+    allowed = {(3,3), (3,4), (4,3), (4,4)}
+    if (cols, rows) not in allowed:
+        cols, rows = 3, 4
+    settings = load_rgsx_settings()
+    disp = settings.setdefault("display", {})
+    disp["grid"] = f"{cols}x{rows}"
+    save_rgsx_settings(settings)
+    return cols, rows

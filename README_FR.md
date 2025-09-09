@@ -10,18 +10,23 @@ L'application prend en charge plusieurs sources comme myrient, 1fichier. Ces sou
 
 ## ✨ Fonctionnalités
 
-- **Téléchargement de jeux** : Prise en charge des fichiers ZIP et gestion des extensions non supportées grâce au fichier `info.txt` dans chaque dossier (batocera), qui extrait automatiquement si le système ne supporte pas les archives.
+- **Téléchargement de jeux** : Prise en charge des fichiers ZIP et gestion des extensions non supportées à partir du fichier `es_systems.cfg` d'EmulationStation (et des `es_systems_*.cfg` personnalisés sur Batocera). RGSX lit les extensions autorisées par système depuis ces configurations et extrait automatiquement les archives si le système ne les supporte pas.
   - Les téléchargements ne nécessitent aucune authentification ni compte pour la plupart.
   - Les systèmes notés `(1fichier)` dans le nom ne seront accessibles que si vous renseignez votre clé API 1fichier (voir plus bas).
 - **Historique des téléchargements** : Consultez et retéléchargez les anciens fichiers.
 - **Téléchargements multi-sélection** : Marquez plusieurs jeux dans la liste avec la touche associée à Vider Historique (par défaut X) pour préparer un lot. Appuyez ensuite sur Confirmer pour lancer les téléchargements en séquence.
 - **Personnalisation des contrôles** : Remappez les touches du clavier ou de la manette à votre convenance avec détection automatique des noms de boutons depuis EmulationStation(beta).
+- **Grille des plateformes** : changez la disposition de la grille (3x3, 3x4, 4x3, 4x4) depuis le menu Affichage.
+- **Afficher/Masquer plateformes non supportées** : masquage automatique des systèmes dont le dossier ROM est absent selon `es_systems.cfg`, avec un interrupteur dans le menu Affichage.
+- **Images système plus intelligentes** : priorité à l’image explicite `platform_image` issue du JSON des systèmes avant les fallback `<platform_name>.png` ou dossier.
 - **Changement de taille de police** : Si vous trouvez les écritures trop petites/trop grosses, vous pouvez le changer dans le menu.
 - **Mode recherche** : Filtrez les jeux par nom pour une navigation rapide avec clavier virtuel sur manette.
 - **Support multilingue** : Interface disponible en plusieurs langues. Vous pourrez choisir la langue dans le menu.
 - **Gestion des erreurs** avec messages informatifs et fichier de LOG.
 - **Interface adaptative** : L'interface s'adapte à toutes résolutions de 800x600 à 4K (non testé au-delà de 1920x1080).
 - **Mise à jour automatique** : l'application doit être relancée après une mise à jour.
+- **Cache des extensions supportées** : à la première utilisation, RGSX lit `es_systems.cfg` (RetroBat/Batocera) et génère `/saves/ports/rgsx/rom_extensions.json` avec les extensions autorisées par système.
+- **Mise à jour automatique de la gamelist (Retrobat)** : sur Retrobat, le `gamelist.xml` Windows est mis à jour automatiquement au lancement pour afficher les images/vidéos dans EmulationStation.
 
 ---
 
@@ -89,6 +94,13 @@ INFO : pour retrobat au premier lancement, l'application téléchargera Python d
 - Depuis le menu pause, accédez à l'historique, à l'aide des contrôles (l'affichage des contrôles change suivant le menu où vous êtes) ou à la reconfiguration des touches, des langues, de la taille de la police.
 - Vous pouvez aussi, depuis le menu, régénérer le cache de la liste des systèmes/jeux/images pour être sûr d'avoir les dernières mises à jour.
 
+#### Menu Affichage
+
+- Disposition: basculez la grille des plateformes entre 3x3, 3x4, 4x3, 4x4.
+- Taille de police: ajustez l’échelle du texte (accessibilité).
+- Afficher plateformes non supportées: afficher/masquer les systèmes dont le dossier ROM est absent.
+- Filtrer les systèmes: afficher/masquer rapidement des plateformes par nom (persistant).
+
 ---
 
 ### Téléchargement
@@ -126,6 +138,16 @@ Les logs sont enregistrés dans `roms/ports/RGSX/logs/RGSX.log` sur batocera et 
 ---
 
 ## 🔄 Journal des modifications
+
+### 2.1.0.0 (2025-09-09)
+- Retrobat : mise à jour automatique de `gamelist.xml` au lancement pour afficher immédiatement les images/vidéos dans ES.
+- Chargement des images systèmes : priorité à `platform_image` défini dans le JSON des systèmes.
+- Détection automatique des extensions supportées via `es_systems.cfg`; génération et cache dans `/saves/ports/rgsx/rom_extensions.json`.
+- Masquage automatique des plateformes non supportées (dossier ROM manquant selon `es_systems.cfg`) avec interrupteur dans le menu Affichage.
+- Nouveau réglage dans Affichage pour changer la grille des plateformes (3x3, 3x4, 4x3, 4x4).
+- Réorganisation du menu pause pour mettre en avant les options courantes.
+- Traductions mises à jour.
+- Corrections visuelles mineures et ajustements d’espacements.
 
 ### 2.0.0.0 (2025-09-05)
 - Refonte complète du système de sources : gestion centralisée via `/saves/ports/rgsx/systems_list.json` (ordre conservé), ajout automatique d’une plateforme en déposant son fichier JSON dans `/saves/ports/rgsx/games/` (création si absente) — pensez ensuite à éditer le champ "dossier" généré pour qu’il corresponde à votre organisation de téléchargements.
@@ -205,19 +227,23 @@ RGSX/
 ├── language.py          # Gestion du support multilingue.
 ├── accessibility.py     # Gestion des paramètres d'accessibilité.
 ├── utils.py             # Fonctions utilitaires (wrap du texte, troncage etc.).
-├── update_gamelist.py   # Mise à jour de la liste des jeux.
+├── update_gamelist.py   # Mise à jour de la liste des jeux (Batocera/Knulli).
+├── update_gamelist_windows.py  # Spécifique Retrobat : mise à jour auto de gamelist.xml au lancement.
 ├── assets/              # Ressources de l'application (polices, exécutables, musique).
-├── games/               # Fichiers de configuration des systèmes de jeux.
-├── images/              # Images des systèmes.
+
 ├── languages/           # Fichiers de traduction.
 └── logs/
     └── RGSX.log         # Fichier de logs.
 
 /saves/ports/RGSX/
 │
+├── systems_list.json    # Liste des systèmes 
+├── games/               # Liens des systèmes
+├── images/              # Images des systèmes.
 ├── rgsx_settings.json   # Fichier de configuration unifié (paramètres, accessibilité, langue, musique, symlinks).
 ├── controls.json        # Fichier de mappage des contrôles (généré après le premier démarrage).
 ├── history.json         # Base de données de l'historique de téléchargements (généré après le premier téléchargement).
+├── rom_extensions.json  # Généré depuis es_systems.cfg : cache des extensions autorisées par système.
 └── 1FichierAPI.txt      # Clé API 1fichier (compte premium et + uniquement) (vide par défaut).
 ```
 

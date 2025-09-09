@@ -5,7 +5,7 @@ import platform
 from rgsx_settings import load_rgsx_settings, save_rgsx_settings
 
 # Version actuelle de l'application
-app_version = "2.0.0.1"
+app_version = "2.1.0.0"
 
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""
@@ -60,17 +60,14 @@ def get_system_root():
         
         return "/" if not OPERATING_SYSTEM == "Windows" else os.path.splitdrive(os.getcwd())[0] + os.sep
 
+
 # Chemins de base
 SYSTEM_FOLDER = get_system_root()
 APP_FOLDER = os.path.join(get_application_root(), "RGSX")
 ROMS_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms")
 SAVE_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "saves", "ports", "rgsx")
-BIOS_FOLDER = os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER)))
+RETROBAT_DATA_FOLDER = os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER)))
 
-print(f"BIOS_FOLDER: {BIOS_FOLDER}")
-print(f"ROMS_FOLDER: {ROMS_FOLDER}")
-print(f"SAVE_FOLDER: {SAVE_FOLDER}")
-print(f"RGSX APP_FOLDER: {APP_FOLDER}")
 
 
 # Configuration du logging
@@ -80,17 +77,17 @@ log_file = os.path.join(log_dir, "RGSX.log")
 
 # Chemins de base
 GAMELISTXML = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms", "ports", "gamelist.xml")
-
+GAMELISTXML_WINDOWS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms", "windows", "gamelist.xml")
 #Dossier /roms/ports/rgsx
 UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")
 LANGUAGES_FOLDER = os.path.join(APP_FOLDER, "languages")
-JSON_EXTENSIONS = os.path.join(APP_FOLDER, "rom_extensions.json")
 MUSIC_FOLDER = os.path.join(APP_FOLDER, "assets", "music")
 
 #Dossier /saves/ports/rgsx
 IMAGES_FOLDER = os.path.join(SAVE_FOLDER, "images")
 GAMES_FOLDER = os.path.join(SAVE_FOLDER, "games")
 SOURCES_FILE = os.path.join(SAVE_FOLDER, "systems_list.json")
+JSON_EXTENSIONS = os.path.join(SAVE_FOLDER, "rom_extensions.json")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
 HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
 API_KEY_1FICHIER = os.path.join(SAVE_FOLDER, "1fichierAPI.txt")
@@ -111,6 +108,27 @@ xdvdfs_download_exe = os.path.join(OTA_SERVER_URL, "xdvdfs.exe")
 
 
 xdvdfs_download_linux = os.path.join(OTA_SERVER_URL, "xdvdfs")
+
+# Print des chemins pour debug
+print(f"RETROBAT_DATA_FOLDER: {RETROBAT_DATA_FOLDER}")
+print(f"ROMS_FOLDER: {ROMS_FOLDER}")
+print(f"SAVE_FOLDER: {SAVE_FOLDER}")
+print(f"RGSX APP_FOLDER: {APP_FOLDER}")
+print(f"RGSX LOGS_FOLDER: {log_dir}")
+print(f"RGSX SETTINGS PATH: {RGSX_SETTINGS_PATH}")
+print(f"GAMELISTXML: {GAMELISTXML}")
+print(f"GAMELISTXML_WINDOWS: {GAMELISTXML_WINDOWS}")
+print(f"UPDATE_FOLDER: {UPDATE_FOLDER}")
+print(f"LANGUAGES_FOLDER: {LANGUAGES_FOLDER}")
+print(f"JSON_EXTENSIONS: {JSON_EXTENSIONS}")
+print(f"MUSIC_FOLDER: {MUSIC_FOLDER}")
+print(f"IMAGES_FOLDER: {IMAGES_FOLDER}")
+print(f"GAMES_FOLDER: {GAMES_FOLDER}")
+print(f"SOURCES_FILE: {SOURCES_FILE}")
+print(f"CONTROLS_CONFIG_PATH: {CONTROLS_CONFIG_PATH}")
+print(f"HISTORY_PATH: {HISTORY_PATH}")
+
+
 
 # Constantes pour la répétition automatique dans pause_menu
 REPEAT_DELAY = 350  # Délai initial avant répétition (ms) - augmenté pour éviter les doubles actions

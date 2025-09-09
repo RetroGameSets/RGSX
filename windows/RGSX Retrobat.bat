@@ -2,8 +2,16 @@
 setlocal EnableDelayedExpansion
 
 :: Fichier de log
-if not exist %CD%\logs MD %CD%\logs
-set LOG_FILE=%CD%\logs\Retrobat_RGSX_log.txt
+if not exist "%CD%\logs" MD "%CD%\logs"
+set "LOG_FILE=%CD%\logs\Retrobat_RGSX_log.txt"
+:: Fichier de log (chemin absolu pour fiabilité)
+:: Détecter la racine (ROOT_DIR) d'abord pour construire un chemin stable
+set CURRENT_DIR=%CD%
+pushd "%CURRENT_DIR%\..\.."
+set "ROOT_DIR=%CD%"
+popd
+if not exist "%ROOT_DIR%\roms\windows\logs" MD "%ROOT_DIR%\roms\windows\logs"
+set "LOG_FILE=%ROOT_DIR%\roms\windows\logs\Retrobat_RGSX_log.txt"
 
 :: Ajouter un horodatage au début du log
 echo [%DATE% %TIME%] Script start >> "%LOG_FILE%"
@@ -25,9 +33,13 @@ popd
 :: Définir le chemin du script principal selon les spécifications
 set "MAIN_SCRIPT=%ROOT_DIR%\roms\ports\RGSX\__main__.py"
 
+:: Definir le chemin du script de mise à jour de la gamelist Windows
+set "UPDATE_GAMELIST_SCRIPT=%ROOT_DIR%\roms\ports\RGSX\update_gamelist_windows.py"
+
 :: Convertir les chemins relatifs en absolus avec pushd/popd
 pushd "%ROOT_DIR%\system\tools\Python"
 set "PYTHON_EXE_FULL=%ROOT_DIR%\system\tools\Python\!PYTHON_EXE!"
+set "PYTHONW_EXE_FULL=%ROOT_DIR%\system\tools\Python\pythonw.exe"
 popd
 
 :: Afficher et logger les variables
@@ -37,6 +49,7 @@ echo  CURRENT_DIR : !CURRENT_DIR! >> "%LOG_FILE%"
 echo  ROOT_DIR : !ROOT_DIR! >> "%LOG_FILE%"
 echo  PYTHON_EXE_FULL : !PYTHON_EXE_FULL! >> "%LOG_FILE%"
 echo  MAIN_SCRIPT : !MAIN_SCRIPT! >> "%LOG_FILE%"
+echo  UPDATE_GAMELIST_SCRIPT : !UPDATE_GAMELIST_SCRIPT! >> "%LOG_FILE%"
 
 :: Vérifier si l'exécutable Python existe
 echo Checking python.exe...
@@ -101,16 +114,35 @@ if not exist "!MAIN_SCRIPT!" (
 echo __main__.py found.
 echo [%DATE% %TIME%] __main__.py found. >> "%LOG_FILE%"
 
-:: Exécuter le script Python
-echo Executing __main__.py...
-echo [%DATE% %TIME%] Executing "!MAIN_SCRIPT!" with !PYTHON_EXE_FULL! >> "%LOG_FILE%"
-"!PYTHON_EXE_FULL!" "!MAIN_SCRIPT!" >> "%LOG_FILE%" 2>&1
-if %ERRORLEVEL% equ 0 (
+:: L'étape de mise à jour de la gamelist est désormais appelée depuis __main__.py
+echo [%DATE% %TIME%] Skipping external gamelist update (handled in app). >> "%LOG_FILE%"
+
+echo Launching __main__.py (attached)...
+echo [%DATE% %TIME%] Preparing to launch main. >> "%LOG_FILE%"
+
+:: Assurer le bon dossier de travail pour l'application
+cd /d "%ROOT_DIR%\roms\ports\RGSX"
+
+:: Forcer les drivers SDL côté Windows et réduire le bruit console
+set PYGAME_HIDE_SUPPORT_PROMPT=1
+set SDL_VIDEODRIVER=windows
+set SDL_AUDIODRIVER=directsound
+echo [%DATE% %TIME%] CWD before launch: %CD% >> "%LOG_FILE%"
+
+:: Lancer l'application dans la même console et attendre sa fin
+:: Forcer python.exe pour capturer la sortie
+set "PY_MAIN_EXE=!PYTHON_EXE_FULL!"
+echo [%DATE% %TIME%] Using interpreter: !PY_MAIN_EXE! >> "%LOG_FILE%"
+echo [%DATE% %TIME%] Launching "!MAIN_SCRIPT!" now... >> "%LOG_FILE%"
+"!PY_MAIN_EXE!" "!MAIN_SCRIPT!" >> "%LOG_FILE%" 2>&1
+set EXITCODE=!ERRORLEVEL!
+echo [%DATE% %TIME%] __main__.py exit code: !EXITCODE! >> "%LOG_FILE%"
+if "!EXITCODE!"=="0" (
     echo Execution finished successfully.
     echo [%DATE% %TIME%] Execution of __main__.py finished successfully. >> "%LOG_FILE%"
 ) else (
-    echo Error: Failed to execute __main__.py (code %ERRORLEVEL%).
-    echo [%DATE% %TIME%] Error: Failed to execute __main__.py with error code %ERRORLEVEL%. >> "%LOG_FILE%"
+    echo Error: Failed to execute __main__.py (code !EXITCODE!).
+    echo [%DATE% %TIME%] Error: Failed to execute __main__.py with error code !EXITCODE!. >> "%LOG_FILE%"
     goto :error
 )
 

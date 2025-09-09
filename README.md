@@ -11,18 +11,23 @@ The application supports multiple sources like myrient and 1fichier. These sourc
 
 ## ✨ Features
 
-- **Game downloads** : Support for ZIP files and handling of unsupported extensions thanks to the `info.txt` file in each folder (batocera), which automatically extracts if the system doesn't support archives.
+- **Game downloads** : Support for ZIP files and handling of unsupported extensions based on EmulationStation's `es_systems.cfg` (and custom `es_systems_*.cfg` on Batocera). RGSX reads allowed extensions per system from these configs and will automatically extract archives when a system doesn't support them.
   - Downloads require no authentication or account for most sources.
   - Systems marked `(1fichier)` in the name will only be accessible if you provide your 1fichier API key (see below).
 - **Download history** : View and re-download previous files.
 - **Multi-select downloads** : Mark multiple games in the game list with the key mapped to Clear History (default X) to enqueue several downloads in one batch. Press Confirm to start batch.
 - **Control customization** : Remap keyboard or controller keys to your preference with automatic button name detection from EmulationStation (beta).
+- **Systems grid layout**: Change the platforms grid (3x3, 3x4, 4x3, 4x4) from the Display menu.
+- **Show/hide unsupported systems**: Auto-hide platforms whose ROM folder is missing according to `es_systems.cfg`, with a toggle in the Display menu.
+- **Smarter system images**: Image loading prioritizes explicit `platform_image` from your systems list JSON before falling back to `<platform_name>.png` or folder images.
 - **Font size adjustment** : If you find the text too small/too large, you can change it in the menu.
 - **Search mode** : Filter games by name for quick navigation with virtual keyboard on controller.
 - **Multilingual support** : Interface available in multiple languages. You can choose the language in the menu.
 - **Error handling** with informative messages and LOG file.
 - **Adaptive interface** : The interface adapts to all resolutions from 800x600 to 4K (not tested beyond 1920x1080).
 - **Automatic updates** : the application must be restarted after an update.
+- **Automatic supported extensions cache**: On first use, RGSX reads `es_systems.cfg` (RetroBat/Batocera) and generates `/saves/ports/rgsx/rom_extensions.json` with allowed extensions per system.
+- **Retrobat gamelist auto-update**: On Retrobat, the Windows `gamelist.xml` is updated automatically at launch so your images/videos appear in EmulationStation.
 
 ---
 
@@ -91,6 +96,13 @@ INFO: for retrobat on first launch, the application will download Python in the 
 - From the pause menu, access history, control help (control display changes depending on which menu you're in) or reconfiguration of keys, languages, font size.
 - You can also, from the menu, regenerate the cache of the systems/games/images list to be sure to have the latest updates.
 
+#### Display menu
+
+- Layout: switch platforms grid between 3x3, 3x4, 4x3, 4x4.
+- Font size: adjust text scale (accessibility).
+- Show unsupported systems: toggle visibility for platforms whose ROM folder is missing.
+- Filter systems: quickly show/hide platforms by name (persistent).
+
 ---
 
 ### Download
@@ -148,19 +160,23 @@ RGSX/
 ├── language.py          # Multilingual support management.
 ├── accessibility.py     # Accessibility settings management.
 ├── utils.py             # Utility functions (text wrap, truncation etc.).
-├── update_gamelist.py   # Game list update.
+├── update_gamelist.py   # Game list update (Batocera/Knulli).
+├── update_gamelist_windows.py  # Retrobat-only: auto-update ES gamelist.xml on launch.
 ├── assets/              # Application resources (fonts, executables, music).
-├── games/               # Game system configuration files.
-├── images/              # System images.
+
 ├── languages/           # Translation files.
 └── logs/
     └── RGSX.log         # Log file.
 
 /saves/ports/RGSX/
 │
+├── systems_list.json    # Available Systems names / folders / images
+├── games/               # Links for games.
+├── images/              # System images.
 ├── rgsx_settings.json   # Unified configuration file (settings, accessibility, language, music, symlinks).
 ├── controls.json        # Control mapping file (generated after first startup).
 ├── history.json         # Download history database (generated after first download).
+├── rom_extensions.json  # Generated from es_systems.cfg: per-system allowed ROM extensions cache.
 └── 1FichierAPI.txt      # 1fichier API key (premium account and + only) (empty by default).
 ```
 
@@ -206,6 +222,16 @@ This project is free. You are free to use, modify and distribute it under the te
 Developed with ❤️ for retro gaming enthusiasts.
 
 ## 🔄 Changelog
+
+### 2.1.0.0 (2025-09-09)
+- Retrobat: automatic `gamelist.xml` update on launch to immediately show scraped images/videos in ES.
+- System image loading prioritizes explicit `platform_image` from systems JSON.
+- Auto-detect supported extensions by parsing `es_systems.cfg`; generate and cache `/saves/ports/rgsx/rom_extensions.json`.
+- Auto-hide unsupported platforms (missing ROM folder per `es_systems.cfg`) with a toggle in the Display menu.
+- New Display option to change systems grid layout (3x3, 3x4, 4x3, 4x4).
+- Pause menu reorganized to surface the most used items.
+- Translations updated.
+- Minor display fixes and spacing polish.
 
 ### 2.0.0.0 (2025-09-05)
 - Complete sources system overhaul: centralized management through `/saves/ports/rgsx/systems_list.json` (order preserved), automatic platform addition by dropping its JSON file into `/saves/ports/rgsx/games/` (auto-created if missing) — after first creation edit the generated "dossier" field so it matches your downloads folder structure.

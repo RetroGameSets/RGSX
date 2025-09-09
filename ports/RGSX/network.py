@@ -183,17 +183,21 @@ async def check_for_updates():
             config.needs_redraw = True
             logger.debug("Mise à jour terminée avec succès")
 
-            # Configurer la popup pour afficher le message de succès
-            config.menu_state = "update_result"
-            # Message succès de mise à jour
+            # Configurer la popup puis redémarrer automatiquement
+            config.menu_state = "restart_popup"
             config.update_result_message = _("network_update_success").format(latest_version)
-            # Utiliser aussi le système générique de popup pour affichage
             config.popup_message = config.update_result_message
-            config.popup_timer = 5000  # 5 secondes
+            config.popup_timer = 2000
             config.update_result_error = False
             config.update_result_start_time = pygame.time.get_ticks()
             config.needs_redraw = True
-            logger.debug(f"Affichage de la popup de mise à jour réussie")
+            logger.debug(f"Affichage de la popup de mise à jour réussie, redémarrage imminent")
+
+            try:
+                from utils import restart_application
+                restart_application(2000)
+            except Exception as e:
+                logger.error(f"Erreur lors du redémarrage après mise à jour: {e}")
 
             return True, _("network_update_success_message")
         else:
@@ -270,10 +274,10 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 platform_folder = normalize_platform_name(platform)
                 dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
 
-            # Spécifique: si le système est "00 BIOS" on force le dossier BIOS
-            if platform == "00 BIOS":
-                dest_dir = config.BIOS_FOLDER
-                logger.debug(f"Plateforme '00 BIOS' détectée, destination forcée vers BIOS_FOLDER: {dest_dir}")
+            # Spécifique: si le système est "BIOS" on force le dossier BIOS
+            if platform == "- BIOS by TMCTV":
+                dest_dir = config.RETROBAT_DATA_FOLDER
+                logger.debug(f"Plateforme 'BIOS' détectée, destination forcée vers RETROBAT_DATA_FOLDER: {dest_dir}")
             
             os.makedirs(dest_dir, exist_ok=True)
             if not os.access(dest_dir, os.W_OK):
@@ -557,8 +561,8 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
 
             # Spécifique: si le système est "00 BIOS" on force le dossier BIOS
             if platform == "00 BIOS":
-                dest_dir = config.BIOS_FOLDER
-                logger.debug(f"Plateforme '00 BIOS' détectée, destination forcée vers BIOS_FOLDER: {dest_dir}")
+                dest_dir = config.RETROBAT_DATA_FOLDER
+                logger.debug(f"Plateforme '00 BIOS' détectée, destination forcée vers RETROBAT_DATA_FOLDER: {dest_dir}")
 
             logger.debug(f"Vérification répertoire destination: {dest_dir}")
             os.makedirs(dest_dir, exist_ok=True)

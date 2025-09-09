@@ -7,6 +7,7 @@ import logging
 import platform
 import subprocess
 import config
+import glob
 import threading
 from rgsx_settings import load_rgsx_settings, save_rgsx_settings
 import zipfile
@@ -16,6 +17,7 @@ import config
 from history import save_history
 from language import _ 
 from datetime import datetime
+import sys
 
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,50 @@ logging.getLogger("requests").setLevel(logging.WARNING)
 
 # Liste globale pour stocker les systèmes avec une erreur 404
 unavailable_systems = []
+
+# Cache/process flags for extensions generation/loading
+
+
+def restart_application(delay_ms: int = 2000):
+    """Schedule a restart with a visible popup; actual restart happens in the main loop.
+
+    - Sets popup_restarting and schedules config.pending_restart_at = now + delay_ms.
+    - Main loop (__main__) detects pending_restart_at and calls restart_application(0) to perform the execl.
+    """
+    try:
+        # Show popup and schedule
+        if hasattr(config, 'popup_message'):
+            try:
+                config.popup_message = _("popup_restarting")
+            except Exception:
+                config.popup_message = "Restarting..."
+            config.popup_timer = max(config.popup_timer, int(delay_ms)) if hasattr(config, 'popup_timer') else int(delay_ms)
+            config.menu_state = getattr(config, 'menu_state', 'restart_popup') or 'restart_popup'
+            config.needs_redraw = True
+        # Schedule actual restart in main loop
+        now = pygame.time.get_ticks() if hasattr(pygame, 'time') else 0
+        config.pending_restart_at = now + max(0, int(delay_ms))
+        logger.debug(f"Redémarrage planifié dans {delay_ms} ms (pending_restart_at={getattr(config, 'pending_restart_at', 0)})")
+
+        # If delay_ms is 0, perform immediately here
+        if int(delay_ms) <= 0:
+            try:
+                try:
+                    pygame.mixer.music.stop()
+                except Exception:
+                    pass
+                try:
+                    pygame.quit()
+                except Exception:
+                    pass
+                exe = sys.executable or "python"
+                os.execl(exe, exe, *sys.argv)
+            except Exception as e:
+                logger.exception(f"Failed to restart immediately: {e}")
+    except Exception as e:
+        logger.exception(f"Failed to schedule restart: {e}")
+_extensions_cache = None  # type: ignore
+_extensions_json_regenerated = False
 
 
 # Détection système non-PC
@@ -45,13 +91,165 @@ def detect_non_pc():
 
 # Fonction pour charger le fichier JSON des extensions supportées
 def load_extensions_json():
-    """Charge le fichier JSON contenant les extensions supportées."""
+    """Charge le JSON des extensions supportées.
+    - Régénère une seule fois par exécution (au premier appel ou si le fichier est absent).
+    - Met en cache le résultat pour éviter les relectures et logs répétés.
+    """
+    global _extensions_cache, _extensions_json_regenerated
     try:
-        with open(config.JSON_EXTENSIONS, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        # Retour immédiat si déjà en cache
+        if _extensions_cache is not None:
+            return _extensions_cache
+
+        os.makedirs(os.path.dirname(config.JSON_EXTENSIONS), exist_ok=True)
+
+        # Régénération unique au premier appel (ou si le fichier est manquant)
+        if not _extensions_json_regenerated or not os.path.exists(config.JSON_EXTENSIONS):
+            try:
+                generated = generate_extensions_json_from_es_systems()
+                if generated:
+                    with open(config.JSON_EXTENSIONS, 'w', encoding='utf-8') as wf:
+                        json.dump(generated, wf, ensure_ascii=False, indent=2)
+                    logger.info(f"rom_extensions régénéré ({len(generated)} systèmes): {config.JSON_EXTENSIONS}")
+                else:
+                    logger.warning("Aucune donnée générée depuis es_systems.cfg; on conserve l'existant si présent")
+                _extensions_json_regenerated = True
+            except Exception as ge:
+                logger.error(f"Échec lors de la régénération de {config.JSON_EXTENSIONS} depuis es_systems.cfg: {ge}")
+
+        # Lecture du fichier (nouveau ou existant)
+        if os.path.exists(config.JSON_EXTENSIONS):
+            with open(config.JSON_EXTENSIONS, 'r', encoding='utf-8') as f:
+                _extensions_cache = json.load(f)
+                return _extensions_cache
+        _extensions_cache = []
+        return _extensions_cache
     except Exception as e:
         logger.error(f"Erreur lors de la lecture de {config.JSON_EXTENSIONS}: {e}")
+        _extensions_cache = []
+        return _extensions_cache
+
+def _detect_es_systems_cfg_paths():
+    """Retourne une liste de chemins possibles pour es_systems.cfg selon l'OS.
+    - RetroBat (Windows): {config.RETROBAT_DATA_FOLDER}\\system\\templates\\emulationstation\\es_systems.cfg
+    - Batocera (Linux): /usr/share/emulationstation/es_systems.cfg
+      Ajoute aussi les fichiers customs: /userdata/system/configs/emulationstation/es_systems_*.cfg
+    """
+    candidates = []
+    try:
+        if platform.system() == 'Windows':
+            base = getattr(config, 'RETROBAT_DATA_FOLDER', None)
+            if base:
+                candidates.append(os.path.join(base, 'system', 'templates', 'emulationstation', 'es_systems.cfg'))
+        else:
+            # Batocera / Linux classiques
+            candidates.append('/usr/share/emulationstation/es_systems.cfg')
+            candidates.append('/etc/emulationstation/es_systems.cfg')
+            # Batocera customs
+            custom_dir = '/userdata/system/configs/emulationstation'
+            try:
+                for p in glob.glob(os.path.join(custom_dir, 'es_systems_*.cfg')):
+                    candidates.append(p)
+                direct_cfg = os.path.join(custom_dir, 'es_systems.cfg')
+                if os.path.exists(direct_cfg):
+                    candidates.append(direct_cfg)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    existing = [p for p in candidates if p and os.path.exists(p)]
+    # Logs réduits: on ne conserve que les résumés plus loin
+    return existing
+
+def _parse_es_systems_cfg(cfg_path):
+    """Parse un es_systems.cfg minimalement pour extraire (folder, extensions).
+    Retourne une liste de dicts: { 'folder': <str>, 'extensions': [..] }
+    - folder: dérivé de la balise <path> en prenant la partie après 'roms/' (ou '\\roms\\' sous Windows)
+    - extensions: liste normalisée de .ext (point + minuscule)
+    """
+    try:
+        # Lire tel quel (pas besoin d'un parseur XML strict, mais ElementTree suffit)
+        import xml.etree.ElementTree as ET
+    # Log détaillé supprimé pour alléger les traces
+        tree = ET.parse(cfg_path)
+        root = tree.getroot()
+        out = []
+        for sys_elem in root.findall('system'):
+            path_text = (sys_elem.findtext('path') or '').strip()
+            ext_text = (sys_elem.findtext('extension') or '').strip()
+            if not path_text:
+                continue
+            # Extraire le dossier après 'roms'
+            folder = None
+            norm = path_text.replace('\\', '/').lower()
+            marker = '/roms/'
+            if marker in norm:
+                after = norm.split(marker, 1)[1]
+                folder = after.strip().strip('/\\')
+            if not folder:
+                # fallback: si le chemin finit par .../roms/<folder>
+                parts = norm.strip('/').split('/')
+                if len(parts) >= 2 and parts[-2] == 'roms':
+                    folder = parts[-1]
+            if not folder:
+                continue
+
+            # Extensions: split par espaces, normaliser en .ext
+            exts = []
+            for tok in ext_text.split():
+                tok = tok.strip().lower()
+                if not tok:
+                    continue
+                if not tok.startswith('.'):
+                    # Certaines entrées peuvent omettre le point
+                    tok = '.' + tok
+                exts.append(tok)
+            # Dédupliquer tout en conservant l'ordre
+            seen = set()
+            norm_exts = []
+            for e in exts:
+                if e not in seen:
+                    seen.add(e)
+                    norm_exts.append(e)
+            out.append({'folder': folder, 'extensions': norm_exts})
+    # Résumé final affiché ailleurs
+        return out
+    except Exception as e:
+        logger.error(f"Erreur parsing es_systems.cfg ({cfg_path}): {e}")
         return []
+
+def generate_extensions_json_from_es_systems():
+    """Essaie de construire la liste des extensions à partir des es_systems.cfg disponibles.
+    Priorité: RetroBat si présent, sinon Batocera. Fusionne si plusieurs trouvés, en préférant RetroBat.
+    """
+    combined = {}
+    paths = _detect_es_systems_cfg_paths()
+    if not paths:
+        logger.warning("Aucun chemin es_systems.cfg détecté (RetroBat/Batocera)")
+        return []
+    # Prioriser RetroBat en tête si présent
+    def score(p):
+        return 0 if 'templates' in p.replace('\\', '/').lower() else 1
+    for cfg in sorted(paths, key=score):
+        if not os.path.exists(cfg):
+            continue
+        items = _parse_es_systems_cfg(cfg)
+        for itm in items:
+            folder = itm['folder']
+            exts = itm['extensions']
+            if folder in combined:
+                # Fusionner: ajouter extensions manquantes
+                present = set(combined[folder])
+                for e in exts:
+                    if e not in present:
+                        combined[folder].append(e)
+                        present.add(e)
+            else:
+                combined[folder] = list(exts)
+    # Convertir en liste triée par dossier
+    result = [{'folder': k, 'extensions': v} for k, v in sorted(combined.items(), key=lambda x: x[0])]
+    logger.info(f"Extensions combinées totales: {len(result)} systèmes")
+    return result
     
 def check_extension_before_download(url, platform, game_name):
     """Vérifie l'extension avant de lancer le téléchargement et retourne un tuple de 4 éléments."""
@@ -66,10 +264,14 @@ def check_extension_before_download(url, platform, game_name):
         extension = os.path.splitext(sanitized_name)[1].lower()
         is_archive = extension in (".zip", ".rar")
 
+        # Déterminer si le système (dossier) est connu dans extensions_data
+        dest_folder_name = _get_dest_folder_name(platform)
+        system_known = any(s.get("folder") == dest_folder_name for s in extensions_data)
+
         if is_supported:
             logger.debug(f"L'extension de {sanitized_name} est supportée pour {platform}")
             return (url, platform, game_name, False)
-        elif is_archive:
+        elif is_archive and system_known:
             logger.debug(f"Archive {extension.upper()} détectée pour {sanitized_name}, extraction automatique prévue")
             return (url, platform, game_name, True)
         else:
@@ -91,10 +293,10 @@ def is_extension_supported(filename, platform_key, extensions_data):
         if platform_dict.get("platform_name") == platform_key:
             dest_dir = os.path.join(config.ROMS_FOLDER, platform_dict.get("folder"))
             break
-    
+
     if not dest_dir:
-        logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform}")
-        dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform)
+        logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform_key}")
+        dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform_key)
     
     dest_folder_name = os.path.basename(dest_dir)
     for i, system in enumerate(extensions_data):
@@ -104,6 +306,20 @@ def is_extension_supported(filename, platform_key, extensions_data):
     
     logger.warning(f"Aucun système trouvé pour le dossier {dest_dir}")
     return False
+
+
+def _get_dest_folder_name(platform_key: str) -> str:
+    """Retourne le nom du dossier de destination pour une plateforme (basename du dossier)."""
+    dest_dir = None
+    for platform_dict in config.platform_dicts:
+        if platform_dict.get("platform_name") == platform_key:
+            folder = platform_dict.get("folder")
+            if folder:
+                dest_dir = os.path.join(config.ROMS_FOLDER, folder)
+            break
+    if not dest_dir:
+        dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform_key)
+    return os.path.basename(dest_dir)
 
 
 
@@ -218,6 +434,39 @@ def load_sources():
         hidden = set(settings.get("hidden_platforms", [])) if isinstance(settings, dict) else set()
         all_sorted_names = [s.get("platform_name", "") for s in sorted_for_display]
         visible_names = [n for n in all_sorted_names if n and n not in hidden]
+
+        # Masquer automatiquement les systèmes dont le dossier ROM n'existe pas (selon le toggle)
+        unsupported = []
+        try:
+            from rgsx_settings import get_show_unsupported_platforms
+            show_unsupported = get_show_unsupported_platforms(settings)
+            sources_by_name = {s.get("platform_name", ""): s for s in sources if isinstance(s, dict)}
+            for name in list(visible_names):
+                entry = sources_by_name.get(name) or {}
+                folder = entry.get("folder")
+                # Conserver BIOS même sans dossier, et ignorer entrées sans folder
+                bios_name = name.strip()
+                if not folder or bios_name == "- BIOS by TMCTV -" or bios_name == "- BIOS":
+                    continue
+                expected_dir = os.path.join(config.ROMS_FOLDER, folder)
+                if not os.path.isdir(expected_dir):
+                    unsupported.append(name)
+            if show_unsupported:
+                config.unsupported_platforms = unsupported
+            else:
+                if unsupported:
+                    # Filtrer la liste visible
+                    visible_names = [n for n in visible_names if n not in set(unsupported)]
+                    config.unsupported_platforms = unsupported
+                    # Log concis + détaillé en DEBUG uniquement
+                    logger.info(f"Plateformes masquées (dossier rom absent): {len(unsupported)}")
+                    logger.debug("Détails plateformes masquées: " + ", ".join(unsupported))
+                else:
+                    config.unsupported_platforms = []
+        except Exception as e:
+            logger.error(f"Erreur détection plateformes non supportées (dossiers manquants): {e}")
+            config.unsupported_platforms = []
+
         config.platforms = visible_names
         config.platform_names = {p: p for p in config.platforms}
         # Nouveau mapping par nom pour éviter décalages index après tri d'affichage
@@ -303,7 +552,7 @@ def load_games(platform_id):
         else:
             logger.warning(f"Format de fichier jeux inattendu pour {platform_id}: {type(data)}")
 
-        logger.debug(f"Jeux chargés pour {platform_id} depuis {os.path.basename(game_file)}: {len(normalized)} entrées")
+        logger.debug(f"{os.path.basename(game_file)}: {len(normalized)} jeux")
         return normalized
     except Exception as e:
         logger.error(f"Erreur lors du chargement des jeux pour {platform_id}: {e}")
@@ -451,27 +700,57 @@ def wrap_text(text, font, max_width):
     return lines
     
 def load_system_image(platform_dict):
-    """Charge une image système avec priorité:
-    1. Fichier nommé exactement <platform_name>.png
-    2. Champ platform_image si non vide
-    3. Fallback default.png"""
+    """Charge une image système avec la priorité suivante:
+    1. platform_image explicite s'il est défini
+    2. <platform_name>.png
+    3. <folder>.png si disponible
+    4. Recherche fallback dans le dossier images de l'app (APP_FOLDER/images) avec le même ordre
+    5. default.png (dans SAVE_FOLDER/images), sinon default.png de l'app
+
+    Cela évite d'échouer lorsque le nom affiché ne correspond pas au fichier image
+    et respecte un mapping explicite fourni par systems_list.json."""
     platform_name = platform_dict.get("platform_name", "unknown")
-    preferred_filename = f"{platform_name}.png"
-    preferred_path = os.path.join(config.IMAGES_FOLDER, preferred_filename)
+    folder_name = platform_dict.get("folder") or ""
 
-    # Normaliser platform_image pouvant être vide
-    platform_image_field = platform_dict.get("platform_image") or ""
-    explicit_image_path = os.path.join(config.IMAGES_FOLDER, platform_image_field) if platform_image_field else None
-    default_path = os.path.join(config.IMAGES_FOLDER, "default.png")
+    # Dossiers d'images
+    save_images = config.IMAGES_FOLDER
+    app_images = os.path.join(config.APP_FOLDER, "images")
 
+    # Candidats, par ordre de priorité
+    candidates = []
+    platform_image_field = (platform_dict.get("platform_image") or "").strip()
+    if platform_image_field:
+        candidates.append(os.path.join(save_images, platform_image_field))
+    candidates.append(os.path.join(save_images, f"{platform_name}.png"))
+    if folder_name:
+        candidates.append(os.path.join(save_images, f"{folder_name}.png"))
+
+    # Fallback: images packagées avec l'app
+    if platform_image_field:
+        candidates.append(os.path.join(app_images, platform_image_field))
+    candidates.append(os.path.join(app_images, f"{platform_name}.png"))
+    if folder_name:
+        candidates.append(os.path.join(app_images, f"{folder_name}.png"))
+
+    # Charger le premier fichier existant
     try:
-        if os.path.exists(preferred_path):
-            return pygame.image.load(preferred_path).convert_alpha()
-        if explicit_image_path and os.path.exists(explicit_image_path):
-            return pygame.image.load(explicit_image_path).convert_alpha()
-        if os.path.exists(default_path):
-            return pygame.image.load(default_path).convert_alpha()
-        logger.error(f"Aucune image trouvée pour {platform_name} (cherché: {preferred_path}, {explicit_image_path}, default.png)")
+        for path in candidates:
+            if path and os.path.exists(path):
+                return pygame.image.load(path).convert_alpha()
+
+        # default.png (save d'abord, sinon app)
+        default_save = os.path.join(save_images, "default.png")
+        if os.path.exists(default_save):
+            return pygame.image.load(default_save).convert_alpha()
+        default_app = os.path.join(app_images, "default.png")
+        if os.path.exists(default_app):
+            return pygame.image.load(default_app).convert_alpha()
+
+        logger.error(
+            f"Aucune image trouvée pour {platform_name}. Candidats: "
+            + ", ".join(candidates)
+            + f"; default cherchés: {default_save}, {default_app}"
+        )
         return None
     except Exception as e:
         logger.error(f"Erreur lors du chargement de l'image pour {platform_name} : {str(e)}")

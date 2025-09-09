@@ -7,12 +7,15 @@ import logging
 import requests
 import queue
 import datetime
+import subprocess
+import sys
 import config
 
 from display import (
     init_display, draw_loading_screen, draw_error_screen, draw_platform_grid,
     draw_progress_screen, draw_controls, draw_virtual_keyboard,
     draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list,
+        draw_display_menu,
     draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog,
     draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, draw_gradient,
     THEME_COLORS
@@ -47,6 +50,33 @@ except Exception as e:
 
 logger = logging.getLogger(__name__)
 
+# Mise à jour de la gamelist Windows avant toute initialisation graphique (évite les conflits avec ES)
+def _run_windows_gamelist_update():
+    try:
+        if platform.system() != "Windows":
+            return
+        script_path = os.path.join(config.APP_FOLDER, "update_gamelist_windows.py")
+        if not os.path.exists(script_path):
+            return
+        logger.info("Lancement de update_gamelist_windows.py depuis __main__ (pré-init)")
+        exe = sys.executable or "python"
+        # Exécuter rapidement avec capture sortie pour journaliser tout message utile
+        result = subprocess.run(
+            [exe, script_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=config.APP_FOLDER,
+            text=True,
+            timeout=30,
+        )
+        logger.info(f"update_gamelist_windows.py terminé avec code {result.returncode}")
+        if result.stdout:
+            logger.debug(result.stdout.strip())
+    except Exception as e:
+        logger.exception(f"Échec lors de l'exécution de update_gamelist_windows.py: {e}")
+
+_run_windows_gamelist_update()
+
 # Initialisation de Pygame
 pygame.init()
 pygame.joystick.init()
@@ -54,9 +84,56 @@ logger.debug("------------------------------------------------------------------
 logger.debug("---------------------------DEBUT LOG--------------------------------")
 logger.debug("--------------------------------------------------------------------")
 
-
+#Récupération des noms des joysticks si pas de joystick connecté, verifier si clavier connecté
+joystick_names = [pygame.joystick.Joystick(i).get_name() for i in range(pygame.joystick.get_count())]
+if not joystick_names:
+    joystick_names = ["Clavier"]
+    print("Aucun joystick détecté, utilisation du clavier par défaut")
+    logger.debug("Aucun joystick détecté, utilisation du clavier par défaut.")
+    config.joystick = False
+    config.keyboard = True
+else:
+    config.joystick = True
+    config.keyboard = False
+    print(f"Joysticks détectés: {joystick_names}")
+    logger.debug(f"Joysticks détectés: {joystick_names}, utilisation du joystick par défaut.")
+    # Test des boutons du joystick
+    for name in joystick_names:
+        if "Xbox" in name or "PlayStation" in name or "Logitech" in name:
+            config.xbox_controller = True
+            logger.debug(f"Manette Xbox/PlayStation/Logitech détectée: {name}")
+            print(f"Manette Xbox/PlayStation/Logitech détectée: {name}")
+            break
+        elif "Nintendo" in name:
+            config.nintendo_controller = True
+            logger.debug(f"Manette Nintendo détectée: {name}")
+            print(f"Manette Nintendo détectée: {name}")
+        elif "8Bitdo" in name:
+            config.eightbitdo_controller = True
+            logger.debug(f"Manette 8Bitdo détectée: {name}")
+            print(f"Manette 8Bitdo détectée: {name}")
+        elif "Steam" in name:
+            config.steam_controller = True
+            logger.debug(f"Manette Steam détectée: {name}")
+            print(f"Manette Steam détectée: {name}")
+        elif "TRIMUI Smart Pro" in name:
+            config.trimui_controller = True
+            logger.debug(f"TRIMUI Smart Pro détectée: {name}")
+            print(f"TRIMUI Smart Pro détectée: {name}")
+        else:
+            config.generic_controller = True
+            logger.debug(f"Manette générique détectée: {name}")
+            print(f"Manette générique détectée: {name}")
 # Chargement des paramètres d'accessibilité
 config.accessibility_settings = load_accessibility_settings()
+# Appliquer la grille d'affichage depuis les paramètres
+try:
+    from rgsx_settings import get_display_grid
+    gcols, grows = get_display_grid()
+    config.GRID_COLS, config.GRID_ROWS = gcols, grows
+    logger.debug(f"Grille d'affichage initiale: {gcols}x{grows}")
+except Exception as e:
+    logger.error(f"Erreur chargement grille d'affichage initiale: {e}")
 for i, scale in enumerate(config.font_scale_options):
     if scale == config.accessibility_settings.get("font_scale", 1.0):
         config.current_font_scale_index = i
@@ -189,6 +266,18 @@ async def main():
 
         current_time = pygame.time.get_ticks()
 
+        # Déclenchement d'un redémarrage planifié (permet d'afficher une popup avant)
+        try:
+            pending = getattr(config, 'pending_restart_at', 0)
+            if pending and pygame.time.get_ticks() >= pending:
+                logger.info("Redémarrage planifié déclenché")
+                # Clear the flag to avoid repeated triggers in case restart fails
+                config.pending_restart_at = 0
+                from utils import restart_application
+                restart_application(0)
+        except Exception as e:
+            logger.error(f"Erreur lors du déclenchement du redémarrage planifié: {e}")
+
         # Forcer redraw toutes les 100 ms dans download_progress
         if config.menu_state == "download_progress" and current_time - last_redraw_time >= 100:
             config.needs_redraw = True
@@ -275,6 +364,11 @@ async def main():
                 from accessibility import handle_accessibility_events
                 if handle_accessibility_events(event):
                     config.needs_redraw = True
+                continue
+            if config.menu_state == "display_menu":
+                # Les événements sont gérés dans controls.handle_controls
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
                 continue
 
             if config.menu_state == "controls_help":
@@ -583,7 +677,6 @@ async def main():
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
 
-    # Popup download_result supprimé : plus de temporisation de 3s
 
         # Affichage
         if config.needs_redraw:
@@ -637,6 +730,8 @@ async def main():
             elif config.menu_state == "accessibility_menu":
                 from accessibility import draw_accessibility_menu
                 draw_accessibility_menu(screen)
+            elif config.menu_state == "display_menu":
+                draw_display_menu(screen)
             elif config.menu_state == "language_select":
                 from display import draw_language_menu
                 draw_language_menu(screen)
@@ -854,16 +949,21 @@ async def main():
         await asyncio.sleep(0.01)
 
     pygame.mixer.music.stop()
-
-    process_name = "emulatorLauncher.exe"
-    result = os.system(f"taskkill /f /im {process_name}")
+    result = subprocess.run(["taskkill", "/f", "/im", "emulatorLauncher.exe"])
     if result == 0:
-        logger.debug(f"Quitté avec succès: {process_name}")
+        logger.debug(f"Quitté avec succès: emulatorLauncher.exe")
     else:
         logger.debug("Error en essayant de quitter emulatorlauncher.")
-        
     pygame.quit()
     logger.debug("Application terminée")
+
+    result2 = subprocess.run(["batocera-es-swissknife", "--emukill"])
+    if result2 == 0:
+        logger.debug(f"Quitté avec succès")
+    else:
+        logger.debug("Error en essayant de quitter batocera-es-swissknife.")
+
+    
 
 if platform.system() == "Emscripten":
     asyncio.ensure_future(main())

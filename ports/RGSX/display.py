@@ -27,6 +27,8 @@ THEME_COLORS = {
     "button_hover": (255, 0, 255, 220),  # Rose
     # Générique
     "text": (255, 255, 255),  # blanc
+    # Texte sélectionné (alias pour compatibilité)
+    "text_selected": (0, 255, 0),  # utilise le même vert que fond_lignes
     # Erreur
     "error_text": (255, 0, 0),  # rouge
     # Avertissement
@@ -439,8 +441,8 @@ def draw_platform_grid(screen):
     margin_right = int(config.screen_width * 0.026)
     margin_top = int(config.screen_height * 0.140)
     margin_bottom = int(config.screen_height * 0.0648)
-    num_cols = 3
-    num_rows = 4
+    num_cols = getattr(config, 'GRID_COLS', 3)
+    num_rows = getattr(config, 'GRID_ROWS', 4)
     systems_per_page = num_cols * num_rows
 
     available_width = config.screen_width - margin_left - margin_right
@@ -820,12 +822,22 @@ def draw_history_list(screen):
             screen.blit(text_surface, text_rect)
         return
 
-    available_height = config.screen_height - title_height - extra_margin_top - extra_margin_bottom - 2 * margin_top_bottom
-    items_per_page = available_height // line_height
+    # Espace visible garanti entre le titre et la liste, et au-dessus du footer
+    top_gap = 20
+    bottom_reserved = 70  # réserve pour le footer (barre des contrôles) + marge visuelle (réduit)
+
+    # Positionner la liste juste après le titre, avec un espace dédié
+    # Utiliser le rectangle du titre déjà dessiné pour une meilleure précision
+    title_bottom = title_rect_inflated.bottom
+    rect_y = title_bottom + top_gap
+
+    # Calculer l'espace disponible en bas en réservant une zone pour le footer
+    available_height = max(0, config.screen_height - rect_y - bottom_reserved)
+    # Déterminer le nombre d'éléments par page en tenant compte de l'en-tête et des marges internes
+    items_per_page = max(1, (available_height - header_height - 2 * margin_top_bottom) // line_height)
 
     rect_height = header_height + items_per_page * line_height + 2 * margin_top_bottom
     rect_x = (config.screen_width - rect_width) // 2
-    rect_y = title_height + extra_margin_top + (config.screen_height - title_height - extra_margin_top - extra_margin_bottom - rect_height) // 2
 
     config.history_scroll_offset = max(0, min(config.history_scroll_offset, max(0, len(history) - items_per_page)))
     if config.current_history_item < config.history_scroll_offset:
@@ -1090,9 +1102,6 @@ def draw_progress_screen(screen):
         # Limiter le pourcentage entre 0 et 100 pour l'affichage de la barre
         progress_width = int(bar_width * (min(100, max(0, progress_percent)) / 100))
 
-
-## Ancienne fonction draw_popup_result_download supprimée (popup de fin de téléchargement retiré)
-
 # Écran avertissement extension non supportée téléchargement
 def draw_extension_warning(screen):
     """Affiche un avertissement pour une extension non reconnue ou un fichier ZIP."""
@@ -1103,7 +1112,7 @@ def draw_extension_warning(screen):
         game_name = "Inconnu"
     else:
         url, platform, game_name, is_zip_non_supported = config.pending_download
-        logger.debug(f"config.pending_download: url={url}, platform={platform}, game_name={game_name}, is_zip_non_supported={is_zip_non_supported}")
+    # Log réduit: pas de détail verbeux ici
         is_zip = is_zip_non_supported
         if not game_name:
             game_name = "Inconnu"
@@ -1116,7 +1125,6 @@ def draw_extension_warning(screen):
 
     max_width = config.screen_width - 80
     lines = wrap_text(message, config.font, max_width)
-    logger.debug(f"Lignes générées : {lines}")
 
     try:
         line_height = config.font.get_height() + 5
@@ -1217,9 +1225,9 @@ def draw_language_menu(screen):
     button_height = 60
     button_width = 300
     button_spacing = 20
-    
-    total_height = len(available_languages) * (button_height + button_spacing) - button_spacing
-    start_y = (config.screen_height - total_height) // 2
+
+    # Démarrer la liste juste sous le titre avec le même écart que les boutons
+    start_y = title_bg_rect.bottom + button_spacing
     
     for i, lang_code in enumerate(available_languages):
         # Obtenir le nom de la langue
@@ -1245,10 +1253,69 @@ def draw_language_menu(screen):
     instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, config.screen_height - 50))
     screen.blit(instruction_surface, instruction_rect)
 
+def draw_display_menu(screen):
+    """Affiche le sous-menu Affichage (layout, taille de police, systèmes non supportés)."""
+    screen.blit(OVERLAY, (0, 0))
+
+    # États actuels
+    layout_str = f"{getattr(config, 'GRID_COLS', 3)}x{getattr(config, 'GRID_ROWS', 4)}"
+    font_scale = config.accessibility_settings.get("font_scale", 1.0)
+    from rgsx_settings import get_show_unsupported_platforms
+    show_unsupported = get_show_unsupported_platforms()
+
+    # Libellés
+    options = [
+        f"{_('display_layout')}: {layout_str}",
+        _("accessibility_font_size").format(f"{font_scale:.1f}"),
+        _("menu_show_unsupported_on") if show_unsupported else _("menu_show_unsupported_off"),
+        _("menu_filter_platforms"),
+    ]
+
+    selected = getattr(config, 'display_menu_selection', 0)
+
+    # Dimensions du cadre (cohérent avec le menu pause)
+    title_text = _("menu_display")
+    title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
+    title_height = title_surface.get_height() + 10
+    menu_width = int(config.screen_width * 0.7)
+    button_height = int(config.screen_height * 0.0463)
+    margin_top_bottom = 20
+    vertical_spacing = 10
+    menu_height = title_height + len(options) * (button_height + vertical_spacing) + 2 * margin_top_bottom
+    menu_x = (config.screen_width - menu_width) // 2
+    menu_y = (config.screen_height - menu_height) // 2
+
+    # Cadre
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (menu_x, menu_y, menu_width, menu_height), 2, border_radius=12)
+
+    # Titre centré dans le cadre
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, menu_y + margin_top_bottom + title_surface.get_height() // 2))
+    screen.blit(title_surface, title_rect)
+
+    # Boutons des options
+    for i, option_text in enumerate(options):
+        y = menu_y + margin_top_bottom + title_height + i * (button_height + vertical_spacing)
+        draw_stylized_button(
+            screen,
+            option_text,
+            menu_x + 20,
+            y,
+            menu_width - 40,
+            button_height,
+            selected=(i == selected)
+        )
+
+    # Aide en bas de l'écran
+    instruction_text = _("language_select_instruction")
+    instruction_surface = config.small_font.render(instruction_text, True, THEME_COLORS["text"])
+    instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, config.screen_height - 50))
+    screen.blit(instruction_surface, instruction_rect)
+
 def draw_pause_menu(screen, selected_option):
     """Dessine le menu pause avec un style moderne."""
     screen.blit(OVERLAY, (0, 0))
-    from rgsx_settings import get_symlink_option, get_sources_mode
+    from rgsx_settings import get_symlink_option, get_sources_mode, get_show_unsupported_platforms
     mode = get_sources_mode()
     source_label = _("games_source_rgsx") if mode == "rgsx" else _("games_source_custom")
     if config.music_enabled:
@@ -1262,13 +1329,13 @@ def draw_pause_menu(screen, selected_option):
         _("menu_remap_controls"),      # 1
         _("menu_history"),             # 2
         _("menu_language"),            # 3
-        _("menu_accessibility"),       # 4
-    _("menu_filter_platforms"),    # 5 new filter option
-        f"{_('menu_games_source_prefix')}: {source_label}",  # 5
+        _("menu_display"),             # 4 new merged display menu
+        f"{_('menu_games_source_prefix')}: {source_label}",  # 5 (shifted left)
         _("menu_redownload_cache"),    # 6
         music_option,                   # 7
         symlink_option,                 # 8
-        _("menu_quit")                 # 9
+    _("menu_restart"),             # 9 (new)
+    _("menu_quit")                 # 10
     ]
     menu_width = int(config.screen_width * 0.8)
     line_height = config.font.get_height() + 10

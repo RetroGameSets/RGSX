@@ -3,10 +3,11 @@ import pygame # type: ignore
 import config
 # Constantes pour la répétition automatique - importées de config.py
 from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE
-from config import CONTROLS_CONFIG_PATH , GRID_COLS, GRID_ROWS
+from config import CONTROLS_CONFIG_PATH
 import asyncio
 import json
 import os
+import sys
 from display import draw_validation_transition
 from network import download_rom, download_from_1fichier, is_1fichier_url
 from utils import (
@@ -32,7 +33,7 @@ VALID_STATES = [
     "platform", "game", "confirm_exit",
     "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
     "redownload_game_cache", "restart_popup", "error", "loading", "confirm_clear_history",
-    "language_select", "filter_platforms"
+    "language_select", "filter_platforms", "display_menu"
 ]
 
 def validate_menu_state(state):
@@ -157,19 +158,19 @@ def handle_controls(event, sources, joystick, screen):
                 
         #Plateformes
         elif config.menu_state == "platform":
-            systems_per_page = GRID_COLS * GRID_ROWS
+            systems_per_page = config.GRID_COLS * config.GRID_ROWS
             max_index = min(systems_per_page, len(config.platforms) - config.current_page * systems_per_page) - 1
             current_grid_index = config.selected_platform - config.current_page * systems_per_page
-            row = current_grid_index // GRID_COLS
-            col = current_grid_index % GRID_COLS
+            row = current_grid_index // config.GRID_COLS
+            col = current_grid_index % config.GRID_COLS
             
             # Espace réservé pour des fonctions helper si nécessaire
 
             if is_input_matched(event, "down"):
                 # Navigation vers le bas avec gestion des limites de page
-                if current_grid_index + GRID_COLS <= max_index:
+                if current_grid_index + config.GRID_COLS <= max_index:
                     # Déplacement normal vers le bas
-                    config.selected_platform += GRID_COLS
+                    config.selected_platform += config.GRID_COLS
                     update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
@@ -178,7 +179,7 @@ def handle_controls(event, sources, joystick, screen):
                     # Passage à la page suivante si on est en bas de la grille
                     config.current_page += 1
                     new_row = 0  # Première ligne de la nouvelle page
-                    config.selected_platform = config.current_page * systems_per_page + new_row * GRID_COLS + col
+                    config.selected_platform = config.current_page * systems_per_page + new_row * config.GRID_COLS + col
                     if config.selected_platform >= len(config.platforms):
                         config.selected_platform = len(config.platforms) - 1
                     update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
@@ -187,9 +188,9 @@ def handle_controls(event, sources, joystick, screen):
                                     event.value)
             elif is_input_matched(event, "up"):
                 # Navigation vers le haut avec gestion des limites de page
-                if current_grid_index - GRID_COLS >= 0:
+                if current_grid_index - config.GRID_COLS >= 0:
                     # Déplacement normal vers le haut
-                    config.selected_platform -= GRID_COLS
+                    config.selected_platform -= config.GRID_COLS
                     update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
@@ -197,8 +198,8 @@ def handle_controls(event, sources, joystick, screen):
                 elif config.current_page > 0:
                     # Passage à la page précédente si on est en haut de la grille
                     config.current_page -= 1
-                    new_row = GRID_ROWS - 1  # Dernière ligne de la page précédente
-                    config.selected_platform = config.current_page * systems_per_page + new_row * GRID_COLS + col
+                    new_row = config.GRID_ROWS - 1  # Dernière ligne de la page précédente
+                    config.selected_platform = config.current_page * systems_per_page + new_row * config.GRID_COLS + col
                     if config.selected_platform >= len(config.platforms):
                         config.selected_platform = len(config.platforms) - 1
                     update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
@@ -216,7 +217,7 @@ def handle_controls(event, sources, joystick, screen):
                 elif config.current_page > 0:
                     # Passage à la page précédente si on est à la première colonne
                     config.current_page -= 1
-                    config.selected_platform = config.current_page * systems_per_page + row * GRID_COLS + (GRID_COLS - 1)
+                    config.selected_platform = config.current_page * systems_per_page + row * config.GRID_COLS + (config.GRID_COLS - 1)
                     if config.selected_platform >= len(config.platforms):
                         config.selected_platform = len(config.platforms) - 1
                     update_key_state("left", True, event.type, event.key if event.type == pygame.KEYDOWN else 
@@ -224,7 +225,7 @@ def handle_controls(event, sources, joystick, screen):
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
                                     event.value)
             elif is_input_matched(event, "right"):
-                if col < GRID_COLS - 1 and current_grid_index < max_index:
+                if col < config.GRID_COLS - 1 and current_grid_index < max_index:
                     # Déplacement normal vers la droite
                     config.selected_platform += 1
                     update_key_state("right", True, event.type, event.key if event.type == pygame.KEYDOWN else 
@@ -234,7 +235,7 @@ def handle_controls(event, sources, joystick, screen):
                 elif (config.current_page + 1) * systems_per_page < len(config.platforms):
                     # Passage à la page suivante si on est à la dernière colonne
                     config.current_page += 1
-                    config.selected_platform = config.current_page * systems_per_page + row * GRID_COLS
+                    config.selected_platform = config.current_page * systems_per_page + row * config.GRID_COLS
                     if config.selected_platform >= len(config.platforms):
                         config.selected_platform = len(config.platforms) - 1
                     update_key_state("right", True, event.type, event.key if event.type == pygame.KEYDOWN else 
@@ -245,7 +246,7 @@ def handle_controls(event, sources, joystick, screen):
                 # Navigation rapide vers la page suivante
                 if (config.current_page + 1) * systems_per_page < len(config.platforms):
                     config.current_page += 1
-                    config.selected_platform = config.current_page * systems_per_page + row * GRID_COLS + col
+                    config.selected_platform = config.current_page * systems_per_page + row * config.GRID_COLS + col
                     if config.selected_platform >= len(config.platforms):
                         config.selected_platform = len(config.platforms) - 1
                     # Réinitialiser la répétition pour éviter des comportements inattendus
@@ -258,7 +259,7 @@ def handle_controls(event, sources, joystick, screen):
                 # Navigation rapide vers la page précédente
                 if config.current_page > 0:
                     config.current_page -= 1
-                    config.selected_platform = config.current_page * systems_per_page + row * GRID_COLS + col
+                    config.selected_platform = config.current_page * systems_per_page + row * config.GRID_COLS + col
                     if config.selected_platform >= len(config.platforms):
                         config.selected_platform = len(config.platforms) - 1
                     # Réinitialiser la répétition pour éviter des comportements inattendus
@@ -514,8 +515,8 @@ def handle_controls(event, sources, joystick, screen):
                                     platform,
                                     load_extensions_json()
                                 )
-                                ext = os.path.splitext(url)[1].lower()
-                                if not is_supported and ext not in ARCHIVE_EXTENSIONS:
+                                zip_ok = bool(config.pending_download[3])  # True only if archive and system known
+                                if not is_supported and not zip_ok:
                                     # Stocker comme pending sans dupliquer l'entrée
                                     config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
                                     config.previous_menu_state = config.menu_state
@@ -588,8 +589,8 @@ def handle_controls(event, sources, joystick, screen):
                                     platform,
                                     load_extensions_json()
                                 )
-                                ext = os.path.splitext(url)[1].lower()
-                                if not is_supported and ext not in ARCHIVE_EXTENSIONS:
+                                zip_ok = bool(config.pending_download[3])
+                                if not is_supported and not zip_ok:
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "extension_warning"
                                     config.extension_confirm_selection = 0
@@ -621,8 +622,8 @@ def handle_controls(event, sources, joystick, screen):
                                     platform,
                                     load_extensions_json()
                                 )
-                                ext = os.path.splitext(url)[1].lower()
-                                if not is_supported and ext not in ARCHIVE_EXTENSIONS:
+                                zip_ok = bool(config.pending_download[3])
+                                if not is_supported and not zip_ok:
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "extension_warning"
                                     config.extension_confirm_selection = 0
@@ -669,7 +670,7 @@ def handle_controls(event, sources, joystick, screen):
                                 config.menu_state = "error"
                                 config.error_message = _(
                                     "error_api_key"
-                                ).format(os.join(config.SAVE_FOLDER,"1fichierAPI.txt"))
+                                ).format(os.path.join(config.SAVE_FOLDER,"1fichierAPI.txt"))
                                 config.history[-1]["status"] = "Erreur"
                                 config.history[-1]["progress"] = 0
                                 config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
@@ -711,8 +712,8 @@ def handle_controls(event, sources, joystick, screen):
                                     if not config.pending_download:
                                         continue
                                     is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
-                                    ext = os.path.splitext(url)[1].lower()
-                                    if not is_supported and ext not in ARCHIVE_EXTENSIONS:
+                                    zip_ok = bool(config.pending_download[3])
+                                    if not is_supported and not zip_ok:
                                         config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
                                         config.previous_menu_state = config.menu_state
                                         config.menu_state = "extension_warning"
@@ -770,8 +771,8 @@ def handle_controls(event, sources, joystick, screen):
                                 if not config.pending_download:
                                     continue
                                 is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
-                                ext = os.path.splitext(url)[1].lower()
-                                if not is_supported and ext not in ARCHIVE_EXTENSIONS:
+                                zip_ok = bool(config.pending_download[3])
+                                if not is_supported and not zip_ok:
                                     config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "extension_warning"
@@ -863,7 +864,13 @@ def handle_controls(event, sources, joystick, screen):
                             config.pending_download = check_extension_before_download(game[1], platform, game_name)
                             if config.pending_download:
                                 url, platform, game_name, is_zip_non_supported = config.pending_download
-                                if is_zip_non_supported and os.path.splitext(url)[1].lower() not in ARCHIVE_EXTENSIONS:
+                                # Recalculer le support exact et décider via le flag is_zip_non_supported
+                                is_supported = is_extension_supported(
+                                    sanitize_filename(game_name),
+                                    platform,
+                                    load_extensions_json()
+                                )
+                                if not is_supported and not is_zip_non_supported:
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "extension_warning"
                                     config.extension_confirm_selection = 0
@@ -990,12 +997,17 @@ def handle_controls(event, sources, joystick, screen):
         # Menu pause
         elif config.menu_state == "pause_menu":
             #logger.debug(f"État pause_menu, selected_option={config.selected_option}, événement={event.type}, valeur={getattr(event, 'value', None)}")
-            if is_input_matched(event, "up"):
+            # Start toggles back to previous state when already in pause
+            if is_input_matched(event, "start"):
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.needs_redraw = True
+                logger.debug(f"Start: retour à {config.menu_state} depuis pause_menu")
+            elif is_input_matched(event, "up"):
                 config.selected_option = max(0, config.selected_option - 1)
                 config.needs_redraw = True
             elif is_input_matched(event, "down"):
                 # Nombre d'options dynamique (inclut éventuellement l'option source des jeux)
-                total = getattr(config, 'pause_menu_total_options', 9)  # fallback 9
+                total = getattr(config, 'pause_menu_total_options', 11)  # fallback 11 (Restart added)
                 config.selected_option = min(total - 1, config.selected_option + 1)
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
@@ -1031,18 +1043,14 @@ def handle_controls(event, sources, joystick, screen):
                     config.selected_language_index = 0
                     config.needs_redraw = True
                     logger.debug(f"Passage à language_select depuis pause_menu")
-                elif config.selected_option == 4:  # Accessibility
+                elif config.selected_option == 4:  # Display
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                    config.menu_state = "accessibility_menu"
+                    config.menu_state = "display_menu"
+                    if not hasattr(config, 'display_menu_selection'):
+                        config.display_menu_selection = 0
                     config.needs_redraw = True
-                    logger.debug("Passage au menu accessibilité")
-                elif config.selected_option == 5:  # Filter platforms
-                    # Ne pas écraser previous_menu_state; il référence l'état avant l'ouverture du pause menu
-                    config.menu_state = "filter_platforms"
-                    config.selected_filter_index = 0
-                    config.filter_platforms_scroll_offset = 0
-                    config.needs_redraw = True
-                elif config.selected_option == 6:  # Source toggle (index shifted by new option)
+                    logger.debug("Passage au menu affichage")
+                elif config.selected_option == 5:  # Source toggle (index shifted by removal of filter)
                     try:
                         from rgsx_settings import get_sources_mode, set_sources_mode
                         current_mode = get_sources_mode()
@@ -1058,13 +1066,13 @@ def handle_controls(event, sources, joystick, screen):
                         logger.info(f"Changement du mode des sources vers {new_mode}")
                     except Exception as e:
                         logger.error(f"Erreur changement mode sources: {e}")
-                elif config.selected_option == 7:  # Redownload game cache
+                elif config.selected_option == 6:  # Redownload game cache
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "redownload_game_cache"
                     config.redownload_confirm_selection = 0
                     config.needs_redraw = True
                     logger.debug(f"Passage à redownload_game_cache depuis pause_menu")
-                elif config.selected_option == 8:  # Music toggle
+                elif config.selected_option == 7:  # Music toggle
                     config.music_enabled = not config.music_enabled
                     save_music_config()
                     if config.music_enabled:
@@ -1076,7 +1084,7 @@ def handle_controls(event, sources, joystick, screen):
                         pygame.mixer.music.stop()
                     config.needs_redraw = True
                     logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via menu pause")
-                elif config.selected_option == 9:  # Symlink option
+                elif config.selected_option == 8:  # Symlink option
                     from rgsx_settings import set_symlink_option, get_symlink_option
                     current_status = get_symlink_option()
                     success, message = set_symlink_option(not current_status)
@@ -1084,6 +1092,9 @@ def handle_controls(event, sources, joystick, screen):
                     config.popup_timer = 3000 if success else 5000
                     config.needs_redraw = True
                     logger.info(f"Symlink option {'activée' if not current_status else 'désactivée'} via menu pause")
+                elif config.selected_option == 9:  # Restart
+                    from utils import restart_application
+                    restart_application(2000)
                 elif config.selected_option == 10:  # Quit
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                     config.menu_state = "confirm_exit"
@@ -1101,6 +1112,88 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "pause_menu"
                 config.needs_redraw = True
                 logger.debug("Retour au menu pause depuis controls_help")
+
+        # Menu Affichage (layout, police, unsupported)
+        elif config.menu_state == "display_menu":
+            sel = getattr(config, 'display_menu_selection', 0)
+            if is_input_matched(event, "up"):
+                config.display_menu_selection = (sel - 1) % 4
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                config.display_menu_selection = (sel + 1) % 4
+                config.needs_redraw = True
+            elif is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm"):
+                sel = getattr(config, 'display_menu_selection', 0)
+                # 0: layout change
+                if sel == 0 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    layouts = [(3,3),(3,4),(4,3),(4,4)]
+                    try:
+                        idx = layouts.index((config.GRID_COLS, config.GRID_ROWS))
+                    except ValueError:
+                        idx = 1
+                    idx = (idx - 1) % len(layouts) if is_input_matched(event, "left") else (idx + 1) % len(layouts)
+                    new_cols, new_rows = layouts[idx]
+                    try:
+                        from rgsx_settings import set_display_grid
+                        set_display_grid(new_cols, new_rows)
+                    except Exception as e:
+                        logger.error(f"Erreur set_display_grid: {e}")
+                    config.GRID_COLS = new_cols
+                    config.GRID_ROWS = new_rows
+                    config.needs_redraw = True
+                    # Redémarrage automatique pour appliquer proprement la modification de layout
+                    try:
+                        from utils import restart_application
+                        # Montrer brièvement l'info puis redémarrer
+                        config.menu_state = "restart_popup"
+                        config.popup_message = _("popup_restarting")
+                        config.popup_timer = 2000
+                        restart_application(2000)
+                    except Exception as e:
+                        logger.error(f"Erreur lors du redémarrage après changement de layout: {e}")
+                # 1: font size adjust
+                elif sel == 1 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    from accessibility import save_accessibility_settings
+                    opts = getattr(config, 'font_scale_options', [0.75, 1.0, 1.25, 1.5, 1.75])
+                    idx = getattr(config, 'current_font_scale_index', 1)
+                    idx = max(0, idx - 1) if is_input_matched(event, "left") else min(len(opts)-1, idx + 1)
+                    if idx != getattr(config, 'current_font_scale_index', 1):
+                        config.current_font_scale_index = idx
+                        scale = opts[idx]
+                        config.accessibility_settings["font_scale"] = scale
+                        try:
+                            save_accessibility_settings(config.accessibility_settings)
+                        except Exception as e:
+                            logger.error(f"Erreur sauvegarde accessibilité: {e}")
+                        try:
+                            config.init_font()
+                        except Exception as e:
+                            logger.error(f"Erreur init polices: {e}")
+                        config.needs_redraw = True
+                # 2: toggle unsupported
+                elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                    try:
+                        from rgsx_settings import get_show_unsupported_platforms, set_show_unsupported_platforms
+                        current = get_show_unsupported_platforms()
+                        new_val = set_show_unsupported_platforms(not current)
+                        from utils import load_sources
+                        load_sources()
+                        config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
+                        config.popup_timer = 3000
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle unsupported: {e}")
+                # 3: open filter platforms menu
+                elif sel == 3 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
+                    # Remember return target so the filter menu can go back to display
+                    config.filter_return_to = "display_menu"
+                    config.menu_state = "filter_platforms"
+                    config.selected_filter_index = 0
+                    config.filter_platforms_scroll_offset = 0
+                    config.needs_redraw = True
+            elif is_input_matched(event, "cancel"):
+                config.menu_state = "pause_menu"
+                config.needs_redraw = True
 
         # Remap controls
         elif config.menu_state == "controls_mapping":
@@ -1137,9 +1230,12 @@ def handle_controls(event, sources, joystick, screen):
                                 logger.debug("Dossier images supprimé avec succès")
                             config.menu_state = "restart_popup"
                             config.popup_message = _("popup_redownload_success")
-                            config.popup_timer = 5000  # 5 secondes
+                            config.popup_timer = 2000  # bref message
                             config.needs_redraw = True
                             logger.debug("Passage à restart_popup")
+                            # Redémarrage automatique
+                            from utils import restart_application
+                            restart_application(2000)
                         except Exception as e:
                             logger.error(f"Erreur lors de la suppression du fichier sources.json ou dossiers: {e}")
                             config.menu_state = "error"
@@ -1150,9 +1246,11 @@ def handle_controls(event, sources, joystick, screen):
                         logger.debug("Fichier sources.json non trouvé, passage à restart_popup")
                         config.menu_state = "restart_popup"
                         config.popup_message = _("popup_no_cache")
-                        config.popup_timer = 5000  # 5 secondes
+                        config.popup_timer = 2000
                         config.needs_redraw = True
                         logger.debug("Passage à restart_popup")
+                        from utils import restart_application
+                        restart_application(2000)
                 else:  # Non
                     config.menu_state = validate_menu_state(config.previous_menu_state)
                     config.needs_redraw = True
@@ -1213,7 +1311,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 logger.debug("Annulation de la sélection de langue, retour au menu pause")
 
-        # Menu filtre plateformes
+    # Menu filtre plateformes
         elif config.menu_state == "filter_platforms":
             total_items = len(config.filter_platforms_selection)
             action_buttons = 4
@@ -1271,7 +1369,7 @@ def handle_controls(event, sources, joystick, screen):
                         load_sources()
                         # Recalibrer la sélection et la page courante si elles dépassent la nouvelle liste visible
                         try:
-                            systems_per_page = GRID_COLS * GRID_ROWS
+                            systems_per_page = config.GRID_COLS * config.GRID_ROWS
                             if config.current_page * systems_per_page >= len(config.platforms):
                                 config.current_page = 0
                             if config.selected_platform >= len(config.platforms):
@@ -1281,12 +1379,32 @@ def handle_controls(event, sources, joystick, screen):
                             config.current_page = 0
                             config.selected_platform = 0
                         config.filter_platforms_dirty = False
-                        config.menu_state = "pause_menu"
+                        # Return either to display menu or pause menu depending on origin
+                        target = getattr(config, 'filter_return_to', 'pause_menu')
+                        config.menu_state = target
+                        if target == 'display_menu':
+                            # reset display selection to the Filter item for convenience
+                            config.display_menu_selection = 3
+                        else:
+                            config.selected_option = 5  # keep pointer on Filter in pause menu
+                        config.filter_return_to = None
                     elif btn_idx == 3:  # back
-                        config.menu_state = "pause_menu"
+                        target = getattr(config, 'filter_return_to', 'pause_menu')
+                        config.menu_state = target
+                        if target == 'display_menu':
+                            config.display_menu_selection = 3
+                        else:
+                            config.selected_option = 5
+                        config.filter_return_to = None
                     config.needs_redraw = True
             elif is_input_matched(event, "cancel"):
-                config.menu_state = "pause_menu"
+                target = getattr(config, 'filter_return_to', 'pause_menu')
+                config.menu_state = target
+                if target == 'display_menu':
+                    config.display_menu_selection = 3
+                else:
+                    config.selected_option = 5
+                config.filter_return_to = None
                 config.needs_redraw = True
 
 
