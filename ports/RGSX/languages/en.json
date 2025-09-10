@@ -61,6 +61,7 @@
     "extension_warning_enable_unknown_hint": "\nTo hide this message: enable \"Hide unknown extension warning\" in Pause Menu > Display",
     
     "confirm_exit": "Exit application?",
+    "confirm_exit_with_downloads": "Attention: {0} download(s) in progress. Quit anyway?",
     "confirm_clear_history": "Clear history?",
     "confirm_redownload_cache": "Update games list?",
     

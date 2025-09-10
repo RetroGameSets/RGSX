@@ -62,6 +62,7 @@
     "extension_warning_enable_unknown_hint": "\nPara no mostrar este mensaje: activa \"Ocultar aviso de extensión desconocida\" en Menú de pausa > Pantalla",
     
     "confirm_exit": "¿Salir de la aplicación?",
+    "confirm_exit_with_downloads": "Atención: {0} descarga(s) en curso. ¿Salir de todas formas?",
     "confirm_clear_history": "¿Vaciar el historial?",
     "confirm_redownload_cache": "¿Actualizar la lista de juegos?",
     

@@ -493,8 +493,6 @@ def load_sources():
         for platform_name in config.platforms:
             games = load_games(platform_name)
             config.games_count[platform_name] = len(games)
-
-        write_unavailable_systems()
         return sources
     except Exception as e:
         logger.error(f"Erreur fusion systèmes + détection jeux: {e}")
@@ -572,30 +570,6 @@ def load_games(platform_id):
     except Exception as e:
         logger.error(f"Erreur lors du chargement des jeux pour {platform_id}: {e}")
         return []
-
-def write_unavailable_systems():
-    """Écrit la liste des systèmes avec une erreur 404 dans un fichier texte."""
-    if not unavailable_systems:
-        logger.debug("Aucun système avec des liens HS, rien à écrire dans le fichier.")
-        return
-    
-    # Formater la date et l'heure pour le nom du fichier
-    current_time = datetime.now()
-    timestamp = current_time.strftime("%d-%m-%Y-%H-%M")
-    log_file = os.path.join(config.log_dir, f"systemes_unavailable_{timestamp}.txt")
-    
-    try:
-        # Créer le répertoire s'il n'existe pas
-        os.makedirs(config.log_dir, exist_ok=True)
-        
-        # Écrire les systèmes dans le fichier
-        with open(log_file, 'w', encoding='utf-8') as f:
-            f.write("Systèmes avec une erreur 404 :\n")
-            for system in unavailable_systems:
-                f.write(f"{system}\n")
-        logger.debug(f"Fichier écrit : {log_file} avec {len(unavailable_systems)} systèmes")
-    except Exception as e:
-        logger.error(f"Erreur lors de l'écriture du fichier {log_file} : {str(e)}")
 
 def truncate_text_middle(text, font, max_width, is_filename=True):
     """Tronque le texte en insérant '...' au milieu, en préservant le début et la fin.

@@ -58,6 +58,7 @@
     "extension_warning_enable_unknown_hint": "\nPour ne plus afficher ce messager : Activer l'option \"Masquer avertissement\" dans le Menu Pause>Display",
     
     "confirm_exit": "Quitter l'application ?",
+    "confirm_exit_with_downloads": "Attention : {0} téléchargement(s) en cours. Quitter quand même ?",
     "confirm_clear_history": "Vider l'historique ?",
     "confirm_redownload_cache": "Mettre à jour la liste des jeux ?",
     

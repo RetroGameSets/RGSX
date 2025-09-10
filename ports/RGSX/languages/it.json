@@ -61,6 +61,7 @@
   "extension_warning_enable_unknown_hint": "\nPer non visualizzare questo messaggio: abilita \"Nascondi avviso estensione sconosciuta\" in Menu Pausa > Schermo",
 
   "confirm_exit": "Uscire dall'applicazione?",
+  "confirm_exit_with_downloads": "Attenzione: {0} download in corso. Uscire comunque?",
   "confirm_clear_history": "Cancellare la cronologia?",
   "confirm_redownload_cache": "Aggiornare l'elenco dei giochi?",
 

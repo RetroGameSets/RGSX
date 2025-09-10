@@ -252,6 +252,38 @@ def extract_update(zip_path, dest_dir, source_url):
 
 # File d'attente pour la progression - une par tâche
 progress_queues = {}
+# Cancellation and thread tracking per download task
+cancel_events = {}
+download_threads = {}
+
+def request_cancel(task_id: str) -> bool:
+    """Request cancellation for a running download task by its task_id."""
+    ev = cancel_events.get(task_id)
+    if ev is not None:
+        try:
+            ev.set()
+            logger.debug(f"Cancel requested for task_id={task_id}")
+            return True
+        except Exception as e:
+            logger.debug(f"Failed to set cancel for task_id={task_id}: {e}")
+            return False
+    logger.debug(f"No cancel event found for task_id={task_id}")
+    return False
+
+def cancel_all_downloads():
+    """Cancel all active downloads and attempt to stop threads quickly."""
+    for tid, ev in list(cancel_events.items()):
+        try:
+            ev.set()
+        except Exception:
+            pass
+    # Optionally join threads briefly
+    for tid, th in list(download_threads.items()):
+        try:
+            if th.is_alive():
+                th.join(timeout=0.2)
+        except Exception:
+            pass
 
 
 
@@ -259,13 +291,16 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     logger.debug(f"Début téléchargement: {game_name} depuis {url}, is_zip_non_supported={is_zip_non_supported}, task_id={task_id}")
     result = [None, None]
     
-    # Créer une queue spécifique pour cette tâche
+    # Créer une queue/cancel spécifique pour cette tâche
     if task_id not in progress_queues:
         progress_queues[task_id] = queue.Queue()
+    if task_id not in cancel_events:
+        cancel_events[task_id] = threading.Event()
     
     def download_thread():
         logger.debug(f"Thread téléchargement démarré pour {url}, task_id={task_id}")
         try:
+            cancel_ev = cancel_events.get(task_id)
             # Use symlink path if enabled
             from rgsx_settings import apply_symlink_path
             
@@ -407,6 +442,20 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
             with open(dest_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=chunk_size):
+                    if cancel_ev is not None and cancel_ev.is_set():
+                        logger.debug(f"Annulation détectée, arrêt du téléchargement pour task_id={task_id}")
+                        result[0] = False
+                        result[1] = _("download_canceled") if _ else "Download canceled"
+                        try:
+                            f.close()
+                        except Exception:
+                            pass
+                        try:
+                            if os.path.exists(dest_path):
+                                os.remove(dest_path)
+                        except Exception:
+                            pass
+                        break
                     if chunk:
                         size_received = len(chunk)
                         f.write(chunk)
@@ -494,7 +543,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             progress_queues[task_id].put((task_id, result[0], result[1]))
             logger.debug(f"Final result sent to queue: success={result[0]}, message={result[1]}, task_id={task_id}")
 
-    thread = threading.Thread(target=download_thread)
+    thread = threading.Thread(target=download_thread, daemon=True)
+    download_threads[task_id] = thread
     thread.start()
     
     # Boucle principale pour mettre à jour la progression
@@ -541,6 +591,10 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             logger.error(f"Erreur mise à jour progression: {str(e)}")
     
     thread.join()
+    try:
+        download_threads.pop(task_id, None)
+    except Exception:
+        pass
     # Drain any remaining final message to ensure history is saved
     try:
         task_queue = progress_queues.get(task_id)
@@ -562,6 +616,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     # Nettoyer la queue
     if task_id in progress_queues:
         del progress_queues[task_id]
+    cancel_events.pop(task_id, None)
     return result[0], result[1]
 
 async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=False, task_id=None):
@@ -574,10 +629,13 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
     logger.debug(f"Création queue pour task_id={task_id}")
     if task_id not in progress_queues:
         progress_queues[task_id] = queue.Queue()
+    if task_id not in cancel_events:
+        cancel_events[task_id] = threading.Event()
 
     def download_thread():
         logger.debug(f"Thread téléchargement 1fichier démarré pour {url}, task_id={task_id}")
         try:
+            cancel_ev = cancel_events.get(task_id)
             link = url.split('&af=')[0]
             logger.debug(f"URL nettoyée: {link}")
             # Use symlink path if enabled
@@ -686,6 +744,20 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         logger.debug(f"Ouverture fichier: {dest_path}")
                         with open(dest_path, 'wb') as f:
                             for chunk in response.iter_content(chunk_size=chunk_size):
+                                if cancel_ev is not None and cancel_ev.is_set():
+                                    logger.debug(f"Annulation détectée, arrêt du téléchargement 1fichier pour task_id={task_id}")
+                                    result[0] = False
+                                    result[1] = _("download_canceled") if _ else "Download canceled"
+                                    try:
+                                        f.close()
+                                    except Exception:
+                                        pass
+                                    try:
+                                        if os.path.exists(dest_path):
+                                            os.remove(dest_path)
+                                    except Exception:
+                                        pass
+                                    break
                                 if chunk:
                                     f.write(chunk)
                                     downloaded += len(chunk)
@@ -781,7 +853,8 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             logger.debug(f"Résultat final envoyé à la queue: success={result[0]}, message={result[1]}, task_id={task_id}")
 
     logger.debug(f"Démarrage thread pour {url}, task_id={task_id}")
-    thread = threading.Thread(target=download_thread)
+    thread = threading.Thread(target=download_thread, daemon=True)
+    download_threads[task_id] = thread
     thread.start()
 
     # Boucle principale pour mettre à jour la progression
@@ -825,6 +898,10 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
 
     logger.debug(f"Fin boucle de progression, attente fin thread pour task_id={task_id}")
     thread.join()
+    try:
+        download_threads.pop(task_id, None)
+    except Exception:
+        pass
     logger.debug(f"Thread terminé, nettoyage queue pour task_id={task_id}")
     # Drain any remaining final message to ensure history is saved
     try:
@@ -847,6 +924,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
     # Nettoyer la queue
     if task_id in progress_queues:
         del progress_queues[task_id]
+    cancel_events.pop(task_id, None)
     logger.debug(f"Fin download_from_1fichier, résultat: success={result[0]}, message={result[1]}")
     return result[0], result[1]
 def is_1fichier_url(url):

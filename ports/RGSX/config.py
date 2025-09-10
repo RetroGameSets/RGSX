@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.0.5"
+app_version = "2.2.0.6"
 
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""

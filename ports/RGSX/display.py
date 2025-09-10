@@ -1128,7 +1128,8 @@ def draw_extension_warning(screen):
             logger.warning("game_name vide, utilisation de 'Inconnu'")
 
     if is_zip:
-        message = _("extension_warning_zip").format(game_name)
+        core = _("extension_warning_zip").format(game_name)
+        hint = ""
     else:
         # Ajout d'un indice pour activer le téléchargement des extensions inconnues
         try:
@@ -1136,18 +1137,25 @@ def draw_extension_warning(screen):
         except Exception:
             hint = ""
         core = _("extension_warning_unsupported").format(game_name)
-        message = core if not hint else f"{core}{hint}"
 
+    # Nettoyer et préparer les lignes
     max_width = config.screen_width - 80
-    lines = wrap_text(message, config.font, max_width)
+    core_lines = wrap_text(core, config.font, max_width)
+    hint_text = (hint or "").replace("\n", " ").strip()
+    hint_lines = wrap_text(hint_text, config.small_font, max_width) if hint_text else []
 
     try:
-        line_height = config.font.get_height() + 5
-        text_height = len(lines) * line_height
+        line_height_core = config.font.get_height() + 5
+        line_height_hint = config.small_font.get_height() + 4
+        spacing_between = 6 if hint_lines else 0
+        text_height = len(core_lines) * line_height_core + (spacing_between) + len(hint_lines) * line_height_hint
         button_height = int(config.screen_height * 0.0463)
         margin_top_bottom = 20
         rect_height = text_height + button_height + 2 * margin_top_bottom
-        max_text_width = max([config.font.size(line)[0] for line in lines], default=300)
+        max_text_width = max(
+            [config.font.size(l)[0] for l in core_lines] + ([config.small_font.size(l)[0] for l in hint_lines] if hint_lines else []),
+            default=300,
+        )
         rect_width = max_text_width + 80
         rect_x = (config.screen_width - rect_width) // 2
         rect_y = (config.screen_height - rect_height) // 2
@@ -1156,10 +1164,25 @@ def draw_extension_warning(screen):
         pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
         pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
 
-        for i, line in enumerate(lines):
+        # Lignes du cœur du message (orange)
+        for i, line in enumerate(core_lines):
             text_surface = config.font.render(line, True, THEME_COLORS["warning_text"])
-            text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
+            text_rect = text_surface.get_rect(center=(
+                config.screen_width // 2,
+                rect_y + margin_top_bottom + i * line_height_core + line_height_core // 2,
+            ))
             screen.blit(text_surface, text_rect)
+
+        # Lignes d'indice (blanc/gris) si présentes
+        if hint_lines:
+            hint_start_y = rect_y + margin_top_bottom + len(core_lines) * line_height_core + spacing_between
+            for j, hline in enumerate(hint_lines):
+                hsurf = config.small_font.render(hline, True, THEME_COLORS["text"])
+                hrect = hsurf.get_rect(center=(
+                    config.screen_width // 2,
+                    hint_start_y + j * line_height_hint + line_height_hint // 2,
+                ))
+                screen.blit(hsurf, hrect)
 
         draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - 180, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.extension_confirm_selection == 1)
         draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 20, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.extension_confirm_selection == 0)
@@ -1213,7 +1236,13 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
 
 # Menu pause
 def draw_language_menu(screen):
-    """Dessine le menu de sélection de langue avec un style moderne."""
+    """Dessine le menu de sélection de langue avec un style moderne.
+
+    Améliorations:
+    - Hauteur des boutons réduite et responsive selon la taille d'écran.
+    - Bloc (titre + liste de langues) centré verticalement.
+    - Gestion d'overflow: réduit légèrement la hauteur/espacement si nécessaire.
+    """
     from language import get_available_languages, get_language_name
     
     screen.blit(OVERLAY, (0, 0))
@@ -1225,21 +1254,54 @@ def draw_language_menu(screen):
         logger.error("Aucune langue disponible")
         return
     
-    # Titre
+    # Titre (mesuré d'abord pour connaître la hauteur réelle du fond)
     title_text = _("language_select_title")
     title_surface = config.font.render(title_text, True, THEME_COLORS["text"])
-    title_rect = title_surface.get_rect(center=(config.screen_width // 2, config.screen_height // 4))
-    
-    # Fond du titre
-    title_bg_rect = title_rect.inflate(40, 20)
+    # On calcule un rect neutre, on positionnera ensuite pour centrer le bloc
+    title_rect = title_surface.get_rect()
+    # Padding responsive plus léger pour réduire la hauteur
+    hpad = max(24, min(36, int(config.screen_width * 0.04)))
+    vpad = max(8, min(14, int(title_surface.get_height() * 0.4)))
+    title_bg_rect = title_rect.inflate(hpad, vpad)
+
+    # Dimensions responsives des boutons
+    # Largeur bornée entre 260 et 380px (~40% de la largeur écran)
+    button_width = max(260, min(380, int(config.screen_width * 0.4)))
+    # Hauteur réduite et responsive (env. 5.5% de la hauteur écran), bornée 28..56
+    button_height = max(28, min(56, int(config.screen_height * 0.055)))
+    # Espacement vertical proportionnel et borné
+    button_spacing = max(8, int(button_height * 0.35))
+
+    # Calcul des dimensions globales pour centrer verticalement (titre + boutons)
+    n = len(available_languages)
+    total_buttons_height = n * button_height + (n - 1) * button_spacing
+    content_height = title_bg_rect.height + button_spacing + total_buttons_height
+
+    # Si le contenu dépasse, on réduit légèrement la hauteur/espacement jusqu'à rentrer
+    available_h = config.screen_height - 80  # marges haut/bas de confort
+    safety_counter = 0
+    while content_height > available_h and safety_counter < 20:
+        if button_height > 28:
+            button_height -= 2
+        elif button_spacing > 6:
+            button_spacing -= 1
+        else:
+            break
+        total_buttons_height = n * button_height + (n - 1) * button_spacing
+        content_height = title_bg_rect.height + button_spacing + total_buttons_height
+        safety_counter += 1
+
+    # Positionner le bloc au centre verticalement
+    content_top = max(10, (config.screen_height - content_height) // 2)
+    # Positionner le titre
+    title_bg_rect.centerx = config.screen_width // 2
+    title_bg_rect.y = content_top
+    title_rect.center = (title_bg_rect.centerx, title_bg_rect.y + title_bg_rect.height // 2)
+
+    # Dessiner le titre
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_bg_rect, border_radius=10)
     pygame.draw.rect(screen, THEME_COLORS["border"], title_bg_rect, 2, border_radius=10)
     screen.blit(title_surface, title_rect)
-    
-    # Options de langue
-    button_height = 60
-    button_width = 300
-    button_spacing = 20
 
     # Démarrer la liste juste sous le titre avec le même écart que les boutons
     start_y = title_bg_rect.bottom + button_spacing
@@ -1247,16 +1309,16 @@ def draw_language_menu(screen):
     for i, lang_code in enumerate(available_languages):
         # Obtenir le nom de la langue
         lang_name = get_language_name(lang_code)
-        
+
         # Position du bouton
         button_x = (config.screen_width - button_width) // 2
         button_y = start_y + i * (button_height + button_spacing)
-        
+
         # Dessiner le bouton
         button_color = THEME_COLORS["button_hover"] if i == config.selected_language_index else THEME_COLORS["button_idle"]
         pygame.draw.rect(screen, button_color, (button_x, button_y, button_width, button_height), border_radius=10)
         pygame.draw.rect(screen, THEME_COLORS["border"], (button_x, button_y, button_width, button_height), 2, border_radius=10)
-        
+
         # Texte du bouton
         text_surface = config.font.render(lang_name, True, THEME_COLORS["text"])
         text_rect = text_surface.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
@@ -1279,11 +1341,20 @@ def draw_display_menu(screen):
     show_unsupported = get_show_unsupported_platforms()
     allow_unknown = get_allow_unknown_extensions()
 
+    # Compter les systèmes non supportés actuellement masqués
+    unsupported_list = getattr(config, "unsupported_platforms", []) or []
+    try:
+        hidden_count = 0 if show_unsupported else len(list(unsupported_list))
+    except Exception:
+        hidden_count = 0
+    unsupported_label = ((_("menu_show_unsupported_on") if show_unsupported else _("menu_show_unsupported_off"))
+                         + f" ({hidden_count})")
+
     # Libellés
     options = [
         f"{_('display_layout')}: {layout_str}",
         _("accessibility_font_size").format(f"{font_scale:.1f}"),
-        _("menu_show_unsupported_on") if show_unsupported else _("menu_show_unsupported_off"),
+    unsupported_label,
         _("menu_allow_unknown_ext_on") if allow_unknown else _("menu_allow_unknown_ext_off"),
         _("menu_filter_platforms"),
     ]
@@ -1396,8 +1467,11 @@ def draw_filter_platforms_menu(screen):
 
     title_text = _("filter_platforms_title")
     title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
-    title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
-    title_rect_inflated = title_rect.inflate(80, 40)
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 14))
+    # Padding responsive réduit
+    hpad = max(36, min(64, int(config.screen_width * 0.06)))
+    vpad = max(10, min(20, int(title_surface.get_height() * 0.45)))
+    title_rect_inflated = title_rect.inflate(hpad, vpad)
     title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
@@ -1659,7 +1733,22 @@ def draw_confirm_dialog(screen):
         logger.debug("OVERLAY recréé dans draw_confirm_dialog")
 
     screen.blit(OVERLAY, (0, 0))
-    message = _("confirm_exit")
+    # Dynamic message: warn when downloads are active
+    active_downloads = 0
+    try:
+        active_downloads = len(getattr(config, 'download_tasks', {}) or {})
+    except Exception:
+        active_downloads = 0
+    if active_downloads > 0:
+        # Try translated key if it exists; otherwise fallback to generic message
+        try:
+            warn_tpl = _("confirm_exit_with_downloads")  # optional key
+            # If untranslated key returns the same string, still format
+            message = warn_tpl.format(active_downloads)
+        except Exception:
+            message = f"Attention: {active_downloads} téléchargement(s) en cours. Quitter quand même ?"
+    else:
+        message = _("confirm_exit")
     wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
     line_height = config.font.get_height() + 5
     text_height = len(wrapped_message) * line_height

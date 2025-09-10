@@ -28,7 +28,7 @@ from display import (
     THEME_COLORS
 )
 from language import _
-from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates
+from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates, cancel_all_downloads
 from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls
 from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
@@ -167,8 +167,9 @@ logger.debug(f"Résolution d'écran : {config.screen_width}x{config.screen_heigh
 try:
     if config.menu_state not in ("loading", "error", "pause_menu"):
         config.menu_state = "loading"
-    config.current_loading_system = _("loading_startup") if _ else "Chargement..."
-    config.loading_progress = 1.0
+    # Afficher directement le même statut que la première étape pour éviter un écran furtif différent
+    config.current_loading_system = _("loading_test_connection")
+    config.loading_progress = 0.0
     draw_loading_screen(screen)
     pygame.display.flip()
     pygame.event.pump()
@@ -510,11 +511,11 @@ async def main():
                 config.needs_redraw = True
                 if action == "confirm":
                     if config.pending_download and config.extension_confirm_selection == 0:  # Oui
-                        url, platform, game_name, is_zip_non_supported = config.pending_download
-                        logger.debug(f"Téléchargement confirmé après avertissement: {game_name} pour {platform} depuis {url}")
+                        url, platform_name, game_name, is_zip_non_supported = config.pending_download
+                        logger.debug(f"Téléchargement confirmé après avertissement: {game_name} pour {platform_name} depuis {url}")
                         task_id = str(pygame.time.get_ticks())
                         config.history.append({
-                            "platform": platform,
+                            "platform": platform_name,
                             "game_name": game_name,
                             "status": "downloading",
                             "progress": 0,
@@ -524,8 +525,8 @@ async def main():
                         config.current_history_item = len(config.history) - 1
                         save_history(config.history)
                         config.download_tasks[task_id] = (
-                            asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported, task_id)),
-                            url, game_name, platform
+                            asyncio.create_task(download_rom(url, platform_name, game_name, is_zip_non_supported, task_id)),
+                            url, game_name, platform_name
                         )
                         config.menu_state = "history"
                         config.pending_download = None
@@ -553,12 +554,12 @@ async def main():
                         game_name = str(game)
                         url = None
                     # Nouveau schéma: config.platforms contient déjà platform_name (string)
-                    platform = config.platforms[config.current_platform]
+                    platform_name = config.platforms[config.current_platform]
                     if url:
                         logger.debug(f"Vérification pour {game_name}, URL: {url}")
                         # Ajouter une entrée temporaire à l'historique
                         config.history.append({
-                            "platform": platform,
+                            "platform": platform_name,
                             "game_name": game_name,
                             "status": "downloading",
                             "progress": 0,
@@ -583,7 +584,7 @@ async def main():
                                 logger.error("Clé API 1fichier absente")
                                 config.pending_download = None
                                 continue
-                            pending = check_extension_before_download(url, platform, game_name)
+                            pending = check_extension_before_download(url, platform_name, game_name)
                             if not pending:
                                 config.menu_state = "error"
                                 config.error_message = _("error_invalid_download_data") if _ else "Invalid download data"
@@ -593,7 +594,7 @@ async def main():
                             else:
                                 from utils import is_extension_supported, load_extensions_json, sanitize_filename
                                 from rgsx_settings import get_allow_unknown_extensions
-                                is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
+                                is_supported = is_extension_supported(sanitize_filename(game_name), platform_name, load_extensions_json())
                                 zip_ok = bool(pending[3])
                                 allow_unknown = False
                                 try:
@@ -613,14 +614,14 @@ async def main():
                                     # Lancer le téléchargement dans une tâche asynchrone
                                     task_id = str(pygame.time.get_ticks())
                                     config.download_tasks[task_id] = (
-                                        asyncio.create_task(download_from_1fichier(url, platform, game_name, zip_ok)),
-                                        url, game_name, platform
+                                        asyncio.create_task(download_from_1fichier(url, platform_name, game_name, zip_ok)),
+                                        url, game_name, platform_name
                                     )
                                     config.menu_state = "history"  # Passer à l'historique
                                     config.needs_redraw = True
                                     logger.debug(f"Téléchargement 1fichier démarré pour {game_name}, passage à l'historique")
                         else:
-                            pending = check_extension_before_download(url, platform, game_name)
+                            pending = check_extension_before_download(url, platform_name, game_name)
                             if not pending:
                                 config.menu_state = "error"
                                 config.error_message = _("error_invalid_download_data") if _ else "Invalid download data"
@@ -630,7 +631,7 @@ async def main():
                             else:
                                 from utils import is_extension_supported, load_extensions_json, sanitize_filename
                                 from rgsx_settings import get_allow_unknown_extensions
-                                is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
+                                is_supported = is_extension_supported(sanitize_filename(game_name), platform_name, load_extensions_json())
                                 zip_ok = bool(pending[3])
                                 allow_unknown = False
                                 try:
@@ -650,18 +651,18 @@ async def main():
                                     # Lancer le téléchargement dans une tâche asynchrone
                                     task_id = str(pygame.time.get_ticks())
                                     config.download_tasks[task_id] = (
-                                        asyncio.create_task(download_rom(url, platform, game_name, zip_ok)),
-                                        url, game_name, platform
+                                        asyncio.create_task(download_rom(url, platform_name, game_name, zip_ok)),
+                                        url, game_name, platform_name
                                     )
                                     config.menu_state = "history"  # Passer à l'historique
                                     config.needs_redraw = True
                                     logger.debug(f"Téléchargement démarré pour {game_name}, passage à l'historique")
                 elif action == "redownload" and config.menu_state == "history" and config.history:
                     entry = config.history[config.current_history_item]
-                    platform = entry["platform"]
+                    platform_name = entry["platform"]
                     game_name = entry["game_name"]
                     for game in config.games:
-                        if isinstance(game, (list, tuple)) and game and game[0] == game_name and config.platforms[config.current_platform] == platform:
+                        if isinstance(game, (list, tuple)) and game and game[0] == game_name and config.platforms[config.current_platform] == platform_name:
                             url = game[1] if len(game) > 1 else None
                         else:
                             continue
@@ -678,7 +679,7 @@ async def main():
                                     logger.error("Clé API 1fichier absente")
                                     config.pending_download = None
                                     continue
-                                pending = check_extension_before_download(url, platform, game_name)
+                                pending = check_extension_before_download(url, platform_name, game_name)
                                 if not pending:
                                     config.menu_state = "error"
                                     config.error_message = _("error_invalid_download_data") if _ else "Invalid download data"
@@ -687,7 +688,7 @@ async def main():
                                 else:
                                     from utils import is_extension_supported, load_extensions_json, sanitize_filename
                                     from rgsx_settings import get_allow_unknown_extensions
-                                    is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
+                                    is_supported = is_extension_supported(sanitize_filename(game_name), platform_name, load_extensions_json())
                                     zip_ok = bool(pending[3])
                                     allow_unknown = False
                                     try:
@@ -703,7 +704,7 @@ async def main():
                                     else:
                                         config.previous_menu_state = config.menu_state
                                         logger.debug(f"Previous menu state défini: {config.previous_menu_state}")
-                                        success, message = download_from_1fichier(url, platform, game_name, zip_ok)
+                                        success, message = download_from_1fichier(url, platform_name, game_name, zip_ok)
                                     # Ancien popup download_result supprimé : retour direct à l'historique
                                     config.download_result_message = message
                                     config.download_result_error = not success
@@ -713,7 +714,7 @@ async def main():
                                     config.needs_redraw = True
                                     logger.debug(f"Retéléchargement 1fichier terminé pour {game_name}, succès={success}, message={message}, retour direct history")
                             else:
-                                pending = check_extension_before_download(url, platform, game_name)
+                                pending = check_extension_before_download(url, platform_name, game_name)
                                 if not pending:
                                     config.menu_state = "error"
                                     config.error_message = _("error_invalid_download_data") if _ else "Invalid download data"
@@ -722,7 +723,7 @@ async def main():
                                 else:
                                     from utils import is_extension_supported, load_extensions_json, sanitize_filename
                                     from rgsx_settings import get_allow_unknown_extensions
-                                    is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
+                                    is_supported = is_extension_supported(sanitize_filename(game_name), platform_name, load_extensions_json())
                                     zip_ok = bool(pending[3])
                                     allow_unknown = False
                                     try:
@@ -738,7 +739,7 @@ async def main():
                                     else:
                                         config.previous_menu_state = config.menu_state
                                         logger.debug(f"Previous menu state défini: {config.previous_menu_state}")
-                                        success, message = download_rom(url, platform, game_name, zip_ok)
+                                        success, message = download_rom(url, platform_name, game_name, zip_ok)
                                     config.download_result_message = message
                                     config.download_result_error = not success
                                     config.download_progress.clear()
@@ -759,7 +760,7 @@ async def main():
         
         # Gestion des téléchargements
         if config.download_tasks:
-            for task_id, (task, url, game_name, platform) in list(config.download_tasks.items()):
+            for task_id, (task, url, game_name, platform_name) in list(config.download_tasks.items()):
                 if task.done():
                     try:
                         success, message = await task
@@ -1121,25 +1122,32 @@ async def main():
         await asyncio.sleep(0.01)
 
     pygame.mixer.music.stop()
-    result = subprocess.run(["taskkill", "/f", "/im", "emulatorLauncher.exe"])
-    if result == 0:
-        logger.debug(f"Quitté avec succès: emulatorLauncher.exe")
+    # Cancel any ongoing downloads to prevent lingering background threads
+    try:
+        cancel_all_downloads()
+    except Exception as e:
+        logger.debug(f"Erreur lors de l'annulation globale des téléchargements: {e}")
+    
+    if platform.system() == "Windows":
+        try:
+            result = subprocess.run(["taskkill", "/f", "/im", "emulatorLauncher.exe"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            if getattr(result, "returncode", 1) == 0:
+                logger.debug("Quitté avec succès: emulatorLauncher.exe")
+            else:
+                logger.debug("Erreur lors de la tentative d'arrêt d'emulatorLauncher.exe")
+        except FileNotFoundError:
+            logger.debug("taskkill introuvable, saut de l'étape d'arrêt d'emulatorLauncher.exe")
     else:
-        logger.debug("Error en essayant de quitter emulatorlauncher.")
+        try:
+            result2 = subprocess.run(["batocera-es-swissknife", "--emukill"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            if getattr(result2, "returncode", 1) == 0:
+                logger.debug("Arrêt demandé via batocera-es-swissknife --emukill")
+            else:
+                logger.debug("Erreur lors de la tentative d'arrêt via batocera-es-swissknife")
+        except FileNotFoundError:
+            logger.debug("batocera-es-swissknife introuvable, saut de l'étape d'arrêt (environnement non Batocera)")
     pygame.quit()
     logger.debug("Application terminée")
-
-    try:
-        if platform.system() != "Windows":
-            result2 = subprocess.run(["batocera-es-swissknife", "--emukill"])
-            if result2 == 0:
-                logger.debug(f"Quitté avec succès")
-            else:
-                logger.debug("Error en essayant de quitter batocera-es-swissknife.")
-    except FileNotFoundError:
-        logger.debug("batocera-es-swissknife introuvable, saut de l'étape d'arrêt (environnement non Batocera)")
-
-    
 
 if platform.system() == "Emscripten":
     asyncio.ensure_future(main())

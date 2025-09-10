@@ -61,6 +61,7 @@
     "extension_warning_enable_unknown_hint": "\nUm diese Meldung auszublenden: \"Warnung bei unbekannter Erweiterung ausblenden\" in Pausenmenü > Anzeige aktivieren",
     
     "confirm_exit": "Anwendung beenden?",
+    "confirm_exit_with_downloads": "Achtung: {0} Download(s) laufen. Trotzdem beenden?",
     "confirm_clear_history": "Verlauf löschen?",
     "confirm_redownload_cache": "Spieleliste aktualisieren?",
     

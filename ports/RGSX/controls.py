@@ -10,6 +10,7 @@ import os
 import sys
 from display import draw_validation_transition
 from network import download_rom, download_from_1fichier, is_1fichier_url
+from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel
 from utils import (
     load_games, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
@@ -1016,11 +1017,15 @@ def handle_controls(event, sources, joystick, screen):
                     # Annuler la tâche correspondante
                     for task_id, (task, task_url, game_name, platform) in list(config.download_tasks.items()):
                         if task_url == url:
+                            try:
+                                request_cancel(task_id)
+                            except Exception:
+                                pass
                             task.cancel()
                             del config.download_tasks[task_id]
                             entry["status"] = "Canceled"
                             entry["progress"] = 0
-                            entry["message"] = "Téléchargement annulé"
+                            entry["message"] = _("download_canceled") if _ else "Download canceled"
                             save_history(config.history)
                             logger.debug(f"Téléchargement annulé: {game_name}")
                             break
@@ -1066,6 +1071,16 @@ def handle_controls(event, sources, joystick, screen):
         elif config.menu_state == "confirm_exit":
             if is_input_matched(event, "confirm"):
                 if config.confirm_selection == 1:
+                    # Mark all in-progress downloads as canceled in history
+                    try:
+                        for entry in getattr(config, 'history', []) or []:
+                            if entry.get("status") in ["downloading", "Téléchargement", "Extracting"]:
+                                entry["status"] = "Canceled"
+                                entry["progress"] = 0
+                                entry["message"] = _("download_canceled") if _ else "Download canceled"
+                        save_history(config.history)
+                    except Exception:
+                        pass
                     return "quit"
                 else:
                     config.menu_state = validate_menu_state(config.previous_menu_state)
