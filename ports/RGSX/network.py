@@ -613,6 +613,20 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                 break
     except Exception:
         pass
+
+    # Exécuter la mise à jour de la liste des jeux d'EmulationStation UNIQUEMENT sur Batocera
+    try:
+        from config import get_operating_system
+        OPERATING_SYSTEM=get_operating_system()
+        if str(OPERATING_SYSTEM).lower() == "linux":
+            resp = requests.get("http://127.0.0.1:1234/reloadgames", timeout=2)
+            content = (resp.text or "").strip()
+            logger.debug(f"Résultat mise à jour liste des jeux: HTTP {resp.status_code} - {content}")
+        else:
+            logger.debug(f"Mise à jour liste des jeux ignorée (environnement non Linux: {getattr(config, 'OPERATING_SYSTEM', 'unknown')})")
+    except Exception as e:
+        logger.debug(f"Échec mise à jour via requête HTTP locale (Batocera): {e}")
+    
     # Nettoyer la queue
     if task_id in progress_queues:
         del progress_queues[task_id]

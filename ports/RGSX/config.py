@@ -53,6 +53,7 @@ def get_system_root():
             # tester si c'est batocera :
             if os.path.exists("/usr/share/batocera"):
                 OPERATING_SYSTEM = "Batocera"
+                
                 #remonter jusqu'à atteindre /userdata
                 current_path = os.path.abspath(__file__)
                 current_dir = current_path
@@ -132,6 +133,7 @@ if not HEADLESS:
     print(f"IMAGES_FOLDER: {IMAGES_FOLDER}")
     print(f"GAMES_FOLDER: {GAMES_FOLDER}")
     print(f"SOURCES_FILE: {SOURCES_FILE}")
+    print(f"OPERATING_SYSTEM: {get_operating_system()}")
 
 
 # Constantes pour la répétition automatique dans pause_menu
