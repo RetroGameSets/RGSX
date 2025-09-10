@@ -1,7 +1,16 @@
-import pygame # type: ignore
 import os
 import logging
 import platform
+
+# Headless mode for CLI: set env RGSX_HEADLESS=1 to avoid pygame and noisy prints
+HEADLESS = os.environ.get("RGSX_HEADLESS") == "1"
+try:
+    if not HEADLESS:
+        import pygame  # type: ignore
+    else:
+        pygame = None  # type: ignore
+except Exception:
+    pygame = None  # type: ignore
 
 # Version actuelle de l'application
 app_version = "2.2.0.3"
@@ -9,8 +18,9 @@ app_version = "2.2.0.3"
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""
     return platform.system()
-#log dans la console le système d'exploitation
-print(f"Système d'exploitation : {get_operating_system()}")
+#log dans la console le système d'exploitation (désactivé en headless)
+if not HEADLESS:
+    print(f"Système d'exploitation : {get_operating_system()}")
 
 
 def get_application_root():
@@ -20,7 +30,8 @@ def get_application_root():
         current_file = os.path.abspath(__file__)
         # Remonter au dossier parent de config.py (par exemple, dossier de l'application)
         app_root = os.path.dirname(os.path.dirname(current_file))
-        print(f"Dossier de l'application : {app_root}")
+        if not HEADLESS:
+            print(f"Dossier de l'application : {app_root}")
         return app_root
     except NameError:
         # Si __file__ n'est pas défini (par exemple, exécution dans un REPL)
@@ -35,7 +46,8 @@ def get_system_root():
             current_path = os.path.abspath(__file__)
             drive, _ = os.path.splitdrive(current_path)
             system_root = drive + os.sep
-            print(f"Dossier racine du système : {system_root}")
+            if not HEADLESS:
+                print(f"Dossier racine du système : {system_root}")
             return system_root
         elif OPERATING_SYSTEM == "Linux":
             # tester si c'est batocera :
@@ -48,7 +60,8 @@ def get_system_root():
                     parent_dir = os.path.dirname(current_dir)
                     if os.path.basename(parent_dir) == "userdata":  # Vérifier si le parent est userdata
                         system_root = parent_dir
-                        print(f"Dossier racine du système : {system_root}")
+                        if not HEADLESS:
+                            print(f"Dossier racine du système : {system_root}")
                         return system_root
                     current_dir = parent_dir
                 # Si userdata n'est pas trouvé, retourner /
@@ -109,25 +122,16 @@ xdvdfs_download_exe = os.path.join(OTA_SERVER_URL, "xdvdfs.exe")
 
 xdvdfs_download_linux = os.path.join(OTA_SERVER_URL, "xdvdfs")
 
-# Print des chemins pour debug
-print(f"RETROBAT_DATA_FOLDER: {RETROBAT_DATA_FOLDER}")
-print(f"ROMS_FOLDER: {ROMS_FOLDER}")
-print(f"SAVE_FOLDER: {SAVE_FOLDER}")
-print(f"RGSX APP_FOLDER: {APP_FOLDER}")
-print(f"RGSX LOGS_FOLDER: {log_dir}")
-print(f"RGSX SETTINGS PATH: {RGSX_SETTINGS_PATH}")
-print(f"GAMELISTXML: {GAMELISTXML}")
-print(f"GAMELISTXML_WINDOWS: {GAMELISTXML_WINDOWS}")
-print(f"UPDATE_FOLDER: {UPDATE_FOLDER}")
-print(f"LANGUAGES_FOLDER: {LANGUAGES_FOLDER}")
-print(f"JSON_EXTENSIONS: {JSON_EXTENSIONS}")
-print(f"MUSIC_FOLDER: {MUSIC_FOLDER}")
-print(f"IMAGES_FOLDER: {IMAGES_FOLDER}")
-print(f"GAMES_FOLDER: {GAMES_FOLDER}")
-print(f"SOURCES_FILE: {SOURCES_FILE}")
-print(f"CONTROLS_CONFIG_PATH: {CONTROLS_CONFIG_PATH}")
-print(f"HISTORY_PATH: {HISTORY_PATH}")
-
+if not HEADLESS:
+    # Print des chemins pour debug
+    print(f"ROMS_FOLDER: {ROMS_FOLDER}")
+    print(f"SAVE_FOLDER: {SAVE_FOLDER}")
+    print(f"RGSX LOGS_FOLDER: {log_dir}")
+    print(f"RGSX SETTINGS PATH: {RGSX_SETTINGS_PATH}")
+    print(f"JSON_EXTENSIONS: {JSON_EXTENSIONS}")
+    print(f"IMAGES_FOLDER: {IMAGES_FOLDER}")
+    print(f"GAMES_FOLDER: {GAMES_FOLDER}")
+    print(f"SOURCES_FILE: {SOURCES_FILE}")
 
 
 # Constantes pour la répétition automatique dans pause_menu
@@ -199,7 +203,7 @@ selected_key = (0, 0)  # Position du curseur dans le clavier virtuel
 redownload_confirm_selection = 0  # Sélection pour la confirmation de redownload
 popup_message = ""  # Message à afficher dans les popups
 popup_timer = 0  # Temps restant pour le popup en millisecondes (0 = inactif)
-last_frame_time = pygame.time.get_ticks()
+last_frame_time = pygame.time.get_ticks() if pygame is not None else 0
 current_music_name = None
 music_popup_start_time = 0
 selected_games = set()  # Indices des jeux sélectionnés pour un téléchargement multiple (menu game)
@@ -282,6 +286,8 @@ update_checked = False
 
 def validate_resolution():
     """Valide la résolution de l'écran par rapport aux capacités de l'écran."""
+    if pygame is None:
+        return SCREEN_WIDTH, SCREEN_HEIGHT
     display_info = pygame.display.Info()
     if SCREEN_WIDTH > display_info.current_w or SCREEN_HEIGHT > display_info.current_h:
         logger.warning(f"Résolution {SCREEN_WIDTH}x{SCREEN_HEIGHT} dépasse les limites de l'écran")

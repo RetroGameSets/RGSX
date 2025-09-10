@@ -1,5 +1,4 @@
 import shutil
-import pygame # type: ignore
 import re
 import json
 import os
@@ -7,6 +6,14 @@ import logging
 import platform
 import subprocess
 import config
+from config import HEADLESS
+try:
+    if not HEADLESS:
+        import pygame  # type: ignore
+    else:
+        pygame = None  # type: ignore
+except Exception:
+    pygame = None  # type: ignore
 import glob
 import threading
 from rgsx_settings import load_rgsx_settings, save_rgsx_settings

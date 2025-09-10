@@ -9,6 +9,14 @@ The application supports multiple sources like myrient and 1fichier. These sourc
 
 ---
 
+## 🧰 Command-line usage (CLI)
+
+RGSX also offers a headless command-line interface to list platforms/games and download ROMs:
+
+- English guide: see `https://github.com/RetroGameSets/RGSX/blob/main/README_CLI.md`
+
+---
+
 ## ✨ Features
 
 - **Game downloads** : Support for ZIP files and handling of unsupported extensions based on EmulationStation's `es_systems.cfg` (and custom `es_systems_*.cfg` on Batocera). RGSX reads allowed extensions per system from these configs and will automatically extract archives when a system doesn't support them.

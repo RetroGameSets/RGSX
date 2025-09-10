@@ -3,10 +3,17 @@ import subprocess
 import os
 import sys
 import threading
-import pygame # type: ignore
 import zipfile
 import asyncio
 import config
+from config import HEADLESS
+try:
+    if not HEADLESS:
+        import pygame  # type: ignore
+    else:
+        pygame = None  # type: ignore
+except Exception:
+    pygame = None  # type: ignore
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
 from utils import sanitize_filename, extract_zip, extract_rar, load_api_key_1fichier, normalize_platform_name
 from history import save_history
@@ -189,7 +196,7 @@ async def check_for_updates():
             config.popup_message = config.update_result_message
             config.popup_timer = 2000
             config.update_result_error = False
-            config.update_result_start_time = pygame.time.get_ticks()
+            config.update_result_start_time = pygame.time.get_ticks() if pygame is not None else 0
             config.needs_redraw = True
             logger.debug(f"Affichage de la popup de mise à jour réussie, redémarrage imminent")
 
@@ -211,7 +218,7 @@ async def check_for_updates():
         config.popup_message = config.update_result_message
         config.popup_timer = 5000
         config.update_result_error = True
-        config.update_result_start_time = pygame.time.get_ticks()
+        config.update_result_start_time = pygame.time.get_ticks() if pygame is not None else 0
         config.needs_redraw = True
         return False, _("network_check_update_error").format(str(e))
 
@@ -534,6 +541,24 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             logger.error(f"Erreur mise à jour progression: {str(e)}")
     
     thread.join()
+    # Drain any remaining final message to ensure history is saved
+    try:
+        task_queue = progress_queues.get(task_id)
+        if task_queue:
+            while not task_queue.empty():
+                data = task_queue.get()
+                if isinstance(data[1], bool):
+                    success, message = data[1], data[2]
+                    if isinstance(config.history, list):
+                        for entry in config.history:
+                            if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
+                                entry["status"] = "Download_OK" if success else "Erreur"
+                                entry["progress"] = 100 if success else 0
+                                entry["message"] = message
+                                save_history(config.history)
+                                break
+    except Exception:
+        pass
     # Nettoyer la queue
     if task_id in progress_queues:
         del progress_queues[task_id]
@@ -801,6 +826,24 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
     logger.debug(f"Fin boucle de progression, attente fin thread pour task_id={task_id}")
     thread.join()
     logger.debug(f"Thread terminé, nettoyage queue pour task_id={task_id}")
+    # Drain any remaining final message to ensure history is saved
+    try:
+        task_queue = progress_queues.get(task_id)
+        if task_queue:
+            while not task_queue.empty():
+                data = task_queue.get()
+                if isinstance(data[1], bool):
+                    success, message = data[1], data[2]
+                    if isinstance(config.history, list):
+                        for entry in config.history:
+                            if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
+                                entry["status"] = "Download_OK" if success else "Erreur"
+                                entry["progress"] = 100 if success else 0
+                                entry["message"] = message
+                                save_history(config.history)
+                                break
+    except Exception:
+        pass
     # Nettoyer la queue
     if task_id in progress_queues:
         del progress_queues[task_id]

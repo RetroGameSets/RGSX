@@ -8,6 +8,14 @@ L'application prend en charge plusieurs sources comme myrient, 1fichier. Ces sou
 
 ---
 
+## 🧰 Utilisation en ligne de commande (CLI)
+
+RGSX propose aussi une interface en ligne de commande (sans interface graphique) pour lister les plateformes/jeux et télécharger des ROMs :
+
+- Guide FR: voir `https://github.com/RetroGameSets/RGSX/blob/main/README_CLI.md`
+
+---
+
 ## ✨ Fonctionnalités
 
 - **Téléchargement de jeux** : Prise en charge des fichiers ZIP et gestion des extensions non supportées à partir du fichier `es_systems.cfg` d'EmulationStation (et des `es_systems_*.cfg` personnalisés sur Batocera). RGSX lit les extensions autorisées par système depuis ces configurations et extrait automatiquement les archives si le système ne les supporte pas.
