@@ -839,7 +839,7 @@ def extract_zip(zip_path, dest_dir, url):
                             iso_after.add(os.path.abspath(os.path.join(root, file)))
                 new_isos = list(iso_after - iso_before)
                 if new_isos:
-                    success, error_msg = handle_xbox(dest_dir, new_isos)
+                    success, error_msg = handle_xbox(dest_dir, new_isos, url)
                     if not success:
                         return False, error_msg
                 else:
@@ -850,18 +850,27 @@ def extract_zip(zip_path, dest_dir, url):
             os.remove(zip_path)
             logger.info(f"Fichier ZIP {zip_path} extrait dans {dest_dir} et supprimé")
             
-            # Mettre à jour le statut final dans l'historique
-            if isinstance(config.history, list):
-                for entry in config.history:
-                    if "status" in entry and entry["status"] == "Extracting":
-                        entry["status"] = "Download_OK"
-                        entry["progress"] = 100
-                        # Utiliser une variable intermédiaire pour stocker le message
-                        message_text = _("utils_extracted").format(os.path.basename(zip_path))
-                        entry["message"] = message_text
-                        save_history(config.history)
-                        config.needs_redraw = True
-                        break
+            # Mettre à jour le statut final dans l'historique (couvre "Extracting" et "Converting")
+            try:
+                if isinstance(config.history, list):
+                    for entry in config.history:
+                        if entry.get("url") == url and entry.get("status") in ("Extracting", "Converting"):
+                            entry["status"] = "Download_OK"
+                            entry["progress"] = 100
+                            message_text = _("utils_extracted").format(os.path.basename(zip_path))
+                            entry["message"] = message_text
+                            save_history(config.history)
+                            config.needs_redraw = True
+                            break
+                # Mettre à jour l'état de progression à 100%
+                if url in getattr(config, 'download_progress', {}):
+                    try:
+                        config.download_progress[url]["status"] = "Download_OK"
+                        config.download_progress[url]["progress_percent"] = 100
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.debug(f"MAJ statut final après conversion: ignorée ({e})")
             
             return True, _("utils_extracted").format(os.path.basename(zip_path))
         except Exception as e:
@@ -1079,8 +1088,8 @@ def handle_ps3(dest_dir):
         return True, None
 
 
-def handle_xbox(dest_dir, iso_files):
-    """Gère la conversion des fichiers Xbox extraits."""
+def handle_xbox(dest_dir, iso_files, url=None):
+    """Gère la conversion des fichiers Xbox extraits et met à jour l'UI (Converting)."""
     logger.debug(f"Traitement spécifique Xbox dans: {dest_dir}")
     
     # Attendre un peu que tous les processus d'extraction se terminent
@@ -1115,7 +1124,7 @@ def handle_xbox(dest_dir, iso_files):
         xdvdfs_cmd = [XDVDFS_LINUX, "pack"]  # Liste avec 2 éléments
 
     try:
-        # Chercher les fichiers ISO à convertir
+        # Chercher les fichiers ISO à convertir (rafraîchir la liste)
         iso_files = []
         for root, dirs, files in os.walk(dest_dir):
             for file in files:
@@ -1126,7 +1135,30 @@ def handle_xbox(dest_dir, iso_files):
             logger.warning("Aucun fichier ISO xbox trouvé")
             return True, None
 
-        for iso_xbox_source in iso_files:
+        total = len(iso_files)
+        # Marquer l'état comme Conversion en cours (0%)
+        try:
+            if url:
+                # Progress dict (pour l'écran en cours)
+                if url not in config.download_progress:
+                    config.download_progress[url] = {}
+                config.download_progress[url]["status"] = "Converting"
+                config.download_progress[url]["progress_percent"] = 0
+                config.needs_redraw = True
+                # Historique
+                if isinstance(config.history, list):
+                    for entry in config.history:
+                        if entry.get("url") == url and entry.get("status") in ["Extracting", "Téléchargement", "downloading"]:
+                            entry["status"] = "Converting"
+                            entry["progress"] = 0
+                            entry["message"] = "Xbox conversion in progress"
+                            save_history(config.history)
+                            break
+        except Exception as e:
+            logger.debug(f"MAJ statut conversion ignorée: {e}")
+
+        logger.info(f"Démarrage conversion Xbox: {total} ISO(s)")
+        for idx, iso_xbox_source in enumerate(iso_files, start=1):
             logger.debug(f"Traitement de l'ISO Xbox: {iso_xbox_source}")
             xiso_dest = os.path.splitext(iso_xbox_source)[0] + "_xbox.iso"
 
@@ -1151,6 +1183,23 @@ def handle_xbox(dest_dir, iso_files):
                 os.remove(iso_xbox_source)
                 os.rename(xiso_dest, iso_xbox_source)
                 logger.debug(f"ISO original remplacé par la version convertie")
+                # Mise à jour progression de conversion (coarse-grain)
+                try:
+                    percent = int(idx / total * 100) if total > 0 else 100
+                    if url:
+                        if url not in config.download_progress:
+                            config.download_progress[url] = {}
+                        config.download_progress[url]["status"] = "Converting"
+                        config.download_progress[url]["progress_percent"] = percent
+                        config.needs_redraw = True
+                        if isinstance(config.history, list):
+                            for entry in config.history:
+                                if entry.get("url") == url and entry.get("status") == "Converting":
+                                    entry["progress"] = percent
+                                    save_history(config.history)
+                                    break
+                except Exception:
+                    pass
             else:
                 logger.error(f"L'ISO converti n'a pas été créé: {xiso_dest}")
                 return False, "Échec de la conversion de l'ISO"

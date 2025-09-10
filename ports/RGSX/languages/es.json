@@ -96,6 +96,7 @@
     "filter_unsaved_warning": "Cambios no guardados",
     "menu_show_unsupported_on": "Mostrar sistemas no soportados: Sí",
     "menu_show_unsupported_off": "Mostrar sistemas no soportados: No",
+    "menu_show_unsupported_text": "sistemas ocultos",
     "menu_show_unsupported_enabled": "Visibilidad de sistemas no soportados activada",
     "menu_show_unsupported_disabled": "Visibilidad de sistemas no soportados desactivada",
     "menu_allow_unknown_ext_on": "Ocultar aviso de extensión desconocida: Sí",
@@ -219,5 +220,7 @@
     "games_source_custom": "Personalizado",
     "sources_mode_custom_select_info": "Modo personalizado: define la URL en {0} y actualiza la lista de juegos",
     "sources_mode_custom_missing_url": "No se ha establecido URL personalizada (editar {0})",
-    "sources_mode_custom_download_error": "Fallo en la descarga de la fuente personalizada"
+    "sources_mode_custom_download_error": "Fallo en la descarga de la fuente personalizada",
+    "menu_show_unsupported_and_hidden": "Mostrar {0} sistemas no soportados y ocultos",
+    "menu_show_unsupported_all_displayed": "Todos los sistemas mostrados"
 }

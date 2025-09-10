@@ -95,6 +95,7 @@
     "filter_unsaved_warning": "Unsaved changes",
     "menu_show_unsupported_on": "Show unsupported systems: Yes",
     "menu_show_unsupported_off": "Show unsupported systems: No",
+    "menu_show_unsupported_text": "hidden systems",
     "menu_show_unsupported_enabled": "Unsupported systems visibility enabled",
     "menu_show_unsupported_disabled": "Unsupported systems visibility disabled",
     "menu_allow_unknown_ext_on": "Hide unknown extension warning: Yes",
@@ -219,5 +220,7 @@
 
     "sources_mode_custom_select_info": "Custom mode: set URL in {0} then update games list",
     "sources_mode_custom_missing_url": "No custom URL set (edit {0})",
-    "sources_mode_custom_download_error": "Custom source download failed"
+    "sources_mode_custom_download_error": "Custom source download failed",
+    "menu_show_unsupported_and_hidden": "Show unsupported and hidden {0} systems",
+    "menu_show_unsupported_all_displayed": "Hide all unsupported systems"
 }

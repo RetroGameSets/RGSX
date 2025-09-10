@@ -1347,8 +1347,10 @@ def draw_display_menu(screen):
         hidden_count = 0 if show_unsupported else len(list(unsupported_list))
     except Exception:
         hidden_count = 0
-    unsupported_label = ((_("menu_show_unsupported_on") if show_unsupported else _("menu_show_unsupported_off"))
-                         + f" ({hidden_count})")
+    if hidden_count > 0:
+        unsupported_label = _("menu_show_unsupported_and_hidden").format(hidden_count)
+    else:
+        unsupported_label = _("menu_show_unsupported_all_displayed")
 
     # Libellés
     options = [

@@ -95,6 +95,7 @@
     "filter_unsaved_warning": "Ungespeicherte Änderungen",
     "menu_show_unsupported_on": "Nicht unterstützte Systeme anzeigen: Ja",
     "menu_show_unsupported_off": "Nicht unterstützte Systeme anzeigen: Nein",
+    "menu_show_unsupported_text": "systeme versteckt",
     "menu_show_unsupported_enabled": "Sichtbarkeit nicht unterstützter Systeme aktiviert",
     "menu_show_unsupported_disabled": "Sichtbarkeit nicht unterstützter Systeme deaktiviert",
     "menu_allow_unknown_ext_on": "Warnung bei unbekannter Erweiterung ausblenden: Ja",
@@ -219,5 +220,7 @@
     ,
     "sources_mode_custom_select_info": "Benutzerdefiniert: URL in {0} setzen und Spieleliste aktualisieren",
     "sources_mode_custom_missing_url": "Keine benutzerdefinierte URL gesetzt (bearbeite {0})",
-    "sources_mode_custom_download_error": "Download der benutzerdefinierten Quelle fehlgeschlagen"
+    "sources_mode_custom_download_error": "Download der benutzerdefinierten Quelle fehlgeschlagen",
+    "menu_show_unsupported_and_hidden": "{0} nicht unterstützte und ausgeblendete Systeme anzeigen",
+    "menu_show_unsupported_all_displayed": "Alle Systeme angezeigt"
 }
