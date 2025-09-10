@@ -1130,7 +1130,13 @@ def draw_extension_warning(screen):
     if is_zip:
         message = _("extension_warning_zip").format(game_name)
     else:
-        message = _("extension_warning_unsupported").format(game_name)
+        # Ajout d'un indice pour activer le téléchargement des extensions inconnues
+        try:
+            hint = _("extension_warning_enable_unknown_hint")
+        except Exception:
+            hint = ""
+        core = _("extension_warning_unsupported").format(game_name)
+        message = core if not hint else f"{core}{hint}"
 
     max_width = config.screen_width - 80
     lines = wrap_text(message, config.font, max_width)
@@ -1269,14 +1275,16 @@ def draw_display_menu(screen):
     # États actuels
     layout_str = f"{getattr(config, 'GRID_COLS', 3)}x{getattr(config, 'GRID_ROWS', 4)}"
     font_scale = config.accessibility_settings.get("font_scale", 1.0)
-    from rgsx_settings import get_show_unsupported_platforms
+    from rgsx_settings import get_show_unsupported_platforms, get_allow_unknown_extensions
     show_unsupported = get_show_unsupported_platforms()
+    allow_unknown = get_allow_unknown_extensions()
 
     # Libellés
     options = [
         f"{_('display_layout')}: {layout_str}",
         _("accessibility_font_size").format(f"{font_scale:.1f}"),
         _("menu_show_unsupported_on") if show_unsupported else _("menu_show_unsupported_off"),
+        _("menu_allow_unknown_ext_on") if allow_unknown else _("menu_allow_unknown_ext_off"),
         _("menu_filter_platforms"),
     ]
 

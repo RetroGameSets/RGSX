@@ -59,6 +59,7 @@
     
     "extension_warning_zip": "El archivo '{0}' es un archivo comprimido y Batocera no soporta archivos comprimidos para este sistema. La extracción automática del archivo se realizará después de la descarga, ¿continuar?",
     "extension_warning_unsupported": "La extensión del archivo '{0}' no está soportada por Batocera según la configuración es_systems.cfg. ¿Deseas continuar?",
+    "extension_warning_enable_unknown_hint": "\nPara no mostrar este mensaje: activa \"Ocultar aviso de extensión desconocida\" en Menú de pausa > Pantalla",
     
     "confirm_exit": "¿Salir de la aplicación?",
     "confirm_clear_history": "¿Vaciar el historial?",
@@ -96,6 +97,10 @@
     "menu_show_unsupported_off": "Mostrar sistemas no soportados: No",
     "menu_show_unsupported_enabled": "Visibilidad de sistemas no soportados activada",
     "menu_show_unsupported_disabled": "Visibilidad de sistemas no soportados desactivada",
+    "menu_allow_unknown_ext_on": "Ocultar aviso de extensión desconocida: Sí",
+    "menu_allow_unknown_ext_off": "Ocultar aviso de extensión desconocida: No",
+    "menu_allow_unknown_ext_enabled": "Aviso de extensión desconocida oculto (activado)",
+    "menu_allow_unknown_ext_disabled": "Aviso de extensión desconocida visible (desactivado)",
     "menu_quit": "Salir",
     
     "button_yes": "Sí",

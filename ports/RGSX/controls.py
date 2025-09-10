@@ -562,7 +562,13 @@ def handle_controls(event, sources, joystick, screen):
                                     load_extensions_json()
                                 )
                                 zip_ok = bool(config.pending_download[3])  # True only if archive and system known
-                                if not is_supported and not zip_ok:
+                                allow_unknown = False
+                                try:
+                                    from rgsx_settings import get_allow_unknown_extensions
+                                    allow_unknown = get_allow_unknown_extensions()
+                                except Exception:
+                                    allow_unknown = False
+                                if (not is_supported and not zip_ok) and not allow_unknown:
                                     # Stocker comme pending sans dupliquer l'entrée
                                     config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
                                     config.previous_menu_state = config.menu_state
@@ -636,7 +642,13 @@ def handle_controls(event, sources, joystick, screen):
                                     load_extensions_json()
                                 )
                                 zip_ok = bool(config.pending_download[3])
-                                if not is_supported and not zip_ok:
+                                allow_unknown = False
+                                try:
+                                    from rgsx_settings import get_allow_unknown_extensions
+                                    allow_unknown = get_allow_unknown_extensions()
+                                except Exception:
+                                    allow_unknown = False
+                                if (not is_supported and not zip_ok) and not allow_unknown:
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "extension_warning"
                                     config.extension_confirm_selection = 0
@@ -669,7 +681,13 @@ def handle_controls(event, sources, joystick, screen):
                                     load_extensions_json()
                                 )
                                 zip_ok = bool(config.pending_download[3])
-                                if not is_supported and not zip_ok:
+                                allow_unknown = False
+                                try:
+                                    from rgsx_settings import get_allow_unknown_extensions
+                                    allow_unknown = get_allow_unknown_extensions()
+                                except Exception:
+                                    allow_unknown = False
+                                if (not is_supported and not zip_ok) and not allow_unknown:
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "extension_warning"
                                     config.extension_confirm_selection = 0
@@ -688,7 +706,10 @@ def handle_controls(event, sources, joystick, screen):
                                     action = "download"
                             else:
                                 config.menu_state = "error"
-                                config.error_message = "Extension non supportée ou erreur de téléchargement"
+                                try:
+                                    config.error_message = _("error_invalid_download_data")
+                                except Exception:
+                                    config.error_message = "Invalid download data"
                                 config.pending_download = None
                                 config.needs_redraw = True
                                 logger.error(f"config.pending_download est None pour {game_name}")
@@ -759,7 +780,13 @@ def handle_controls(event, sources, joystick, screen):
                                         continue
                                     is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
                                     zip_ok = bool(config.pending_download[3])
-                                    if not is_supported and not zip_ok:
+                                    allow_unknown = False
+                                    try:
+                                        from rgsx_settings import get_allow_unknown_extensions
+                                        allow_unknown = get_allow_unknown_extensions()
+                                    except Exception:
+                                        allow_unknown = False
+                                    if (not is_supported and not zip_ok) and not allow_unknown:
                                         config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
                                         config.previous_menu_state = config.menu_state
                                         config.menu_state = "extension_warning"
@@ -818,7 +845,13 @@ def handle_controls(event, sources, joystick, screen):
                                     continue
                                 is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
                                 zip_ok = bool(config.pending_download[3])
-                                if not is_supported and not zip_ok:
+                                allow_unknown = False
+                                try:
+                                    from rgsx_settings import get_allow_unknown_extensions
+                                    allow_unknown = get_allow_unknown_extensions()
+                                except Exception:
+                                    allow_unknown = False
+                                if (not is_supported and not zip_ok) and not allow_unknown:
                                     config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "extension_warning"
@@ -951,7 +984,10 @@ def handle_controls(event, sources, joystick, screen):
                                     action = "redownload"
                             else:
                                 config.menu_state = "error"
-                                config.error_message = "Extension non supportée ou erreur de retéléchargement"
+                                try:
+                                    config.error_message = _("error_invalid_download_data")
+                                except Exception:
+                                    config.error_message = "Invalid download data"
                                 config.pending_download = None
                                 config.needs_redraw = True
                                 logger.error(f"config.pending_download est None pour {game_name}")
@@ -1163,10 +1199,10 @@ def handle_controls(event, sources, joystick, screen):
         elif config.menu_state == "display_menu":
             sel = getattr(config, 'display_menu_selection', 0)
             if is_input_matched(event, "up"):
-                config.display_menu_selection = (sel - 1) % 4
+                config.display_menu_selection = (sel - 1) % 5
                 config.needs_redraw = True
             elif is_input_matched(event, "down"):
-                config.display_menu_selection = (sel + 1) % 4
+                config.display_menu_selection = (sel + 1) % 5
                 config.needs_redraw = True
             elif is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm"):
                 sel = getattr(config, 'display_menu_selection', 0)
@@ -1229,8 +1265,19 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle unsupported: {e}")
-                # 3: open filter platforms menu
-                elif sel == 3 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
+                # 3: toggle allow unknown extensions
+                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                    try:
+                        from rgsx_settings import get_allow_unknown_extensions, set_allow_unknown_extensions
+                        current = get_allow_unknown_extensions()
+                        new_val = set_allow_unknown_extensions(not current)
+                        config.popup_message = _("menu_allow_unknown_ext_enabled") if new_val else _("menu_allow_unknown_ext_disabled")
+                        config.popup_timer = 3000
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
+                # 4: open filter platforms menu
+                elif sel == 4 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
                     # Remember return target so the filter menu can go back to display
                     config.filter_return_to = "display_menu"
                     config.menu_state = "filter_platforms"

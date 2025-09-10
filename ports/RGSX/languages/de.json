@@ -58,6 +58,7 @@
     
     "extension_warning_zip": "Die Datei '{0}' ist ein Archiv und Batocera unterstützt keine Archive für dieses System. Die automatische Extraktion der Datei erfolgt nach dem Download, fortfahren?",
     "extension_warning_unsupported": "Die Dateierweiterung für '{0}' wird laut der Konfiguration es_systems.cfg von Batocera nicht unterstützt. Möchtest du fortfahren?",
+    "extension_warning_enable_unknown_hint": "\nUm diese Meldung auszublenden: \"Warnung bei unbekannter Erweiterung ausblenden\" in Pausenmenü > Anzeige aktivieren",
     
     "confirm_exit": "Anwendung beenden?",
     "confirm_clear_history": "Verlauf löschen?",
@@ -95,6 +96,10 @@
     "menu_show_unsupported_off": "Nicht unterstützte Systeme anzeigen: Nein",
     "menu_show_unsupported_enabled": "Sichtbarkeit nicht unterstützter Systeme aktiviert",
     "menu_show_unsupported_disabled": "Sichtbarkeit nicht unterstützter Systeme deaktiviert",
+    "menu_allow_unknown_ext_on": "Warnung bei unbekannter Erweiterung ausblenden: Ja",
+    "menu_allow_unknown_ext_off": "Warnung bei unbekannter Erweiterung ausblenden: Nein",
+    "menu_allow_unknown_ext_enabled": "Ausblenden der Warnung bei unbekannter Erweiterung aktiviert",
+    "menu_allow_unknown_ext_disabled": "Ausblenden der Warnung bei unbekannter Erweiterung deaktiviert",
     "menu_quit": "Beenden",
     
     "button_yes": "Ja",

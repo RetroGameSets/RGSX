@@ -247,9 +247,11 @@ def check_extension_before_download(url, platform, game_name):
     try:
         sanitized_name = sanitize_filename(game_name)
         extensions_data = load_extensions_json()
+        # Si le cache des extensions est vide/introuvable, ne bloquez pas: traitez comme "inconnu"
+        # afin d'afficher l'avertissement d'extension au lieu d'une erreur fatale.
         if not extensions_data:
-            logger.error(f"Fichier {config.JSON_EXTENSIONS} vide ou introuvable")
-            return None
+            logger.warning(f"Fichier {config.JSON_EXTENSIONS} vide ou introuvable; poursuite avec extensions inconnues")
+            extensions_data = []
 
         is_supported = is_extension_supported(sanitized_name, platform, extensions_data)
         extension = os.path.splitext(sanitized_name)[1].lower()
@@ -271,10 +273,23 @@ def check_extension_before_download(url, platform, game_name):
         if is_supported:
             logger.debug(f"L'extension de {sanitized_name} est supportée pour {platform}")
             return (url, platform, game_name, False)
-        elif is_archive and system_known:
-            logger.debug(f"Archive {extension.upper()} détectée pour {sanitized_name}, extraction automatique prévue")
+        elif is_archive:
+            # Même si le système n'est pas connu ou que l'extension n'est pas listée,
+            # on force l'extraction des archives (ZIP/RAR) à la fin du téléchargement
+            # puis suppression du fichier.
+            logger.debug(f"Archive {extension.upper()} détectée pour {sanitized_name}, extraction automatique prévue (extension non listée)")
             return (url, platform, game_name, True)
         else:
+            # Autoriser si l'utilisateur a choisi d'autoriser les extensions inconnues
+            allow_unknown = False
+            try:
+                from rgsx_settings import get_allow_unknown_extensions
+                allow_unknown = get_allow_unknown_extensions()
+            except Exception:
+                allow_unknown = False
+            if allow_unknown:
+                logger.debug(f"Extension non supportée ({extension}) mais autorisée par l'utilisateur pour {sanitized_name}")
+                return (url, platform, game_name, False)
             logger.debug(f"Extension non supportée ({extension}) pour {sanitized_name}, avertissement affiché")
             return (url, platform, game_name, False)
     except Exception as e:

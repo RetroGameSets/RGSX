@@ -50,7 +50,7 @@ def load_rgsx_settings():
     from config import RGSX_SETTINGS_PATH
     
     default_settings = {
-        "language": "fr",
+        "language": "en",
         "music_enabled": True,
         "accessibility": {
             "font_scale": 1.0
@@ -66,7 +66,8 @@ def load_rgsx_settings():
             "mode": "rgsx",       
             "custom_url": ""      
     },
-    "show_unsupported_platforms": False
+    "show_unsupported_platforms": False,
+    "allow_unknown_extensions": False
     }
     
     try:
@@ -210,6 +211,22 @@ def set_show_unsupported_platforms(enabled: bool):
     settings["show_unsupported_platforms"] = bool(enabled)
     save_rgsx_settings(settings)
     return settings["show_unsupported_platforms"]
+
+# ----------------------- Unknown extensions toggle ----------------------- #
+
+def get_allow_unknown_extensions(settings=None) -> bool:
+    """Retourne True si le téléchargement des extensions inconnues est autorisé."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return bool(settings.get("allow_unknown_extensions", False))
+
+
+def set_allow_unknown_extensions(enabled: bool) -> bool:
+    """Active/désactive le téléchargement des extensions inconnues et sauvegarde."""
+    settings = load_rgsx_settings()
+    settings["allow_unknown_extensions"] = bool(enabled)
+    save_rgsx_settings(settings)
+    return settings["allow_unknown_extensions"]
 
 # ----------------------- Display layout (grid) ----------------------- #
 
