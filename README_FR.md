@@ -146,50 +146,7 @@ Les logs sont enregistrés dans `roms/ports/RGSX/logs/RGSX.log` sur batocera et 
 ---
 
 ## 🔄 Journal des modifications
-
-### 2.1.0.0 (2025-09-09)
-- Retrobat : mise à jour automatique de `gamelist.xml` au lancement pour afficher immédiatement les images/vidéos dans ES.
-- Chargement des images systèmes : priorité à `platform_image` défini dans le JSON des systèmes.
-- Détection automatique des extensions supportées via `es_systems.cfg`; génération et cache dans `/saves/ports/rgsx/rom_extensions.json`.
-- Masquage automatique des plateformes non supportées (dossier ROM manquant selon `es_systems.cfg`) avec interrupteur dans le menu Affichage.
-- Nouveau réglage dans Affichage pour changer la grille des plateformes (3x3, 3x4, 4x3, 4x4).
-- Réorganisation du menu pause pour mettre en avant les options courantes.
-- Traductions mises à jour.
-- Corrections visuelles mineures et ajustements d’espacements.
-
-### 2.0.0.0 (2025-09-05)
-- Refonte complète du système de sources : gestion centralisée via `/saves/ports/rgsx/systems_list.json` (ordre conservé), ajout automatique d’une plateforme en déposant son fichier JSON dans `/saves/ports/rgsx/games/` (création si absente) — pensez ensuite à éditer le champ "dossier" généré pour qu’il corresponde à votre organisation de téléchargements.
-- Nouveau menu de filtrage des systèmes (afficher/masquer plateformes avec persistance dans les paramètres)
-- En-tête de la liste des jeux (Nom / Taille) traduit
-- Détection automatique de l'ancien fichier sources.json → purge sécurisée du cache + popup de redémarrage (aucune migration)
-- Fiabilité améliorée des téléchargements Archive.org : stratégie de retry multi-entêtes + préchargement métadonnées
-- Synchronisation des traductions (FR/EN/ES/DE/PT) et complétion des clés manquantes
-- Refactors internes : early-return unifié dans load_sources, reconstruction de cache plus sûre
-
-### 1.9.9.4 (2025-09-03)
-- Bascule Source des jeux (RGSX / Personnalisée) + popups
-- Pas de fallback si source personnalisée invalide (liste vide + message)
-- Réorganisation menu pause (Source avant Mise à jour)
-- Messages d’état symlink + traductions mineures
-- Correction minuterie popup et placeholders de chemin
-
-### 1.9.9.3
-- Ajout option symlink (dossiers plateformes imbriqués)
-- Persistance et traductions symlink
-
-### 1.9.9.2
-- Fichier unifié rgsx_settings.json (langue, musique, accessibilité, symlink, sources)
-- Migration automatique anciens JSON
-
-### 1.9.9.1
-- Téléchargements multi-sélection & historique amélioré
-- Gestion archives + meilleures popups d’erreur
-
-### 1.9.9.0
-- Taille de police (accessibilité), sélection langue, aide contrôles, système de mise à jour
-
-### 1.9.8.x
-- Fonctionnalités initiales publiques (téléchargements, remapping manette, interface adaptative, logs)
+Toutes les infos sur discord
 
 ---
 

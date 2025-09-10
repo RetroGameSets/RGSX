@@ -230,51 +230,7 @@ This project is free. You are free to use, modify and distribute it under the te
 Developed with ❤️ for retro gaming enthusiasts.
 
 ## 🔄 Changelog
-
-### 2.1.0.0 (2025-09-09)
-- Retrobat: automatic `gamelist.xml` update on launch to immediately show scraped images/videos in ES.
-- System image loading prioritizes explicit `platform_image` from systems JSON.
-- Auto-detect supported extensions by parsing `es_systems.cfg`; generate and cache `/saves/ports/rgsx/rom_extensions.json`.
-- Automatic restart after update configuration (beta)
-- Auto-hide unsupported platforms (missing ROM folder per `es_systems.cfg`) with a toggle in the Display menu.
-- New Display option to change systems grid layout (3x3, 3x4, 4x3, 4x4).
-- Pause menu reorganized to surface the most used items.
-- Translations updated.
-- Minor display fixes and spacing polish.
-
-### 2.0.0.0 (2025-09-05)
-- Complete sources system overhaul: centralized management through `/saves/ports/rgsx/systems_list.json` (order preserved), automatic platform addition by dropping its JSON file into `/saves/ports/rgsx/games/` (auto-created if missing) — after first creation edit the generated "dossier" field so it matches your downloads folder structure.
-- Systems visibility filter menu (show/hide platforms with persistent hidden list in settings)
-- Game list header row (Name / Size) with translations
-- Automatic legacy sources.json detection triggers safe cache purge + restart popup (no migration)
-- Improved Arcade/Archive.org reliability: multi-header retry strategy + metadata preflight
-- Internal refactors: unified early-return in load_sources, safer cache rebuild path
-
-### 1.9.9.4 (2025-09-03)
-- Game Source toggle (RGSX / Custom) with info popups
-- No fallback when custom source invalid (empty list + message)
-- Pause menu reorder (Game Source before Update)
-- Symlink status messages and minor translations
-- Popup timer fix and path placeholders
-
-### 1.9.9.3
-- Symlink option added (nested platform folders)
-- Persistent symlink setting and translations
-
-### 1.9.9.2
-- Unified settings file rgsx_settings.json (language, music, accessibility, symlink, sources)
-- Automatic migration of legacy JSON configs
-
-### 1.9.9.1
-- Batch (multi-select) downloads & improved history
-- Archive handling warnings & better error popups
-
-### 1.9.9.0
-- Accessibility font scale, language selector, controls help, OTA update system
-
-### 1.9.8.x
-- Initial public features (downloads, controller mapping, adaptive UI, logging)
-
+All informations are on the discord server
 ---
 
 ## 🌐 Custom Game Sources
