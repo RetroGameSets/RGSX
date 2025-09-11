@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+import os
+import sys
+import time
+import traceback
+from typing import Any, Dict, Tuple, List
+
+try:
+    import pygame  # type: ignore
+except Exception as e:
+    print("Pygame is required. Install with: pip install pygame")
+    raise
+
+
+PROMPTS = [
+    # Face buttons
+    "SOUTH_BUTTON",  # A on Xbox
+    "EAST_BUTTON",   # B on Xbox
+    "WEST_BUTTON",   # X on Xbox
+    "NORTH_BUTTON",  # Y on Xbox
+    # Meta
+    "START",
+    "SELECT",
+    # D-Pad
+    "DPAD_UP",
+    "DPAD_DOWN",
+    "DPAD_LEFT",
+    "DPAD_RIGHT",
+    # Bumpers
+    "LEFT_BUMPER",
+    "RIGHT_BUMPER",
+    # Triggers
+    "LEFT_TRIGGER",
+    "RIGHT_TRIGGER",
+    # Left stick directions
+    "JOYSTICK_LEFT_UP",
+    "JOYSTICK_LEFT_DOWN",
+    "JOYSTICK_LEFT_LEFT",
+    "JOYSTICK_LEFT_RIGHT",
+    # Right stick directions
+    "JOYSTICK_RIGHT_UP",
+    "JOYSTICK_RIGHT_DOWN",
+    "JOYSTICK_RIGHT_LEFT",
+    "JOYSTICK_RIGHT_RIGHT",
+]
+
+
+# --- Minimal on-screen console (Pygame window) ---
+SURFACE = None  # type: ignore
+FONT = None  # type: ignore
+LOG_LINES: List[str] = []
+MAX_LOG = 300
+
+
+def init_screen(width: int = 900, height: int = 600) -> None:
+    global SURFACE, FONT
+    try:
+        pygame.display.init()
+        SURFACE = pygame.display.set_mode((width, height))
+        pygame.display.set_caption("Controller Tester")
+        pygame.font.init()
+        FONT = pygame.font.SysFont("Consolas", 20) or pygame.font.Font(None, 20)
+    except Exception:
+        # If display init fails, stay headless but continue
+        SURFACE = None
+        FONT = None
+
+
+def log(msg: str) -> None:
+    # Print to real console and on-screen log
+    try:
+        print(msg)
+    except Exception:
+        pass
+    LOG_LINES.append(str(msg))
+    if len(LOG_LINES) > MAX_LOG:
+        del LOG_LINES[: len(LOG_LINES) - MAX_LOG]
+    draw_log()
+
+
+def draw_log() -> None:
+    if SURFACE is None or FONT is None:
+        return
+    try:
+        SURFACE.fill((12, 12, 12))
+        margin = 12
+        line_h = FONT.get_height() + 4
+        # Show the last N lines that fit on screen
+        max_lines = (SURFACE.get_height() - margin * 2) // line_h
+        to_draw = LOG_LINES[-max_lines:]
+        y = margin
+        for line in to_draw:
+            surf = FONT.render(line, True, (220, 220, 220))
+            SURFACE.blit(surf, (margin, y))
+            y += line_h
+        pygame.display.flip()
+    except Exception:
+        pass
+
+
+def init_joystick() -> pygame.joystick.Joystick:
+    pygame.init()
+    pygame.joystick.init()
+    if pygame.joystick.get_count() == 0:
+        log("No joystick detected. Connect a controller and try again.")
+        sys.exit(1)
+    js = pygame.joystick.Joystick(0)
+    js.init()
+    name = js.get_name()
+    log(f"Using joystick 0: {name}")
+    return js
+
+
+def wait_for_stable(js: pygame.joystick.Joystick, settle_ms: int = 250, deadband: float = 0.05, timeout_ms: int = 2000) -> bool:
+    """Wait until axes stop moving (change < deadband) continuously for settle_ms.
+
+    Unlike a traditional neutral check, this doesn't assume axes center at 0.
+    Hats are required to be (0,0) to avoid capturing D-Pad releases.
+    Returns True if stability achieved, False on timeout.
+    """
+    start = pygame.time.get_ticks()
+    last = [js.get_axis(i) for i in range(js.get_numaxes())]
+    stable_since = None
+    while True:
+        # Handle window close only (avoid quitting on keyboard here)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                log("Window closed. Exiting.")
+                sys.exit(0)
+        moved = False
+        for i in range(js.get_numaxes()):
+            cur = js.get_axis(i)
+            if abs(cur - last[i]) > deadband:
+                moved = True
+            last[i] = cur
+        hats_ok = all(js.get_hat(i) == (0, 0) for i in range(js.get_numhats()))
+        if not moved and hats_ok:
+            if stable_since is None:
+                stable_since = pygame.time.get_ticks()
+            elif pygame.time.get_ticks() - stable_since >= settle_ms:
+                return True
+        else:
+            stable_since = None
+        if pygame.time.get_ticks() - start > timeout_ms:
+            return False
+        draw_log()
+        pygame.time.wait(10)
+
+
+def wait_for_event(js: pygame.joystick.Joystick, logical_name: str, axis_threshold: float = 0.6) -> Tuple[str, Any]:
+    """Wait for a joystick event for the given logical control.
+
+    Returns a tuple of (kind, data):
+      - ("button", button_index)
+      - ("hat", (x, y)) where x,y in {-1,0,1}
+      - ("axis", {"axis": index, "direction": -1|1})
+    """
+    # Ensure prior motion has settled to avoid capturing a release
+    wait_for_stable(js)
+    log("")
+    log(f"Press {logical_name} (ESC to skip, close window to quit)…")
+    # Flush old events
+    pygame.event.clear()
+    while True:
+        for event in pygame.event.get():
+            # Keyboard helpers
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    log(f"Skipped {logical_name}")
+                    return ("skipped", None)
+                # No keyboard quit here to avoid accidental exits when using controllers
+            if event.type == pygame.QUIT:
+                log("Window closed. Exiting.")
+                sys.exit(0)
+
+            # Buttons
+            if event.type == pygame.JOYBUTTONDOWN:
+                log(f"Captured {logical_name}: BUTTON {event.button}")
+                return ("button", event.button)
+
+            # D-Pad (HAT)
+            if event.type == pygame.JOYHATMOTION:
+                val = event.value  # (x, y)
+                if val != (0, 0):
+                    log(f"Captured {logical_name}: HAT {val}")
+                    return ("hat", val)
+
+            # Axes (sticks, triggers)
+            if event.type == pygame.JOYAXISMOTION:
+                axis = event.axis
+                value = float(event.value)
+                if abs(value) >= axis_threshold:
+                    direction = 1 if value > 0 else -1
+                    log(f"Captured {logical_name}: AXIS {axis} dir {direction} (raw {value:.2f})")
+                    return ("axis", {"axis": axis, "direction": direction, "raw": value})
+
+        draw_log()
+        time.sleep(0.005)
+
+
+def write_log(path: str, mapping: Dict[str, Tuple[str, Any]], device_name: str) -> None:
+    lines = []
+    lines.append("# Controller mapping log\n")
+    lines.append(f"# Device: {device_name}\n\n")
+    for name, (kind, data) in mapping.items():
+        if kind == "button":
+            lines.append(f"{name} = BUTTON {data}\n")
+        elif kind == "hat":
+            lines.append(f"{name} = HAT {data}\n")
+        elif kind == "axis":
+            ax = data.get("axis")
+            direction = data.get("direction")
+            lines.append(f"{name} = AXIS {ax} dir {direction}\n")
+        elif kind == "skipped":
+            lines.append(f"{name} = SKIPPED\n")
+        else:
+            lines.append(f"{name} = UNKNOWN {data}\n")
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    log("")
+    log(f"Saved mapping to: {path}")
+
+
+def main() -> None:
+    init_screen()
+    js = init_joystick()
+    # Print device basics
+    try:
+        log(f"Buttons: {js.get_numbuttons()} | Axes: {js.get_numaxes()} | Hats: {js.get_numhats()}")
+    except Exception:
+        pass
+
+    mapping: Dict[str, Tuple[str, Any]] = {}
+    for logical in PROMPTS:
+        kind, data = wait_for_event(js, logical)
+        mapping[logical] = (kind, data)
+        # Short, consistent debounce for all inputs
+        pygame.event.clear()
+        pygame.time.wait(150)
+
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "controller_mapping.log")
+    write_log(log_path, mapping, js.get_name())
+    log("Done. Press Q or close the window to exit.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SystemExit:
+        # Allow intentional exits
+        pass
+    except Exception:
+        # Show traceback on screen and wait for window close
+        tb = traceback.format_exc()
+        try:
+            log("")
+            log("An error occurred:")
+            for line in tb.splitlines():
+                log(line)
+            # Idle until window is closed
+            while True:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        raise SystemExit(1)
+                draw_log()
+                pygame.time.wait(50)
+        except Exception:
+            pass
+    finally:
+        try:
+            pygame.joystick.quit()
+            pygame.quit()
+        except Exception:
+            pass
