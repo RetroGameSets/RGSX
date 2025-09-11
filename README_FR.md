@@ -4,7 +4,7 @@
 
 RGSX est une application développée en Python basée sur Pygame pour la partie graphique pour la communauté par RetroGameSets. Elle est entièrement gratuite.
 
-L'application prend en charge plusieurs sources comme myrient, 1fichier. Ces sources pourront être mises à jour fréquemment.
+L'application prend en charge plusieurs sources comme myrient, 1fichier (avec support de débridage via AllDebrid en option). Ces sources pourront être mises à jour fréquemment.
 
 ---
 
@@ -20,7 +20,7 @@ RGSX propose aussi une interface en ligne de commande (sans interface graphique)
 
 - **Téléchargement de jeux** : Prise en charge des fichiers ZIP et gestion des extensions non supportées à partir du fichier `es_systems.cfg` d'EmulationStation (et des `es_systems_*.cfg` personnalisés sur Batocera). RGSX lit les extensions autorisées par système depuis ces configurations et extrait automatiquement les archives si le système ne les supporte pas.
   - Les téléchargements ne nécessitent aucune authentification ni compte pour la plupart.
-  - Les systèmes notés `(1fichier)` dans le nom ne seront accessibles que si vous renseignez votre clé API 1fichier (voir plus bas).
+  - Les systèmes notés `(1fichier)` dans le nom ne seront accessibles que si vous renseignez votre clé API 1Fichier ou une clé API AllDebrid (voir plus bas).
 - **Historique des téléchargements** : Consultez et retéléchargez les anciens fichiers.
 - **Téléchargements multi-sélection** : Marquez plusieurs jeux dans la liste avec la touche associée à Vider Historique (par défaut X) pour préparer un lot. Appuyez ensuite sur Confirmer pour lancer les téléchargements en séquence.
 - **Personnalisation des contrôles** : Remappez les touches du clavier ou de la manette à votre convenance avec détection automatique des noms de boutons depuis EmulationStation(beta).
@@ -78,10 +78,14 @@ Vous trouverez RGSX dans le système "PORTS" ou "Jeux Amateurs et portages" et d
 
 ## 🏁 Premier démarrage
 ---
-> ## IMPORTANT
-> Si vous avez une clé API 1Fichier, vous devez la renseigner dans  
-> `/saves/ports/rgsx/1FichierAPI.txt`  
-> si vous souhaitez télécharger depuis des liens 1Fichier.
+> ## IMPORTANT (1Fichier / AllDebrid)
+> Pour télécharger depuis des liens 1Fichier, vous pouvez utiliser soit votre clé API 1Fichier, soit votre clé API AllDebrid (fallback automatique si 1Fichier est absent).
+>
+> Où coller votre clé API (le fichier doit contenir uniquement la clé) :
+> - `/saves/ports/rgsx/1FichierAPI.txt` (clé API 1Fichier)
+> - `/saves/ports/rgsx/AllDebridAPI.txt` (clé API AllDebrid)
+>
+> Ne créez PAS ces fichiers manuellement. Lancez une première fois un téléchargement 1Fichier: RGSX créera automatiquement les fichiers vides s’ils sont absents. Ensuite, ouvrez le fichier correspondant et collez votre clé.
 ---
 
 - Lancez RGSX depuis ports sur batocera, depuis Windows sur Retrobat.
@@ -209,7 +213,8 @@ RGSX/
 ├── controls.json        # Fichier de mappage des contrôles (généré après le premier démarrage).
 ├── history.json         # Base de données de l'historique de téléchargements (généré après le premier téléchargement).
 ├── rom_extensions.json  # Généré depuis es_systems.cfg : cache des extensions autorisées par système.
-└── 1FichierAPI.txt      # Clé API 1fichier (compte premium et + uniquement) (vide par défaut).
+├── 1FichierAPI.txt      # Clé API 1fichier (compte premium et + uniquement) (vide par défaut).
+└── AllDebridAPI.txt     # Clé API AllDebrid (optionnelle, fallback pour les liens 1Fichier) (vide par défaut).
 ```
 
 ---

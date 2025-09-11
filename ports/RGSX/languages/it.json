@@ -24,7 +24,7 @@
   "error_no_internet": "Nessuna connessione Internet. Controlla la rete.",
   "error_controls_mapping": "Impossibile mappare i controlli",
   "error_api_key": "Inserisci la tua API key (solo premium) nel file {0}",
-  "error_api_key_extended": "Inserisci la tua API key (solo premium) nel file /userdata/saves/ports/rgsx/1fichierAPI.txt aprendolo in un editor e incollando la chiave",
+  "error_api_key_extended": "Inserisci la tua API key (solo premium) nel file /userdata/saves/ports/rgsx/1FichierAPI.txt aprendolo in un editor e incollando la chiave",
   "error_invalid_download_data": "Dati di download non validi",
   "error_delete_sources": "Errore nell'eliminazione del file systems_list.json o delle cartelle",
   "error_extension": "Estensione non supportata o errore di download",

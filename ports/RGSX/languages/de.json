@@ -24,7 +24,7 @@
     "error_no_internet": "Keine Internetverbindung. Überprüfe dein Netzwerk.",
     "error_controls_mapping": "Fehler beim Zuordnen der Steuerung",
     "error_api_key": "Achtung, du musst deinen API-Schlüssel (nur Premium) in der Datei {0} eingeben",
-    "error_api_key_extended": "Achtung, du musst deinen API-Schlüssel (nur Premium) in der Datei /userdata/saves/ports/rgsx/1fichierAPI.txt einfügen. Öffne die Datei in einem Texteditor und füge den API-Schlüssel ein",
+    "error_api_key_extended": "Achtung, du musst deinen API-Schlüssel (nur Premium) in der Datei /userdata/saves/ports/rgsx/1FichierAPI.txt einfügen. Öffne die Datei in einem Texteditor und füge den API-Schlüssel ein",
     "error_invalid_download_data": "Ungültige Downloaddaten",
     "error_delete_sources": "Fehler beim Löschen der Datei systems_list.json oder Ordner",
     "error_extension": "Nicht unterstützte Erweiterung oder Downloadfehler",

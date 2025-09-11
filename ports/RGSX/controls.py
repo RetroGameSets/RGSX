@@ -14,7 +14,7 @@ from network import download_rom, download_from_1fichier, is_1fichier_url, reque
 from utils import (
     load_games, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
-    load_api_key_1fichier, save_music_config
+    load_api_key_1fichier, load_api_key_alldebrid, save_music_config
 )
 from history import load_history, clear_history, add_to_history, save_history
 import logging
@@ -584,8 +584,14 @@ def handle_controls(event, sources, joystick, screen):
                                 if is_1fichier_url(url):
                                     config.API_KEY_1FICHIER = load_api_key_1fichier()
                                     if not config.API_KEY_1FICHIER:
+                                        # Fallback AllDebrid
+                                        try:
+                                            config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
+                                        except Exception:
+                                            config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
+                                    if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
                                         config.history[-1]["status"] = "Erreur"
-                                        config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
+                                        config.history[-1]["message"] = "API NOT FOUND"
                                         save_history(config.history)
                                         continue
                                     task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
@@ -620,19 +626,26 @@ def handle_controls(event, sources, joystick, screen):
                         if is_1fichier_url(url):
                             config.API_KEY_1FICHIER = load_api_key_1fichier()
                             if not config.API_KEY_1FICHIER:
+                                # Fallback AllDebrid
+                                try:
+                                    config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
+                                except Exception:
+                                    config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
+                            if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
                                 config.previous_menu_state = config.menu_state
                                 config.menu_state = "error"
                                 try:
-                                    config.error_message = _("error_api_key_extended")
+                                    both_paths = f"{os.path.join(config.SAVE_FOLDER,'1FichierAPI.txt')} or {os.path.join(config.SAVE_FOLDER,'AllDebridAPI.txt')}"
+                                    config.error_message = _("error_api_key").format(both_paths)
                                 except Exception as e:
-                                    logger.error(f"Erreur lors de la traduction de error_api_key_extended: {str(e)}")
-                                    config.error_message = "Missing 1fichier API key"  # Message de secours
+                                    logger.error(f"Erreur lors de la traduction de error_api_key: {str(e)}")
+                                    config.error_message = "Please enter API key (1fichier or AllDebrid)"
                                 config.history[-1]["status"] = "Erreur"
                                 config.history[-1]["progress"] = 0
-                                config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
+                                config.history[-1]["message"] = "API NOT FOUND"
                                 save_history(config.history)
                                 config.needs_redraw = True
-                                logger.error("Clé API 1fichier absente, téléchargement impossible.")
+                                logger.error("Clé API 1fichier et AllDebrid absentes, téléchargement impossible.")
                                 config.pending_download = None
                                 return action
                             config.pending_download = check_extension_before_download(url, platform, game_name)
@@ -734,17 +747,25 @@ def handle_controls(event, sources, joystick, screen):
                         config.current_history_item = len(config.history) - 1
                         if is_1fichier_url(url):
                             if not config.API_KEY_1FICHIER:
+                                # Fallback AllDebrid
+                                try:
+                                    config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
+                                except Exception:
+                                    config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
+                            if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
                                 config.previous_menu_state = config.menu_state
                                 config.menu_state = "error"
-                                config.error_message = _(
-                                    "error_api_key"
-                                ).format(os.path.join(config.SAVE_FOLDER,"1fichierAPI.txt"))
+                                try:
+                                    both_paths = f"{os.path.join(config.SAVE_FOLDER,'1FichierAPI.txt')} or {os.path.join(config.SAVE_FOLDER,'AllDebridAPI.txt')}"
+                                    config.error_message = _("error_api_key").format(both_paths)
+                                except Exception:
+                                    config.error_message = "Please enter API key (1fichier or AllDebrid)"
                                 config.history[-1]["status"] = "Erreur"
                                 config.history[-1]["progress"] = 0
-                                config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
+                                config.history[-1]["message"] = "API NOT FOUND"
                                 save_history(config.history)
                                 config.needs_redraw = True
-                                logger.error("Clé API 1fichier absente, téléchargement impossible.")
+                                logger.error("Clé API 1fichier et AllDebrid absentes, téléchargement impossible.")
                                 config.pending_download = None
                                 return action
                             task_id = str(pygame.time.get_ticks())
@@ -800,8 +821,14 @@ def handle_controls(event, sources, joystick, screen):
                                     if is_1fichier_url(url):
                                         config.API_KEY_1FICHIER = load_api_key_1fichier()
                                         if not config.API_KEY_1FICHIER:
+                                            # Fallback AllDebrid
+                                            try:
+                                                config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
+                                            except Exception:
+                                                config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
+                                        if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
                                             config.history[-1]["status"] = "Erreur"
-                                            config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
+                                            config.history[-1]["message"] = "API NOT FOUND"
                                             save_history(config.history)
                                             continue
                                         task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
@@ -865,8 +892,14 @@ def handle_controls(event, sources, joystick, screen):
                                 if is_1fichier_url(url):
                                     config.API_KEY_1FICHIER = load_api_key_1fichier()
                                     if not config.API_KEY_1FICHIER:
+                                        # Fallback AllDebrid
+                                        try:
+                                            config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
+                                        except Exception:
+                                            config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
+                                    if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
                                         config.history[-1]["status"] = "Erreur"
-                                        config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
+                                        config.history[-1]["message"] = "API NOT FOUND"
                                         save_history(config.history)
                                         continue
                                     task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
@@ -960,17 +993,27 @@ def handle_controls(event, sources, joystick, screen):
                                     task_id = str(pygame.time.get_ticks())
                                     if is_1fichier_url(url):
                                         if not config.API_KEY_1FICHIER:
+                                            # Fallback AllDebrid
+                                            try:
+                                                config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
+                                            except Exception:
+                                                config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
+                                        if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
                                             config.previous_menu_state = config.menu_state
                                             config.menu_state = "error"
-                                            logger.warning("clé api absente dans os.path.join(config.SAVE_FOLDER, '1fichierAPI.txt')\n")
-                                            config.error_message = _("error_api_key").format(os.path.join(config.SAVE_FOLDER, "1fichierAPI.txt"))
+                                            logger.warning("clé api absente pour 1fichier et AllDebrid")
+                                            try:
+                                                both_paths = f"{os.path.join(config.SAVE_FOLDER,'1FichierAPI.txt')} or {os.path.join(config.SAVE_FOLDER,'AllDebridAPI.txt')}"
+                                                config.error_message = _("error_api_key").format(both_paths)
+                                            except Exception:
+                                                config.error_message = "Please enter API key (1fichier or AllDebrid)"
                                             
                                             config.history[-1]["status"] = "Erreur"
                                             config.history[-1]["progress"] = 0
-                                            config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
+                                            config.history[-1]["message"] = "API NOT FOUND"
                                             save_history(config.history)
                                             config.needs_redraw = True
-                                            logger.error("Clé API 1fichier absente, retéléchargement impossible.")
+                                            logger.error("Clé API 1fichier et AllDebrid absentes, retéléchargement impossible.")
                                             config.pending_download = None
                                             return action
                                         task = asyncio.create_task(download_from_1fichier(url, platform, game_name, is_zip_non_supported, task_id))

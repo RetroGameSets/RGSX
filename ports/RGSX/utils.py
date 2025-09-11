@@ -1284,6 +1284,33 @@ def load_api_key_1fichier():
         logger.error(f"Erreur lors de la lecture de la clé API : {e}")
         return ""
 
+def load_api_key_alldebrid():
+    """Charge la clé API AllDebrid depuis le dossier de sauvegarde, crée le fichier si absent."""
+    try:
+        api_file = os.path.join(config.SAVE_FOLDER, "AllDebridAPI.txt")
+        logger.debug(f"Chemin du fichier de clé API AllDebrid: {api_file}")
+        if not os.path.exists(api_file):
+            logger.info("Fichier de clé API AllDebrid non trouvé")
+            os.makedirs(config.SAVE_FOLDER, exist_ok=True)
+            with open(api_file, "w", encoding="utf-8") as f:
+                f.write("")
+            logger.info(f"Fichier de clé API AllDebrid créé : {api_file}")
+            return ""
+        with open(api_file, "r", encoding="utf-8") as f:
+            api_key = f.read().strip()
+        logger.debug(f"Clé API AllDebrid lue: '{api_key}' (longueur: {len(api_key)})")
+        if not api_key:
+            logger.warning("Clé API AllDebrid vide, renseignez-la dans AllDebridAPI.txt pour activer le débridage.")
+        # Stocke dans la config pour usage global
+        try:
+            config.API_KEY_ALLDEBRID = api_key
+        except Exception:
+            pass
+        return api_key
+    except Exception as e:
+        logger.error(f"Erreur lors du chargement de la clé API AllDebrid: {e}")
+        return ""
+
 def load_music_config():
     """Charge la configuration musique depuis rgsx_settings.json."""
     try:

@@ -15,7 +15,7 @@ try:
 except Exception:
     pygame = None  # type: ignore
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
-from utils import sanitize_filename, extract_zip, extract_rar, load_api_key_1fichier, normalize_platform_name
+from utils import sanitize_filename, extract_zip, extract_rar, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name
 from history import save_history
 import logging
 import datetime
@@ -635,6 +635,10 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
 
 async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=False, task_id=None):
     config.API_KEY_1FICHIER = load_api_key_1fichier()
+    if not config.API_KEY_1FICHIER:
+        # Fallback: essayer AllDebrid
+        config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
+        logger.debug(f"Clé API 1fichier absente, fallback AllDebrid: {'présente' if config.API_KEY_ALLDEBRID else 'absente'}")
     logger.debug(f"Début téléchargement 1fichier: {game_name} depuis {url}, is_zip_non_supported={is_zip_non_supported}, task_id={task_id}")
     logger.debug(f"Clé API 1fichier: {'présente' if config.API_KEY_1FICHIER else 'absente'}")
     result = [None, None]
@@ -679,50 +683,83 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 logger.error(f"Pas de permission d'écriture dans {dest_dir}")
                 raise PermissionError(f"Pas de permission d'écriture dans {dest_dir}")
 
-            headers = {
-                "Authorization": f"Bearer {config.API_KEY_1FICHIER}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "url": link,
-                "pretty": 1
-            }
-            logger.debug(f"Préparation requête file/info pour {link}")
-            response = requests.post("https://api.1fichier.com/v1/file/info.cgi", headers=headers, json=payload, timeout=30)
-            logger.debug(f"Réponse file/info reçue, code: {response.status_code}")
-            response.raise_for_status()
-            file_info = response.json()
-
-            if "error" in file_info and file_info["error"] == "Resource not found":
-                logger.error(f"Le fichier {game_name} n'existe pas sur 1fichier")
-                result[0] = False
-                result[1] = _("network_file_not_found").format(game_name)
-                return
-
-            filename = file_info.get("filename", "").strip()
-            if not filename:
-                logger.error(f"Impossible de récupérer le nom du fichier")
-                result[0] = False
-                result[1] = _("network_cannot_get_filename")
-                return
-
-            sanitized_filename = sanitize_filename(filename)
-            dest_path = os.path.join(dest_dir, sanitized_filename)
-            logger.debug(f"Chemin destination: {dest_path}")
-            logger.debug(f"Envoi requête get_token pour {link}")
-            response = requests.post("https://api.1fichier.com/v1/download/get_token.cgi", headers=headers, json=payload, timeout=30)
-            logger.debug(f"Réponse get_token reçue, code: {response.status_code}")
-            response.raise_for_status()
-            download_info = response.json()
-
-            final_url = download_info.get("url")
-            if not final_url:
-                logger.error(f"Impossible de récupérer l'URL de téléchargement")
-                result[0] = False
-                result[1] = _("network_cannot_get_download_url")
-                return
-
-            logger.debug(f"URL de téléchargement obtenue: {final_url}")
+            # Choisir la stratégie d'accès: 1fichier direct via API, sinon AllDebrid pour débrider
+            if config.API_KEY_1FICHIER:
+                headers = {
+                    "Authorization": f"Bearer {config.API_KEY_1FICHIER}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "url": link,
+                    "pretty": 1
+                }
+                logger.debug(f"Préparation requête 1fichier file/info pour {link}")
+                response = requests.post("https://api.1fichier.com/v1/file/info.cgi", headers=headers, json=payload, timeout=30)
+                logger.debug(f"Réponse file/info reçue, code: {response.status_code}")
+                response.raise_for_status()
+                file_info = response.json()
+                if "error" in file_info and file_info["error"] == "Resource not found":
+                    logger.error(f"Le fichier {game_name} n'existe pas sur 1fichier")
+                    result[0] = False
+                    result[1] = _("network_file_not_found").format(game_name)
+                    return
+                filename = file_info.get("filename", "").strip()
+                if not filename:
+                    logger.error("Impossible de récupérer le nom du fichier")
+                    result[0] = False
+                    result[1] = _("network_cannot_get_filename")
+                    return
+                sanitized_filename = sanitize_filename(filename)
+                dest_path = os.path.join(dest_dir, sanitized_filename)
+                logger.debug(f"Chemin destination: {dest_path}")
+                logger.debug(f"Envoi requête 1fichier get_token pour {link}")
+                response = requests.post("https://api.1fichier.com/v1/download/get_token.cgi", headers=headers, json=payload, timeout=30)
+                logger.debug(f"Réponse get_token reçue, code: {response.status_code}")
+                response.raise_for_status()
+                download_info = response.json()
+                final_url = download_info.get("url")
+                if not final_url:
+                    logger.error("Impossible de récupérer l'URL de téléchargement")
+                    result[0] = False
+                    result[1] = _("network_cannot_get_download_url")
+                    return
+                logger.debug(f"URL de téléchargement obtenue via 1fichier: {final_url}")
+            else:
+                # AllDebrid: débrider l'URL 1fichier vers une URL directe
+                if not getattr(config, 'API_KEY_ALLDEBRID', ''):
+                    logger.error("Aucune clé API (1fichier/AllDebrid) disponible")
+                    result[0] = False
+                    result[1] = _("network_api_error").format("Missing API key") if _ else "API key missing"
+                    return
+                ad_key = config.API_KEY_ALLDEBRID
+                # AllDebrid API v4 example: GET https://api.alldebrid.com/v4/link/unlock?agent=<app>&apikey=<key>&link=<url>
+                params = {
+                    'agent': 'RGSX',
+                    'apikey': ad_key,
+                    'link': link
+                }
+                logger.debug("Requête AllDebrid link/unlock en cours")
+                response = requests.get("https://api.alldebrid.com/v4/link/unlock", params=params, timeout=30)
+                logger.debug(f"Réponse AllDebrid reçue, code: {response.status_code}")
+                response.raise_for_status()
+                ad_json = response.json()
+                if ad_json.get('status') != 'success':
+                    err = ad_json.get('error', {}).get('code') or ad_json
+                    logger.error(f"AllDebrid échec débridage: {err}")
+                    result[0] = False
+                    result[1] = _("network_api_error").format(f"AllDebrid unlock failed: {err}") if _ else f"AllDebrid unlock failed: {err}"
+                    return
+                data = ad_json.get('data', {})
+                filename = data.get('filename') or game_name
+                final_url = data.get('link') or data.get('download') or data.get('streamingLink')
+                if not final_url:
+                    logger.error("AllDebrid n'a pas renvoyé de lien direct")
+                    result[0] = False
+                    result[1] = _("network_cannot_get_download_url")
+                    return
+                sanitized_filename = sanitize_filename(filename)
+                dest_path = os.path.join(dest_dir, sanitized_filename)
+                logger.debug(f"URL directe obtenue via AllDebrid: {final_url}")
             lock = threading.Lock()
             retries = 10
             retry_delay = 10
@@ -754,6 +791,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         downloaded = 0
                         chunk_size = 8192
                         last_update_time = time.time()
+                        last_downloaded = 0
                         update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
                         logger.debug(f"Ouverture fichier: {dest_path}")
                         with open(dest_path, 'wb') as f:
@@ -789,8 +827,12 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                                         entry["total_size"] = total_size
                                                         config.needs_redraw = True
                                                         break
-                                        progress_queues[task_id].put((task_id, downloaded, total_size))
+                                        # Calcul de la vitesse en Mo/s
+                                        delta = downloaded - last_downloaded
+                                        speed = (delta / (current_time - last_update_time) / (1024 * 1024)) if (current_time - last_update_time) > 0 else 0.0
+                                        last_downloaded = downloaded
                                         last_update_time = current_time
+                                        progress_queues[task_id].put((task_id, downloaded, total_size, speed))
 
                     if is_zip_non_supported:
                         with lock:
@@ -893,7 +935,11 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                     logger.debug(f"Mise à jour finale historique: status={entry['status']}, progress={entry['progress']}%, message={message}, task_id={task_id}")
                                     break
                     else:
-                        downloaded, total_size = data[1], data[2]
+                        if len(data) >= 4:
+                            downloaded, total_size, speed = data[1], data[2], data[3]
+                        else:
+                            downloaded, total_size = data[1], data[2]
+                            speed = 0.0
                         progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
                         progress_percent = max(0, min(100, progress_percent))
                         
@@ -904,6 +950,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                     entry["status"] = "Téléchargement"
                                     entry["downloaded_size"] = downloaded
                                     entry["total_size"] = total_size
+                                    entry["speed"] = speed  # Ajout de la vitesse
                                     config.needs_redraw = True
                                     break
             await asyncio.sleep(0.1)

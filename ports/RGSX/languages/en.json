@@ -24,7 +24,7 @@
     "error_no_internet": "No Internet connection. Check your network.",
     "error_controls_mapping": "Failed to map controls",
     "error_api_key": "Please enter your API key (premium only) in the file {0}",
-    "error_api_key_extended": "Please enter your API key (premium only) in the file /userdata/saves/ports/rgsx/1fichierAPI.txt by opening it in a text editor and pasting your API key",
+    "error_api_key_extended": "Please enter your API key (premium only) in the file /userdata/saves/ports/rgsx/1FichierAPI.txt by opening it in a text editor and pasting your API key",
     "error_invalid_download_data": "Invalid download data",
     "error_delete_sources": "Error deleting systems_list.json file or folders",
     "error_extension": "Unsupported extension or download error",

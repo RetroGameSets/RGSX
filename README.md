@@ -5,7 +5,7 @@
 
 RGSX is a Python application developed using Pygame for graphics, created for the community by RetroGameSets. It is completely free.
 
-The application supports multiple sources like myrient and 1fichier. These sources can be updated frequently.
+The application supports multiple sources like myrient and 1fichier (with optional AllDebrid unlocking fallback). These sources can be updated frequently.
 
 ---
 
@@ -21,7 +21,7 @@ RGSX also offers a headless command-line interface to list platforms/games and d
 
 - **Game downloads** : Support for ZIP files and handling of unsupported extensions based on EmulationStation's `es_systems.cfg` (and custom `es_systems_*.cfg` on Batocera). RGSX reads allowed extensions per system from these configs and will automatically extract archives when a system doesn't support them.
   - Downloads require no authentication or account for most sources.
-  - Systems marked `(1fichier)` in the name will only be accessible if you provide your 1fichier API key (see below).
+  - Systems marked `(1fichier)` in the name will only be accessible if you provide either your 1Fichier API key or an AllDebrid API key (see below).
 - **Download history** : View and re-download previous files.
 - **Multi-select downloads** : Mark multiple games in the game list with the key mapped to Clear History (default X) to enqueue several downloads in one batch. Press Confirm to start batch.
 - **Control customization** : Remap keyboard or controller keys to your preference with automatic button name detection from EmulationStation (beta).
@@ -80,10 +80,14 @@ You will find RGSX in the "PORTS" system or "Homebrew and ports" and in `/roms/p
 
 ## 🏁 First startup
 ---
-> ## IMPORTANT
-> If you have a 1Fichier API key, you must enter it in  
-> `/saves/ports/rgsx/1FichierAPI.txt`  
-> if you want to download from 1Fichier links.
+> ## IMPORTANT (1Fichier / AllDebrid)
+> To download from 1Fichier links, you can use either your 1Fichier API key or an AllDebrid API key (automatic fallback if 1Fichier is missing).
+>
+> Where to paste your API key (file should contain the key only):
+> - `/saves/ports/rgsx/1FichierAPI.txt` (1Fichier API key)
+> - `/saves/ports/rgsx/AllDebridAPI.txt` (AllDebrid API key)
+>
+> Do NOT create these files manually. Start a 1Fichier download once: RGSX will auto-create empty files if missing. Then open the appropriate file and paste your key.
 ---
 
 - Launch RGSX from ports on batocera, from Windows on Retrobat.
@@ -185,7 +189,8 @@ RGSX/
 ├── controls.json        # Control mapping file (generated after first startup).
 ├── history.json         # Download history database (generated after first download).
 ├── rom_extensions.json  # Generated from es_systems.cfg: per-system allowed ROM extensions cache.
-└── 1FichierAPI.txt      # 1fichier API key (premium account and + only) (empty by default).
+├── 1FichierAPI.txt      # 1fichier API key (premium account and + only) (empty by default).
+└── AllDebridAPI.txt     # AllDebrid API key (optional, fallback for 1Fichier links) (empty by default).
 ```
 
 

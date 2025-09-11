@@ -570,18 +570,27 @@ async def main():
                         config.current_history_item = len(config.history) - 1  # Sélectionner l'entrée en cours
                         if is_1fichier_url(url):
                             if not config.API_KEY_1FICHIER:
+                                # Fallback AllDebrid
+                                try:
+                                    from utils import load_api_key_alldebrid
+                                    config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
+                                except Exception:
+                                    config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
+                            if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
                                 config.previous_menu_state = config.menu_state
                                 config.menu_state = "error"
-                                config.error_message = (
-                                    f"Attention il faut renseigner sa clé API (premium only) dans le fichier {os.path.join(config.SAVE_FOLDER, '1fichierAPI.txt')}"
-                                )
+                                try:
+                                    both_paths = f"{os.path.join(config.SAVE_FOLDER,'1FichierAPI.txt')} or {os.path.join(config.SAVE_FOLDER,'AllDebridAPI.txt')}"
+                                    config.error_message = _("error_api_key").format(both_paths)
+                                except Exception:
+                                    config.error_message = "Please enter API key (1fichier or AllDebrid)"
                                 # Mettre à jour l'entrée temporaire avec l'erreur
                                 config.history[-1]["status"] = "Erreur"
                                 config.history[-1]["progress"] = 0
-                                config.history[-1]["message"] = "Erreur API : Clé API 1fichier absente"
+                                config.history[-1]["message"] = "API NOT FOUND"
                                 save_history(config.history)
                                 config.needs_redraw = True
-                                logger.error("Clé API 1fichier absente")
+                                logger.error("Clé API 1fichier et AllDebrid absentes")
                                 config.pending_download = None
                                 continue
                             pending = check_extension_before_download(url, platform_name, game_name)
@@ -670,13 +679,22 @@ async def main():
                             logger.debug(f"Vérification pour retéléchargement de {game_name}, URL: {url}")
                             if is_1fichier_url(url):
                                 if not config.API_KEY_1FICHIER:
+                                    # Fallback AllDebrid
+                                    try:
+                                        from utils import load_api_key_alldebrid
+                                        config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
+                                    except Exception:
+                                        config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
+                                if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "error"
-                                    config.error_message = (
-                                        f"Attention il faut renseigner sa clé API (premium only) dans le fichier {os.path.join(config.SAVE_FOLDER, '1fichierAPI.txt')}"
-                                    )
+                                    try:
+                                        both_paths = f"{os.path.join(config.SAVE_FOLDER,'1FichierAPI.txt')} or {os.path.join(config.SAVE_FOLDER,'AllDebridAPI.txt')}"
+                                        config.error_message = _("error_api_key").format(both_paths)
+                                    except Exception:
+                                        config.error_message = "Please enter API key (1fichier or AllDebrid)"
                                     config.needs_redraw = True
-                                    logger.error("Clé API 1fichier absente")
+                                    logger.error("Clé API 1fichier et AllDebrid absentes")
                                     config.pending_download = None
                                     continue
                                 pending = check_extension_before_download(url, platform_name, game_name)

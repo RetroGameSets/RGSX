@@ -25,7 +25,7 @@
     "error_no_internet": "Sin conexión a Internet. Verifica tu red.",
     "error_controls_mapping": "Error al mapear los controles",
     "error_api_key": "Atención, debes ingresar tu clave API (solo premium) en el archivo {0}",
-    "error_api_key_extended": "Atención, debes ingresar tu clave API (solo premium) en el archivo /userdata/saves/ports/rgsx/1fichierAPI.txt, abrirlo en un editor de texto y pegar la clave API",
+    "error_api_key_extended": "Atención, debes ingresar tu clave API (solo premium) en el archivo /userdata/saves/ports/rgsx/1FichierAPI.txt, abrirlo en un editor de texto y pegar la clave API",
     "error_invalid_download_data": "Datos de descarga no válidos",
     "error_delete_sources": "Error al eliminar el archivo systems_list.json o carpetas",
     "error_extension": "Extensión no soportada o error de descarga",

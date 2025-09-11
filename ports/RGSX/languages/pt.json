@@ -24,7 +24,7 @@
     "error_no_internet": "Sem conexão com a Internet. Verifique sua rede.",
     "error_controls_mapping": "Falha ao mapear controles",
     "error_api_key": "Insira sua chave API (somente premium) no arquivo {0}",
-    "error_api_key_extended": "Insira sua chave API (somente premium) no arquivo /userdata/saves/ports/rgsx/1fichierAPI.txt abrindo-o em um editor de texto e colando sua chave",
+    "error_api_key_extended": "Insira sua chave API (somente premium) no arquivo /userdata/saves/ports/rgsx/1FichierAPI.txt abrindo-o em um editor de texto e colando sua chave",
     "error_invalid_download_data": "Dados de download inválidos",
     "error_delete_sources": "Erro ao deletar arquivo sources.json ou pastas",
     "error_extension": "Extensão não suportada ou erro no download",

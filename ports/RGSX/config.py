@@ -104,7 +104,7 @@ JSON_EXTENSIONS = os.path.join(SAVE_FOLDER, "rom_extensions.json")
 PRECONF_CONTROLS_PATH = os.path.join(APP_FOLDER, "assets", "controls")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
 HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
-API_KEY_1FICHIER = os.path.join(SAVE_FOLDER, "1fichierAPI.txt")
+API_KEY_1FICHIER = os.path.join(SAVE_FOLDER, "1FichierAPI.txt")
 RGSX_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
 
 # URL
