@@ -24,7 +24,7 @@ from display import (
     draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list,
         draw_display_menu,
     draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog,
-    draw_confirm_dialog, draw_redownload_game_cache_dialog, draw_popup, draw_gradient,
+    draw_confirm_dialog, draw_reload_games_data_dialog, draw_popup, draw_gradient,
     THEME_COLORS
 )
 from language import _
@@ -204,6 +204,12 @@ else:
     logger.debug(f"Joysticks détectés: {joystick_names}")
     for idx, name in enumerate(joystick_names):
         lname = name.lower()
+        # Détection spécifique Elite AVANT la détection générique Xbox
+        if ("microsoft xbox controller" in lname):
+            config.xbox_elite_controller = True
+            logger.debug(f"Controller detected (Xbox Elite): {name}")
+            print(f"Controller detected (Xbox Elite): {name}")
+            break
         if ("xbox" in lname) or ("x-box" in lname) or ("xinput" in lname) or ("microsoft x-box" in lname) or ("x-box 360" in lname) or ("360" in lname):
             config.xbox_controller = True
             logger.debug(f"Controller detected : {name}")
@@ -500,10 +506,10 @@ async def main():
                 config.needs_redraw = True
                 continue
 
-            if config.menu_state == "redownload_game_cache":
+            if config.menu_state == "reload_games_data":
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
-                #logger.debug(f"Événement transmis à handle_controls dans redownload_game_cache: {event.type}")
+                #logger.debug(f"Événement transmis à handle_controls dans reload_games_data: {event.type}")
                 continue
 
             if config.menu_state == "extension_warning":
@@ -666,106 +672,7 @@ async def main():
                                     config.menu_state = "history"  # Passer à l'historique
                                     config.needs_redraw = True
                                     logger.debug(f"Téléchargement démarré pour {game_name}, passage à l'historique")
-                elif action == "redownload" and config.menu_state == "history" and config.history:
-                    entry = config.history[config.current_history_item]
-                    platform_name = entry["platform"]
-                    game_name = entry["game_name"]
-                    for game in config.games:
-                        if isinstance(game, (list, tuple)) and game and game[0] == game_name and config.platforms[config.current_platform] == platform_name:
-                            url = game[1] if len(game) > 1 else None
-                        else:
-                            continue
-                        if not url:
-                            logger.debug(f"Vérification pour retéléchargement de {game_name}, URL: {url}")
-                            if is_1fichier_url(url):
-                                if not config.API_KEY_1FICHIER:
-                                    # Fallback AllDebrid
-                                    try:
-                                        from utils import load_api_key_alldebrid
-                                        config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
-                                    except Exception:
-                                        config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
-                                if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
-                                    config.previous_menu_state = config.menu_state
-                                    config.menu_state = "error"
-                                    try:
-                                        both_paths = f"{os.path.join(config.SAVE_FOLDER,'1FichierAPI.txt')} or {os.path.join(config.SAVE_FOLDER,'AllDebridAPI.txt')}"
-                                        config.error_message = _("error_api_key").format(both_paths)
-                                    except Exception:
-                                        config.error_message = "Please enter API key (1fichier or AllDebrid)"
-                                    config.needs_redraw = True
-                                    logger.error("Clé API 1fichier et AllDebrid absentes")
-                                    config.pending_download = None
-                                    continue
-                                pending = check_extension_before_download(url, platform_name, game_name)
-                                if not pending:
-                                    config.menu_state = "error"
-                                    config.error_message = _("error_invalid_download_data") if _ else "Invalid download data"
-                                    config.needs_redraw = True
-                                    logger.error(f"check_extension_before_download a échoué pour {game_name}")
-                                else:
-                                    from utils import is_extension_supported, load_extensions_json, sanitize_filename
-                                    from rgsx_settings import get_allow_unknown_extensions
-                                    is_supported = is_extension_supported(sanitize_filename(game_name), platform_name, load_extensions_json())
-                                    zip_ok = bool(pending[3])
-                                    allow_unknown = False
-                                    try:
-                                        allow_unknown = get_allow_unknown_extensions()
-                                    except Exception:
-                                        allow_unknown = False
-                                    if (not is_supported and not zip_ok) and not allow_unknown:
-                                        config.pending_download = pending
-                                        config.menu_state = "extension_warning"
-                                        config.extension_confirm_selection = 0
-                                        config.needs_redraw = True
-                                        logger.debug(f"Extension non reconnue pour lien 1fichier, passage à extension_warning pour {game_name}")
-                                    else:
-                                        config.previous_menu_state = config.menu_state
-                                        logger.debug(f"Previous menu state défini: {config.previous_menu_state}")
-                                        success, message = download_from_1fichier(url, platform_name, game_name, zip_ok)
-                                    # Ancien popup download_result supprimé : retour direct à l'historique
-                                    config.download_result_message = message
-                                    config.download_result_error = not success
-                                    config.download_progress.clear()
-                                    config.pending_download = None
-                                    config.menu_state = "history"
-                                    config.needs_redraw = True
-                                    logger.debug(f"Retéléchargement 1fichier terminé pour {game_name}, succès={success}, message={message}, retour direct history")
-                            else:
-                                pending = check_extension_before_download(url, platform_name, game_name)
-                                if not pending:
-                                    config.menu_state = "error"
-                                    config.error_message = _("error_invalid_download_data") if _ else "Invalid download data"
-                                    config.needs_redraw = True
-                                    logger.error(f"check_extension_before_download a échoué pour {game_name}")
-                                else:
-                                    from utils import is_extension_supported, load_extensions_json, sanitize_filename
-                                    from rgsx_settings import get_allow_unknown_extensions
-                                    is_supported = is_extension_supported(sanitize_filename(game_name), platform_name, load_extensions_json())
-                                    zip_ok = bool(pending[3])
-                                    allow_unknown = False
-                                    try:
-                                        allow_unknown = get_allow_unknown_extensions()
-                                    except Exception:
-                                        allow_unknown = False
-                                    if (not is_supported and not zip_ok) and not allow_unknown:
-                                        config.pending_download = pending
-                                        config.menu_state = "extension_warning"
-                                        config.extension_confirm_selection = 0
-                                        config.needs_redraw = True
-                                        logger.debug(f"Extension non reconnue pour retéléchargement, passage à extension_warning pour {game_name}")
-                                    else:
-                                        config.previous_menu_state = config.menu_state
-                                        logger.debug(f"Previous menu state défini: {config.previous_menu_state}")
-                                        success, message = download_rom(url, platform_name, game_name, zip_ok)
-                                    config.download_result_message = message
-                                    config.download_result_error = not success
-                                    config.download_progress.clear()
-                                    config.pending_download = None
-                                    config.menu_state = "history"
-                                    config.needs_redraw = True
-                                    logger.debug(f"Retéléchargement terminé pour {game_name}, succès={success}, message={message}, retour direct history")
-                            break
+                
                 elif action in ("clear_history", "delete_history") and config.menu_state == "history":
                     # Ouvrir le dialogue de confirmation
                     config.previous_menu_state = config.menu_state
@@ -906,8 +813,8 @@ async def main():
                 draw_clear_history_dialog(screen)
             elif config.menu_state == "confirm_cancel_download":
                 draw_cancel_download_dialog(screen)
-            elif config.menu_state == "redownload_game_cache":
-                draw_redownload_game_cache_dialog(screen)
+            elif config.menu_state == "reload_games_data":
+                draw_reload_games_data_dialog(screen)
             elif config.menu_state == "restart_popup":
                 draw_popup(screen)
             elif config.menu_state == "accessibility_menu":

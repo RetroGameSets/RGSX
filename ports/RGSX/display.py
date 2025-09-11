@@ -1774,14 +1774,13 @@ def draw_confirm_dialog(screen):
     draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - button_width - 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=config.confirm_selection == 1)
     draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=config.confirm_selection == 0)
 
-# draw_redownload_game_cache_dialog
-def draw_redownload_game_cache_dialog(screen):
+
+def draw_reload_games_data_dialog(screen):
     """Affiche la boîte de dialogue de confirmation pour retélécharger le cache des jeux."""
     global OVERLAY
     if OVERLAY is None or OVERLAY.get_size() != (config.screen_width, config.screen_height):
         OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
         OVERLAY.fill((0, 0, 0, 150))
-        logger.debug("OVERLAY recréé dans draw_redownload_game_cache_dialog")
 
     screen.blit(OVERLAY, (0, 0))
     message = _("confirm_redownload_cache")

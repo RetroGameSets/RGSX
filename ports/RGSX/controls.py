@@ -33,7 +33,7 @@ key_states = {}  # Dictionnaire pour suivre l'état des touches
 VALID_STATES = [
     "platform", "game", "confirm_exit",
     "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
-    "redownload_game_cache", "restart_popup", "error", "loading", "confirm_clear_history",
+    "reload_games_data", "restart_popup", "error", "loading", "confirm_clear_history",
     "language_select", "filter_platforms", "display_menu"
 ]
 
@@ -105,7 +105,9 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
                 candidates.append('steam_controller.json')
             if getattr(config, 'trimui_controller', False):
                 candidates.append('trimui_controller.json')
-            if getattr(config, 'xbox_controller', False):
+            if getattr(config, 'xbox_elite_controller', False):
+                candidates.append('xbox_elite_controller.json')
+            elif getattr(config, 'xbox_controller', False):
                 candidates.append('xbox_controller.json')
             if getattr(config, 'nintendo_controller', False):
                 candidates.append('nintendo_controller.json')
@@ -188,7 +190,7 @@ def handle_controls(event, sources, joystick, screen):
             return "quit"
         
         # Menu pause
-        if is_input_matched(event, "start") and config.menu_state not in ("pause_menu", "controls_mapping", "redownload_game_cache"):
+        if is_input_matched(event, "start") and config.menu_state not in ("pause_menu", "controls_mapping", "reload_games_data"):
             config.previous_menu_state = config.menu_state
             config.menu_state = "pause_menu"
             config.selected_option = 0
@@ -529,11 +531,11 @@ def handle_controls(event, sources, joystick, screen):
                     config.scroll_offset = 0
                     config.needs_redraw = True
                     logger.debug("Retour à platform")
-                elif is_input_matched(event, "redownload_game_cache"):
+                elif is_input_matched(event, "reload_games_data"):
                     config.previous_menu_state = config.menu_state
-                    config.menu_state = "redownload_game_cache"
+                    config.menu_state = "reload_games_data"
                     config.needs_redraw = True
-                    logger.debug("Passage à redownload_game_cache depuis game")
+                    logger.debug("Passage à reload_games_data depuis game")
                 # Télécharger les jeux sélectionnés (multi) ou le jeu courant
                 elif is_input_matched(event, "confirm"):
                     # Batch multi-sélection
@@ -1208,10 +1210,10 @@ def handle_controls(event, sources, joystick, screen):
                         logger.error(f"Erreur changement mode sources: {e}")
                 elif config.selected_option == 6:  # Redownload game cache
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                    config.menu_state = "redownload_game_cache"
+                    config.menu_state = "reload_games_data"
                     config.redownload_confirm_selection = 0
                     config.needs_redraw = True
-                    logger.debug(f"Passage à redownload_game_cache depuis pause_menu")
+                    logger.debug(f"Passage à reload_games_data depuis pause_menu")
                 elif config.selected_option == 7:  # Music toggle
                     config.music_enabled = not config.music_enabled
                     save_music_config()
@@ -1354,13 +1356,13 @@ def handle_controls(event, sources, joystick, screen):
                 logger.debug("Retour à pause_menu depuis controls_mapping")
         
         # Redownload game cache
-        elif config.menu_state == "redownload_game_cache":
+        elif config.menu_state == "reload_games_data":
             if is_input_matched(event, "left") or is_input_matched(event, "right"):
                 config.redownload_confirm_selection = 1 - config.redownload_confirm_selection
                 config.needs_redraw = True
-                logger.debug(f"Changement sélection redownload_game_cache: {config.redownload_confirm_selection}")
+                logger.debug(f"Changement sélection reload_games_data: {config.redownload_confirm_selection}")
             elif is_input_matched(event, "confirm"):
-                logger.debug(f"Action confirm dans redownload_game_cache, sélection={config.redownload_confirm_selection}")
+                logger.debug(f"Action confirm dans reload_games_data, sélection={config.redownload_confirm_selection}")
                 if config.redownload_confirm_selection == 1:  # Oui
                     logger.debug("Début du redownload des jeux")
                     config.download_tasks.clear()
@@ -1409,7 +1411,7 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "cancel"):
                 config.menu_state = validate_menu_state(config.previous_menu_state)
                 config.needs_redraw = True
-                logger.debug(f"Retour à {config.menu_state} depuis redownload_game_cache")
+                logger.debug(f"Retour à {config.menu_state} depuis reload_games_data")
        
        
         # Popup de redémarrage

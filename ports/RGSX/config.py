@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.0.7"
+app_version = "2.2.0.8"
 
 def get_operating_system():
     """Renvoie le nom du système d'exploitation."""
@@ -202,7 +202,6 @@ last_state_change_time = 0  # Temps du dernier changement d'état pour debounce
 debounce_delay = 200  # Délai de debounce en millisecondes
 platform_dicts = []  # Liste des dictionnaires de plateformes
 selected_key = (0, 0)  # Position du curseur dans le clavier virtuel
-redownload_confirm_selection = 0  # Sélection pour la confirmation de redownload
 popup_message = ""  # Message à afficher dans les popups
 popup_timer = 0  # Temps restant pour le popup en millisecondes (0 = inactif)
 last_frame_time = pygame.time.get_ticks() if pygame is not None else 0
@@ -224,6 +223,7 @@ eightbitdo_controller = False
 steam_controller = False
 trimui_controller = False
 generic_controller = False
+xbox_elite_controller = False  # Flag spécifique manette Xbox Elite
 
 # --- Filtre plateformes (UI) ---
 selected_filter_index = 0  # index dans la liste visible triée
