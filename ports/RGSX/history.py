@@ -51,7 +51,6 @@ def save_history(history):
         os.makedirs(os.path.dirname(history_path), exist_ok=True)
         with open(history_path, "w", encoding='utf-8') as f:
             json.dump(history, f, indent=2, ensure_ascii=False)
-        logger.debug(f"Historique sauvegardé dans {history_path}")
     except Exception as e:
         logger.error(f"Erreur lors de l'écriture de {history_path} : {e}")
 

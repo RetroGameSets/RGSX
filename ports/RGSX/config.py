@@ -13,74 +13,34 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.0.8"
-
-def get_operating_system():
-    """Renvoie le nom du système d'exploitation."""
-    return platform.system()
-#log dans la console le système d'exploitation (désactivé en headless)
-if not HEADLESS:
-    print(f"Système d'exploitation : {get_operating_system()}")
+app_version = "2.2.1.0"
 
 
 def get_application_root():
-    """Détermine le dossier de l'application de manière portable."""
+    """Détermine le dossier de l'application (PORTS)"""
     try:
         # Obtenir le chemin absolu du fichier config.py
         current_file = os.path.abspath(__file__)
         # Remonter au dossier parent de config.py (par exemple, dossier de l'application)
         app_root = os.path.dirname(os.path.dirname(current_file))
-        if not HEADLESS:
-            print(f"Dossier de l'application : {app_root}")
         return app_root
     except NameError:
         # Si __file__ n'est pas défini (par exemple, exécution dans un REPL)
         return os.path.abspath(os.getcwd())
 
-def get_system_root():
-    OPERATING_SYSTEM = get_operating_system()
-    """Détermine le dossier racine du système de fichiers (par exemple, /userdata ou C:\\)."""
-    try:
-        if OPERATING_SYSTEM == "Windows":
-            # Sur Windows, extraire la lettre de disque
-            current_path = os.path.abspath(__file__)
-            drive, _ = os.path.splitdrive(current_path)
-            system_root = drive + os.sep
-            if not HEADLESS:
-                print(f"Dossier racine du système : {system_root}")
-            return system_root
-        elif OPERATING_SYSTEM == "Linux":
-            # tester si c'est batocera :
-            if os.path.exists("/usr/share/batocera"):
-                OPERATING_SYSTEM = "Batocera"
-                
-                #remonter jusqu'à atteindre /userdata
-                current_path = os.path.abspath(__file__)
-                current_dir = current_path
-                while current_dir != os.path.dirname(current_dir):  # Tant qu'on peut remonter
-                    parent_dir = os.path.dirname(current_dir)
-                    if os.path.basename(parent_dir) == "userdata":  # Vérifier si le parent est userdata
-                        system_root = parent_dir
-                        if not HEADLESS:
-                            print(f"Dossier racine du système : {system_root}")
-                        return system_root
-                    current_dir = parent_dir
-                # Si userdata n'est pas trouvé, retourner /
-                return "/"
-            else:
-                return "/"
-    except NameError:
-        
-        return "/" if not OPERATING_SYSTEM == "Windows" else os.path.splitdrive(os.getcwd())[0] + os.sep
-
+def detect_operating_system():
+    """Renvoie le nom du système d'exploitation."""
+    OPERATING_SYSTEM = platform.system()
+    return OPERATING_SYSTEM
+    
 
 # Chemins de base
-SYSTEM_FOLDER = get_system_root()
 APP_FOLDER = os.path.join(get_application_root(), "RGSX")
-ROMS_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms")
-SAVE_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "saves", "ports", "rgsx")
-RETROBAT_DATA_FOLDER = os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER)))
-
+USERDATA_FOLDER = os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER)))
+ROMS_FOLDER = os.path.join(USERDATA_FOLDER, "roms")
+SAVE_FOLDER = os.path.join(USERDATA_FOLDER, "saves", "ports", "rgsx")
+GAMELISTXML = os.path.join(ROMS_FOLDER, "ports","gamelist.xml")
+GAMELISTXML_WINDOWS = os.path.join(ROMS_FOLDER, "windows","gamelist.xml")
 
 
 # Configuration du logging
@@ -88,15 +48,12 @@ logger = logging.getLogger(__name__)
 log_dir = os.path.join(APP_FOLDER, "logs")
 log_file = os.path.join(log_dir, "RGSX.log")
 
-# Chemins de base
-GAMELISTXML = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms", "ports", "gamelist.xml")
-GAMELISTXML_WINDOWS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))), "roms", "windows", "gamelist.xml")
-#Dossier /roms/ports/rgsx
+#Dossier de l'APP : /roms/ports/rgsx
 UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")
 LANGUAGES_FOLDER = os.path.join(APP_FOLDER, "languages")
 MUSIC_FOLDER = os.path.join(APP_FOLDER, "assets", "music")
 
-#Dossier /saves/ports/rgsx
+#Dossier de sauvegarde : /saves/ports/rgsx
 IMAGES_FOLDER = os.path.join(SAVE_FOLDER, "images")
 GAMES_FOLDER = os.path.join(SAVE_FOLDER, "games")
 SOURCES_FILE = os.path.join(SAVE_FOLDER, "systems_list.json")
@@ -104,7 +61,12 @@ JSON_EXTENSIONS = os.path.join(SAVE_FOLDER, "rom_extensions.json")
 PRECONF_CONTROLS_PATH = os.path.join(APP_FOLDER, "assets", "controls")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
 HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
-API_KEY_1FICHIER = os.path.join(SAVE_FOLDER, "1FichierAPI.txt")
+# Séparation chemin / valeur pour éviter les confusions lors du chargement
+API_KEY_1FICHIER_PATH = os.path.join(SAVE_FOLDER, "1FichierAPI.txt")
+API_KEY_ALLDEBRID_PATH = os.path.join(SAVE_FOLDER, "AllDebridAPI.txt")
+# Valeurs chargées (remplies dynamiquement par utils.load_api_key_*).
+API_KEY_1FICHIER = ""
+API_KEY_ALLDEBRID = ""
 RGSX_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
 
 # URL
@@ -117,14 +79,12 @@ OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "games.zip")
 UNRAR_EXE = os.path.join(APP_FOLDER,"assets", "unrar.exe")
 XDVDFS_EXE = os.path.join(APP_FOLDER,"assets", "xdvdfs.exe")
 XDVDFS_LINUX = os.path.join(APP_FOLDER,"assets", "xdvdfs")
-unrar_download_exe = os.path.join(OTA_SERVER_URL, "unrar.exe")
-xdvdfs_download_exe = os.path.join(OTA_SERVER_URL, "xdvdfs.exe")
-
-
-xdvdfs_download_linux = os.path.join(OTA_SERVER_URL, "xdvdfs")
 
 if not HEADLESS:
     # Print des chemins pour debug
+    print(f"OPERATING_SYSTEM: {detect_operating_system()}")
+    print(f"APP_FOLDER: {APP_FOLDER}")
+    print(f"USERDATA_FOLDER: {USERDATA_FOLDER}")
     print(f"ROMS_FOLDER: {ROMS_FOLDER}")
     print(f"SAVE_FOLDER: {SAVE_FOLDER}")
     print(f"RGSX LOGS_FOLDER: {log_dir}")
@@ -133,7 +93,6 @@ if not HEADLESS:
     print(f"IMAGES_FOLDER: {IMAGES_FOLDER}")
     print(f"GAMES_FOLDER: {GAMES_FOLDER}")
     print(f"SOURCES_FILE: {SOURCES_FILE}")
-    print(f"OPERATING_SYSTEM: {get_operating_system()}")
 
 
 # Constantes pour la répétition automatique dans pause_menu

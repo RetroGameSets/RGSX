@@ -122,14 +122,14 @@ def load_extensions_json():
 
 def _detect_es_systems_cfg_paths():
     """Retourne une liste de chemins possibles pour es_systems.cfg selon l'OS.
-    - RetroBat (Windows): {config.RETROBAT_DATA_FOLDER}\\system\\templates\\emulationstation\\es_systems.cfg
+    - RetroBat (Windows): {config.USERDATA_FOLDER}\\system\\templates\\emulationstation\\es_systems.cfg
     - Batocera (Linux): /usr/share/emulationstation/es_systems.cfg
       Ajoute aussi les fichiers customs: /userdata/system/configs/emulationstation/es_systems_*.cfg
     """
     candidates = []
     try:
         if platform.system() == 'Windows':
-            base = getattr(config, 'RETROBAT_DATA_FOLDER', None)
+            base = getattr(config, 'USERDATA_FOLDER', None)
             if base:
                 candidates.append(os.path.join(base, 'system', 'templates', 'emulationstation', 'es_systems.cfg'))
         else:
@@ -1250,66 +1250,82 @@ def set_music_popup(music_name):
     config.music_popup_start_time = pygame.time.get_ticks() / 1000  # Temps actuel en secondes
     config.needs_redraw = True  # Forcer le redraw pour afficher le nom de la musique
 
-def load_api_key_1fichier():
-    """Charge la clé API 1fichier depuis le dossier de sauvegarde, crée le fichier si absent."""
-    API_KEY_1FICHIER = os.path.join(config.SAVE_FOLDER, "1FichierAPI.txt")
-    logger.debug(f"Chemin du fichier de clé API: {API_KEY_1FICHIER}")
-    logger.debug(f"Tentative de chargement de la clé API depuis: {API_KEY_1FICHIER}")
-    try:
-        # Vérifie si le fichier existe déjà 
-        if not os.path.exists(API_KEY_1FICHIER):
-            logger.info(f"Fichier de clé API non trouvé")
-            # Crée le dossier parent si nécessaire
-            os.makedirs(config.SAVE_FOLDER, exist_ok=True)
-            # Crée le fichier vide si absent
-            with open(API_KEY_1FICHIER, "w") as f:
-                f.write("")
-            logger.info(f"Fichier de clé API créé : {API_KEY_1FICHIER}")
-            return ""
-    except OSError as e:
-        logger.error(f"Erreur lors de la création du fichier de clé API : {e}")
-        return ""
-    # Lit la clé API depuis le fichier
-    try:
-        with open(API_KEY_1FICHIER, "r", encoding="utf-8") as f:
-            api_key = f.read().strip()
-        logger.debug(f"Clé API 1fichier lue: '{api_key}' (longueur: {len(api_key)})")
-        if not api_key:
-            logger.warning("Clé API 1fichier vide, veuillez la renseigner dans le fichier pour pouvoir utiliser les fonctionnalités de téléchargement sur 1fichier.")
-        API_KEY_1FICHIER = api_key
-        config.API_KEY_1FICHIER = api_key
-        logger.debug(f"Clé API 1fichier chargée dans la configuration : '{config.API_KEY_1FICHIER}'")
-        return api_key
-    except OSError as e:
-        logger.error(f"Erreur lors de la lecture de la clé API : {e}")
-        return ""
+def load_api_keys(force: bool = False):
+    """Charge les clés API (1fichier, AllDebrid) en une seule passe.
 
-def load_api_key_alldebrid():
-    """Charge la clé API AllDebrid depuis le dossier de sauvegarde, crée le fichier si absent."""
+    - Crée les fichiers vides s'ils n'existent pas
+    - Met à jour config.API_KEY_1FICHIER et config.API_KEY_ALLDEBRID
+    - Utilise un cache basé sur le mtime pour éviter des relectures
+    - force=True ignore le cache et relit systématiquement
+
+    Retourne: { '1fichier': str, 'alldebrid': str, 'reloaded': bool }
+    """
     try:
-        api_file = os.path.join(config.SAVE_FOLDER, "AllDebridAPI.txt")
-        logger.debug(f"Chemin du fichier de clé API AllDebrid: {api_file}")
-        if not os.path.exists(api_file):
-            logger.info("Fichier de clé API AllDebrid non trouvé")
-            os.makedirs(config.SAVE_FOLDER, exist_ok=True)
-            with open(api_file, "w", encoding="utf-8") as f:
-                f.write("")
-            logger.info(f"Fichier de clé API AllDebrid créé : {api_file}")
-            return ""
-        with open(api_file, "r", encoding="utf-8") as f:
-            api_key = f.read().strip()
-        logger.debug(f"Clé API AllDebrid lue: '{api_key}' (longueur: {len(api_key)})")
-        if not api_key:
-            logger.warning("Clé API AllDebrid vide, renseignez-la dans AllDebridAPI.txt pour activer le débridage.")
-        # Stocke dans la config pour usage global
-        try:
-            config.API_KEY_ALLDEBRID = api_key
-        except Exception:
-            pass
-        return api_key
+        paths = {
+            '1fichier': getattr(config, 'API_KEY_1FICHIER_PATH', ''),
+            'alldebrid': getattr(config, 'API_KEY_ALLDEBRID_PATH', ''),
+        }
+        cache_attr = '_api_keys_cache'
+        if not hasattr(config, cache_attr):
+            setattr(config, cache_attr, {'1fichier_mtime': None, 'alldebrid_mtime': None})
+        cache_data = getattr(config, cache_attr)
+        reloaded = False
+
+        for key_name, path in paths.items():
+            if not path:
+                continue
+            # Création fichier vide si absent
+            try:
+                if not os.path.exists(path):
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with open(path, 'w', encoding='utf-8') as f:
+                        f.write("")
+            except Exception as ce:
+                logger.error(f"Impossible de préparer le fichier clé {key_name}: {ce}")
+                continue
+            try:
+                mtime = os.path.getmtime(path)
+            except Exception:
+                mtime = None
+            cache_key = f"{key_name}_mtime"
+            if force or (mtime is not None and mtime != cache_data.get(cache_key)):
+                # Lecture
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        value = f.read().strip()
+                except Exception as re:
+                    logger.error(f"Erreur lecture clé {key_name}: {re}")
+                    value = ""
+                # Assignation dans config
+                if key_name == '1fichier':
+                    config.API_KEY_1FICHIER = value
+                else:
+                    config.API_KEY_ALLDEBRID = value
+                cache_data[cache_key] = mtime
+                reloaded = True
+        return {
+            '1fichier': getattr(config, 'API_KEY_1FICHIER', ''),
+            'alldebrid': getattr(config, 'API_KEY_ALLDEBRID', ''),
+            'reloaded': reloaded
+        }
     except Exception as e:
-        logger.error(f"Erreur lors du chargement de la clé API AllDebrid: {e}")
-        return ""
+        logger.error(f"Erreur load_api_keys: {e}")
+        return {
+            '1fichier': getattr(config, 'API_KEY_1FICHIER', ''),
+            'alldebrid': getattr(config, 'API_KEY_ALLDEBRID', ''),
+            'reloaded': False
+        }
+
+# Wrappers rétro-compatibilité (dépréciés)
+def load_api_key_1fichier(force: bool = False):  # pragma: no cover
+    return load_api_keys(force).get('1fichier', '')
+
+def load_api_key_alldebrid(force: bool = False):  # pragma: no cover
+    return load_api_keys(force).get('alldebrid', '')
+
+# Ancien nom conservé comme alias
+def ensure_api_keys_loaded(force: bool = False):  # pragma: no cover
+    return load_api_keys(force)
 
 def load_music_config():
     """Charge la configuration musique depuis rgsx_settings.json."""

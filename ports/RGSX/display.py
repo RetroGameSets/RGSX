@@ -1403,53 +1403,177 @@ def draw_display_menu(screen):
     screen.blit(instruction_surface, instruction_rect)
 
 def draw_pause_menu(screen, selected_option):
-    """Dessine le menu pause avec un style moderne."""
+    """Dessine le menu pause racine (catégories)."""
     screen.blit(OVERLAY, (0, 0))
-    from rgsx_settings import get_symlink_option, get_sources_mode, get_show_unsupported_platforms
-    mode = get_sources_mode()
-    source_label = _("games_source_rgsx") if mode == "rgsx" else _("games_source_custom")
-    if config.music_enabled:
-        music_name = config.current_music_name or ""
-        music_option = _("menu_music_enabled").format(music_name)
-    else:
-        music_option = _("menu_music_disabled")
-    symlink_option = _("symlink_option_enabled") if get_symlink_option() else _("symlink_option_disabled")
+    # Nouvel ordre: Language / Controls / Display / Games / Settings / Restart / Quit
     options = [
-        _("menu_controls"),            # 0
-        _("menu_remap_controls"),      # 1
-        _("menu_history"),             # 2
-        _("menu_language"),            # 3
-        _("menu_display"),             # 4 new merged display menu
-        f"{_('menu_games_source_prefix')}: {source_label}",  # 5 (shifted left)
-        _("menu_redownload_cache"),    # 6
-        music_option,                   # 7
-        symlink_option,                 # 8
-    _("menu_restart"),             # 9 (new)
-    _("menu_quit")                 # 10
+        _("menu_language") if _ else "Language",          # 0 -> sélecteur de langue direct
+        _("menu_controls"),                                 # 1 -> sous-menu controls
+        _("menu_display"),                                  # 2 -> sous-menu display
+    _("menu_games") if _ else "Games",                  # 3 -> sous-menu games (history + sources + update)
+        _("menu_settings_category") if _ else "Settings",  # 4 -> sous-menu settings
+        _("menu_restart"),                                  # 5 -> reboot
+        _("menu_quit")                                      # 6 -> quit
     ]
-    menu_width = int(config.screen_width * 0.8)
-    line_height = config.font.get_height() + 10
-    button_height = int(config.screen_height * 0.0463)
-    margin_top_bottom = 20
-    menu_height = len(options) * (button_height + 10) + 2 * margin_top_bottom
+    menu_width = int(config.screen_width * 0.6)
+    button_height = int(config.screen_height * 0.048)
+    margin_top_bottom = 24
+    menu_height = len(options) * (button_height + 12) + 2 * margin_top_bottom
     menu_x = (config.screen_width - menu_width) // 2
     menu_y = (config.screen_height - menu_height) // 2
-
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (menu_x, menu_y, menu_width, menu_height), 2, border_radius=12)
-
     for i, option in enumerate(options):
         draw_stylized_button(
             screen,
             option,
             menu_x + 20,
-            menu_y + margin_top_bottom + i * (button_height + 10),
+            menu_y + margin_top_bottom + i * (button_height + 12),
             menu_width - 40,
             button_height,
             selected=i == selected_option
         )
-    # Stocker le nombre total d'options pour la navigation dynamique
     config.pause_menu_total_options = len(options)
+
+def _draw_submenu_generic(screen, title, options, selected_index):
+    """Helper générique pour dessiner un sous-menu hiérarchique."""
+    screen.blit(OVERLAY, (0, 0))
+    menu_width = int(config.screen_width * 0.72)
+    button_height = int(config.screen_height * 0.045)
+    margin_top_bottom = 26
+    menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom  # +1 pour le titre
+    menu_x = (config.screen_width - menu_width) // 2
+    menu_y = (config.screen_height - menu_height) // 2
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=14)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (menu_x, menu_y, menu_width, menu_height), 2, border_radius=14)
+    # Title
+    title_surface = config.font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width//2, menu_y + margin_top_bottom//2 + title_surface.get_height()//2))
+    screen.blit(title_surface, title_rect)
+    # Options
+    start_y = title_rect.bottom + 10
+    for i, opt in enumerate(options):
+        draw_stylized_button(
+            screen,
+            opt,
+            menu_x + 20,
+            start_y + i * (button_height + 10),
+            menu_width - 40,
+            button_height,
+            selected=(i == selected_index)
+        )
+
+def draw_pause_controls_menu(screen, selected_index):
+    options = [
+        _("menu_controls"),        # aide contrôles (réutilisée)
+        _("menu_remap_controls"),  # remap
+        _("menu_back") if _ else "Back"
+    ]
+    _draw_submenu_generic(screen, _("menu_controls") if _ else "Controls", options, selected_index)
+
+def draw_pause_display_menu(screen, selected_index):
+    from rgsx_settings import get_show_unsupported_platforms, get_allow_unknown_extensions
+    # Layout label
+    layouts = [(3,3),(3,4),(4,3),(4,4)]
+    try:
+        idx = layouts.index((config.GRID_COLS, config.GRID_ROWS))
+    except ValueError:
+        idx = 0
+    layout_value = f"{layouts[idx][0]}x{layouts[idx][1]}"
+    layout_txt = f"{_('submenu_display_layout') if _ else 'Layout'}: < {layout_value} >"
+    # Font size
+    opts = getattr(config, 'font_scale_options', [0.75, 1.0, 1.25, 1.5, 1.75])
+    cur_idx = getattr(config, 'current_font_scale_index', 1)
+    font_value = f"{opts[cur_idx]}x"
+    font_txt = f"{_('submenu_display_font_size') if _ else 'Font Size'}: < {font_value} >"
+    unsupported = get_show_unsupported_platforms()
+    status_unsupported = _('status_on') if unsupported else _('status_off')
+    # Construire label sans statut pour insérer les chevrons proprement
+    raw_unsupported_label = _('submenu_display_show_unsupported') if _ else 'Show unsupported systems: {status}'
+    # Retirer éventuel placeholder et ponctuation finale
+    if '{status}' in raw_unsupported_label:
+        raw_unsupported_label = raw_unsupported_label.split('{status}')[0].rstrip(' :')
+    unsupported_txt = f"{raw_unsupported_label}: < {status_unsupported} >"
+    allow_unknown = get_allow_unknown_extensions()
+    status_unknown = _('status_on') if allow_unknown else _('status_off')
+    raw_unknown_label = _('submenu_display_allow_unknown_ext') if _ else 'Hide unknown ext warn: {status}'
+    if '{status}' in raw_unknown_label:
+        raw_unknown_label = raw_unknown_label.split('{status}')[0].rstrip(' :')
+    unknown_txt = f"{raw_unknown_label}: < {status_unknown} >"
+    filter_txt = _("submenu_display_filter_platforms") if _ else "Filter Platforms"
+    back_txt = _("menu_back") if _ else "Back"
+    options = [layout_txt, font_txt, unsupported_txt, unknown_txt, filter_txt, back_txt]
+    _draw_submenu_generic(screen, _("menu_display"), options, selected_index)
+
+def draw_pause_games_menu(screen, selected_index):
+    from rgsx_settings import get_sources_mode
+    mode = get_sources_mode()
+    source_label = _("games_source_rgsx") if mode == "rgsx" else _("games_source_custom")
+    source_txt = f"{_('menu_games_source_prefix')}: < {source_label} >"
+    update_txt = _("menu_redownload_cache")
+    # Première entrée: Historique des téléchargements (utiliser la clé menu_history)
+    history_txt = _("menu_history") if _ else "History"
+    back_txt = _("menu_back") if _ else "Back"
+    options = [history_txt, source_txt, update_txt, back_txt]
+    _draw_submenu_generic(screen, _("menu_games") if _ else "Games", options, selected_index)
+
+def draw_pause_settings_menu(screen, selected_index):
+    from rgsx_settings import get_symlink_option
+    # Music
+    if config.music_enabled:
+        music_name = config.current_music_name or ""
+        music_option = _("menu_music_enabled").format(music_name)
+    else:
+        music_option = _("menu_music_disabled")
+    # Uniformiser en < value > pour les réglages basculables
+    if ' : ' in music_option:
+        base, val = music_option.split(' : ',1)
+        music_option = f"{base} : < {val.strip()} >"
+    symlink_option = _("symlink_option_enabled") if get_symlink_option() else _("symlink_option_disabled")
+    if ' ' in symlink_option:
+        parts = symlink_option.split(' ',1)
+        # On garde phrase intacte si elle n'a pas de forme label: valeur ; sinon transformer
+    if ' : ' in symlink_option:
+        base, val = symlink_option.split(' : ',1)
+        symlink_option = f"{base} : < {val.strip()} >"
+    api_keys_txt = _("menu_api_keys_status") if _ else "API Keys"
+    back_txt = _("menu_back") if _ else "Back"
+    options = [music_option, symlink_option, api_keys_txt, back_txt]
+    _draw_submenu_generic(screen, _("menu_settings_category") if _ else "Settings", options, selected_index)
+
+def draw_pause_api_keys_status(screen):
+    screen.blit(OVERLAY, (0,0))
+    from utils import load_api_keys
+    keys = load_api_keys()
+    # Layout simple
+    lines = [
+        _("api_keys_status_title") if _ else "API Keys Status",
+        ("1fichier", keys.get('1fichier')),
+        ("AllDebrid", keys.get('alldebrid'))
+    ]
+    menu_width = int(config.screen_width * 0.55)
+    menu_height = int(config.screen_height * 0.35)
+    menu_x = (config.screen_width - menu_width)//2
+    menu_y = (config.screen_height - menu_height)//2
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=16)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (menu_x, menu_y, menu_width, menu_height), 2, border_radius=16)
+    title_surface = config.font.render(lines[0], True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width//2, menu_y + 40))
+    screen.blit(title_surface, title_rect)
+    status_on = _("status_present") if _ else "Present"
+    status_off = _("status_missing") if _ else "Missing"
+    y = title_rect.bottom + 20
+    for provider, present in lines[1:]:
+        status_txt = status_on if present else status_off
+        text = f"{provider}: {status_txt}"
+        surf = config.small_font.render(text, True, THEME_COLORS["text"])
+        rect = surf.get_rect(center=(config.screen_width//2, y))
+        screen.blit(surf, rect)
+        y += surf.get_height() + 12
+    back_txt = _("menu_back") if _ else "Back"
+    back_surf = config.small_font.render(back_txt, True, THEME_COLORS["fond_lignes"])  # Indication
+    back_rect = back_surf.get_rect(center=(config.screen_width//2, menu_y + menu_height - 30))
+    screen.blit(back_surf, back_rect)
 
 def draw_filter_platforms_menu(screen):
     """Affiche le menu de filtrage des plateformes (afficher/masquer)."""
@@ -1591,8 +1715,11 @@ def draw_controls_help(screen, previous_state):
 
     # États autorisés (même logique qu'avant)
     allowed_states = {
+        # États classiques où l'aide était accessible
         "error", "platform", "game", "confirm_exit",
-        "extension_warning", "history", "clear_history"
+        "extension_warning", "history", "clear_history",
+        # Nouveaux états hiérarchiques pause
+        "pause_controls_menu", "pause_menu"
     }
     if previous_state not in allowed_states:
         return

@@ -183,6 +183,7 @@ try:
     count = pygame.joystick.get_count()
 except Exception:
     count = 0
+    
 joystick_names = []
 for i in range(count):
     try:
@@ -197,7 +198,14 @@ if not joystick_names:
     logger.debug("Aucun joystick détecté, utilisation du clavier par défaut.")
     config.joystick = False
     config.keyboard = True
+    # Si aucune marque spécifique détectée mais un joystick est présent, marquer comme générique
+    if not any([config.xbox_controller, config.playstation_controller, config.nintendo_controller,
+                config.eightbitdo_controller, config.steam_controller, config.trimui_controller,
+                config.logitech_controller]):
+        config.generic_controller = True
+        logger.debug("Aucun contrôleur spécifique détecté, utilisation du profil générique")
 else:
+    # Des joysticks sont présents, activer le mode joystick et tenter la détection spécifique
     config.joystick = True
     config.keyboard = False
     print(f"Joysticks détectés: {joystick_names}")
@@ -243,29 +251,18 @@ else:
         # Note: virtual keyboard display now depends on controller presence (config.joystick)
     logger.debug(f"Flags contrôleur: xbox={config.xbox_controller}, ps={config.playstation_controller}, nintendo={config.nintendo_controller}, eightbitdo={config.eightbitdo_controller}, steam={config.steam_controller}, trimui={config.trimui_controller}, logitech={config.logitech_controller}, generic={config.generic_controller}")
 
-    # Si aucune marque spécifique détectée mais un joystick est présent, marquer comme générique
-    if not any([config.xbox_controller, config.playstation_controller, config.nintendo_controller,
-                config.eightbitdo_controller, config.steam_controller, config.trimui_controller,
-                config.logitech_controller]):
-        config.generic_controller = True
-        logger.debug("Aucun contrôleur spécifique détecté, utilisation du profil générique")
-
 
 
 # Initialisation des variables de grille
 config.current_page = 0
 config.selected_platform = 0
-config.selected_key = (0, 0)
-config.transition_state = "none"
 
-# Initialisation des variables de répétition
-config.repeat_action = None
-config.repeat_key = None
-config.repeat_start_time = 0
-config.repeat_last_action = 0
-
-# Charger la configuration de la musique AVANT d'initialiser l'audio
-load_music_config()
+# Charger la configuration musique AVANT d'initialiser le mixer pour respecter le paramètre music_enabled
+try:
+    load_music_config()
+    logger.debug(f"Configuration musique chargée: music_enabled={getattr(config, 'music_enabled', True)}")
+except Exception as e:
+    logger.warning(f"Impossible de charger la configuration musique avant init mixer: {e}")
 
 # Initialisation du mixer Pygame (déférée/évitable si musique désactivée)
 if getattr(config, 'music_enabled', True):
@@ -447,6 +444,8 @@ async def main():
             ):
                 if config.menu_state not in ["pause_menu", "controls_help", "controls_mapping", "history", "confirm_clear_history"]:
                     config.previous_menu_state = config.menu_state
+                    # Capturer l'état d'origine pour une sortie fiable du menu pause
+                    config.pause_origin_state = config.menu_state
                     config.menu_state = "pause_menu"
                     config.selected_option = 0
                     config.needs_redraw = True
@@ -454,13 +453,25 @@ async def main():
                     continue
          
             if config.menu_state == "pause_menu":
-                action = handle_controls(event, sources, joystick, screen)
-                config.needs_redraw = True
-                #logger.debug(f"Événement transmis à handle_controls dans pause_menu: {event.type}")
-                continue
+                # Rien de spécifique ici, capturé par SIMPLE_HANDLE_STATES ci-dessous
+                pass
 
-            # Gestion des événements pour le menu de filtrage des plateformes
-            if config.menu_state == "filter_platforms":
+            # États simples factorisés (déclenchent juste handle_controls + redraw)
+            SIMPLE_HANDLE_STATES = {
+                "pause_menu",
+                "pause_controls_menu",
+                "pause_display_menu",
+                "pause_games_menu",
+                "pause_settings_menu",
+                "pause_api_keys_status",
+                "filter_platforms",
+                "display_menu",
+                "language_select",
+                "controls_help",
+                "confirm_cancel_download",
+                "reload_games_data",
+            }
+            if config.menu_state in SIMPLE_HANDLE_STATES:
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 continue
@@ -470,24 +481,6 @@ async def main():
                 if handle_accessibility_events(event):
                     config.needs_redraw = True
                 continue
-            if config.menu_state == "display_menu":
-                # Les événements sont gérés dans controls.handle_controls
-                action = handle_controls(event, sources, joystick, screen)
-                config.needs_redraw = True
-                continue
-
-            if config.menu_state == "language_select":
-                # Gérer les événements du sélecteur de langue via le système unifié
-                action = handle_controls(event, sources, joystick, screen)
-                config.needs_redraw = True
-                continue
-
-            if config.menu_state == "controls_help":
-                action = handle_controls(event, sources, joystick, screen)
-                config.needs_redraw = True
-                #logger.debug(f"Événement transmis à handle_controls dans controls_help: {event.type}")
-                continue
-
             if config.menu_state == "confirm_clear_history":
                 action = handle_controls(event, sources, joystick, screen)
                 if action == "confirm":
@@ -509,7 +502,6 @@ async def main():
             if config.menu_state == "reload_games_data":
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
-                #logger.debug(f"Événement transmis à handle_controls dans reload_games_data: {event.type}")
                 continue
 
             if config.menu_state == "extension_warning":
@@ -800,7 +792,21 @@ async def main():
                 draw_extension_warning(screen)
             elif config.menu_state == "pause_menu":
                 draw_pause_menu(screen, config.selected_option)
-                #logger.debug("Rendu de draw_pause_menu")
+            elif config.menu_state == "pause_controls_menu":
+                from display import draw_pause_controls_menu
+                draw_pause_controls_menu(screen, getattr(config, 'pause_controls_selection', 0))
+            elif config.menu_state == "pause_display_menu":
+                from display import draw_pause_display_menu
+                draw_pause_display_menu(screen, getattr(config, 'pause_display_selection', 0))
+            elif config.menu_state == "pause_games_menu":
+                from display import draw_pause_games_menu
+                draw_pause_games_menu(screen, getattr(config, 'pause_games_selection', 0))
+            elif config.menu_state == "pause_settings_menu":
+                from display import draw_pause_settings_menu
+                draw_pause_settings_menu(screen, getattr(config, 'pause_settings_selection', 0))
+            elif config.menu_state == "pause_api_keys_status":
+                from display import draw_pause_api_keys_status
+                draw_pause_api_keys_status(screen)
             elif config.menu_state == "filter_platforms":
                 from display import draw_filter_platforms_menu
                 draw_filter_platforms_menu(screen)

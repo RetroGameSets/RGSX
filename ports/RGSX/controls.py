@@ -1,20 +1,17 @@
-import shutil
 import pygame # type: ignore
-import config
-# Constantes pour la répétition automatique - importées de config.py
-from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE
-from config import CONTROLS_CONFIG_PATH
+import shutil
 import asyncio
 import json
 import os
-import sys
+import config
+from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE
+from config import CONTROLS_CONFIG_PATH
 from display import draw_validation_transition
-from network import download_rom, download_from_1fichier, is_1fichier_url
 from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel
 from utils import (
     load_games, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
-    load_api_key_1fichier, load_api_key_alldebrid, save_music_config
+    save_music_config, load_api_keys
 )
 from history import load_history, clear_history, add_to_history, save_history
 import logging
@@ -34,15 +31,18 @@ VALID_STATES = [
     "platform", "game", "confirm_exit",
     "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
     "reload_games_data", "restart_popup", "error", "loading", "confirm_clear_history",
-    "language_select", "filter_platforms", "display_menu"
+    "language_select", "filter_platforms", "display_menu",
+    # Nouveaux sous-menus hiérarchiques (refonte pause menu)
+    "pause_controls_menu",      # sous-menu Controls (aide, remap)
+    "pause_display_menu",       # sous-menu Display (layout, font size, unsupported, unknown ext, filter)
+    "pause_games_menu",         # sous-menu Games (source mode, update/redownload cache)
+    "pause_settings_menu",      # sous-menu Settings (music on/off, symlink toggle, api keys status)
+    "pause_api_keys_status"     # sous-menu API Keys (affichage statut des clés)
 ]
 
 def validate_menu_state(state):
     if state not in VALID_STATES:
         logger.debug(f"État invalide {state}, retour à platform")
-        return "platform"
-    if state == "history":  # Éviter de revenir à history
-        logger.debug(f"État history non autorisé comme previous_menu_state, retour à platform")
         return "platform"
     return state
 
@@ -133,6 +133,7 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
         # 3) Fallback clavier par défaut
         logging.getLogger(__name__).info("Aucun fichier utilisateur ou préréglage trouvé, utilisation des contrôles par défaut")
         return default_config.copy()
+    
     except Exception as e:
         logging.getLogger(__name__).error(f"Erreur load_controls_config: {e}")
         return default_config.copy()
@@ -318,6 +319,8 @@ def handle_controls(event, sources, joystick, screen):
                     config.repeat_last_action = current_time
                     config.needs_redraw = True
             elif is_input_matched(event, "history"):
+                # Capturer l'origine si on vient directement des plateformes
+                config.history_origin = "platform"
                 config.menu_state = "history"
                 config.needs_redraw = True
                 logger.debug("Ouverture history depuis platform")
@@ -334,6 +337,8 @@ def handle_controls(event, sources, joystick, screen):
                     config.needs_redraw = True
                     #logger.debug(f"Plateforme sélectionnée: {config.platforms[config.current_platform]}, {len(config.games)} jeux chargés")
             elif is_input_matched(event, "cancel"):
+                # Capturer l'origine (plateformes) pour un retour correct si l'utilisateur choisit "Non"
+                config.confirm_exit_origin = "platform"
                 config.menu_state = "confirm_exit"
                 config.confirm_selection = 0
                 config.needs_redraw = True
@@ -584,14 +589,8 @@ def handle_controls(event, sources, joystick, screen):
                                 config.current_history_item = len(config.history) -1
                                 task_id = str(pygame.time.get_ticks())
                                 if is_1fichier_url(url):
-                                    config.API_KEY_1FICHIER = load_api_key_1fichier()
-                                    if not config.API_KEY_1FICHIER:
-                                        # Fallback AllDebrid
-                                        try:
-                                            config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
-                                        except Exception:
-                                            config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
-                                    if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
+                                    keys = load_api_keys()
+                                    if not keys.get('1fichier') and not keys.get('alldebrid'):
                                         config.history[-1]["status"] = "Erreur"
                                         config.history[-1]["message"] = "API NOT FOUND"
                                         save_history(config.history)
@@ -626,14 +625,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.current_history_item = len(config.history) - 1
                         # Vérifier d'abord si c'est un lien 1fichier
                         if is_1fichier_url(url):
-                            config.API_KEY_1FICHIER = load_api_key_1fichier()
-                            if not config.API_KEY_1FICHIER:
-                                # Fallback AllDebrid
-                                try:
-                                    config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
-                                except Exception:
-                                    config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
-                            if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
+                            keys = load_api_keys()
+                            if not keys.get('1fichier') and not keys.get('alldebrid'):
                                 config.previous_menu_state = config.menu_state
                                 config.menu_state = "error"
                                 try:
@@ -748,13 +741,8 @@ def handle_controls(event, sources, joystick, screen):
                         ))
                         config.current_history_item = len(config.history) - 1
                         if is_1fichier_url(url):
-                            if not config.API_KEY_1FICHIER:
-                                # Fallback AllDebrid
-                                try:
-                                    config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
-                                except Exception:
-                                    config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
-                            if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
+                            keys = load_api_keys()
+                            if not keys.get('1fichier') and not keys.get('alldebrid'):
                                 config.previous_menu_state = config.menu_state
                                 config.menu_state = "error"
                                 try:
@@ -821,14 +809,8 @@ def handle_controls(event, sources, joystick, screen):
                                     config.current_history_item = len(config.history) -1
                                     task_id = str(pygame.time.get_ticks())
                                     if is_1fichier_url(url):
-                                        config.API_KEY_1FICHIER = load_api_key_1fichier()
-                                        if not config.API_KEY_1FICHIER:
-                                            # Fallback AllDebrid
-                                            try:
-                                                config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
-                                            except Exception:
-                                                config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
-                                        if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
+                                        keys = load_api_keys()
+                                        if not keys.get('1fichier') and not keys.get('alldebrid'):
                                             config.history[-1]["status"] = "Erreur"
                                             config.history[-1]["message"] = "API NOT FOUND"
                                             save_history(config.history)
@@ -892,14 +874,8 @@ def handle_controls(event, sources, joystick, screen):
                                 config.current_history_item = len(config.history) -1
                                 task_id = str(pygame.time.get_ticks())
                                 if is_1fichier_url(url):
-                                    config.API_KEY_1FICHIER = load_api_key_1fichier()
-                                    if not config.API_KEY_1FICHIER:
-                                        # Fallback AllDebrid
-                                        try:
-                                            config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
-                                        except Exception:
-                                            config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
-                                    if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
+                                    keys = load_api_keys()
+                                    if not keys.get('1fichier') and not keys.get('alldebrid'):
                                         config.history[-1]["status"] = "Erreur"
                                         config.history[-1]["message"] = "API NOT FOUND"
                                         save_history(config.history)
@@ -969,75 +945,6 @@ def handle_controls(event, sources, joystick, screen):
                 config.confirm_clear_selection = 0  # 0 pour "Non", 1 pour "Oui"
                 config.needs_redraw = True
                 logger.debug("Passage à confirm_clear_history depuis history")
-            elif is_input_matched(event, "confirm"):
-                if history:
-                    entry = history[config.current_history_item]
-                    platform = entry["platform"]
-                    game_name = entry["game_name"]
-                    for game in config.games:
-                        if game[0] == game_name and config.platforms[config.current_platform] == platform:
-                            config.pending_download = check_extension_before_download(game[1], platform, game_name)
-                            if config.pending_download:
-                                url, platform, game_name, is_zip_non_supported = config.pending_download
-                                # Recalculer le support exact et décider via le flag is_zip_non_supported
-                                is_supported = is_extension_supported(
-                                    sanitize_filename(game_name),
-                                    platform,
-                                    load_extensions_json()
-                                )
-                                if not is_supported and not is_zip_non_supported:
-                                    config.previous_menu_state = config.menu_state
-                                    config.menu_state = "extension_warning"
-                                    config.extension_confirm_selection = 0
-                                    config.needs_redraw = True
-                                    logger.debug(f"Extension non supportée pour retéléchargement, passage à extension_warning pour {game_name}")
-                                else:
-                                    task_id = str(pygame.time.get_ticks())
-                                    if is_1fichier_url(url):
-                                        if not config.API_KEY_1FICHIER:
-                                            # Fallback AllDebrid
-                                            try:
-                                                config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
-                                            except Exception:
-                                                config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
-                                        if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
-                                            config.previous_menu_state = config.menu_state
-                                            config.menu_state = "error"
-                                            logger.warning("clé api absente pour 1fichier et AllDebrid")
-                                            try:
-                                                both_paths = f"{os.path.join(config.SAVE_FOLDER,'1FichierAPI.txt')} or {os.path.join(config.SAVE_FOLDER,'AllDebridAPI.txt')}"
-                                                config.error_message = _("error_api_key").format(both_paths)
-                                            except Exception:
-                                                config.error_message = "Please enter API key (1fichier or AllDebrid)"
-                                            
-                                            config.history[-1]["status"] = "Erreur"
-                                            config.history[-1]["progress"] = 0
-                                            config.history[-1]["message"] = "API NOT FOUND"
-                                            save_history(config.history)
-                                            config.needs_redraw = True
-                                            logger.error("Clé API 1fichier et AllDebrid absentes, retéléchargement impossible.")
-                                            config.pending_download = None
-                                            return action
-                                        task = asyncio.create_task(download_from_1fichier(url, platform, game_name, is_zip_non_supported, task_id))
-                                    else:
-                                        task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported, task_id))
-                                    config.download_tasks[task_id] = (task, url, game_name, platform)
-                                    config.previous_menu_state = config.menu_state
-                                    config.menu_state = "history"
-                                    config.needs_redraw = True
-                                    logger.debug(f"Retéléchargement: {game_name} pour {platform} depuis {url}, task_id={task_id}")
-                                    config.pending_download = None
-                                    action = "redownload"
-                            else:
-                                config.menu_state = "error"
-                                try:
-                                    config.error_message = _("error_invalid_download_data")
-                                except Exception:
-                                    config.error_message = "Invalid download data"
-                                config.pending_download = None
-                                config.needs_redraw = True
-                                logger.error(f"config.pending_download est None pour {game_name}")
-                            break
             elif is_input_matched(event, "cancel") or is_input_matched(event, "history"):
                 if config.history and config.current_history_item < len(config.history):
                     entry = config.history[config.current_history_item]
@@ -1047,7 +954,14 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                         logger.debug("Demande d'annulation de téléchargement")
                         return action
-                config.menu_state = validate_menu_state(config.previous_menu_state)
+                # Retour à l'origine capturée si disponible sinon previous_menu_state
+                target = getattr(config, 'history_origin', getattr(config, 'previous_menu_state', 'platform'))
+                config.menu_state = validate_menu_state(target)
+                if hasattr(config, 'history_origin'):
+                    try:
+                        delattr(config, 'history_origin')
+                    except Exception:
+                        pass
                 config.current_history_item = 0
                 config.history_scroll_offset = 0
                 config.needs_redraw = True
@@ -1088,7 +1002,7 @@ def handle_controls(event, sources, joystick, screen):
 
         # Confirmation vider l'historique   
         elif config.menu_state == "confirm_clear_history":
-            logger.debug(f"État confirm_clear_history, confirm_clear_selection={config.confirm_clear_selection}, événement={event.type}, valeur={getattr(event, 'value', None)}")
+            
             if is_input_matched(event, "confirm"):
                 # 0 = Non, 1 = Oui
                 if config.confirm_clear_selection == 1:  # Oui
@@ -1098,7 +1012,6 @@ def handle_controls(event, sources, joystick, screen):
                     config.history_scroll_offset = 0
                     config.menu_state = "history"
                     config.needs_redraw = True
-                    logger.info("Historique vidé après confirmation")
                 else:  # Non
                     config.menu_state = "history"
                     config.needs_redraw = True
@@ -1109,8 +1022,6 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "history"
                 config.needs_redraw = True
                 logger.debug("Annulation du vidage de l'historique, retour à history")
-
-    # État download_result supprimé
 
         # Confirmation quitter
         elif config.menu_state == "confirm_exit":
@@ -1128,9 +1039,16 @@ def handle_controls(event, sources, joystick, screen):
                         pass
                     return "quit"
                 else:
-                    config.menu_state = validate_menu_state(config.previous_menu_state)
+                    # Retour à l'état capturé (confirm_exit_origin) sinon previous_menu_state sinon platform
+                    target = getattr(config, 'confirm_exit_origin', getattr(config, 'previous_menu_state', 'platform'))
+                    config.menu_state = validate_menu_state(target)
+                    if hasattr(config, 'confirm_exit_origin'):
+                        try:
+                            delattr(config, 'confirm_exit_origin')
+                        except Exception:
+                            pass
                     config.needs_redraw = True
-                    logger.debug(f"Retour à {config.menu_state} depuis confirm_exit")
+                    logger.debug(f"Retour à {config.menu_state} depuis confirm_exit (annulation)")
             elif is_input_matched(event, "left") or is_input_matched(event, "right"):
                 config.confirm_selection = 1 - config.confirm_selection
                 config.needs_redraw = True
@@ -1141,58 +1059,213 @@ def handle_controls(event, sources, joystick, screen):
             #logger.debug(f"État pause_menu, selected_option={config.selected_option}, événement={event.type}, valeur={getattr(event, 'value', None)}")
             # Start toggles back to previous state when already in pause
             if is_input_matched(event, "start"):
-                config.menu_state = validate_menu_state(config.previous_menu_state)
+                target = getattr(config, 'pause_origin_state', getattr(config, 'previous_menu_state', 'platform'))
+                config.menu_state = validate_menu_state(target)
                 config.needs_redraw = True
                 logger.debug(f"Start: retour à {config.menu_state} depuis pause_menu")
             elif is_input_matched(event, "up"):
                 config.selected_option = max(0, config.selected_option - 1)
                 config.needs_redraw = True
             elif is_input_matched(event, "down"):
-                # Nombre d'options dynamique (inclut éventuellement l'option source des jeux)
-                total = getattr(config, 'pause_menu_total_options', 11)  # fallback 11 (Restart added)
+                # Menu racine hiérarchique: nombre dynamique (langue + catégories)
+                total = getattr(config, 'pause_menu_total_options', 7)
                 config.selected_option = min(total - 1, config.selected_option + 1)
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
-                if config.selected_option == 0:  # Controls
-                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                    config.menu_state = "controls_help"
+                if config.selected_option == 0:  # Language selector direct
+                    config.menu_state = "language_select"
+                    config.previous_menu_state = "pause_menu"
+                    config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                    #logger.debug(f"Passage à controls_help depuis pause_menu")
-                elif config.selected_option == 1:  # Remap controls
+                elif config.selected_option == 1:  # Controls submenu
+                    config.menu_state = "pause_controls_menu"
+                    if not hasattr(config, 'pause_controls_selection'):
+                        config.pause_controls_selection = 0
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+                elif config.selected_option == 2:  # Display submenu
+                    config.menu_state = "pause_display_menu"
+                    if not hasattr(config, 'pause_display_selection'):
+                        config.pause_display_selection = 0
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+                elif config.selected_option == 3:  # Games submenu
+                    config.menu_state = "pause_games_menu"
+                    if not hasattr(config, 'pause_games_selection'):
+                        config.pause_games_selection = 0
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+                elif config.selected_option == 4:  # Settings submenu
+                    config.menu_state = "pause_settings_menu"
+                    if not hasattr(config, 'pause_settings_selection'):
+                        config.pause_settings_selection = 0
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+                elif config.selected_option == 5:  # Restart
+                    from utils import restart_application
+                    restart_application(2000)
+                elif config.selected_option == 6:  # Quit
+                    # Capturer l'origine pause_menu pour retour si annulation
+                    config.confirm_exit_origin = "pause_menu"
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                    #logger.debug(f"Previous menu state avant controls_mapping: {config.previous_menu_state}")
-                    #Supprimer le fichier de configuration des contrôles s'il existe
+                    config.menu_state = "confirm_exit"
+                    config.confirm_selection = 0
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+            elif is_input_matched(event, "cancel"):
+                target = getattr(config, 'pause_origin_state', getattr(config, 'previous_menu_state', 'platform'))
+                config.menu_state = validate_menu_state(target)
+                config.needs_redraw = True
+                logger.debug(f"Retour à {config.menu_state} depuis pause_menu")
+
+        # Sous-menu Controls
+        elif config.menu_state == "pause_controls_menu":
+            sel = getattr(config, 'pause_controls_selection', 0)
+            if is_input_matched(event, "up"):
+                config.pause_controls_selection = (sel - 1) % 3
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                config.pause_controls_selection = (sel + 1) % 3
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                if sel == 0:  # Aide
+                    config.previous_menu_state = "pause_controls_menu"
+                    config.menu_state = "controls_help"
+                elif sel == 1:  # Remap
                     if os.path.exists(config.CONTROLS_CONFIG_PATH):
                         try:
                             os.remove(config.CONTROLS_CONFIG_PATH)
-                            logger.debug(f"Fichier de configuration des contrôles supprimé: {config.CONTROLS_CONFIG_PATH}")
                         except Exception as e:
-                            logger.error(f"Erreur lors de la suppression du fichier de configuration des contrôles: {e}")
+                            logger.error(f"Erreur suppression controls_config: {e}")
+                    config.previous_menu_state = "pause_controls_menu"
                     config.menu_state = "controls_mapping"
+                else:  # Back
+                    config.menu_state = "pause_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+                config.needs_redraw = True
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "start"):
+                config.menu_state = "pause_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+                config.needs_redraw = True
+
+        # Sous-menu Display
+        elif config.menu_state == "pause_display_menu":
+            sel = getattr(config, 'pause_display_selection', 0)
+            total = 6  # layout, font, unsupported, unknown, filter, back
+            if is_input_matched(event, "up"):
+                config.pause_display_selection = (sel - 1) % total
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                config.pause_display_selection = (sel + 1) % total
+                config.needs_redraw = True
+            elif is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm"):
+                sel = getattr(config, 'pause_display_selection', 0)
+                # 0 layout cycle
+                if sel == 0 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    layouts = [(3,3),(3,4),(4,3),(4,4)]
+                    try:
+                        idx = layouts.index((config.GRID_COLS, config.GRID_ROWS))
+                    except ValueError:
+                        idx = 0
+                    idx = (idx + 1) % len(layouts) if is_input_matched(event, "right") else (idx - 1) % len(layouts)
+                    new_cols, new_rows = layouts[idx]
+                    try:
+                        from rgsx_settings import set_display_grid
+                        set_display_grid(new_cols, new_rows)
+                    except Exception as e:
+                        logger.error(f"Erreur set_display_grid: {e}")
+                    config.GRID_COLS = new_cols
+                    config.GRID_ROWS = new_rows
+                    # Redémarrage automatique
+                    try:
+                        from utils import restart_application
+                        config.menu_state = "restart_popup"
+                        config.popup_message = _("popup_restarting") if _ else "Restarting..."
+                        config.popup_timer = 2000
+                        restart_application(2000)
+                    except Exception as e:
+                        logger.error(f"Erreur restart après layout: {e}")
                     config.needs_redraw = True
-                    logger.debug(f"Passage à controls_mapping depuis pause_menu")
-                elif config.selected_option == 2:  # History
+                # 1 font size
+                elif sel == 1 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    from accessibility import save_accessibility_settings
+                    opts = getattr(config, 'font_scale_options', [0.75,1.0,1.25,1.5,1.75])
+                    idx = getattr(config, 'current_font_scale_index', 1)
+                    idx = max(0, idx-1) if is_input_matched(event, "left") else min(len(opts)-1, idx+1)
+                    if idx != getattr(config, 'current_font_scale_index', 1):
+                        config.current_font_scale_index = idx
+                        scale = opts[idx]
+                        config.accessibility_settings["font_scale"] = scale
+                        try:
+                            save_accessibility_settings(config.accessibility_settings)
+                        except Exception as e:
+                            logger.error(f"Erreur sauvegarde accessibilité: {e}")
+                        try:
+                            config.init_font()
+                        except Exception as e:
+                            logger.error(f"Erreur init polices: {e}")
+                        config.needs_redraw = True
+                # 2 unsupported toggle
+                elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                    try:
+                        from rgsx_settings import get_show_unsupported_platforms, set_show_unsupported_platforms
+                        current = get_show_unsupported_platforms()
+                        new_val = set_show_unsupported_platforms(not current)
+                        from utils import load_sources
+                        load_sources()
+                        config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
+                        config.popup_timer = 3000
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle unsupported: {e}")
+                # 3 allow unknown extensions
+                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                    try:
+                        from rgsx_settings import get_allow_unknown_extensions, set_allow_unknown_extensions
+                        current = get_allow_unknown_extensions()
+                        new_val = set_allow_unknown_extensions(not current)
+                        config.popup_message = _("menu_allow_unknown_ext_enabled") if new_val else _("menu_allow_unknown_ext_disabled")
+                        config.popup_timer = 3000
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
+                # 4 filter platforms
+                elif sel == 4 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
+                    config.filter_return_to = "pause_display_menu"
+                    config.menu_state = "filter_platforms"
+                    config.selected_filter_index = 0
+                    config.filter_platforms_scroll_offset = 0
+                    config.needs_redraw = True
+                # 5 back
+                elif sel == 5 and (is_input_matched(event, "confirm")):
+                    config.menu_state = "pause_menu"
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "start"):
+                config.menu_state = "pause_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+                config.needs_redraw = True
+
+        # Sous-menu Games
+        elif config.menu_state == "pause_games_menu":
+            sel = getattr(config, 'pause_games_selection', 0)
+            total = 4  # history, source, redownload, back
+            if is_input_matched(event, "up"):
+                config.pause_games_selection = (sel - 1) % total
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                config.pause_games_selection = (sel + 1) % total
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right"):
+                sel = getattr(config, 'pause_games_selection', 0)
+                if sel == 0 and is_input_matched(event, "confirm"):  # history
                     config.history = load_history()
                     config.current_history_item = 0
                     config.history_scroll_offset = 0
-                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                    config.previous_menu_state = "pause_games_menu"
                     config.menu_state = "history"
                     config.needs_redraw = True
-                    logger.debug(f"Passage à history depuis pause_menu")
-                elif config.selected_option == 3:  # Language
-                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                    config.menu_state = "language_select"
-                    config.selected_language_index = 0
-                    config.needs_redraw = True
-                    logger.debug(f"Passage à language_select depuis pause_menu")
-                elif config.selected_option == 4:  # Display
-                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                    config.menu_state = "display_menu"
-                    if not hasattr(config, 'display_menu_selection'):
-                        config.display_menu_selection = 0
-                    config.needs_redraw = True
-                    logger.debug("Passage au menu affichage")
-                elif config.selected_option == 5:  # Source toggle (index shifted by removal of filter)
+                elif sel == 1 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     try:
                         from rgsx_settings import get_sources_mode, set_sources_mode
                         current_mode = get_sources_mode()
@@ -1208,13 +1281,33 @@ def handle_controls(event, sources, joystick, screen):
                         logger.info(f"Changement du mode des sources vers {new_mode}")
                     except Exception as e:
                         logger.error(f"Erreur changement mode sources: {e}")
-                elif config.selected_option == 6:  # Redownload game cache
-                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
+                elif sel == 2 and is_input_matched(event, "confirm"):  # redownload cache
+                    config.previous_menu_state = "pause_games_menu"
                     config.menu_state = "reload_games_data"
                     config.redownload_confirm_selection = 0
                     config.needs_redraw = True
-                    logger.debug(f"Passage à reload_games_data depuis pause_menu")
-                elif config.selected_option == 7:  # Music toggle
+                elif sel == 3 and is_input_matched(event, "confirm"):  # back
+                    config.menu_state = "pause_menu"
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "start"):
+                config.menu_state = "pause_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+                config.needs_redraw = True
+
+        # Sous-menu Settings
+        elif config.menu_state == "pause_settings_menu":
+            sel = getattr(config, 'pause_settings_selection', 0)
+            total = 4  # music, symlink, api keys, back
+            if is_input_matched(event, "up"):
+                config.pause_settings_selection = (sel - 1) % total
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                config.pause_settings_selection = (sel + 1) % total
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right"):
+                sel = getattr(config, 'pause_settings_selection', 0)
+                if sel == 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     config.music_enabled = not config.music_enabled
                     save_music_config()
                     if config.music_enabled:
@@ -1225,28 +1318,32 @@ def handle_controls(event, sources, joystick, screen):
                     else:
                         pygame.mixer.music.stop()
                     config.needs_redraw = True
-                    logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via menu pause")
-                elif config.selected_option == 8:  # Symlink option
+                    logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via settings")
+                elif sel == 1 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     from rgsx_settings import set_symlink_option, get_symlink_option
                     current_status = get_symlink_option()
                     success, message = set_symlink_option(not current_status)
                     config.popup_message = message
                     config.popup_timer = 3000 if success else 5000
                     config.needs_redraw = True
-                    logger.info(f"Symlink option {'activée' if not current_status else 'désactivée'} via menu pause")
-                elif config.selected_option == 9:  # Restart
-                    from utils import restart_application
-                    restart_application(2000)
-                elif config.selected_option == 10:  # Quit
-                    config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                    config.menu_state = "confirm_exit"
-                    config.confirm_selection = 0
+                    logger.info(f"Symlink option {'activée' if not current_status else 'désactivée'} via settings")
+                elif sel == 2 and is_input_matched(event, "confirm"):
+                    config.menu_state = "pause_api_keys_status"
                     config.needs_redraw = True
-                    logger.debug(f"Passage à confirm_exit depuis pause_menu")
-            elif is_input_matched(event, "cancel"):
-                config.menu_state = validate_menu_state(config.previous_menu_state)
+                elif sel == 3 and is_input_matched(event, "confirm"):
+                    config.menu_state = "pause_menu"
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "start"):
+                config.menu_state = "pause_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
                 config.needs_redraw = True
-                logger.debug(f"Retour à {config.menu_state} depuis pause_menu")
+
+        elif config.menu_state == "pause_api_keys_status":
+            if is_input_matched(event, "cancel") or is_input_matched(event, "confirm") or is_input_matched(event, "start"):
+                config.menu_state = "pause_settings_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+                config.needs_redraw = True
 
         # Aide contrôles
         elif config.menu_state == "controls_help":
@@ -1535,9 +1632,10 @@ def handle_controls(event, sources, joystick, screen):
                         # Return either to display menu or pause menu depending on origin
                         target = getattr(config, 'filter_return_to', 'pause_menu')
                         config.menu_state = target
-                        if target == 'display_menu':
-                            # reset display selection to the Filter item for convenience
+                        if target == 'display_menu':  # ancien cas (fallback)
                             config.display_menu_selection = 3
+                        elif target == 'pause_display_menu':  # nouveau sous-menu hiérarchique
+                            config.pause_display_selection = 4  # positionner sur Filter
                         else:
                             config.selected_option = 5  # keep pointer on Filter in pause menu
                         config.filter_return_to = None
@@ -1546,6 +1644,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.menu_state = target
                         if target == 'display_menu':
                             config.display_menu_selection = 3
+                        elif target == 'pause_display_menu':
+                            config.pause_display_selection = 4
                         else:
                             config.selected_option = 5
                         config.filter_return_to = None
@@ -1555,6 +1655,8 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = target
                 if target == 'display_menu':
                     config.display_menu_selection = 3
+                elif target == 'pause_display_menu':
+                    config.pause_display_selection = 4
                 else:
                     config.selected_option = 5
                 config.filter_return_to = None

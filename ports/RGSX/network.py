@@ -15,7 +15,7 @@ try:
 except Exception:
     pygame = None  # type: ignore
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
-from utils import sanitize_filename, extract_zip, extract_rar, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name
+from utils import sanitize_filename, extract_zip, extract_rar, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys
 from history import save_history
 import logging
 import datetime
@@ -318,8 +318,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
 
             # Spécifique: si le système est "BIOS" on force le dossier BIOS
             if platform_folder == "bios" or platform == "BIOS" or platform == "- BIOS by TMCTV -":
-                dest_dir = config.RETROBAT_DATA_FOLDER
-                logger.debug(f"Plateforme 'BIOS' détectée, destination forcée vers RETROBAT_DATA_FOLDER: {dest_dir}")
+                dest_dir = config.USERDATA_FOLDER
+                logger.debug(f"Plateforme 'BIOS' détectée, destination forcée vers USERDATA_FOLDER: {dest_dir}")
             
             os.makedirs(dest_dir, exist_ok=True)
             if not os.access(dest_dir, os.W_OK):
@@ -634,13 +634,16 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     return result[0], result[1]
 
 async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=False, task_id=None):
-    config.API_KEY_1FICHIER = load_api_key_1fichier()
-    if not config.API_KEY_1FICHIER:
-        # Fallback: essayer AllDebrid
-        config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
-        logger.debug(f"Clé API 1fichier absente, fallback AllDebrid: {'présente' if config.API_KEY_ALLDEBRID else 'absente'}")
+    # Charger/rafraîchir les clés API (mtime aware)
+    keys_info = load_api_keys()
+    config.API_KEY_1FICHIER = keys_info.get('1fichier', '')
+    config.API_KEY_ALLDEBRID = keys_info.get('alldebrid', '')
+    if not config.API_KEY_1FICHIER and config.API_KEY_ALLDEBRID:
+        logger.debug("Clé 1fichier absente, utilisation fallback AllDebrid")
+    elif not config.API_KEY_1FICHIER and not config.API_KEY_ALLDEBRID:
+        logger.debug("Aucune clé API disponible (1fichier ni AllDebrid)")
     logger.debug(f"Début téléchargement 1fichier: {game_name} depuis {url}, is_zip_non_supported={is_zip_non_supported}, task_id={task_id}")
-    logger.debug(f"Clé API 1fichier: {'présente' if config.API_KEY_1FICHIER else 'absente'}")
+    logger.debug(f"Clé API 1fichier: {'présente' if config.API_KEY_1FICHIER else 'absente'} / AllDebrid: {'présente' if config.API_KEY_ALLDEBRID else 'absente'} (reloaded={keys_info.get('reloaded')})")
     result = [None, None]
 
     # Créer une queue spécifique pour cette tâche
@@ -673,8 +676,8 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
 
             # Spécifique: si le système est "- BIOS by TMCTV -" on force le dossier BIOS
             if platform_folder == "bios" or platform == "BIOS" or platform == "- BIOS by TMCTV -":
-                dest_dir = config.RETROBAT_DATA_FOLDER
-                logger.debug(f"Plateforme '- BIOS by TMCTV -' détectée, destination forcée vers RETROBAT_DATA_FOLDER: {dest_dir}")
+                dest_dir = config.USERDATA_FOLDER
+                logger.debug(f"Plateforme '- BIOS by TMCTV -' détectée, destination forcée vers USERDATA_FOLDER: {dest_dir}")
 
             logger.debug(f"Vérification répertoire destination: {dest_dir}")
             os.makedirs(dest_dir, exist_ok=True)
@@ -685,6 +688,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
 
             # Choisir la stratégie d'accès: 1fichier direct via API, sinon AllDebrid pour débrider
             if config.API_KEY_1FICHIER:
+                logger.debug("Mode téléchargement sélectionné: 1fichier (API directe)")
                 headers = {
                     "Authorization": f"Bearer {config.API_KEY_1FICHIER}",
                     "Content-Type": "application/json"
@@ -726,6 +730,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 logger.debug(f"URL de téléchargement obtenue via 1fichier: {final_url}")
             else:
                 # AllDebrid: débrider l'URL 1fichier vers une URL directe
+                logger.debug("Mode téléchargement sélectionné: AllDebrid (fallback, débridage 1fichier)")
                 if not getattr(config, 'API_KEY_ALLDEBRID', ''):
                     logger.error("Aucune clé API (1fichier/AllDebrid) disponible")
                     result[0] = False
