@@ -215,8 +215,8 @@ else:
     # Des joysticks sont présents, activer le mode joystick et tenter la détection spécifique
     config.joystick = True
     config.keyboard = False
-    print(f"Joysticks détectés: {joystick_names}")
-    logger.debug(f"Joysticks détectés: {joystick_names}")
+    print(f"Joysticks détectés: YES")
+    logger.debug(f"Joysticks détectés: YES")
     for idx, name in enumerate(joystick_names):
         lname = name.lower()
         # Détection spécifique Elite AVANT la détection générique Xbox
@@ -255,6 +255,11 @@ else:
             config.steam_controller = True
             logger.debug(f"Steam Controller detected : {name}")
             print(f"Controller detected : {name}")
+        else:
+            # Si aucune marque spécifique détectée mais un joystick est présent, marquer comme générique
+            config.generic_controller = True
+            logger.debug(f"Generic Controller detected : {name}")
+            print(f"Generic Controller detected : {name}")
         # Note: virtual keyboard display now depends on controller presence (config.joystick)
     logger.debug(f"Flags contrôleur: xbox={config.xbox_controller}, ps={config.playstation_controller}, nintendo={config.nintendo_controller}, eightbitdo={config.eightbitdo_controller}, steam={config.steam_controller}, trimui={config.trimui_controller}, logitech={config.logitech_controller}, generic={config.generic_controller}")
 
