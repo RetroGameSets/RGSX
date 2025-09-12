@@ -149,5 +149,10 @@
     "api_keys_status_title": "Estado de las claves API",
     "menu_games": "Juegos",
     "api_keys_hint_manage": "Coloca tus claves en {path}",
-    "api_key_empty_suffix": "vacío"
+    "api_key_empty_suffix": "vacío",
+    "menu_hide_premium_systems": "Ocultar sistemas Premium",
+    "popup_hide_premium_on": "Sistemas Premium ocultos",
+    "popup_hide_premium_off": "Sistemas Premium visibles"
+    ,"submenu_display_font_family": "Fuente"
+    ,"popup_font_family_changed": "Fuente cambiada: {0}"
 }

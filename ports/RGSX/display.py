@@ -475,8 +475,28 @@ def draw_platform_grid(screen):
     x_positions = [margin_left + col_width * i + col_width // 2 for i in range(num_cols)]
     y_positions = [margin_top + row_height * i + row_height // 2 for i in range(num_rows)]
 
-    # Affichage des indicateurs de page si nécessaire
-    total_pages = (len(config.platforms) + systems_per_page - 1) // systems_per_page
+    # Filtrage éventuel des systèmes premium selon réglage
+    try:
+        from rgsx_settings import get_hide_premium_systems
+        hide_premium = get_hide_premium_systems()
+    except Exception:
+        hide_premium = False
+    premium_markers = getattr(config, 'PREMIUM_HOST_MARKERS', [])
+    if hide_premium and premium_markers:
+        visible_platforms = [p for p in config.platforms if not any(m.lower() in p.lower() for m in premium_markers)]
+    else:
+        visible_platforms = list(config.platforms)
+
+    # Ajuster selected_platform et current_platform/page si liste réduite
+    if config.selected_platform >= len(visible_platforms):
+        config.selected_platform = max(0, len(visible_platforms) - 1)
+    # Recalcule la page courante en fonction de selected_platform
+    systems_per_page = num_cols * num_rows
+    if systems_per_page <= 0:
+        systems_per_page = 1
+    config.current_page = config.selected_platform // systems_per_page if systems_per_page else 0
+
+    total_pages = (len(visible_platforms) + systems_per_page - 1) // systems_per_page
     if total_pages > 1:
         page_indicator_text = _("platform_page").format(config.current_page + 1, total_pages)
         page_indicator = config.small_font.render(page_indicator_text, True, THEME_COLORS["text"])
@@ -490,7 +510,7 @@ def draw_platform_grid(screen):
     # Pré-calcul des images pour optimiser le rendu
     start_idx = config.current_page * systems_per_page
     for idx in range(start_idx, start_idx + systems_per_page):
-        if idx >= len(config.platforms):
+        if idx >= len(visible_platforms):
             break
         grid_idx = idx - start_idx
         row = grid_idx // num_cols
@@ -504,12 +524,16 @@ def draw_platform_grid(screen):
         scale = scale_base + pulse if is_selected else scale_base
             
         # Récupération robuste du dict via nom
-        display_name = config.platforms[idx]
+        display_name = visible_platforms[idx]
         platform_dict = getattr(config, 'platform_dict_by_name', {}).get(display_name)
         if not platform_dict:
             # Fallback index brut
-            if idx < len(config.platform_dicts):
-                platform_dict = config.platform_dicts[idx]
+            # Chercher en parcourant platform_dicts pour correspondance nom
+            for pd in config.platform_dicts:
+                n = pd.get("platform_name") or pd.get("platform")
+                if n == display_name:
+                    platform_dict = pd
+                    break
             else:
                 continue
         platform_id = platform_dict.get("platform_name") or platform_dict.get("platform") or display_name
@@ -1351,10 +1375,18 @@ def draw_language_menu(screen):
         text_rect = text_surface.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
         screen.blit(text_surface, text_rect)
     
-    # Instructions
+    # Instructions (placer juste au-dessus du footer sans chevauchement)
     instruction_text = _("language_select_instruction")
     instruction_surface = config.small_font.render(instruction_text, True, THEME_COLORS["text"])
-    instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, config.screen_height - 50))
+    footer_reserved = 72  # hauteur approximative footer (barre bas) + marge
+    bottom_margin = 12
+    instruction_y = config.screen_height - footer_reserved - bottom_margin
+    # Empêcher un chevauchement avec les derniers boutons si espace réduit
+    last_button_bottom = start_y + (len(available_languages) - 1) * (button_height + button_spacing) + button_height
+    min_gap = 16
+    if instruction_y - last_button_bottom < min_gap:
+        instruction_y = last_button_bottom + min_gap
+    instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, instruction_y))
     screen.blit(instruction_surface, instruction_rect)
 
 def draw_display_menu(screen):
@@ -1499,7 +1531,12 @@ def draw_pause_controls_menu(screen, selected_index):
     _draw_submenu_generic(screen, _("menu_controls") if _ else "Controls", options, selected_index)
 
 def draw_pause_display_menu(screen, selected_index):
-    from rgsx_settings import get_show_unsupported_platforms, get_allow_unknown_extensions
+    from rgsx_settings import (
+        get_show_unsupported_platforms,
+        get_allow_unknown_extensions,
+        get_hide_premium_systems,
+        get_font_family
+    )
     # Layout label
     layouts = [(3,3),(3,4),(4,3),(4,4)]
     try:
@@ -1513,6 +1550,16 @@ def draw_pause_display_menu(screen, selected_index):
     cur_idx = getattr(config, 'current_font_scale_index', 1)
     font_value = f"{opts[cur_idx]}x"
     font_txt = f"{_('submenu_display_font_size') if _ else 'Font Size'}: < {font_value} >"
+    # Font family
+    current_family = get_font_family()
+    # Nom user-friendly
+    family_map = {
+        "pixel": "Pixel",
+        "dejavu": "DejaVu Sans"
+    }
+    fam_label = family_map.get(current_family, current_family)
+    font_family_txt = f"{_('submenu_display_font_family') if _ else 'Font'}: < {fam_label} >"
+
     unsupported = get_show_unsupported_platforms()
     status_unsupported = _('status_on') if unsupported else _('status_off')
     # Construire label sans statut pour insérer les chevrons proprement
@@ -1527,9 +1574,14 @@ def draw_pause_display_menu(screen, selected_index):
     if '{status}' in raw_unknown_label:
         raw_unknown_label = raw_unknown_label.split('{status}')[0].rstrip(' :')
     unknown_txt = f"{raw_unknown_label}: < {status_unknown} >"
+    # Hide premium systems
+    hide_premium = get_hide_premium_systems()
+    status_hide_premium = _('status_on') if hide_premium else _('status_off')
+    hide_premium_label = _('menu_hide_premium_systems') if _ else 'Hide Premium systems'
+    hide_premium_txt = f"{hide_premium_label}: < {status_hide_premium} >"
     filter_txt = _("submenu_display_filter_platforms") if _ else "Filter Platforms"
     back_txt = _("menu_back") if _ else "Back"
-    options = [layout_txt, font_txt, unsupported_txt, unknown_txt, filter_txt, back_txt]
+    options = [layout_txt, font_txt, font_family_txt, unsupported_txt, unknown_txt, hide_premium_txt, filter_txt, back_txt]
     _draw_submenu_generic(screen, _("menu_display"), options, selected_index)
 
 def draw_pause_games_menu(screen, selected_index):
@@ -1538,7 +1590,6 @@ def draw_pause_games_menu(screen, selected_index):
     source_label = _("games_source_rgsx") if mode == "rgsx" else _("games_source_custom")
     source_txt = f"{_('menu_games_source_prefix')}: < {source_label} >"
     update_txt = _("menu_redownload_cache")
-    # Première entrée: Historique des téléchargements (utiliser la clé menu_history)
     history_txt = _("menu_history") if _ else "History"
     back_txt = _("menu_back") if _ else "Back"
     options = [history_txt, source_txt, update_txt, back_txt]

@@ -149,5 +149,10 @@
     "api_keys_status_title": "Stato delle chiavi API",
     "menu_games": "Giochi",
     "api_keys_hint_manage": "Metti le tue chiavi in {path}",
-    "api_key_empty_suffix": "vuoto"
+    "api_key_empty_suffix": "vuoto",
+    "menu_hide_premium_systems": "Nascondi sistemi Premium",
+    "popup_hide_premium_on": "Sistemi Premium nascosti",
+    "popup_hide_premium_off": "Sistemi Premium visibili"
+    ,"submenu_display_font_family": "Font"
+    ,"popup_font_family_changed": "Font cambiato: {0}"
 }

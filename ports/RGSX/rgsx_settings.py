@@ -56,7 +56,8 @@ def load_rgsx_settings():
             "font_scale": 1.0
         },
         "display": {
-            "grid": "3x4"
+            "grid": "3x4",
+            "font_family": "pixel"
         },
         "symlink": {
             "enabled": False,
@@ -228,6 +229,22 @@ def set_allow_unknown_extensions(enabled: bool) -> bool:
     save_rgsx_settings(settings)
     return settings["allow_unknown_extensions"]
 
+# ----------------------- Hide premium systems toggle ----------------------- #
+
+def get_hide_premium_systems(settings=None) -> bool:
+    """Retourne True si le masquage des systèmes premium est activé."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return bool(settings.get("hide_premium_systems", False))
+
+
+def set_hide_premium_systems(enabled: bool) -> bool:
+    """Active/désactive le masquage des systèmes premium et sauvegarde."""
+    settings = load_rgsx_settings()
+    settings["hide_premium_systems"] = bool(enabled)
+    save_rgsx_settings(settings)
+    return settings["hide_premium_systems"]
+
 # ----------------------- Display layout (grid) ----------------------- #
 
 def get_display_grid(settings=None):
@@ -252,3 +269,15 @@ def set_display_grid(cols: int, rows: int):
     disp["grid"] = f"{cols}x{rows}"
     save_rgsx_settings(settings)
     return cols, rows
+
+def get_font_family(settings=None):
+    if settings is None:
+        settings = load_rgsx_settings()
+    return settings.get("display", {}).get("font_family", "pixel")
+
+def set_font_family(family: str):
+    settings = load_rgsx_settings()
+    disp = settings.setdefault("display", {})
+    disp["font_family"] = family
+    save_rgsx_settings(settings)
+    return family

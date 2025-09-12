@@ -149,5 +149,10 @@
     "api_keys_status_title": "Status der API-Schlüssel",
     "menu_games": "Spiele",
     "api_keys_hint_manage": "Legen Sie Ihre Schlüssel in {path}",
-    "api_key_empty_suffix": "leer"
+    "api_key_empty_suffix": "leer",
+    "menu_hide_premium_systems": "Premium-Systeme ausblenden",
+    "popup_hide_premium_on": "Premium-Systeme ausgeblendet",
+    "popup_hide_premium_off": "Premium-Systeme sichtbar"
+    ,"submenu_display_font_family": "Schrift"
+    ,"popup_font_family_changed": "Schrift geändert: {0}"
 }

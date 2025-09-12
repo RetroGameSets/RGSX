@@ -149,5 +149,10 @@
     "api_keys_status_title": "Statut des clés API",
     "menu_games": "Jeux",
     "api_keys_hint_manage": "Placez vos clés dans {path}",
-    "api_key_empty_suffix": "vide"
+    "api_key_empty_suffix": "vide",
+    "menu_hide_premium_systems": "Masquer systèmes Premium",
+    "popup_hide_premium_on": "Systèmes Premium masqués",
+    "popup_hide_premium_off": "Systèmes Premium visibles"
+    ,"submenu_display_font_family": "Police"
+    ,"popup_font_family_changed": "Police changée : {0}"
 }

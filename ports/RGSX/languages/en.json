@@ -149,5 +149,10 @@
     "api_keys_status_title": "API Keys Status",
     "menu_games": "Games",
     "api_keys_hint_manage": "Put your keys in {path}",
-    "api_key_empty_suffix": "empty"
+    "api_key_empty_suffix": "empty",
+    "menu_hide_premium_systems": "Hide Premium systems"
+    ,"popup_hide_premium_on": "Premium systems hidden"
+    ,"popup_hide_premium_off": "Premium systems visible"
+    ,"submenu_display_font_family": "Font"
+    ,"popup_font_family_changed": "Font changed: {0}"
 }

@@ -1157,7 +1157,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Display
         elif config.menu_state == "pause_display_menu":
             sel = getattr(config, 'pause_display_selection', 0)
-            total = 6  # layout, font, unsupported, unknown, filter, back
+            total = 8  # layout, font size, font family, unsupported, unknown, hide premium, filter, back
             if is_input_matched(event, "up"):
                 config.pause_display_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1211,8 +1211,43 @@ def handle_controls(event, sources, joystick, screen):
                         except Exception as e:
                             logger.error(f"Erreur init polices: {e}")
                         config.needs_redraw = True
-                # 2 unsupported toggle
+                # 2 font family cycle
                 elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                    try:
+                        from rgsx_settings import get_font_family, set_font_family
+                        families = getattr(config, 'FONT_FAMILIES', ["pixel"]) or ["pixel"]
+                        current = get_font_family()
+                        try:
+                            fam_index = families.index(current)
+                        except ValueError:
+                            fam_index = 0
+                        direction = 1 if (is_input_matched(event, "right") or is_input_matched(event, "confirm")) else -1
+                        fam_index = (fam_index + direction) % len(families)
+                        new_family = families[fam_index]
+                        set_font_family(new_family)
+                        config.current_font_family_index = fam_index
+                        init_font_func = getattr(config, 'init_font', None)
+                        if callable(init_font_func):
+                            init_font_func()
+                        # popup
+                        if _:
+                            try:
+                                # Vérifier proprement la présence de la clé i18n
+                                fmt = _("popup_font_family_changed") if 'popup_font_family_changed' in getattr(_, 'translations', {}) else None
+                            except Exception:
+                                fmt = None
+                            if fmt:
+                                config.popup_message = fmt.format(new_family)
+                            else:
+                                config.popup_message = f"Font: {new_family}"
+                        else:
+                            config.popup_message = f"Font: {new_family}"
+                        config.popup_timer = 2500
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur changement font family: {e}")
+                # 3 unsupported toggle
+                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         from rgsx_settings import get_show_unsupported_platforms, set_show_unsupported_platforms
                         current = get_show_unsupported_platforms()
@@ -1224,8 +1259,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle unsupported: {e}")
-                # 3 allow unknown extensions
-                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # 4 allow unknown extensions
+                elif sel == 4 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         from rgsx_settings import get_allow_unknown_extensions, set_allow_unknown_extensions
                         current = get_allow_unknown_extensions()
@@ -1235,15 +1270,26 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
-                # 4 filter platforms
-                elif sel == 4 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
+                # 5 hide premium systems
+                elif sel == 5 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    try:
+                        from rgsx_settings import get_hide_premium_systems, set_hide_premium_systems
+                        cur = get_hide_premium_systems()
+                        new_val = set_hide_premium_systems(not cur)
+                        config.popup_message = ("Premium hidden" if new_val else "Premium visible") if _ is None else (_("popup_hide_premium_on") if new_val else _("popup_hide_premium_off"))
+                        config.popup_timer = 2500
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle hide_premium_systems: {e}")
+                # 6 filter platforms
+                elif sel == 6 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
                     config.filter_return_to = "pause_display_menu"
                     config.menu_state = "filter_platforms"
                     config.selected_filter_index = 0
                     config.filter_platforms_scroll_offset = 0
                     config.needs_redraw = True
-                # 5 back
-                elif sel == 5 and (is_input_matched(event, "confirm")):
+                # 7 back
+                elif sel == 7 and (is_input_matched(event, "confirm")):
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True

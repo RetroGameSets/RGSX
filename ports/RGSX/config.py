@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.2.0"
+app_version = "2.2.2.1"
 
 
 def get_application_root():
@@ -173,6 +173,16 @@ batch_download_indices = []  # File d'attente des indices de jeux à traiter en 
 batch_in_progress = False  # Indique qu'un lot est en cours
 batch_pending_game = None  # Données du jeu en attente de confirmation d'extension
 
+# --- Premium systems filtering ---
+# Liste des marqueurs (substrings) indiquant qu'un système/plateforme requiert un compte premium ou une clé API.
+# On teste la présence (case-insensitive) de ces marqueurs dans le nom du système (ex: "Microsoft Windows (1Fichier)").
+# Ajoutez librement d'autres valeurs (ex: 'RealDebrid', 'AllDebrid') si de futurs systèmes nécessitent un compte.
+PREMIUM_HOST_MARKERS = [
+    "1Fichier",
+]
+# Flag runtime contrôlant le masquage des systèmes premium dans le menu pause > games.
+hide_premium_systems = False
+
 # Indicateurs d'entrée (détectés au démarrage)
 joystick = False
 keyboard = False
@@ -215,34 +225,71 @@ search_font = None
 small_font = None
 """Police pour les petits textes."""
 
-def init_font():
-    """Initialise les polices après pygame.init()."""
+# Liste des familles de polices disponibles (identifiants logiques)
+FONT_FAMILIES = [
+    "pixel",   # police rétro Pixel-UniCode.ttf
+    "dejavu"   # police plus standard lisible petites tailles
+]
+current_font_family_index = 0  # 0=pixel par défaut
 
+# Après définition de FONT_FAMILIES et current_font_family_index, tenter de charger la famille depuis les settings
+try:
+    from rgsx_settings import get_font_family  # import tardif pour éviter dépendances circulaires lors de l'exécution initiale
+    saved_family = get_font_family()
+    if saved_family in FONT_FAMILIES:
+        current_font_family_index = FONT_FAMILIES.index(saved_family)
+except Exception as e:
+    logging.getLogger(__name__).debug(f"Impossible de charger la famille de police sauvegardée: {e}")
+
+def init_font():
+    """Initialise les polices après pygame.init() en fonction de la famille choisie."""
     global font, progress_font, title_font, search_font, small_font
     font_scale = accessibility_settings.get("font_scale", 1.0)
+
+    # Déterminer la famille sélectionnée
+    family_id = FONT_FAMILIES[current_font_family_index] if 0 <= current_font_family_index < len(FONT_FAMILIES) else "pixel"
+
+
+    def load_family(fam: str):
+        """Retourne un tuple (font, title_font, search_font, progress_font, small_font)."""
+        base_size = 36
+        title_size = 48
+        search_size = 48
+        small_size = 28
+        if fam == "pixel":
+            path = os.path.join(APP_FOLDER, "assets", "Pixel-UniCode.ttf")
+            f = pygame.font.Font(path, int(base_size * font_scale))
+            t = pygame.font.Font(path, int(title_size * font_scale))
+            s = pygame.font.Font(path, int(search_size * font_scale))
+            p = pygame.font.Font(path, int(base_size * font_scale))
+            sm = pygame.font.Font(path, int(small_size * font_scale))
+            return f, t, s, p, sm
+        elif fam == "dejavu":
+            try:
+                f = pygame.font.SysFont("dejavusans", int(base_size * font_scale))
+                t = pygame.font.SysFont("dejavusans", int(title_size * font_scale))
+                s = pygame.font.SysFont("dejavusans", int(search_size * font_scale))
+                p = pygame.font.SysFont("dejavusans", int(base_size * font_scale))
+                sm = pygame.font.SysFont("dejavusans", int(small_size * font_scale))
+            except Exception:
+                f = pygame.font.SysFont("dejavu sans", int(base_size * font_scale))
+                t = pygame.font.SysFont("dejavu sans", int(title_size * font_scale))
+                s = pygame.font.SysFont("dejavu sans", int(search_size * font_scale))
+                p = pygame.font.SysFont("dejavu sans", int(base_size * font_scale))
+                sm = pygame.font.SysFont("dejavu sans", int(small_size * font_scale))
+            return f, t, s, p, sm
+        
+
     try:
-        font_path = os.path.join(APP_FOLDER, "assets", "Pixel-UniCode.ttf")
-        font = pygame.font.Font(font_path, int(36 * font_scale))
-        title_font = pygame.font.Font(font_path, int(48 * font_scale))
-        search_font = pygame.font.Font(font_path, int(48 * font_scale))
-        progress_font = pygame.font.Font(font_path, int(36 * font_scale))
-        small_font = pygame.font.Font(font_path, int(28 * font_scale))
-        logger.debug(f"Polices Pixel-UniCode initialisées (font_scale: {font_scale})")
+        font, title_font, search_font, progress_font, small_font = load_family(family_id)
+        logger.debug(f"Polices initialisées (famille={family_id}, scale={font_scale})")
     except Exception as e:
+        logger.error(f"Erreur chargement famille {family_id}: {e}, fallback dejavu")
         try:
-            font = pygame.font.SysFont("arial", int(48 * font_scale))
-            title_font = pygame.font.SysFont("arial", int(60 * font_scale))
-            search_font = pygame.font.SysFont("arial", int(60 * font_scale))
-            progress_font = pygame.font.SysFont("arial", int(36 * font_scale))
-            small_font = pygame.font.SysFont("arial", int(28 * font_scale))
-            logger.debug(f"Polices Arial initialisées (font_scale: {font_scale})")
+            font, title_font, search_font, progress_font, small_font = load_family("dejavu")
         except Exception as e2:
-            logger.error(f"Erreur lors de l'initialisation des polices : {e2}")
-            font = None
-            progress_font = None
-            title_font = None
-            search_font = None
-            small_font = None
+            logger.error(f"Erreur fallback dejavu: {e2}")
+            font = title_font = search_font = progress_font = small_font = None
 
 # Indique si une vérification/installation des mises à jour a déjà été effectuée au démarrage
 update_checked = False
