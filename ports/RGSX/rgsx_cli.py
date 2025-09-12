@@ -15,6 +15,7 @@ import re
 
 # IMPORTANT: Avoid importing display/pygame modules for headless mode
 import config  # paths, settings, SAVE_FOLDER, etc.
+from utils import load_api_keys as _prime_api_keys  # ensure API key files are created
 import network as network_mod  # for progress_queues access
 from utils import load_sources, load_games, is_extension_supported, load_extensions_json, sanitize_filename, extract_zip_data
 from history import load_history, save_history, add_to_history
@@ -22,6 +23,12 @@ from network import download_rom, download_from_1fichier, is_1fichier_url
 from rgsx_settings import get_sources_zip_url
 
 logger = logging.getLogger("rgsx.cli")
+
+# Ensure API key files exist early so users can edit them without triggering a download first.
+try:  # pragma: no cover
+    _prime_api_keys(False)
+except Exception:
+    pass
 
 
 # Unified size display helper: preserve pre-formatted locale strings (MiB, GiB, Go, Mo, Ko, MB, KB, bytes).

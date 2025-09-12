@@ -793,7 +793,16 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 if "error" in file_info and file_info["error"] == "Resource not found":
                     logger.error(f"Le fichier {game_name} n'existe pas sur 1fichier")
                     result[0] = False
-                    result[1] = f"1F: {_("network_file_not_found").format(game_name)}" if _ else f"1F: File not found {game_name}"
+                    try:
+                        if _:
+                            # Build translated message safely without nesting quotes in f-string
+                            not_found_tpl = _("network_file_not_found")
+                            msg_nf = not_found_tpl.format(game_name) if "{" in not_found_tpl else f"{not_found_tpl} {game_name}"
+                            result[1] = f"1F: {msg_nf}"
+                        else:
+                            result[1] = f"1F: File not found {game_name}"
+                    except Exception:
+                        result[1] = f"1F: File not found {game_name}"
                     return
                 filename = file_info.get("filename", "").strip()
                 if not filename:

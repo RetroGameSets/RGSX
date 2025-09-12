@@ -34,7 +34,7 @@ from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
 from utils import (
     load_sources, check_extension_before_download, extract_zip_data,
-    play_random_music, load_music_config
+    play_random_music, load_music_config, load_api_keys
 )
 from history import load_history, save_history
 from config import OTA_data_ZIP
@@ -57,6 +57,13 @@ except Exception as e:
     logging.error(f"Échec de la configuration du logging dans {config.log_file}: {str(e)}")
 
 logger = logging.getLogger(__name__)
+
+# Ensure API key files (1Fichier, AllDebrid, RealDebrid) exist at startup so user can fill them before any download
+try:  # pragma: no cover
+    load_api_keys(False)
+    logger.debug("API key files ensured at startup")
+except Exception as _e:
+    logger.warning(f"Cannot prepare API key files early: {_e}")
 
 # Mise à jour de la gamelist Windows avant toute initialisation graphique (évite les conflits avec ES)
 def _run_windows_gamelist_update():
