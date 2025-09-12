@@ -1389,6 +1389,28 @@ def draw_language_menu(screen):
     instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, instruction_y))
     screen.blit(instruction_surface, instruction_rect)
 
+def draw_menu_instruction(screen, instruction_text, last_button_bottom=None):
+    """Dessine une ligne d'instruction centrée au-dessus du footer.
+
+    - Réserve une zone footer (72px) + marge bas.
+    - Si last_button_bottom est fourni, s'assure d'un écart minimal (16px).
+    - Utilise la petite police et couleurs du thème.
+    """
+    if not instruction_text:
+        return
+    try:
+        instruction_surface = config.small_font.render(instruction_text, True, THEME_COLORS["text"])
+        footer_reserved = 72
+        bottom_margin = 12
+        instruction_y = config.screen_height - footer_reserved - bottom_margin
+        min_gap = 16
+        if last_button_bottom is not None and instruction_y - last_button_bottom < min_gap:
+            instruction_y = last_button_bottom + min_gap
+        instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, instruction_y))
+        screen.blit(instruction_surface, instruction_rect)
+    except Exception as e:
+        logger.error(f"Erreur draw_menu_instruction: {e}")
+
 def draw_display_menu(screen):
     """Affiche le sous-menu Affichage (layout, taille de police, systèmes non supportés)."""
     screen.blit(OVERLAY, (0, 0))
@@ -1494,6 +1516,28 @@ def draw_pause_menu(screen, selected_option):
         )
     config.pause_menu_total_options = len(options)
 
+    # Instruction contextuelle pour l'option sélectionnée
+    # Mapping des clés i18n parallèles à la liste options (même ordre)
+    instruction_keys = [
+        "instruction_pause_language",
+        "instruction_pause_controls",
+        "instruction_pause_display",
+        "instruction_pause_games",
+        "instruction_pause_settings",
+        "instruction_pause_restart",
+        "instruction_pause_quit",
+    ]
+    try:
+        key = instruction_keys[selected_option]
+        instruction_text = _(key)
+    except Exception:
+        instruction_text = ""  # Sécurité si index hors borne
+
+    if instruction_text:
+        # Calcul de la position du dernier bouton pour éviter chevauchement
+        last_button_bottom = menu_y + margin_top_bottom + (len(options) - 1) * (button_height + 12) + button_height
+        draw_menu_instruction(screen, instruction_text, last_button_bottom)
+
 def _draw_submenu_generic(screen, title, options, selected_index):
     """Helper générique pour dessiner un sous-menu hiérarchique."""
     screen.blit(OVERLAY, (0, 0))
@@ -1529,6 +1573,57 @@ def draw_pause_controls_menu(screen, selected_index):
         _("menu_back") if _ else "Back"
     ]
     _draw_submenu_generic(screen, _("menu_controls") if _ else "Controls", options, selected_index)
+    # Instructions contextuelles
+    instruction_keys = [
+        "instruction_controls_help",   # pour menu_controls (afficher l'aide)
+        "instruction_controls_remap",  # remap
+        "instruction_generic_back",    # retour
+    ]
+    key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
+    if key:
+        last_button_bottom = None  # recalculer via géométrie si nécessaire; ici on réutilise calcul simple
+        # Reconstituer la position du dernier bouton comme dans _draw_submenu_generic
+        menu_width = int(config.screen_width * 0.72)
+        button_height = int(config.screen_height * 0.045)
+        margin_top_bottom = 26
+        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
+        menu_y = (config.screen_height - menu_height) // 2
+        # Title height approximatif
+        title_surface = config.font.render("X", True, THEME_COLORS["text"])  # hauteur représentative
+        title_rect_height = title_surface.get_height()
+        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10  # approx: title center adjust + bottom spacing
+        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
+        text = _(key)
+        if key == "instruction_display_hide_premium":
+            # Inject dynamic list of premium providers from config.PREMIUM_HOST_MARKERS
+            try:
+                from config import PREMIUM_HOST_MARKERS
+                # Clean, preserve order, remove duplicates (case-insensitive)
+                seen = set()
+                providers_clean = []
+                for p in PREMIUM_HOST_MARKERS:
+                    if not p: continue
+                    norm = p.strip()
+                    if not norm: continue
+                    low = norm.lower()
+                    if low in seen: continue
+                    seen.add(low)
+                    providers_clean.append(norm)
+                providers_str = ", ".join(providers_clean)
+                if not providers_str:
+                    providers_str = "-"
+                if "{providers}" in text:
+                    try:
+                        text = text.format(providers=providers_str)
+                    except Exception:
+                        # Fallback if formatting fails
+                        text = f"{text.replace('{providers}','').strip()} {providers_str}".strip()
+                else:
+                    # Append providers if placeholder missing (backward compatibility)
+                    text = f"{text} : {providers_str}" if providers_str else text
+            except Exception:
+                pass
+        draw_menu_instruction(screen, text, last_button_bottom)
 
 def draw_pause_display_menu(screen, selected_index):
     from rgsx_settings import (
@@ -1583,6 +1678,28 @@ def draw_pause_display_menu(screen, selected_index):
     back_txt = _("menu_back") if _ else "Back"
     options = [layout_txt, font_txt, font_family_txt, unsupported_txt, unknown_txt, hide_premium_txt, filter_txt, back_txt]
     _draw_submenu_generic(screen, _("menu_display"), options, selected_index)
+    instruction_keys = [
+        "instruction_display_layout",
+        "instruction_display_font_size",
+        "instruction_display_font_family",
+        "instruction_display_show_unsupported",
+        "instruction_display_unknown_ext",
+        "instruction_display_hide_premium",
+        "instruction_display_filter_platforms",
+        "instruction_generic_back",
+    ]
+    key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
+    if key:
+        button_height = int(config.screen_height * 0.045)
+        menu_width = int(config.screen_width * 0.72)
+        margin_top_bottom = 26
+        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
+        menu_y = (config.screen_height - menu_height) // 2
+        title_surface = config.font.render("X", True, THEME_COLORS["text"])
+        title_rect_height = title_surface.get_height()
+        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10
+        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
+        draw_menu_instruction(screen, _(key), last_button_bottom)
 
 def draw_pause_games_menu(screen, selected_index):
     from rgsx_settings import get_sources_mode
@@ -1594,6 +1711,23 @@ def draw_pause_games_menu(screen, selected_index):
     back_txt = _("menu_back") if _ else "Back"
     options = [history_txt, source_txt, update_txt, back_txt]
     _draw_submenu_generic(screen, _("menu_games") if _ else "Games", options, selected_index)
+    instruction_keys = [
+        "instruction_games_history",
+        "instruction_games_source_mode",
+        "instruction_games_update_cache",
+        "instruction_generic_back",
+    ]
+    key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
+    if key:
+        button_height = int(config.screen_height * 0.045)
+        margin_top_bottom = 26
+        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
+        menu_y = (config.screen_height - menu_height) // 2
+        title_surface = config.font.render("X", True, THEME_COLORS["text"])
+        title_rect_height = title_surface.get_height()
+        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10
+        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
+        draw_menu_instruction(screen, _(key), last_button_bottom)
 
 def draw_pause_settings_menu(screen, selected_index):
     from rgsx_settings import get_symlink_option
@@ -1618,6 +1752,23 @@ def draw_pause_settings_menu(screen, selected_index):
     back_txt = _("menu_back") if _ else "Back"
     options = [music_option, symlink_option, api_keys_txt, back_txt]
     _draw_submenu_generic(screen, _("menu_settings_category") if _ else "Settings", options, selected_index)
+    instruction_keys = [
+        "instruction_settings_music",
+        "instruction_settings_symlink",
+        "instruction_settings_api_keys",
+        "instruction_generic_back",
+    ]
+    key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
+    if key:
+        button_height = int(config.screen_height * 0.045)
+        margin_top_bottom = 26
+        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
+        menu_y = (config.screen_height - menu_height) // 2
+        title_surface = config.font.render("X", True, THEME_COLORS["text"])
+        title_rect_height = title_surface.get_height()
+        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10
+        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
+        draw_menu_instruction(screen, _(key), last_button_bottom)
 
 def draw_pause_api_keys_status(screen):
     screen.blit(OVERLAY, (0,0))

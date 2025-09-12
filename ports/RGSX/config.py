@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.2.1"
+app_version = "2.2.2.2"
 
 
 def get_application_root():
@@ -173,14 +173,9 @@ batch_download_indices = []  # File d'attente des indices de jeux à traiter en 
 batch_in_progress = False  # Indique qu'un lot est en cours
 batch_pending_game = None  # Données du jeu en attente de confirmation d'extension
 
-# --- Premium systems filtering ---
-# Liste des marqueurs (substrings) indiquant qu'un système/plateforme requiert un compte premium ou une clé API.
-# On teste la présence (case-insensitive) de ces marqueurs dans le nom du système (ex: "Microsoft Windows (1Fichier)").
-# Ajoutez librement d'autres valeurs (ex: 'RealDebrid', 'AllDebrid') si de futurs systèmes nécessitent un compte.
 PREMIUM_HOST_MARKERS = [
     "1Fichier",
 ]
-# Flag runtime contrôlant le masquage des systèmes premium dans le menu pause > games.
 hide_premium_systems = False
 
 # Indicateurs d'entrée (détectés au démarrage)

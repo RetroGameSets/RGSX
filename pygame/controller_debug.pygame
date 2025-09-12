@@ -14,34 +14,34 @@ except Exception as e:
 
 PROMPTS = [
     # Face buttons
-    "SOUTH_BUTTON",  # A on Xbox
-    "EAST_BUTTON",   # B on Xbox
-    "WEST_BUTTON",   # X on Xbox
-    "NORTH_BUTTON",  # Y on Xbox
+    "SOUTH_BUTTON - CONFIRM",  # A on Xbox
+    "EAST_BUTTON - CANCEL",   # B on Xbox
+    "WEST_BUTTON - CLEAR HISTORY / SELECT GAMES",   # X on Xbox
+    "NORTH_BUTTON - HISTORY",  # Y on Xbox
     # Meta
-    "START",
-    "SELECT",
+    "START - PAUSE",
+    "SELECT - FILTER",
     # D-Pad
-    "DPAD_UP",
-    "DPAD_DOWN",
-    "DPAD_LEFT",
-    "DPAD_RIGHT",
+    "DPAD_UP - MOVE UP",
+    "DPAD_DOWN - MOVE DOWN",
+    "DPAD_LEFT - MOVE LEFT",
+    "DPAD_RIGHT - MOVE  RIGHT",
     # Bumpers
-    "LEFT_BUMPER",
-    "RIGHT_BUMPER",
+    "LEFT_BUMPER - LB/L1 - Delete last char",
+    "RIGHT_BUMPER - RB/R1 - Add space",
     # Triggers
-    "LEFT_TRIGGER",
-    "RIGHT_TRIGGER",
+    "LEFT_TRIGGER - LT/L2 - Page +",
+    "RIGHT_TRIGGER - RT/R2 - Page -",
     # Left stick directions
-    "JOYSTICK_LEFT_UP",
-    "JOYSTICK_LEFT_DOWN",
-    "JOYSTICK_LEFT_LEFT",
-    "JOYSTICK_LEFT_RIGHT",
+    "JOYSTICK_LEFT_UP - MOVE UP",
+    "JOYSTICK_LEFT_DOWN - MOVE DOWN",
+    "JOYSTICK_LEFT_LEFT - MOVE LEFT",
+    "JOYSTICK_LEFT_RIGHT - MOVE RIGHT",
     # Right stick directions
-    "JOYSTICK_RIGHT_UP",
-    "JOYSTICK_RIGHT_DOWN",
-    "JOYSTICK_RIGHT_LEFT",
-    "JOYSTICK_RIGHT_RIGHT",
+    "JOYSTICK_RIGHT_UP - MOVE U P",
+    "JOYSTICK_RIGHT_DOWN - MOVE DOWN",
+    "JOYSTICK_RIGHT_LEFT - MOVE LEFT",
+    "JOYSTICK_RIGHT_RIGHT - MOVE RIGHT",
 ]
 
 

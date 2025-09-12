@@ -1233,6 +1233,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
     cancel_events.pop(task_id, None)
     logger.debug(f"Fin download_from_1fichier, résultat: success={result[0]}, message={result[1]}")
     return result[0], result[1]
+
 def is_1fichier_url(url):
     """Détecte si l'URL est un lien 1fichier."""
     return "1fichier.com" in url

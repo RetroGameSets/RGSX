@@ -24,6 +24,53 @@ from rgsx_settings import get_sources_zip_url
 logger = logging.getLogger("rgsx.cli")
 
 
+# Unified size display helper: preserve pre-formatted locale strings (MiB, GiB, Go, Mo, Ko, MB, KB, bytes).
+# If numeric (int/float or pure digit string), convert to binary units with suffix B, KiB, MiB, GiB.
+# Otherwise return original string.
+def display_size(val):
+    try:
+        if val is None:
+            return ''
+        if isinstance(val, (list, tuple)):
+            return ''
+        s = str(val).strip()
+        if not s:
+            return ''
+        lower = s.lower()
+        # Already human formatted (English or French common units or contains a space + unit token)
+        known_tokens = ("mib", "gib", "kib", "kb", "mb", "gb", "bytes", " b", " mo", " go", " ko", "mb ", "gb ")
+        if any(tok in lower for tok in known_tokens):
+            return s
+        # Pure numeric => treat as bytes
+        import re as _re
+        if _re.fullmatch(r"\d+", s):
+            b = float(s)
+        else:
+            # Leading numeric? if not, return original
+            m = _re.match(r"^([0-9]+(?:\.[0-9]+)?)", s)
+            if not m:
+                return s
+            # If trailing unit unknown, assume already human string
+            if len(s) > len(m.group(0)):
+                return s
+            b = float(m.group(1))
+        if b < 1024:
+            return f"{int(b)} B"
+        kib = b / 1024
+        if kib < 1024:
+            return f"{kib:.2f} KiB"
+        mib = kib / 1024
+        if mib < 1024:
+            return f"{mib:.2f} MiB"
+        gib = mib / 1024
+        return f"{gib:.2f} GiB"
+    except Exception:
+        try:
+            return str(val)
+        except Exception:
+            return ''
+
+
 def setup_logging(verbose: bool):
     level = logging.DEBUG if verbose else logging.WARNING
     logging.basicConfig(level=level, format='%(levelname)s: %(message)s')
@@ -153,9 +200,26 @@ def cmd_platforms(args):
     if getattr(args, 'json', False):
         print(json.dumps(items, ensure_ascii=False, indent=2))
     else:
+        # Hint before table
+        print("hint: you can use either the exact platform name or folder in --platform (e.g. 'SNK Neo Geo' or 'neogeo')")
+        # ASCII table with fixed widths: name=35, folder=15
+        NAME_W = 35
+        FOLDER_W = 15
+        def fmt_cell(text, width):
+            if len(text) <= width:
+                return text + ' ' * (width - len(text))
+            if width <= 3:
+                return text[:width]
+            return text[:width-3] + '...'
+        border = "+" + "-" * (NAME_W + 2) + "+" + "-" * (FOLDER_W + 2) + "+"
+        header = f"| {'Platform Name'.ljust(NAME_W)} | {'Folder'.ljust(FOLDER_W)} |"
+        print(border)
+        print(header)
+        print(border)
         for it in items:
-            # name TAB folder (folder may be empty for BIOS/virtual)
-            print(f"{it['name']}\t{it['folder']}")
+            row = f"| {fmt_cell(it['name'], NAME_W)} | {fmt_cell(it['folder'], FOLDER_W)} |"
+            print(row)
+        print(border)
 
 
 def _resolve_platform(sources, platform_name: str):
@@ -188,13 +252,100 @@ def cmd_games(args):
         or args.platform
     )
     games = load_games(platform_id)
+
+    # Fuzzy ranking similar to download suggestions when --search provided
     if args.search:
-        q = args.search.lower()
-        games = [g for g in games if q in (g[0] or '').lower()]
+        query_raw = args.search.strip()
+        def _strip_ext(name: str) -> str:
+            try:
+                base, _ = os.path.splitext(name)
+                return base
+            except Exception:
+                return name
+        def _tokens(s: str) -> list[str]:
+            return re.findall(r"[a-z0-9]+", s.lower())
+        q_lower = query_raw.lower()
+        q_no_ext = _strip_ext(query_raw).lower()
+        q_tokens = _tokens(query_raw)
+        suggestions = []  # (priority, score, game_obj)
+        # 1) Substring match (full or sans extension) priority 0, score = position
+        for g in games:
+            title = g[0] if isinstance(g, (list, tuple)) and g else None
+            if not title:
+                continue
+            t_lower = title.lower()
+            t_no_ext = _strip_ext(t_lower)
+            pos_full = t_lower.find(q_lower) if q_lower else -1
+            pos_noext = t_no_ext.find(q_no_ext) if q_no_ext else -1
+            if pos_full != -1 or pos_noext != -1:
+                pos = pos_full if pos_full != -1 else pos_noext
+                suggestions.append((0, max(0, pos), g))
+        # Helper for ordered gap score
+        def ordered_gap_score(qt: list[str], tt: list[str]):
+            pos = []
+            start = 0
+            for tok in qt:
+                try:
+                    i = next(i for i in range(start, len(tt)) if tt[i] == tok)
+                except StopIteration:
+                    return None
+                pos.append(i)
+                start = i + 1
+            gap = (pos[-1] - pos[0]) - (len(qt) - 1)
+            return max(0, gap)
+        # 2) Ordered non-contiguous tokens (priority 1)
+        if q_tokens:
+            for g in games:
+                title = g[0] if isinstance(g, (list, tuple)) and g else None
+                if not title:
+                    continue
+                tt = _tokens(title)
+                score = ordered_gap_score(q_tokens, tt)
+                if score is not None:
+                    suggestions.append((1, score, g))
+        # 3) All tokens present, any order (priority 2), score = token set size
+        if q_tokens:
+            for g in games:
+                title = g[0] if isinstance(g, (list, tuple)) and g else None
+                if not title:
+                    continue
+                t_tokens = set(_tokens(title))
+                if all(tok in t_tokens for tok in q_tokens):
+                    suggestions.append((2, len(t_tokens), g))
+        # Deduplicate by title keeping best (lowest priority, then score)
+        best = {}
+        for prio, score, g in suggestions:
+            title = g[0] if isinstance(g, (list, tuple)) and g else str(g)
+            key = title.lower()
+            cur = best.get(key)
+            if cur is None or (prio, score) < (cur[0], cur[1]):
+                best[key] = (prio, score, g)
+        ranked = sorted(best.values(), key=lambda x: (x[0], x[1], (x[2][0] if isinstance(x[2], (list, tuple)) and x[2] else str(x[2])).lower()))
+        games = [g for _, _, g in ranked]
+    # Table: Name (60) | Size (12) to allow "xxxx.xx MiB"
+    NAME_W = 60
+    SIZE_W = 12
+    def trunc(text, width):
+        if len(text) <= width:
+            return text + ' ' * (width - len(text))
+        if width <= 3:
+            return text[:width]
+        return text[:width-3] + '...'
+    border = "+" + "-" * (NAME_W + 2) + "+" + "-" * (SIZE_W + 2) + "+"
+    header = f"| {'Game Title'.ljust(NAME_W)} | {'Size'.ljust(SIZE_W)} |"
+    print(border)
+    print(header)
+    print(border)
     for g in games:
-        # games items can be (name, url) or (name, url, size)
         title = g[0] if isinstance(g, (list, tuple)) and g else str(g)
-        print(title)
+        size_val = ''
+        if isinstance(g, (list, tuple)) and len(g) >= 3:
+            size_val = display_size(g[2])
+        row = f"| {trunc(title, NAME_W)} | {trunc(size_val, SIZE_W)} |"
+        print(row)
+    print(border)
+    if args.search and not games:
+        print("No results for search.")
 
 
 def cmd_history(args):
@@ -382,10 +533,37 @@ def cmd_download(args):
                 interactive = bool(getattr(args, 'interactive', False))
             if interactive:
                 print("Select a match to download:")
+                # Tableau formaté: # (4) | Title (60) | Size (12)
+                NUM_W = 4
+                TITLE_W = 60
+                SIZE_W = 12
+                def trunc(text, width):
+                    if len(text) <= width:
+                        return text + ' ' * (width - len(text))
+                    if width <= 3:
+                        return text[:width]
+                    return text[:width-3] + '...'
+                # Use shared display_size
+                border = "+" + "-" * (NUM_W + 2) + "+" + "-" * (TITLE_W + 2) + "+" + "-" * (SIZE_W + 2) + "+"
+                header = f"| {'#'.ljust(NUM_W)} | {'Title'.ljust(TITLE_W)} | {'Size'.ljust(SIZE_W)} |"
+                print(border)
+                print(header)
+                print(border)
                 for i, s in enumerate(shown, start=1):
-                    print(f"  {i}. {s[2]}")
+                    title = s[2]
+                    size_val = ''
+                    size_raw = None
+                    for g in games:
+                        if isinstance(g, (list, tuple)) and g and g[0] == title and len(g) >= 3:
+                            size_raw = g[2]
+                            break
+                    if size_raw is not None:
+                        size_val = display_size(size_raw)
+                    row = f"| {str(i).ljust(NUM_W)} | {trunc(title, TITLE_W)} | {trunc(size_val, SIZE_W)} |"
+                    print(row)
+                print(border)
                 if len(suggestions) > limit:
-                    print(f"  ... and {len(suggestions) - limit} more not shown")
+                    print(f"... {len(suggestions) - limit} more not shown")
                 try:
                     choice = input("Enter number (or press Enter to cancel): ").strip()
                 except EOFError:
@@ -400,15 +578,41 @@ def cmd_download(args):
                         pass
             if not match:
                 print("Here are potential matches (use the exact title with --game):")
+                NUM_W = 4
+                TITLE_W = 60
+                SIZE_W = 12
+                def trunc(text, width):
+                    if len(text) <= width:
+                        return text + ' ' * (width - len(text))
+                    if width <= 3:
+                        return text[:width]
+                    return text[:width-3] + '...'
+                # Use shared display_size
+                border = "+" + "-" * (NUM_W + 2) + "+" + "-" * (TITLE_W + 2) + "+" + "-" * (SIZE_W + 2) + "+"
+                header = f"| {'#'.ljust(NUM_W)} | {'Title'.ljust(TITLE_W)} | {'Size'.ljust(SIZE_W)} |"
+                print(border)
+                print(header)
+                print(border)
                 for i, s in enumerate(shown, start=1):
-                    print(f"  {i}. {s[2]}")
+                    title = s[2]
+                    size_val = ''
+                    size_raw = None
+                    for g in games:
+                        if isinstance(g, (list, tuple)) and g and g[0] == title and len(g) >= 3:
+                            size_raw = g[2]
+                            break
+                    if size_raw is not None:
+                        size_val = display_size(size_raw)
+                    row = f"| {str(i).ljust(NUM_W)} | {trunc(title, TITLE_W)} | {trunc(size_val, SIZE_W)} |"
+                    print(row)
+                print(border)
                 if len(suggestions) > limit:
-                    print(f"  ... and {len(suggestions) - limit} more")
-                print("Tip: list games with: python rgsx_cli.py games --platform \"%s\" --search \"%s\"" % (args.platform, query_raw))
+                    print(f"... {len(suggestions) - limit} more")
+                print("Tip: list games with: games --platform \"%s\" --search \"%s\"" % (args.platform, query_raw))
                 sys.exit(3)
         else:
             print("No similar titles found.")
-            print("Tip: list games with: python rgsx_cli.py games --platform \"%s\" --search \"%s\"" % (args.platform, query_raw))
+            print("Tip: list games with: games --platform \"%s\" --search \"%s\"" % (args.platform, query_raw))
             sys.exit(3)
 
     title, url = match
@@ -454,33 +658,109 @@ def cmd_download(args):
         sys.exit(exit_code)
 
 
+def interactive_loop(parser):
+    """Simple REPL so user can run multiple subcommands without retyping python rgsx_cli.py.
+
+    Rules:
+      - Empty line: ignore
+      - help / ?: show help
+      - exit / quit: leave loop
+      - Global flags like --verbose can be set per command; verbose persists for session once set.
+    """
+    persistent_verbose = False
+    print("RGSX CLI interactive mode. Type 'help' for commands, 'exit' to quit.")
+    while True:
+        try:
+            line = input("rgsx> ").strip()
+        except EOFError:
+            print()
+            break
+        except KeyboardInterrupt:
+            print()
+            break
+        if not line:
+            continue
+        if line in {"exit", "quit"}:
+            break
+        if line in {"help", "?"}:
+            parser.print_help()
+            continue
+        # Tokenize respecting simple quotes
+        try:
+            import shlex
+            argv = shlex.split(line)
+        except Exception:
+            argv = line.split()
+        # Inject persistent verbose if previously enabled and not explicitly disabled
+        if persistent_verbose and "--verbose" not in argv:
+            argv.insert(0, "--verbose")
+        try:
+            args = parser.parse_args(argv)
+        except SystemExit as se:
+            # argparse already printed error; continue loop
+            continue
+        # Update persistent verbose state
+        if getattr(args, 'verbose', False):
+            persistent_verbose = True
+        # Dispatch
+        if not getattr(args, 'cmd', None):
+            # If user typed e.g. just global flags
+            print("No command provided. Type 'help' to list commands.")
+            continue
+        setup_logging(getattr(args, 'verbose', False))
+        # Global force-update handling (duplicate minimal logic to avoid leaving loop early)
+        if getattr(args, 'force_update', False):
+            try:
+                if os.path.exists(config.SOURCES_FILE):
+                    os.remove(config.SOURCES_FILE)
+            except Exception:
+                pass
+            try:
+                shutil.rmtree(config.GAMES_FOLDER, ignore_errors=True)
+            except Exception:
+                pass
+            try:
+                shutil.rmtree(config.IMAGES_FOLDER, ignore_errors=True)
+            except Exception:
+                pass
+            ok = ensure_data_present(verbose=True)
+            if not ok:
+                print("force-update failed; aborting command.")
+                continue
+        try:
+            args.func(args)
+        except SystemExit:
+            # Subcommand may sys.exit on errors; swallow in REPL
+            continue
+        except Exception as e:
+            print(f"Error: {e}")
+            continue
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="rgsx-cli", description="RGSX headless CLI")
     p.add_argument("--verbose", action="store_true", help="Verbose logging")
     p.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sub = p.add_subparsers(dest="cmd")
 
-    sp = sub.add_parser("platforms", help="List available platforms")
+    sp = sub.add_parser("platforms", aliases=["p"], help="List available platforms")
     sp.add_argument("--json", action="store_true", help="Output JSON with name and folder")
-    # Also accept global flags after the subcommand
     sp.add_argument("--verbose", action="store_true", help="Verbose logging")
     sp.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sp.set_defaults(func=cmd_platforms)
 
-    sg = sub.add_parser("games", help="List games for a platform")
-    sg.add_argument("--platform", required=True, help="Platform name or key")
-    sg.add_argument("--search", help="Filter by name contains")
-    # Also accept global flags after the subcommand
+    sg = sub.add_parser("games", aliases=["g"], help="List games for a platform")
+    sg.add_argument("--platform", "--p", "-p", required=True, help="Platform name or key")
+    sg.add_argument("--search", "--s", "-s", help="Filter by name contains")
     sg.add_argument("--verbose", action="store_true", help="Verbose logging")
     sg.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sg.set_defaults(func=cmd_games)
 
-    sd = sub.add_parser("download", help="Download a game by title")
-    sd.add_argument("--platform", required=True)
-    sd.add_argument("--game", required=True)
-    sd.add_argument("--force", action="store_true", help="Override unsupported extension warning")
+    sd = sub.add_parser("download", aliases=["dl"], help="Download a game by title")
+    sd.add_argument("--platform", "--p", "-p", required=True)
+    sd.add_argument("--game", "--g", "-g", required=True)
+    sd.add_argument("--force", "-f", action="store_true", help="Override unsupported extension warning")
     sd.add_argument("--interactive", "-i", action="store_true", help="Prompt to choose from matches when no exact title is found")
-    # Also accept global flags after the subcommand
     sd.add_argument("--verbose", action="store_true", help="Verbose logging")
     sd.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sd.set_defaults(func=cmd_download)
@@ -488,13 +768,11 @@ def build_parser():
     sh = sub.add_parser("history", help="Show recent history")
     sh.add_argument("--tail", type=int, default=50, help="Last N entries")
     sh.add_argument("--json", action="store_true")
-    # Also accept global flags after the subcommand
     sh.add_argument("--verbose", action="store_true", help="Verbose logging")
     sh.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sh.set_defaults(func=cmd_history)
 
-    sc = sub.add_parser("clear-history", help="Clear history")
-    # Also accept global flags after the subcommand
+    sc = sub.add_parser("clear-history", aliases=["clear"], help="Clear history")
     sc.add_argument("--verbose", action="store_true", help="Verbose logging")
     sc.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sc.set_defaults(func=cmd_clear_history)
@@ -507,6 +785,12 @@ def main(argv=None):
     # Force headless mode for CLI
     os.environ.setdefault("RGSX_HEADLESS", "1")
     parser = build_parser()
+    if not argv:
+        # Start interactive mode
+        try:
+            interactive_loop(parser)
+        finally:
+            return
     args = parser.parse_args(argv)
     setup_logging(args.verbose)
 

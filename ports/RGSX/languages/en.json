@@ -154,5 +154,28 @@
     ,"popup_hide_premium_on": "Premium systems hidden"
     ,"popup_hide_premium_off": "Premium systems visible"
     ,"submenu_display_font_family": "Font"
-    ,"popup_font_family_changed": "Font changed: {0}"
+    ,"popup_font_family_changed": "Font changed: {0}",
+    "instruction_pause_language": "Change the interface language",
+    "instruction_pause_controls": "View control layout or start remapping",
+    "instruction_pause_display": "Configure layout, fonts and system visibility",
+    "instruction_pause_games": "Open history, switch source or refresh list",
+    "instruction_pause_settings": "Music, symlink option & API keys status",
+    "instruction_pause_restart": "Restart RGSX to reload configuration"
+    ,"instruction_pause_quit": "Exit the RGSX application"
+    ,"instruction_controls_help": "Show full controller & keyboard reference"
+    ,"instruction_controls_remap": "Change button / key bindings"
+    ,"instruction_generic_back": "Return to the previous menu"
+    ,"instruction_display_layout": "Cycle grid dimensions (columns × rows)"
+    ,"instruction_display_font_size": "Adjust text scale for readability"
+    ,"instruction_display_font_family": "Switch between available font families"
+    ,"instruction_display_show_unsupported": "Show/hide systems not defined in es_systems.cfg"
+    ,"instruction_display_unknown_ext": "Enable/disable warning for file extensions absent from es_systems.cfg"
+    ,"instruction_display_hide_premium": "Hide systems requiring premium access via API: {providers}"
+    ,"instruction_display_filter_platforms": "Manually choose which systems are visible"
+    ,"instruction_games_history": "List past downloads and statuses"
+    ,"instruction_games_source_mode": "Switch between RGSX or your own custom list source"
+    ,"instruction_games_update_cache": "Redownload & refresh current games list"
+    ,"instruction_settings_music": "Enable or disable background music playback"
+    ,"instruction_settings_symlink": "Toggle using filesystem symlinks for installs"
+    ,"instruction_settings_api_keys": "See detected premium provider API keys"
 }

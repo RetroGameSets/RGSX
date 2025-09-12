@@ -215,38 +215,38 @@ else:
         # Détection spécifique Elite AVANT la détection générique Xbox
         if ("microsoft xbox controller" in lname):
             config.xbox_elite_controller = True
-            logger.debug(f"Controller detected (Xbox Elite): {name}")
-            print(f"Controller detected (Xbox Elite): {name}")
+            logger.debug(f"Controller detected: {name}")
+            print(f"Controller detected: {name}")
             break
         if ("xbox" in lname) or ("x-box" in lname) or ("xinput" in lname) or ("microsoft x-box" in lname) or ("x-box 360" in lname) or ("360" in lname):
             config.xbox_controller = True
-            logger.debug(f"Controller detected : {name}")
+            logger.debug(f"Xbox Controller detected : {name}")
             print(f"Controller detected : {name}")
             break
-        elif "playstation" in lname:
+        elif "playstation" in lname or "ps3" in lname or "sony" in lname:
             config.playstation_controller = True
-            logger.debug(f"Controller detected : {name}")
+            logger.debug(f"Playstation Controller detected : {name}")
             print(f"Controller detected : {name}")
             break
         elif "nintendo" in lname:
             config.nintendo_controller = True
-            logger.debug(f"Controller detected : {name}")
+            logger.debug(f"Nintendo Controller detected : {name}")
             print(f"Controller detected : {name}")
         elif "trimui" in lname:
             config.trimui_controller = True
-            logger.debug(f"Controller detected : {name}")
+            logger.debug(f"Trimui Controller detected : {name}")
             print(f"Controller detected : {name}")
         elif "logitech" in lname:
             config.logitech_controller = True
-            logger.debug(f"Controller detected : {name}")
+            logger.debug(f"Logitech Controller detected : {name}")
             print(f"Controller detected : {name}")
         elif "8bitdo" in lname or "8-bitdo" in lname:
             config.eightbitdo_controller = True
-            logger.debug(f"Controller detected : {name}")
+            logger.debug(f"8bitdoController detected : {name}")
             print(f"Controller detected : {name}")
         elif "steam" in lname:
             config.steam_controller = True
-            logger.debug(f"Controller detected : {name}")
+            logger.debug(f"Steam Controller detected : {name}")
             print(f"Controller detected : {name}")
         # Note: virtual keyboard display now depends on controller presence (config.joystick)
     logger.debug(f"Flags contrôleur: xbox={config.xbox_controller}, ps={config.playstation_controller}, nintendo={config.nintendo_controller}, eightbitdo={config.eightbitdo_controller}, steam={config.steam_controller}, trimui={config.trimui_controller}, logitech={config.logitech_controller}, generic={config.generic_controller}")
