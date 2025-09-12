@@ -6,7 +6,7 @@ RGSX est une application développée en Python basée sur Pygame pour la partie
 
 L'application prend en charge plusieurs sources comme myrient, 1fichier (avec support de débridage via AllDebrid en option). Ces sources pourront être mises à jour fréquemment.
 
-
+## INSTALLATION : https://github.com/RetroGameSets/RGSX/blob/main/README_FR.md#-installation
 
 ## ✨ Fonctionnalités
 
