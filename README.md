@@ -1,6 +1,7 @@
 # 🎮 Retro Game Sets Xtra (RGSX)
 
 ## SUPPORT / HELP: https://discord.gg/Vph9jwg3VV
+LISEZ-MOI / INSTRUCTIONS EN FRANCAIS : https://github.com/RetroGameSets/RGSX/blob/main/README_FR.md
 
 RGSX is a Python application using Pygame for its graphical interface, created by and for the RetroGameSets community. It is completely free.
 
