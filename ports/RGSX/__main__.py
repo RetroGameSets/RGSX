@@ -567,28 +567,27 @@ async def main():
                         })
                         config.current_history_item = len(config.history) - 1  # Sélectionner l'entrée en cours
                         if is_1fichier_url(url):
-                            if not config.API_KEY_1FICHIER:
-                                # Fallback AllDebrid
-                                try:
-                                    from utils import load_api_key_alldebrid
-                                    config.API_KEY_ALLDEBRID = load_api_key_alldebrid()
-                                except Exception:
-                                    config.API_KEY_ALLDEBRID = getattr(config, "API_KEY_ALLDEBRID", "")
-                            if not config.API_KEY_1FICHIER and not getattr(config, "API_KEY_ALLDEBRID", ""):
+                            # Utilisation helpers centralisés (utils)
+                            try:
+                                from utils import ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
+                                keys_info = ensure_download_provider_keys(False)
+                            except Exception as e:
+                                logger.error(f"Impossible de charger les clés via helpers: {e}")
+                                keys_info = {'1fichier': getattr(config,'API_KEY_1FICHIER',''), 'alldebrid': getattr(config,'API_KEY_ALLDEBRID',''), 'realdebrid': getattr(config,'API_KEY_REALDEBRID','')}
+                            if missing_all_provider_keys():
                                 config.previous_menu_state = config.menu_state
                                 config.menu_state = "error"
                                 try:
-                                    both_paths = f"{os.path.join(config.SAVE_FOLDER,'1FichierAPI.txt')} or {os.path.join(config.SAVE_FOLDER,'AllDebridAPI.txt')}"
-                                    config.error_message = _("error_api_key").format(both_paths)
+                                    config.error_message = _("error_api_key").format(build_provider_paths_string())
                                 except Exception:
-                                    config.error_message = "Please enter API key (1fichier or AllDebrid)"
-                                # Mettre à jour l'entrée temporaire avec l'erreur
+                                    config.error_message = "Please enter API key (1fichier or AllDebrid or RealDebrid)"
+                                # Mise à jour historique
                                 config.history[-1]["status"] = "Erreur"
                                 config.history[-1]["progress"] = 0
                                 config.history[-1]["message"] = "API NOT FOUND"
                                 save_history(config.history)
                                 config.needs_redraw = True
-                                logger.error("Clé API 1fichier et AllDebrid absentes")
+                                logger.error("Aucune clé fournisseur (1fichier/AllDebrid/RealDebrid) disponible")
                                 config.pending_download = None
                                 continue
                             pending = check_extension_before_download(url, platform_name, game_name)

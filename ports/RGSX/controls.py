@@ -589,8 +589,9 @@ def handle_controls(event, sources, joystick, screen):
                                 config.current_history_item = len(config.history) -1
                                 task_id = str(pygame.time.get_ticks())
                                 if is_1fichier_url(url):
-                                    keys = load_api_keys()
-                                    if not keys.get('1fichier') and not keys.get('alldebrid'):
+                                    from utils import ensure_download_provider_keys, missing_all_provider_keys
+                                    ensure_download_provider_keys(False)
+                                    if missing_all_provider_keys():
                                         config.history[-1]["status"] = "Erreur"
                                         config.history[-1]["message"] = "API NOT FOUND"
                                         save_history(config.history)
@@ -625,22 +626,22 @@ def handle_controls(event, sources, joystick, screen):
                         config.current_history_item = len(config.history) - 1
                         # Vérifier d'abord si c'est un lien 1fichier
                         if is_1fichier_url(url):
-                            keys = load_api_keys()
-                            if not keys.get('1fichier') and not keys.get('alldebrid'):
+                            from utils import ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
+                            ensure_download_provider_keys(False)
+                            if missing_all_provider_keys():
                                 config.previous_menu_state = config.menu_state
                                 config.menu_state = "error"
                                 try:
-                                    both_paths = f"{os.path.join(config.SAVE_FOLDER,'1FichierAPI.txt')} or {os.path.join(config.SAVE_FOLDER,'AllDebridAPI.txt')}"
-                                    config.error_message = _("error_api_key").format(both_paths)
+                                    config.error_message = _("error_api_key").format(build_provider_paths_string())
                                 except Exception as e:
                                     logger.error(f"Erreur lors de la traduction de error_api_key: {str(e)}")
-                                    config.error_message = "Please enter API key (1fichier or AllDebrid)"
+                                    config.error_message = "Please enter API key (1fichier or AllDebrid or RealDebrid)"
                                 config.history[-1]["status"] = "Erreur"
                                 config.history[-1]["progress"] = 0
                                 config.history[-1]["message"] = "API NOT FOUND"
                                 save_history(config.history)
                                 config.needs_redraw = True
-                                logger.error("Clé API 1fichier et AllDebrid absentes, téléchargement impossible.")
+                                logger.error("Clés API manquantes pour tous les fournisseurs (1fichier/AllDebrid/RealDebrid).")
                                 config.pending_download = None
                                 return action
                             config.pending_download = check_extension_before_download(url, platform, game_name)
@@ -741,21 +742,21 @@ def handle_controls(event, sources, joystick, screen):
                         ))
                         config.current_history_item = len(config.history) - 1
                         if is_1fichier_url(url):
-                            keys = load_api_keys()
-                            if not keys.get('1fichier') and not keys.get('alldebrid'):
+                            from utils import ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
+                            ensure_download_provider_keys(False)
+                            if missing_all_provider_keys():
                                 config.previous_menu_state = config.menu_state
                                 config.menu_state = "error"
                                 try:
-                                    both_paths = f"{os.path.join(config.SAVE_FOLDER,'1FichierAPI.txt')} or {os.path.join(config.SAVE_FOLDER,'AllDebridAPI.txt')}"
-                                    config.error_message = _("error_api_key").format(both_paths)
+                                    config.error_message = _("error_api_key").format(build_provider_paths_string())
                                 except Exception:
-                                    config.error_message = "Please enter API key (1fichier or AllDebrid)"
+                                    config.error_message = "Please enter API key (1fichier or AllDebrid or RealDebrid)"
                                 config.history[-1]["status"] = "Erreur"
                                 config.history[-1]["progress"] = 0
                                 config.history[-1]["message"] = "API NOT FOUND"
                                 save_history(config.history)
                                 config.needs_redraw = True
-                                logger.error("Clé API 1fichier et AllDebrid absentes, téléchargement impossible.")
+                                logger.error("Clés API manquantes pour tous les fournisseurs (1fichier/AllDebrid/RealDebrid).")
                                 config.pending_download = None
                                 return action
                             task_id = str(pygame.time.get_ticks())
@@ -809,8 +810,9 @@ def handle_controls(event, sources, joystick, screen):
                                     config.current_history_item = len(config.history) -1
                                     task_id = str(pygame.time.get_ticks())
                                     if is_1fichier_url(url):
-                                        keys = load_api_keys()
-                                        if not keys.get('1fichier') and not keys.get('alldebrid'):
+                                        from utils import ensure_download_provider_keys, missing_all_provider_keys
+                                        ensure_download_provider_keys(False)
+                                        if missing_all_provider_keys():
                                             config.history[-1]["status"] = "Erreur"
                                             config.history[-1]["message"] = "API NOT FOUND"
                                             save_history(config.history)
@@ -874,8 +876,9 @@ def handle_controls(event, sources, joystick, screen):
                                 config.current_history_item = len(config.history) -1
                                 task_id = str(pygame.time.get_ticks())
                                 if is_1fichier_url(url):
-                                    keys = load_api_keys()
-                                    if not keys.get('1fichier') and not keys.get('alldebrid'):
+                                    from utils import ensure_download_provider_keys, missing_all_provider_keys
+                                    ensure_download_provider_keys(False)
+                                    if missing_all_provider_keys():
                                         config.history[-1]["status"] = "Erreur"
                                         config.history[-1]["message"] = "API NOT FOUND"
                                         save_history(config.history)
@@ -956,6 +959,9 @@ def handle_controls(event, sources, joystick, screen):
                         return action
                 # Retour à l'origine capturée si disponible sinon previous_menu_state
                 target = getattr(config, 'history_origin', getattr(config, 'previous_menu_state', 'platform'))
+                # Éviter boucle si target reste 'history'
+                if target == 'history':
+                    target = 'platform'
                 config.menu_state = validate_menu_state(target)
                 if hasattr(config, 'history_origin'):
                     try:

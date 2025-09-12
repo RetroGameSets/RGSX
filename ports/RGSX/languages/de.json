@@ -147,5 +147,7 @@
     "status_missing": "Fehlt",
     "menu_api_keys_status": "API-Schlüssel",
     "api_keys_status_title": "Status der API-Schlüssel",
-    "menu_games": "Spiele"
+    "menu_games": "Spiele",
+    "api_keys_hint_manage": "Legen Sie Ihre Schlüssel in {path}",
+    "api_key_empty_suffix": "leer"
 }

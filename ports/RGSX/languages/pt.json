@@ -147,5 +147,7 @@
     "status_missing": "Ausente",
     "menu_api_keys_status": "Chaves API",
     "api_keys_status_title": "Status das chaves API",
-    "menu_games": "Jogos"
+    "menu_games": "Jogos",
+    "api_keys_hint_manage": "Coloque suas chaves em {path}",
+    "api_key_empty_suffix": "vazio"
 }

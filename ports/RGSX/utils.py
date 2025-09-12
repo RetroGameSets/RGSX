@@ -342,35 +342,6 @@ def _get_dest_folder_name(platform_key: str) -> str:
 # Fonction pour charger sources.json
 def load_sources():
     try:
-        # Détection legacy: si sources.json (ancien format) existe encore, déclencher redownload automatique
-        legacy_path = os.path.join(config.SAVE_FOLDER, "sources.json")
-        if os.path.exists(legacy_path):
-            logger.warning("Ancien fichier sources.json détecté: déclenchement redownload cache jeux")
-            try:
-                # Supprimer ancien cache et forcer redémarrage logique comme dans l'option de menu
-                if os.path.exists(config.SOURCES_FILE):
-                    try:
-                        os.remove(config.SOURCES_FILE)
-                    except Exception:
-                        pass
-                if os.path.exists(config.GAMES_FOLDER):
-                    shutil.rmtree(config.GAMES_FOLDER, ignore_errors=True)
-                if os.path.exists(config.IMAGES_FOLDER):
-                    shutil.rmtree(config.IMAGES_FOLDER, ignore_errors=True)
-                # Renommer legacy pour éviter boucle
-                try:
-                    os.replace(legacy_path, legacy_path + ".bak")
-                except Exception:
-                    pass
-                # Préparer popup redémarrage si contexte graphique chargé
-                config.popup_message = _("popup_redownload_success") if hasattr(config, 'popup_message') else "Cache jeux réinitialisé"
-                config.popup_timer = 5000 if hasattr(config, 'popup_timer') else 0
-                config.menu_state = "restart_popup" if hasattr(config, 'menu_state') else getattr(config, 'menu_state', 'platform')
-                config.needs_redraw = True
-                logger.info("Redownload cache déclenché automatiquement (legacy sources.json)")
-                return []  # On sort pour laisser le processus de redémarrage gérer le rechargement
-            except Exception as e:
-                logger.error(f"Échec redownload automatique depuis legacy sources.json: {e}")
         sources = []
         if os.path.exists(config.SOURCES_FILE):
             with open(config.SOURCES_FILE, 'r', encoding='utf-8') as f:
@@ -1251,23 +1222,24 @@ def set_music_popup(music_name):
     config.needs_redraw = True  # Forcer le redraw pour afficher le nom de la musique
 
 def load_api_keys(force: bool = False):
-    """Charge les clés API (1fichier, AllDebrid) en une seule passe.
+    """Charge les clés API (1fichier, AllDebrid, RealDebrid) en une seule passe.
 
     - Crée les fichiers vides s'ils n'existent pas
-    - Met à jour config.API_KEY_1FICHIER et config.API_KEY_ALLDEBRID
+    - Met à jour config.API_KEY_1FICHIER, config.API_KEY_ALLDEBRID, config.API_KEY_REALDEBRID
     - Utilise un cache basé sur le mtime pour éviter des relectures
     - force=True ignore le cache et relit systématiquement
 
-    Retourne: { '1fichier': str, 'alldebrid': str, 'reloaded': bool }
+    Retourne: { '1fichier': str, 'alldebrid': str, 'realdebrid': str, 'reloaded': bool }
     """
     try:
         paths = {
             '1fichier': getattr(config, 'API_KEY_1FICHIER_PATH', ''),
             'alldebrid': getattr(config, 'API_KEY_ALLDEBRID_PATH', ''),
+            'realdebrid': getattr(config, 'API_KEY_REALDEBRID_PATH', ''),
         }
         cache_attr = '_api_keys_cache'
         if not hasattr(config, cache_attr):
-            setattr(config, cache_attr, {'1fichier_mtime': None, 'alldebrid_mtime': None})
+            setattr(config, cache_attr, {'1fichier_mtime': None, 'alldebrid_mtime': None, 'realdebrid_mtime': None})
         cache_data = getattr(config, cache_attr)
         reloaded = False
 
@@ -1299,13 +1271,16 @@ def load_api_keys(force: bool = False):
                 # Assignation dans config
                 if key_name == '1fichier':
                     config.API_KEY_1FICHIER = value
-                else:
+                elif key_name == 'alldebrid':
                     config.API_KEY_ALLDEBRID = value
+                elif key_name == 'realdebrid':
+                    config.API_KEY_REALDEBRID = value
                 cache_data[cache_key] = mtime
                 reloaded = True
         return {
             '1fichier': getattr(config, 'API_KEY_1FICHIER', ''),
             'alldebrid': getattr(config, 'API_KEY_ALLDEBRID', ''),
+            'realdebrid': getattr(config, 'API_KEY_REALDEBRID', ''),
             'reloaded': reloaded
         }
     except Exception as e:
@@ -1313,6 +1288,7 @@ def load_api_keys(force: bool = False):
         return {
             '1fichier': getattr(config, 'API_KEY_1FICHIER', ''),
             'alldebrid': getattr(config, 'API_KEY_ALLDEBRID', ''),
+            'realdebrid': getattr(config, 'API_KEY_REALDEBRID', ''),
             'reloaded': False
         }
 
@@ -1323,9 +1299,40 @@ def load_api_key_1fichier(force: bool = False):  # pragma: no cover
 def load_api_key_alldebrid(force: bool = False):  # pragma: no cover
     return load_api_keys(force).get('alldebrid', '')
 
+def load_api_key_realdebrid(force: bool = False):  # pragma: no cover
+    return load_api_keys(force).get('realdebrid', '')
+
 # Ancien nom conservé comme alias
 def ensure_api_keys_loaded(force: bool = False):  # pragma: no cover
     return load_api_keys(force)
+
+# ------------------------------
+# Helpers centralisés pour gestion des fournisseurs de téléchargement
+# ------------------------------
+def build_provider_paths_string():
+    """Retourne une chaîne listant les chemins des fichiers de clés pour affichage/erreurs."""
+    return f"{getattr(config, 'API_KEY_1FICHIER_PATH', '')} or {getattr(config, 'API_KEY_ALLDEBRID_PATH', '')} or {getattr(config, 'API_KEY_REALDEBRID_PATH', '')}"
+
+def ensure_download_provider_keys(force: bool = False):  # pragma: no cover
+    """S'assure que les clés 1fichier/AllDebrid/RealDebrid sont chargées et retourne le dict.
+
+    Utilise load_api_keys (cache mtime). force=True invalide le cache.
+    """
+    return load_api_keys(force)
+
+def missing_all_provider_keys():  # pragma: no cover
+    """True si aucune des trois clés n'est définie."""
+    keys = load_api_keys(False)
+    return not keys.get('1fichier') and not keys.get('alldebrid') and not keys.get('realdebrid')
+
+def provider_keys_status():  # pragma: no cover
+    """Retourne un dict de présence pour debug/log."""
+    keys = load_api_keys(False)
+    return {
+        '1fichier': bool(keys.get('1fichier')),
+        'alldebrid': bool(keys.get('alldebrid')),
+        'realdebrid': bool(keys.get('realdebrid')),
+    }
 
 def load_music_config():
     """Charge la configuration musique depuis rgsx_settings.json."""

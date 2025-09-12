@@ -136,15 +136,40 @@ async def check_for_updates():
         config.current_loading_system = _("network_checking_updates")
         config.loading_progress = 5.0
         config.needs_redraw = True
+
         response = requests.get(OTA_VERSION_ENDPOINT, timeout=5)
         response.raise_for_status()
         if response.headers.get("content-type") != "application/json":
-            raise ValueError(f"Le fichier version.json n'est pas un JSON valide (type de contenu : {response.headers.get('content-type')})")
+            raise ValueError(
+                f"Le fichier version.json n'est pas un JSON valide (type de contenu : {response.headers.get('content-type')})"
+            )
         version_data = response.json()
         latest_version = version_data.get("version")
         logger.debug(f"Version distante : {latest_version}, version locale : {config.app_version}")
+
+        # --- Protection anti-downgrade ---
+        def _parse_version(v: str):
+            try:
+                return [int(p) for p in str(v).strip().split('.') if p.isdigit()]
+            except Exception:
+                return [0]
+
+        local_parts = _parse_version(getattr(config, 'app_version', '0'))
+        remote_parts = _parse_version(latest_version or '0')
+        # Normaliser longueur
+        max_len = max(len(local_parts), len(remote_parts))
+        local_parts += [0] * (max_len - len(local_parts))
+        remote_parts += [0] * (max_len - len(remote_parts))
+        logger.debug(f"Comparaison versions normalisées local={local_parts} remote={remote_parts}")
+        if remote_parts <= local_parts:
+            # Pas de mise à jour si version distante identique ou inférieure (empêche downgrade accidentel)
+            logger.info("Version distante inférieure ou égale – skip mise à jour (anti-downgrade)")
+            return True, _("network_no_update_available") if _ else "No update (local >= remote)"
+
+        # À ce stade latest_version est strictement > version locale
         UPDATE_ZIP = OTA_UPDATE_ZIP.replace("RGSX.zip", f"RGSX_v{latest_version}.zip")
         logger.debug(f"URL de mise à jour : {UPDATE_ZIP}")
+
         if latest_version != config.app_version:
             config.current_loading_system = _("network_update_available").format(latest_version)
             config.loading_progress = 10.0
@@ -638,12 +663,19 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
     keys_info = load_api_keys()
     config.API_KEY_1FICHIER = keys_info.get('1fichier', '')
     config.API_KEY_ALLDEBRID = keys_info.get('alldebrid', '')
+    config.API_KEY_REALDEBRID = keys_info.get('realdebrid', '')
     if not config.API_KEY_1FICHIER and config.API_KEY_ALLDEBRID:
         logger.debug("Clé 1fichier absente, utilisation fallback AllDebrid")
-    elif not config.API_KEY_1FICHIER and not config.API_KEY_ALLDEBRID:
-        logger.debug("Aucune clé API disponible (1fichier ni AllDebrid)")
+    if not config.API_KEY_1FICHIER and not config.API_KEY_ALLDEBRID and config.API_KEY_REALDEBRID:
+        logger.debug("Clé 1fichier & AllDebrid absentes, utilisation fallback RealDebrid")
+    elif not config.API_KEY_1FICHIER and not config.API_KEY_ALLDEBRID and not config.API_KEY_REALDEBRID:
+        logger.debug("Aucune clé API disponible (1fichier, AllDebrid, RealDebrid)")
     logger.debug(f"Début téléchargement 1fichier: {game_name} depuis {url}, is_zip_non_supported={is_zip_non_supported}, task_id={task_id}")
-    logger.debug(f"Clé API 1fichier: {'présente' if config.API_KEY_1FICHIER else 'absente'} / AllDebrid: {'présente' if config.API_KEY_ALLDEBRID else 'absente'} (reloaded={keys_info.get('reloaded')})")
+    logger.debug(
+        f"Clé API 1fichier: {'présente' if config.API_KEY_1FICHIER else 'absente'} / "
+        f"AllDebrid: {'présente' if config.API_KEY_ALLDEBRID else 'absente'} / "
+        f"RealDebrid: {'présente' if config.API_KEY_REALDEBRID else 'absente'} (reloaded={keys_info.get('reloaded')})"
+    )
     result = [None, None]
 
     # Créer une queue spécifique pour cette tâche
@@ -653,8 +685,30 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
     if task_id not in cancel_events:
         cancel_events[task_id] = threading.Event()
 
+    provider_used = None  # '1F', 'AD', 'RD'
+
+    def _set_provider_in_history(pfx: str):
+        try:
+            if not pfx:
+                return
+            if isinstance(config.history, list):
+                for entry in config.history:
+                    if entry.get("url") == url:
+                        entry["provider"] = pfx
+                        entry["provider_prefix"] = f"{pfx}:"
+                        try:
+                            save_history(config.history)
+                        except Exception:
+                            pass
+                        config.needs_redraw = True
+                        break
+        except Exception:
+            pass
+
     def download_thread():
         logger.debug(f"Thread téléchargement 1fichier démarré pour {url}, task_id={task_id}")
+        # Assurer l'accès à provider_used dans cette closure (lecture/écriture)
+        nonlocal provider_used
         try:
             cancel_ev = cancel_events.get(task_id)
             link = url.split('&af=')[0]
@@ -700,12 +754,46 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 logger.debug(f"Préparation requête 1fichier file/info pour {link}")
                 response = requests.post("https://api.1fichier.com/v1/file/info.cgi", headers=headers, json=payload, timeout=30)
                 logger.debug(f"Réponse file/info reçue, code: {response.status_code}")
-                response.raise_for_status()
-                file_info = response.json()
+                file_info = None
+                raw_fileinfo_text = None
+                try:
+                    raw_fileinfo_text = response.text
+                except Exception:
+                    pass
+                try:
+                    file_info = response.json()
+                except Exception:
+                    file_info = None
+                if response.status_code != 200:
+                    # 403 souvent = clé invalide ou accès interdit
+                    friendly = None
+                    raw_err = None
+                    if isinstance(file_info, dict):
+                        raw_err = file_info.get('message') or file_info.get('error') or file_info.get('status')
+                        if raw_err == 'Bad token':
+                            friendly = "1F: Clé API 1fichier invalide"
+                        elif raw_err:
+                            friendly = f"1F: {raw_err}"
+                    if not friendly:
+                        if response.status_code == 403:
+                            friendly = "1F: Accès refusé (403)"
+                        elif response.status_code == 401:
+                            friendly = "1F: Non autorisé (401)"
+                        else:
+                            friendly = f"1F: Erreur HTTP {response.status_code}"
+                    result[0] = False
+                    result[1] = friendly
+                    try:
+                        result.append({"raw_error_1fichier_fileinfo": raw_err or raw_fileinfo_text})
+                    except Exception:
+                        pass
+                    return
+                # Status 200 requis à partir d'ici
+                file_info = file_info if isinstance(file_info, dict) else {}
                 if "error" in file_info and file_info["error"] == "Resource not found":
                     logger.error(f"Le fichier {game_name} n'existe pas sur 1fichier")
                     result[0] = False
-                    result[1] = _("network_file_not_found").format(game_name)
+                    result[1] = f"1F: {_("network_file_not_found").format(game_name)}" if _ else f"1F: File not found {game_name}"
                     return
                 filename = file_info.get("filename", "").strip()
                 if not filename:
@@ -718,9 +806,57 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 logger.debug(f"Chemin destination: {dest_path}")
                 logger.debug(f"Envoi requête 1fichier get_token pour {link}")
                 response = requests.post("https://api.1fichier.com/v1/download/get_token.cgi", headers=headers, json=payload, timeout=30)
-                logger.debug(f"Réponse get_token reçue, code: {response.status_code}")
+                status_1f = response.status_code
+                raw_text_1f = None
+                try:
+                    raw_text_1f = response.text
+                except Exception:
+                    pass
+                logger.debug(f"Réponse get_token reçue, code: {status_1f} body_snippet={(raw_text_1f[:120] + '...') if raw_text_1f and len(raw_text_1f) > 120 else raw_text_1f}")
+                download_info = None
+                try:
+                    download_info = response.json()
+                except Exception:
+                    download_info = None
+                # Même en cas de code !=200 on tente de récupérer un message JSON exploitable
+                if status_1f != 200:
+                    friendly_1f = None
+                    raw_error_1f = None
+                    if isinstance(download_info, dict):
+                        # Exemples de réponses d'erreur 1fichier: {"status":"KO","message":"Bad token"} ou autres
+                        raw_error_1f = download_info.get('message') or download_info.get('status')
+                        # Mapping simple pour les messages fréquents / cas premium requis
+                        ONEFICHIER_ERROR_MAP = {
+                            "Bad token": "1F: Clé API invalide",
+                            "Must be a customer (Premium, Access) #236": "1F: Compte Premium requis",
+                        }
+                        if raw_error_1f:
+                            friendly_1f = ONEFICHIER_ERROR_MAP.get(raw_error_1f)
+                    if not friendly_1f:
+                        # Fallback générique sur code HTTP
+                        if status_1f == 403:
+                            friendly_1f = "1F: Accès refusé (403)"
+                        elif status_1f == 401:
+                            friendly_1f = "1F: Non autorisé (401)"
+                        elif status_1f >= 500:
+                            friendly_1f = f"1F: Erreur serveur ({status_1f})"
+                        else:
+                            friendly_1f = f"1F: Erreur ({status_1f})"
+                    # Stocker et retourner tôt car pas de token valide
+                    result[0] = False
+                    result[1] = friendly_1f
+                    try:
+                        result.append({"raw_error_1fichier": raw_error_1f or raw_text_1f})
+                    except Exception:
+                        pass
+                    return
+                # Si status 200 on continue normalement
                 response.raise_for_status()
-                download_info = response.json()
+                if not isinstance(download_info, dict):
+                    logger.error("Réponse 1fichier inattendue (pas un JSON) pour get_token")
+                    result[0] = False
+                    result[1] = _("network_api_error").format("1fichier invalid JSON") if _ else "1fichier invalid JSON"
+                    return
                 final_url = download_info.get("url")
                 if not final_url:
                     logger.error("Impossible de récupérer l'URL de téléchargement")
@@ -728,43 +864,147 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     result[1] = _("network_cannot_get_download_url")
                     return
                 logger.debug(f"URL de téléchargement obtenue via 1fichier: {final_url}")
+                provider_used = '1F'
+                _set_provider_in_history(provider_used)
             else:
-                # AllDebrid: débrider l'URL 1fichier vers une URL directe
-                logger.debug("Mode téléchargement sélectionné: AllDebrid (fallback, débridage 1fichier)")
-                if not getattr(config, 'API_KEY_ALLDEBRID', ''):
-                    logger.error("Aucune clé API (1fichier/AllDebrid) disponible")
-                    result[0] = False
-                    result[1] = _("network_api_error").format("Missing API key") if _ else "API key missing"
-                    return
-                ad_key = config.API_KEY_ALLDEBRID
-                # AllDebrid API v4 example: GET https://api.alldebrid.com/v4/link/unlock?agent=<app>&apikey=<key>&link=<url>
-                params = {
-                    'agent': 'RGSX',
-                    'apikey': ad_key,
-                    'link': link
-                }
-                logger.debug("Requête AllDebrid link/unlock en cours")
-                response = requests.get("https://api.alldebrid.com/v4/link/unlock", params=params, timeout=30)
-                logger.debug(f"Réponse AllDebrid reçue, code: {response.status_code}")
-                response.raise_for_status()
-                ad_json = response.json()
-                if ad_json.get('status') != 'success':
-                    err = ad_json.get('error', {}).get('code') or ad_json
-                    logger.error(f"AllDebrid échec débridage: {err}")
-                    result[0] = False
-                    result[1] = _("network_api_error").format(f"AllDebrid unlock failed: {err}") if _ else f"AllDebrid unlock failed: {err}"
-                    return
-                data = ad_json.get('data', {})
-                filename = data.get('filename') or game_name
-                final_url = data.get('link') or data.get('download') or data.get('streamingLink')
+                final_url = None
+                filename = None
+                # Tentative AllDebrid
+                if getattr(config, 'API_KEY_ALLDEBRID', ''):
+                    logger.debug("Mode téléchargement sélectionné: AllDebrid (fallback 1)")
+                    try:
+                        ad_key = config.API_KEY_ALLDEBRID
+                        params = {'agent': 'RGSX', 'apikey': ad_key, 'link': link}
+                        logger.debug("Requête AllDebrid link/unlock en cours")
+                        response = requests.get("https://api.alldebrid.com/v4/link/unlock", params=params, timeout=30)
+                        logger.debug(f"Réponse AllDebrid reçue, code: {response.status_code}")
+                        response.raise_for_status()
+                        ad_json = response.json()
+                        if ad_json.get('status') == 'success':
+                            data = ad_json.get('data', {})
+                            filename = data.get('filename') or game_name
+                            final_url = data.get('link') or data.get('download') or data.get('streamingLink')
+                            if final_url:
+                                logger.debug("Débridage réussi via AllDebrid")
+                                provider_used = 'AD'
+                                _set_provider_in_history(provider_used)
+                        else:
+                            logger.warning(f"AllDebrid status != success: {ad_json}")
+                    except Exception as e:
+                        logger.error(f"Erreur AllDebrid fallback: {e}")
+                # Tentative RealDebrid si pas de final_url
+                if not final_url and getattr(config, 'API_KEY_REALDEBRID', ''):
+                    logger.debug("Tentative fallback RealDebrid (unlock)")
+                    try:
+                        rd_key = config.API_KEY_REALDEBRID
+                        headers_rd = {"Authorization": f"Bearer {rd_key}"}
+                        rd_resp = requests.post(
+                            "https://api.real-debrid.com/rest/1.0/unrestrict/link",
+                            data={"link": link},
+                            headers=headers_rd,
+                            timeout=30
+                        )
+                        status = rd_resp.status_code
+                        raw_text = None
+                        rd_json = None
+                        try:
+                            raw_text = rd_resp.text
+                        except Exception:
+                            pass
+                        # Tenter JSON même si statut != 200
+                        try:
+                            rd_json = rd_resp.json()
+                        except Exception:
+                            rd_json = None
+                        logger.debug(f"Réponse RealDebrid code={status} body_snippet={(raw_text[:120] + '...') if raw_text and len(raw_text) > 120 else raw_text}")
+
+                        # Mapping erreurs RD (liste partielle, extensible)
+                        REALDEBRID_ERROR_MAP = {
+                            # Values intentionally WITHOUT prefix; we'll add 'RD:' dynamically
+                            1: "Bad request",
+                            2: "Unsupported hoster",
+                            3: "Temporarily unavailable",
+                            4: "File not found",
+                            5: "Too many requests",
+                            6: "Access denied",
+                            8: "Not premium account",
+                            9: "No traffic left",
+                            11: "Internal error",
+                            20: "Premium account only",  # normalisation wording
+                        }
+
+                        error_code = None
+                        error_message = None            # Friendly / mapped message (to display in history)
+                        error_message_raw = None        # Raw provider message ('error') kept for debugging if needed
+                        if rd_json and isinstance(rd_json, dict):
+                            # Format attendu quand erreur: {'error_code': int, 'error': 'message'}
+                            error_code = rd_json.get('error_code') or rd_json.get('error') if isinstance(rd_json.get('error'), int) else rd_json.get('error_code')
+                            if isinstance(error_code, str) and error_code.isdigit():
+                                error_code = int(error_code)
+                            api_error_text = rd_json.get('error') if isinstance(rd_json.get('error'), str) else None
+                            if error_code is not None:
+                                mapped = REALDEBRID_ERROR_MAP.get(error_code)
+                                # Raw API error sometimes returns 'hoster_not_free' while code=20
+                                if api_error_text and api_error_text.strip().lower() == 'hoster_not_free':
+                                    api_error_text = 'Premium account only'
+                                if mapped and not mapped.lower().startswith('rd:'):
+                                    mapped = f"RD: {mapped}"
+                                if not mapped and api_error_text and not api_error_text.lower().startswith('rd:'):
+                                    api_error_text = f"RD: {api_error_text}"
+                                error_message = mapped or api_error_text or f"RD: error {error_code}"
+                                # Conserver la version brute séparément
+                                error_message_raw = api_error_text if api_error_text and api_error_text != error_message else None
+                        # Succès si 200 et presence 'download'
+                        if status == 200 and rd_json and rd_json.get('download'):
+                            final_url = rd_json.get('download')
+                            filename = rd_json.get('filename') or filename or game_name
+                            logger.debug("Débridage réussi via RealDebrid")
+                            provider_used = 'RD'
+                            _set_provider_in_history(provider_used)
+                        else:
+                            if error_message:
+                                logger.warning(f"RealDebrid a renvoyé une erreur (code interne {error_code}): {error_message}")
+                            else:
+                                # Pas d'erreur structurée -> traiter statut HTTP
+                                if status == 503:
+                                    error_message = "RD: service unavailable (503)"
+                                elif status >= 500:
+                                    error_message = f"RD: server error ({status})"
+                                elif status == 429:
+                                    error_message = "RD: rate limited (429)"
+                                else:
+                                    error_message = f"RD: unexpected status ({status})"
+                                logger.warning(f"RealDebrid fallback échec: {error_message}")
+                                # Pas de détail JSON -> utiliser friendly comme raw aussi
+                                error_message_raw = error_message
+                            # Conserver message dans result si aucun autre provider ne réussit
+                            if not final_url:
+                                # Marquer le provider même en cas d'erreur pour affichage du préfixe dans l'historique
+                                if provider_used is None:
+                                    provider_used = 'RD'
+                                    _set_provider_in_history(provider_used)
+                                result[0] = False
+                                # Pour l'interface: stocker le message friendly en priorité
+                                result[1] = error_message or error_message_raw
+                                # Stocker la version brute pour éventuel usage avancé
+                                try:
+                                    if isinstance(result, list):
+                                        # Ajouter un dict auxiliaire pour meta erreurs
+                                        result.append({"raw_error_realdebrid": error_message_raw})
+                                except Exception:
+                                    pass
+                    except Exception as e:
+                        logger.error(f"Exception RealDebrid fallback: {e}")
                 if not final_url:
-                    logger.error("AllDebrid n'a pas renvoyé de lien direct")
+                    logger.error("Aucune URL directe obtenue (AllDebrid & RealDebrid échoués ou absents)")
                     result[0] = False
-                    result[1] = _("network_cannot_get_download_url")
+                    if result[1] is None:
+                        result[1] = _("network_api_error").format("No provider available") if _ else "No provider available"
                     return
+                if not filename:
+                    filename = game_name
                 sanitized_filename = sanitize_filename(filename)
                 dest_path = os.path.join(dest_dir, sanitized_filename)
-                logger.debug(f"URL directe obtenue via AllDebrid: {final_url}")
             lock = threading.Lock()
             retries = 10
             retry_delay = 10

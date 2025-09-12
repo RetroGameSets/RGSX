@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.1.0"
+app_version = "2.2.2.0"
 
 
 def get_application_root():
@@ -64,9 +64,11 @@ HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
 # Séparation chemin / valeur pour éviter les confusions lors du chargement
 API_KEY_1FICHIER_PATH = os.path.join(SAVE_FOLDER, "1FichierAPI.txt")
 API_KEY_ALLDEBRID_PATH = os.path.join(SAVE_FOLDER, "AllDebridAPI.txt")
+API_KEY_REALDEBRID_PATH = os.path.join(SAVE_FOLDER, "RealDebridAPI.txt")
 # Valeurs chargées (remplies dynamiquement par utils.load_api_key_*).
 API_KEY_1FICHIER = ""
 API_KEY_ALLDEBRID = ""
+API_KEY_REALDEBRID = ""
 RGSX_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
 
 # URL

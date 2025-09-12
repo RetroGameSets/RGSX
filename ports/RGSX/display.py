@@ -427,7 +427,19 @@ def draw_platform_grid(screen):
         platform_name = config.platform_names.get(platform, platform)
     
     # Affichage du titre avec animation subtile
-    title_text = f"{platform_name}"
+    # Afficher le nombre total de jeux disponibles (tous systèmes) pour cohérence avec l'écran jeux
+    # Nombre de jeux pour la plateforme sélectionnée (utilise le cache pre-calculé si disponible)
+    game_count = 0
+    try:
+        if hasattr(config, 'games_count') and isinstance(config.games_count, dict):
+            game_count = config.games_count.get(platform_name, 0)
+        # Fallback dynamique si pas dans le cache (ex: plateformes modifiées à chaud)
+        if game_count == 0 and hasattr(config, 'platform_dict_by_name'):
+            from utils import load_games  # import local pour éviter import circulaire global
+            game_count = len(load_games(platform_name))
+    except Exception:
+        game_count = 0
+    title_text = f"{platform_name}  ({game_count})" if game_count > 0 else f"{platform_name}"
     title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
     title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
     title_rect_inflated = title_rect.inflate(60, 30)
@@ -770,12 +782,12 @@ def draw_history_list(screen):
     pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
     screen.blit(title_surface, title_rect)
 
-    # Define column widths as percentages of available space
+    # Define column widths as percentages of available space (give more space to status/error messages)
     column_width_percentages = {
-        "platform": 0.20,  # platform column
-        "game_name": 0.50,  #  game name column
-        "size": 0.10,  # size column
-        "status": 0.20     #  status column
+        "platform": 0.15,   # narrower platform column
+        "game_name": 0.45,  # game name column
+        "size": 0.10,       # size column remains compact
+        "status": 0.30      # wider status column for long error codes/messages
     }
     available_width = int(0.95 * config.screen_width - 60)  # Total available width for columns
     col_platform_width = int(available_width * column_width_percentages["platform"])
@@ -886,36 +898,51 @@ def draw_history_list(screen):
         
         status = entry.get("status", "Inconnu")
         progress = entry.get("progress", 0)
-        
+        progress = max(0, min(100, progress))  # Clamp progress between 0 and 100
 
-        # Personnaliser l'affichage du statut
+        # Compute status text (optimized version without redundant prefix for errors)
         if status in ["Téléchargement", "downloading"]:
             status_text = _("history_status_downloading").format(progress)
-            # logger.debug(f"Affichage progression: {progress:.1f}% pour {game_name}, status={status_text}")
+            provider_prefix = entry.get("provider_prefix") or (entry.get("provider") + ":" if entry.get("provider") else "")
+            if provider_prefix and not status_text.startswith(provider_prefix):
+                status_text = f"{provider_prefix} {status_text}"
         elif status == "Extracting":
             status_text = _("history_status_extracting").format(progress)
-            # logger.debug(f"Affichage extraction: {progress:.1f}% pour {game_name}, status={status_text}")
+            provider_prefix = entry.get("provider_prefix") or (entry.get("provider") + ":" if entry.get("provider") else "")
+            if provider_prefix and not status_text.startswith(provider_prefix):
+                status_text = f"{provider_prefix} {status_text}"
         elif status == "Download_OK":
+            # Completed: no provider prefix (per requirement)
             status_text = _("history_status_completed")
-                 # S'assurer que le pourcentage est entre 0 et 100
-        progress = max(0, min(100, progress))
-        # Personnaliser l'affichage du statut
-        if status in ["Téléchargement", "downloading"]:
-            status_text = _("history_status_downloading").format(progress)
-            # logger.debug(f"Affichage progression: {progress:.1f}% pour {game_name}, status={status_text}")
-        elif status == "Extracting":
-            status_text = _("history_status_extracting").format(progress)
-            # logger.debug(f"Affichage extraction: {progress:.1f}% pour {game_name}, status={status_text}")
-        elif status == "Download_OK":
-            status_text = _("history_status_completed")
-            # logger.debug(f"Affichage terminé: {game_name}, status={status_text}")
         elif status == "Erreur":
-            status_text = _("history_status_error").format(entry.get('message', 'Échec'))
+            # Prefer friendly mapped message now stored in 'message'
+            status_text = entry.get('message')
+            if not status_text:
+                # Some legacy entries might have only raw in result[1] or auxiliary field
+                status_text = entry.get('raw_error_realdebrid') or entry.get('error') or 'Échec'
+            # Strip redundant prefixes if any
+            for prefix in ["Erreur :", "Erreur:", "Error:", "Error :"]:
+                if status_text.startswith(prefix):
+                    status_text = status_text[len(prefix):].strip()
+                    break
+            provider_prefix = entry.get("provider_prefix") or (entry.get("provider") + ":" if entry.get("provider") else "")
+            if provider_prefix and not status_text.startswith(provider_prefix):
+                status_text = f"{provider_prefix} {status_text}"
         elif status == "Canceled":
             status_text = _("history_status_canceled")
         else:
             status_text = status
-            #logger.debug(f"Affichage statut inconnu: {game_name}, status={status_text}")
+
+        # Determine color dedicated to status (independent from selection for better readability)
+        if status == "Erreur":
+            status_color = THEME_COLORS.get("error_text", (255, 0, 0))
+        elif status == "Canceled":
+            status_color = THEME_COLORS.get("warning_text", (255, 100, 0))
+        elif status == "Download_OK":
+            # Use green OK color
+            status_color = THEME_COLORS.get("fond_lignes", (0, 255, 0))
+        else:
+            status_color = THEME_COLORS.get("text", (255, 255, 255))
 
         platform_text = truncate_text_end(platform, config.small_font, col_platform_width - 10)
         game_text = truncate_text_end(game_name, config.small_font, col_game_width - 10)
@@ -926,7 +953,7 @@ def draw_history_list(screen):
         platform_surface = config.small_font.render(platform_text, True, color)
         game_surface = config.small_font.render(game_text, True, color)
         size_surface = config.small_font.render(size_text, True, color)  # Correction ici
-        status_surface = config.small_font.render(status_text, True, color)
+        status_surface = config.small_font.render(status_text, True, status_color)
 
         platform_rect = platform_surface.get_rect(center=(header_x_positions[0], y_pos))
         game_rect = game_surface.get_rect(center=(header_x_positions[1], y_pos))
@@ -1545,35 +1572,104 @@ def draw_pause_api_keys_status(screen):
     screen.blit(OVERLAY, (0,0))
     from utils import load_api_keys
     keys = load_api_keys()
-    # Layout simple
-    lines = [
-        _("api_keys_status_title") if _ else "API Keys Status",
+    title = _("api_keys_status_title") if _ else "API Keys Status"
+    # Préparer données avec masquage partiel des clés (afficher 4 premiers et 2 derniers caractères si longueur > 10)
+    def mask_key(value: str|None):
+        if not value:
+            return ""  # rien si absent
+        v = value.strip()
+        if len(v) <= 10:
+            return v  # courte, afficher entière
+        return f"{v[:4]}…{v[-2:]}"  # masque au milieu
+
+    providers = [
         ("1fichier", keys.get('1fichier')),
-        ("AllDebrid", keys.get('alldebrid'))
+        ("AllDebrid", keys.get('alldebrid')),
+        ("RealDebrid", keys.get('realdebrid'))
     ]
-    menu_width = int(config.screen_width * 0.55)
-    menu_height = int(config.screen_height * 0.35)
+    # Dimensions dynamiques en fonction du contenu
+    row_height = config.small_font.get_height() + 14
+    header_height = 60
+    inner_rows = len(providers)
+    menu_width = int(config.screen_width * 0.60)
+    menu_height = header_height + inner_rows * row_height + 80
     menu_x = (config.screen_width - menu_width)//2
     menu_y = (config.screen_height - menu_height)//2
-    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=16)
-    pygame.draw.rect(screen, THEME_COLORS["border"], (menu_x, menu_y, menu_width, menu_height), 2, border_radius=16)
-    title_surface = config.font.render(lines[0], True, THEME_COLORS["text"])
-    title_rect = title_surface.get_rect(center=(config.screen_width//2, menu_y + 40))
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=22)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (menu_x, menu_y, menu_width, menu_height), 2, border_radius=22)
+
+    # Titre
+    title_surface = config.font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width//2, menu_y + 36))
     screen.blit(title_surface, title_rect)
-    status_on = _("status_present") if _ else "Present"
-    status_off = _("status_missing") if _ else "Missing"
-    y = title_rect.bottom + 20
-    for provider, present in lines[1:]:
-        status_txt = status_on if present else status_off
-        text = f"{provider}: {status_txt}"
-        surf = config.small_font.render(text, True, THEME_COLORS["text"])
-        rect = surf.get_rect(center=(config.screen_width//2, y))
-        screen.blit(surf, rect)
-        y += surf.get_height() + 12
-    back_txt = _("menu_back") if _ else "Back"
-    back_surf = config.small_font.render(back_txt, True, THEME_COLORS["fond_lignes"])  # Indication
-    back_rect = back_surf.get_rect(center=(config.screen_width//2, menu_y + menu_height - 30))
-    screen.blit(back_surf, back_rect)
+
+    status_present_txt = _("status_present") if _ else "Present"
+    status_missing_txt = _("status_missing") if _ else "Missing"
+    # Plus de légende textuelle Présent / Missing (demandé) – seules les pastilles couleur serviront.
+    legend_rect = pygame.Rect(0,0,0,0)
+
+    # Colonnes: Provider | Status badge | (key masked)
+    col_provider_x = menu_x + 40
+    col_status_x = menu_x + int(menu_width * 0.40)
+    col_key_x = menu_x + int(menu_width * 0.58)
+
+    # Démarrage des lignes sous le titre avec un padding
+    y = title_rect.bottom + 24
+    badge_font = config.tiny_font if hasattr(config, 'tiny_font') else config.small_font
+    for provider, value in providers:
+        present = bool(value)
+        # Provider name
+        prov_surf = config.small_font.render(provider, True, THEME_COLORS["text"])
+        screen.blit(prov_surf, (col_provider_x, y))
+
+        # Pastille circulaire simple (couleur = statut)
+        circle_color = (60, 170, 60) if present else (180, 55, 55)
+        circle_bg = (30, 70, 30) if present else (70, 25, 25)
+        radius = 14
+        center_x = col_status_x + radius
+        center_y = y + badge_font.get_height()//2
+        pygame.draw.circle(screen, circle_bg, (center_x, center_y), radius)
+        pygame.draw.circle(screen, circle_color, (center_x, center_y), radius, 2)
+
+        # Masked key (dim color) or hint
+        if present:
+            masked = mask_key(value)
+            key_color = THEME_COLORS.get("text_dim", (180,180,180))
+            key_label = masked
+        else:
+            key_color = THEME_COLORS.get("text_dim", (150,150,150))
+            # Afficher nom de fichier + 'empty'
+            filename_display = {
+                '1fichier': '1FichierAPI.txt',
+                'AllDebrid': 'AllDebridAPI.txt',
+                'RealDebrid': 'RealDebridAPI.txt'
+            }.get(provider, 'key.txt')
+            empty_suffix = _("api_key_empty_suffix") if _ and _("api_key_empty_suffix") != "api_key_empty_suffix" else "empty"
+            key_label = f"{filename_display} {empty_suffix}"
+        key_surf = config.tiny_font.render(key_label, True, key_color) if hasattr(config, 'tiny_font') else config.small_font.render(key_label, True, key_color)
+        screen.blit(key_surf, (col_key_x, y))
+
+        # Ligne séparatrice (optionnelle)
+        sep_y = y + row_height - 8
+        if provider != providers[-1][0]:
+            pygame.draw.line(screen, THEME_COLORS["border"], (menu_x + 25, sep_y), (menu_x + menu_width - 25, sep_y), 1)
+        y += row_height
+
+    # Indication basique: utiliser config.SAVE_FOLDER (chemin dynamique)
+    save_folder_path = getattr(config, 'SAVE_FOLDER', '/saves/ports/rgsx')
+    # Utiliser placeholder {path} si traduction fournie
+    if _ and _("api_keys_hint_manage") != "api_keys_hint_manage":
+        try:
+            hint_txt = _("api_keys_hint_manage").format(path=save_folder_path)
+        except Exception:
+            hint_txt = f"Put your keys in {save_folder_path}"
+    else:
+        hint_txt = f"Put your keys in {save_folder_path}"
+    hint_font = config.tiny_font if hasattr(config, 'tiny_font') else config.small_font
+    hint_surf = hint_font.render(hint_txt, True, THEME_COLORS.get("text_dim", THEME_COLORS["text"]))
+    # Positionné un peu plus haut pour aérer
+    hint_rect = hint_surf.get_rect(center=(config.screen_width//2, menu_y + menu_height - 30))
+    screen.blit(hint_surf, hint_rect)
 
 def draw_filter_platforms_menu(screen):
     """Affiche le menu de filtrage des plateformes (afficher/masquer)."""

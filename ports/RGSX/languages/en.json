@@ -147,5 +147,7 @@
     "status_missing": "Missing",
     "menu_api_keys_status": "API Keys",
     "api_keys_status_title": "API Keys Status",
-    "menu_games": "Games"
+    "menu_games": "Games",
+    "api_keys_hint_manage": "Put your keys in {path}",
+    "api_key_empty_suffix": "empty"
 }
