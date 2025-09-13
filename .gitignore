@@ -1,8 +1,8 @@
 ports/RGSX/logs/ 
 ports/RGSX/images/ 
 ports/RGSX/games/ 
-ports/RGSX/__pycache__/ 
 ports/RGSX/scripts/
+ports/RGSX/__pycache__/ 
 ports/RGSX/sources.json 
 ports/gamelist.xml
 windows/gamelist.xml
@@ -13,3 +13,4 @@ ports/gamelist.xml
 .vscode/
 ports/RGSX.bat
 .venv/
+*.py
