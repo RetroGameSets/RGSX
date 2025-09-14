@@ -13,24 +13,23 @@ logger = logging.getLogger(__name__)
 # Chemin du fichier de configuration des contrôles
 CONTROLS_CONFIG_PATH = os.path.join(config.SAVE_FOLDER, "controls.json")
 
-# Actions internes de RGSX à mapper
-
 # Actions internes de RGSX à mapper (labels et descriptions traduits dynamiquement)
 ACTION_DEFS = [
-    {"name": "confirm"},
-    {"name": "cancel"},
+
     {"name": "up"},
     {"name": "down"},
     {"name": "left"},
     {"name": "right"},
-    {"name": "start"},
-    {"name": "filter"},
-    {"name": "page_up"},
-    {"name": "page_down"},
+    {"name": "confirm"},
+    {"name": "cancel"},
     {"name": "history"},
     {"name": "clear_history"},
+    {"name": "start"},
+    {"name": "filter"},
     {"name": "delete"},
     {"name": "space"},
+    {"name": "page_up"},
+    {"name": "page_down"},
 ]
 
 def get_actions(lang=None):
