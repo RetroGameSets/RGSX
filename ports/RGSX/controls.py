@@ -113,6 +113,8 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
                 candidates.append('nintendo_controller.json')
             if getattr(config, 'eightbitdo_controller', False):
                 candidates.append('8bitdo_controller.json')
+            if getattr(config, 'anbernic_rg35xx_controller', False):
+                candidates.append('anbernic_rg34xx_sp_controller.json')
             # Fallbacks génériques
             if 'generic_controller.json' not in candidates:
                 candidates.append('generic_controller.json')

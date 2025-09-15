@@ -197,6 +197,40 @@ def get_sources_zip_url(fallback_url):
         return None
     return fallback_url
 
+def find_local_custom_sources_zip():
+    """Recherche un fichier ZIP local à la racine de SAVE_FOLDER pour le mode custom.
+
+    Priorité sur quelques noms courants afin d'éviter toute ambiguïté.
+    Retourne le chemin absolu du ZIP si trouvé, sinon None.
+    """
+    try:
+        from config import SAVE_FOLDER
+        candidates = [
+            "games.zip",
+            "custom_sources.zip",
+            "rgsx_custom_sources.zip",
+            "data.zip",
+        ]
+        if not os.path.isdir(SAVE_FOLDER):
+            return None
+        for name in candidates:
+            p = os.path.join(SAVE_FOLDER, name)
+            if os.path.isfile(p):
+                return p
+        # Option avancée: prendre le plus récent *.zip si aucun nom connu trouvé
+        try:
+            zips = [os.path.join(SAVE_FOLDER, f) for f in os.listdir(SAVE_FOLDER) if f.lower().endswith('.zip')]
+            zips = [z for z in zips if os.path.isfile(z)]
+            if zips:
+                newest = max(zips, key=lambda z: os.path.getmtime(z))
+                return newest
+        except Exception:
+            pass
+        return None
+    except Exception as e:
+        logger.debug(f"find_local_custom_sources_zip error: {e}")
+        return None
+
 # ----------------------- Unsupported platforms toggle ----------------------- #
 
 def get_show_unsupported_platforms(settings=None):

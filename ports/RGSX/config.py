@@ -190,6 +190,7 @@ steam_controller = False
 trimui_controller = False
 generic_controller = False
 xbox_elite_controller = False  # Flag spécifique manette Xbox Elite
+anbernic_rg35xx_controller = False  # Flag spécifique Anbernic RG3xxx
 
 # --- Filtre plateformes (UI) ---
 selected_filter_index = 0  # index dans la liste visible triée

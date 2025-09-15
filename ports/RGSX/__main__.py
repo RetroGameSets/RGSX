@@ -219,6 +219,12 @@ else:
     logger.debug(f"Joysticks détectés: YES")
     for idx, name in enumerate(joystick_names):
         lname = name.lower()
+        # Détection Anbernic RG35XX
+        if ("rg35xx" in lname):
+            config.anbernic_rg35xx_controller = True
+            logger.debug(f"Anbernic Controller detected : {name}")
+            print(f"Controller detected : {name}")
+            # ne pas break ici pour permettre une détection plus spécifique (xbox elite) si nécessaire
         # Détection spécifique Elite AVANT la détection générique Xbox
         if ("microsoft xbox controller" in lname):
             config.xbox_elite_controller = True
@@ -958,53 +964,83 @@ async def main():
                     try:
                         zip_path = os.path.join(config.SAVE_FOLDER, "data_download.zip")
                         headers = {'User-Agent': 'Mozilla/5.0'}
-                        # Déterminer l'URL à utiliser selon le mode (RGSX ou custom)
-                        sources_zip_url = get_sources_zip_url(OTA_data_ZIP)
-                        if sources_zip_url is None:
-                            # Mode custom sans URL valide -> pas de téléchargement, jeux vides
-                            logger.warning("Mode custom actif mais aucune URL valide fournie. Liste de jeux vide.")
-                            config.popup_message = _("sources_mode_custom_missing_url").format(config.RGSX_SETTINGS_PATH)
-                            config.popup_timer = 5000
-                        else:
-                            try:
-                                with requests.get(sources_zip_url, stream=True, headers=headers, timeout=30) as response:
-                                    response.raise_for_status()
-                                    total_size = int(response.headers.get('content-length', 0))
-                                    logger.debug(f"Taille totale du ZIP : {total_size} octets")
-                                    downloaded = 0
-                                    os.makedirs(os.path.dirname(zip_path), exist_ok=True)
-                                    with open(zip_path, 'wb') as f:
-                                        for chunk in response.iter_content(chunk_size=8192):
-                                            if chunk:
-                                                f.write(chunk)
-                                                downloaded += len(chunk)
-                                                config.download_progress[sources_zip_url] = {
-                                                    "downloaded_size": downloaded,
-                                                    "total_size": total_size,
-                                                    "status": "Téléchargement",
-                                                    "progress_percent": (downloaded / total_size * 100) if total_size > 0 else 0
-                                                }
-                                                config.loading_progress = 15.0 + (35.0 * downloaded / total_size) if total_size > 0 else 15.0
-                                                config.needs_redraw = True
-                                                await asyncio.sleep(0)
-                                    logger.debug(f"ZIP téléchargé : {zip_path}")
+                        # Support des sources custom locales: prioriser un ZIP présent dans SAVE_FOLDER
+                        try:
+                            from rgsx_settings import get_sources_mode
+                            from rgsx_settings import find_local_custom_sources_zip
+                            mode = get_sources_mode()
+                        except Exception:
+                            mode = "rgsx"
+                            find_local_custom_sources_zip = lambda: None  # type: ignore
 
-                                config.current_loading_system = _("loading_extracting_data")
-                                config.loading_progress = 60.0
-                                config.needs_redraw = True
-                                dest_dir = config.SAVE_FOLDER
-                                success, message = extract_zip_data(zip_path, dest_dir, sources_zip_url)
+                        local_zip = find_local_custom_sources_zip() if mode == "custom" else None
+                        if local_zip and os.path.isfile(local_zip):
+                            # Extraire directement depuis le ZIP local
+                            config.current_loading_system = _("loading_extracting_data")
+                            config.loading_progress = 60.0
+                            config.needs_redraw = True
+                            dest_dir = config.SAVE_FOLDER
+                            try:
+                                success, message = extract_zip_data(local_zip, dest_dir, local_zip)
                                 if success:
-                                    logger.debug(f"Extraction réussie : {message}")
+                                    logger.debug(f"Extraction locale réussie : {message}")
                                     config.loading_progress = 70.0
                                     config.needs_redraw = True
                                 else:
-                                    raise Exception(f"Échec de l'extraction : {message}")
+                                    raise Exception(f"Échec de l'extraction locale : {message}")
                             except Exception as de:
-                                logger.error(f"Erreur téléchargement custom source: {de}")
+                                logger.error(f"Erreur extraction ZIP local custom: {de}")
                                 config.popup_message = _("sources_mode_custom_download_error")
                                 config.popup_timer = 5000
-                                # Pas d'arrêt : continuer avec jeux vides
+                                # Continuer avec jeux vides
+                        else:
+                            # Déterminer l'URL à utiliser selon le mode (RGSX ou custom)
+                            sources_zip_url = get_sources_zip_url(OTA_data_ZIP)
+                            if sources_zip_url is None:
+                                # Mode custom sans fichier local ni URL valide -> pas de téléchargement, jeux vides
+                                logger.warning("Mode custom actif mais aucun ZIP local et aucune URL valide fournie. Liste de jeux vide.")
+                                config.popup_message = _("sources_mode_custom_missing_url").format(config.RGSX_SETTINGS_PATH)
+                                config.popup_timer = 5000
+                            else:
+                                try:
+                                    with requests.get(sources_zip_url, stream=True, headers=headers, timeout=30) as response:
+                                        response.raise_for_status()
+                                        total_size = int(response.headers.get('content-length', 0))
+                                        logger.debug(f"Taille totale du ZIP : {total_size} octets")
+                                        downloaded = 0
+                                        os.makedirs(os.path.dirname(zip_path), exist_ok=True)
+                                        with open(zip_path, 'wb') as f:
+                                            for chunk in response.iter_content(chunk_size=8192):
+                                                if chunk:
+                                                    f.write(chunk)
+                                                    downloaded += len(chunk)
+                                                    config.download_progress[sources_zip_url] = {
+                                                        "downloaded_size": downloaded,
+                                                        "total_size": total_size,
+                                                        "status": "Téléchargement",
+                                                        "progress_percent": (downloaded / total_size * 100) if total_size > 0 else 0
+                                                    }
+                                                    config.loading_progress = 15.0 + (35.0 * downloaded / total_size) if total_size > 0 else 15.0
+                                                    config.needs_redraw = True
+                                                    await asyncio.sleep(0)
+                                        logger.debug(f"ZIP téléchargé : {zip_path}")
+
+                                    config.current_loading_system = _("loading_extracting_data")
+                                    config.loading_progress = 60.0
+                                    config.needs_redraw = True
+                                    dest_dir = config.SAVE_FOLDER
+                                    success, message = extract_zip_data(zip_path, dest_dir, sources_zip_url)
+                                    if success:
+                                        logger.debug(f"Extraction réussie : {message}")
+                                        config.loading_progress = 70.0
+                                        config.needs_redraw = True
+                                    else:
+                                        raise Exception(f"Échec de l'extraction : {message}")
+                                except Exception as de:
+                                    logger.error(f"Erreur téléchargement custom source: {de}")
+                                    config.popup_message = _("sources_mode_custom_download_error")
+                                    config.popup_timer = 5000
+                                    # Pas d'arrêt : continuer avec jeux vides
                     except Exception as e:
                         logger.error(f"Erreur lors du téléchargement/extraction du Dossier Data : {str(e)}")
                         # En mode custom on ne bloque pas le chargement ; en mode RGSX (sources_zip_url non None et OTA) on affiche une erreur

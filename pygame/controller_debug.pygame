@@ -37,13 +37,9 @@ PROMPTS = [
     "JOYSTICK_LEFT_DOWN - MOVE DOWN",
     "JOYSTICK_LEFT_LEFT - MOVE LEFT",
     "JOYSTICK_LEFT_RIGHT - MOVE RIGHT",
-    # Right stick directions
-    "JOYSTICK_RIGHT_UP - MOVE U P",
-    "JOYSTICK_RIGHT_DOWN - MOVE DOWN",
-    "JOYSTICK_RIGHT_LEFT - MOVE LEFT",
-    "JOYSTICK_RIGHT_RIGHT - MOVE RIGHT",
 ]
 
+INPUT_TIMEOUT_SECONDS = 10  # Temps max par entrée avant "ignored"
 
 # --- Minimal on-screen console (Pygame window) ---
 SURFACE = None  # type: ignore
@@ -108,6 +104,8 @@ def init_joystick() -> pygame.joystick.Joystick:
     js.init()
     name = js.get_name()
     log(f"Using joystick 0: {name}")
+    log("")
+    log(f"Note: each input will auto-ignore after {INPUT_TIMEOUT_SECONDS}s if not present (e.g. missing L2/R2)")
     return js
 
 
@@ -147,7 +145,7 @@ def wait_for_stable(js: pygame.joystick.Joystick, settle_ms: int = 250, deadband
         pygame.time.wait(10)
 
 
-def wait_for_event(js: pygame.joystick.Joystick, logical_name: str, axis_threshold: float = 0.6) -> Tuple[str, Any]:
+def wait_for_event(js: pygame.joystick.Joystick, logical_name: str, axis_threshold: float = 0.6, timeout_sec: int = INPUT_TIMEOUT_SECONDS) -> Tuple[str, Any]:
     """Wait for a joystick event for the given logical control.
 
     Returns a tuple of (kind, data):
@@ -158,10 +156,18 @@ def wait_for_event(js: pygame.joystick.Joystick, logical_name: str, axis_thresho
     # Ensure prior motion has settled to avoid capturing a release
     wait_for_stable(js)
     log("")
-    log(f"Press {logical_name} (ESC to skip, close window to quit)…")
+    deadline = time.time() + max(1, int(timeout_sec))
+    log(f"Press {logical_name} (Wait {timeout_sec}s to skip/ignore) if not present")
     # Flush old events
     pygame.event.clear()
     while True:
+        # Update window title with countdown if we have a surface
+        try:
+            remaining = int(max(0, deadline - time.time()))
+            if SURFACE is not None:
+                pygame.display.set_caption(f"Controller Tester — {logical_name} — {remaining}s left")
+        except Exception:
+            pass
         for event in pygame.event.get():
             # Keyboard helpers
             if event.type == pygame.KEYDOWN:
@@ -195,6 +201,10 @@ def wait_for_event(js: pygame.joystick.Joystick, logical_name: str, axis_thresho
                     return ("axis", {"axis": axis, "direction": direction, "raw": value})
 
         draw_log()
+        # Timeout?
+        if time.time() >= deadline:
+            log(f"Ignored {logical_name} (timeout {timeout_sec}s)")
+            return ("ignored", None)
         time.sleep(0.005)
 
 
@@ -213,6 +223,8 @@ def write_log(path: str, mapping: Dict[str, Tuple[str, Any]], device_name: str) 
             lines.append(f"{name} = AXIS {ax} dir {direction}\n")
         elif kind == "skipped":
             lines.append(f"{name} = SKIPPED\n")
+        elif kind == "ignored":
+            lines.append(f"{name} = IGNORED\n")
         else:
             lines.append(f"{name} = UNKNOWN {data}\n")
 
