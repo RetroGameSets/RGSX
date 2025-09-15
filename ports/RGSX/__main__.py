@@ -224,14 +224,14 @@ else:
             config.anbernic_rg35xx_controller = True
             logger.debug(f"Anbernic Controller detected : {name}")
             print(f"Controller detected : {name}")
-            # ne pas break ici pour permettre une détection plus spécifique (xbox elite) si nécessaire
+            break
         # Détection spécifique Elite AVANT la détection générique Xbox
-        if ("microsoft xbox controller" in lname):
+        elif ("microsoft xbox controller" in lname):
             config.xbox_elite_controller = True
             logger.debug(f"Controller detected: {name}")
             print(f"Controller detected: {name}")
             break
-        if ("xbox" in lname) or ("x-box" in lname) or ("xinput" in lname) or ("microsoft x-box" in lname) or ("x-box 360" in lname) or ("360" in lname):
+        elif ("xbox" in lname) or ("x-box" in lname) or ("xinput" in lname) or ("microsoft x-box" in lname) or ("x-box 360" in lname) or ("360" in lname):
             config.xbox_controller = True
             logger.debug(f"Xbox Controller detected : {name}")
             print(f"Controller detected : {name}")
@@ -245,18 +245,22 @@ else:
             config.nintendo_controller = True
             logger.debug(f"Nintendo Controller detected : {name}")
             print(f"Controller detected : {name}")
+            break
         elif "trimui" in lname:
             config.trimui_controller = True
             logger.debug(f"Trimui Controller detected : {name}")
             print(f"Controller detected : {name}")
+            break
         elif "logitech" in lname:
             config.logitech_controller = True
             logger.debug(f"Logitech Controller detected : {name}")
             print(f"Controller detected : {name}")
+            break
         elif "8bitdo" in lname or "8-bitdo" in lname:
             config.eightbitdo_controller = True
             logger.debug(f"8bitdoController detected : {name}")
             print(f"Controller detected : {name}")
+            break
         elif "steam" in lname:
             config.steam_controller = True
             logger.debug(f"Steam Controller detected : {name}")
