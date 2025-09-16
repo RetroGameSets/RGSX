@@ -720,6 +720,11 @@ def extract_zip_data(zip_path, dest_dir, url):
     """Extrait le contenu du fichier ZIP  dans le dossier config.APP_FOLDER sans progression a l'ecran"""
     logger.debug(f"Extraction de {zip_path} dans {dest_dir}")
     try:
+        # Capture existing directories before extraction to identify the newly created one(s)
+        try:
+            before_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
+        except Exception:
+            before_dirs = set()
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.testzip()  # Vérifier l'intégrité de l'archive
             for info in zip_ref.infolist():
@@ -730,6 +735,19 @@ def extract_zip_data(zip_path, dest_dir, url):
                 with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
                     shutil.copyfileobj(source, dest)
         logger.info(f"Extraction terminée de {zip_path}")
+        # PS3: renommer uniquement le dossier nouvellement extrait (parité avec RAR)
+        ps3_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), "ps3")
+        if dest_dir == ps3_dir:
+            try:
+                after_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
+            except Exception:
+                after_dirs = set()
+            ignore_names = {"ps3", "images", "videos", "manuals", "media"}
+            new_dirs = [d for d in (after_dirs - before_dirs) if d not in ignore_names and not d.endswith('.ps3')]
+            expected_base = os.path.splitext(os.path.basename(zip_path))[0]
+            success, error_msg = handle_ps3(dest_dir, new_dirs=new_dirs, extracted_basename=expected_base)
+            if not success:
+                return False, error_msg
         return True, "Extraction terminée avec succès"
     except zipfile.BadZipFile as e:
         logger.error(f"Erreur: Archive ZIP corrompue: {str(e)}")
@@ -753,6 +771,12 @@ def extract_zip(zip_path, dest_dir, url):
                 for file in files:
                     if file.lower().endswith('.iso'):
                         iso_before.add(os.path.abspath(os.path.join(root, file)))
+
+            # Capturer les dossiers avant extraction (pour détection PS3)
+            try:
+                before_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
+            except Exception:
+                before_dirs = set()
 
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.testzip()  # Vérifier l'intégrité de l'archive
@@ -816,6 +840,20 @@ def extract_zip(zip_path, dest_dir, url):
                 else:
                     logger.warning("Aucun nouvel ISO détecté après extraction pour conversion Xbox.")
                     # On ne retourne pas d'erreur fatale ici, on continue
+
+            # PS3: renommer uniquement le dossier nouvellement extrait (parité avec RAR)
+            ps3_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), "ps3")
+            if dest_dir == ps3_dir:
+                try:
+                    after_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
+                except Exception:
+                    after_dirs = set()
+                ignore_names = {"ps3", "images", "videos", "manuals", "media"}
+                new_dirs = [d for d in (after_dirs - before_dirs) if d not in ignore_names and not d.endswith('.ps3')]
+                expected_base = os.path.splitext(os.path.basename(zip_path))[0]
+                success, error_msg = handle_ps3(dest_dir, new_dirs=new_dirs, extracted_basename=expected_base)
+                if not success:
+                    return False, error_msg
 
         try:
             os.remove(zip_path)
@@ -910,7 +948,7 @@ def extract_rar(rar_path, dest_dir, url):
                         root_dir = file_name.split('/')[0] if '/' in file_name else ''
                         if root_dir:
                             root_dirs.add(root_dir)
-                        logger.debug(f"Ligne parsée: {file_name}, taille: {file_size}, date: {file_date}")
+                        #logger.debug(f"Ligne parsée: {file_name}, taille: {file_size}, date: {file_date}")
                     else:
                         logger.debug(f"Dossier ignoré: {file_name}")
                 else:
@@ -933,9 +971,27 @@ def extract_rar(rar_path, dest_dir, url):
                 config.download_progress[url]["status"] = "Extracting"
                 config.download_progress[url]["progress_percent"] = 0
                 config.needs_redraw = True
+                # Mettre à jour l'historique pour indiquer le début d'extraction
+                try:
+                    if isinstance(config.history, list):
+                        for entry in config.history:
+                            if entry.get("url") == url and entry.get("status") in ["Téléchargement", "downloading", "Extracting"]:
+                                entry["status"] = "Extracting"
+                                entry["progress"] = 0
+                                entry["message"] = "Extraction en cours"
+                                save_history(config.history)
+                                break
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour de la progression: {str(e)}")
             # Continuer l'extraction même en cas d'erreur de mise à jour de la progression
+
+        # Capture existing directories before extraction to identify the newly created one(s)
+        try:
+            before_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
+        except Exception:
+            before_dirs = set()
 
         escaped_rar_path = rar_path.replace(" ", "\\ ")
         escaped_dest_dir = dest_dir.replace(" ", "\\ ")
@@ -948,6 +1004,9 @@ def extract_rar(rar_path, dest_dir, url):
             return False, f"Erreur lors de l'extraction: {stderr}"
 
         extracted_size = 0
+        # Sauvegarde périodique de l'historique (comme ZIP)
+        last_save_time = time.time()
+        save_interval = 0.5
         extracted_files = []
         total_files = len(files_to_extract)
         for i, (expected_file, file_size) in enumerate(files_to_extract):
@@ -956,14 +1015,31 @@ def extract_rar(rar_path, dest_dir, url):
                 extracted_size += file_size
                 extracted_files.append(expected_file)
                 os.chmod(file_path, 0o644)
-                logger.debug(f"Fichier extrait: {expected_file}, taille: {file_size}, chemin: {file_path}")
+                #logger.debug(f"Fichier extrait: {expected_file}, taille: {file_size}, chemin: {file_path}")
                 try:
                     with lock:
                         if url in config.download_progress:
+                            percent = int(((i + 1) / total_files * 100)) if total_files > 0 else 0
+                            percent = max(0, min(100, percent))
                             config.download_progress[url]["downloaded_size"] = extracted_size
                             config.download_progress[url]["status"] = "Extracting"
-                            config.download_progress[url]["progress_percent"] = ((i + 1) / total_files * 100) if total_files > 0 else 0
+                            config.download_progress[url]["progress_percent"] = percent
                             config.needs_redraw = True
+                            # MAJ historique (progression extraction)
+                            try:
+                                if isinstance(config.history, list):
+                                    for entry in config.history:
+                                        if entry.get("url") == url and entry.get("status") in ["Téléchargement", "Extracting", "downloading"]:
+                                            entry["status"] = "Extracting"
+                                            entry["progress"] = percent
+                                            entry["message"] = "Extraction en cours"
+                                            now = time.time()
+                                            if now - last_save_time >= save_interval:
+                                                save_history(config.history)
+                                                last_save_time = now
+                                            break
+                            except Exception:
+                                pass
                 except Exception as e:
                     logger.error(f"Erreur lors de la mise à jour de la progression d'extraction: {str(e)}")
                     # Continuer l'extraction même en cas d'erreur de mise à jour de la progression
@@ -971,15 +1047,47 @@ def extract_rar(rar_path, dest_dir, url):
                 logger.warning(f"Fichier non trouvé après extraction: {expected_file}")
        
         # Vérifier si c'est un dossier PS3 et le traiter si nécessaire
-        ps3_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), "ps3")
+        ps3_dir = os.path.join(config.ROMS_FOLDER, "ps3")
         if dest_dir == ps3_dir:
-            success, error_msg = handle_ps3(dest_dir)
+            # Déterminer les nouveaux dossiers créés par cette extraction
+            try:
+                after_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
+            except Exception:
+                after_dirs = set()
+            ignore_names = {"ps3", "images", "videos", "manuals", "media"}
+            new_dirs = [d for d in (after_dirs - before_dirs) if d not in ignore_names and not d.endswith('.ps3')]
+            # Nom attendu à partir du nom de l'archive
+            expected_base = os.path.splitext(os.path.basename(rar_path))[0]
+            success, error_msg = handle_ps3(dest_dir, new_dirs=new_dirs, extracted_basename=expected_base)
             if not success:
                 return False, error_msg
 
         for root, dirs, files in os.walk(dest_dir):
             for dir_name in dirs:
                 os.chmod(os.path.join(root, dir_name), 0o755)
+
+        # Finaliser: marquer comme terminé dans l'historique et la progression
+        try:
+            # Mettre à jour l'historique final
+            if isinstance(config.history, list):
+                for entry in config.history:
+                    if entry.get("url") == url and entry.get("status") in ("Extracting", "Téléchargement", "downloading"):
+                        entry["status"] = "Download_OK"
+                        entry["progress"] = 100
+                        message_text = _("utils_extracted").format(os.path.basename(rar_path))
+                        entry["message"] = message_text
+                        save_history(config.history)
+                        config.needs_redraw = True
+                        break
+            # Mettre à jour la progression
+            if url in getattr(config, 'download_progress', {}):
+                try:
+                    config.download_progress[url]["status"] = "Download_OK"
+                    config.download_progress[url]["progress_percent"] = 100
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"MAJ statut final après extraction RAR: ignorée ({e})")
 
         os.remove(rar_path)
         logger.info(f"Fichier RAR {rar_path} extrait dans {dest_dir} et supprimé")
@@ -996,67 +1104,90 @@ def extract_rar(rar_path, dest_dir, url):
             except Exception as e:
                 logger.error(f"Erreur lors de la suppression de {rar_path}: {str(e)}")
 
-def handle_ps3(dest_dir):
-    """Gère le renommage spécifique des dossiers PS3 extraits."""
+def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None):
+    """Gère le renommage spécifique des dossiers PS3 extraits.
+
+    - Si new_dirs est fourni, ne considère que ces dossiers.
+    - Ignore les dossiers système connus: images, videos, manuals, ps3, media.
+    - Essaie de faire correspondre le dossier attendu au nom du RAR (underscores -> espaces).
+    """
     logger.debug(f"Traitement spécifique PS3 dans: {dest_dir}")
-    
-    # Attendre un peu que tous les processus d'extraction se terminent
-    time.sleep(2)
-    
-    # Rechercher le dossier extrait directement dans dest_dir
-    extracted_dirs = [d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))]
-    logger.debug(f"Dossiers trouvés dans {dest_dir}: {extracted_dirs}")
-    
-    # Filtrer pour ne garder que les dossiers nouvellement extraits
-    ps3_dirs = [d for d in extracted_dirs if not d.endswith('.ps3')]
-    logger.debug(f"Dossiers PS3 à renommer: {ps3_dirs}")
-    
-    if len(ps3_dirs) == 1:
-        old_path = os.path.join(dest_dir, ps3_dirs[0])
-        new_path = os.path.join(dest_dir, f"{ps3_dirs[0]}.ps3")
-        logger.debug(f"Tentative de renommage PS3: {old_path} -> {new_path}")
-        
-        max_retries = 3
-        retry_delay = 2
-        
-        for attempt in range(max_retries):
-            try:
-                # Fermer les handles potentiellement ouverts
-                for root, dirs, files in os.walk(old_path):
-                    for f in files:
-                        try:
-                            os.chmod(os.path.join(root, f), 0o644)
-                        except (OSError, PermissionError):
-                            pass
-                    for d in dirs:
-                        try:
-                            os.chmod(os.path.join(root, d), 0o755)
-                        except (OSError, PermissionError):
-                            pass
+    time.sleep(2)  # petite latence post-extraction
 
-                if os.path.exists(new_path):
-                    shutil.rmtree(new_path, ignore_errors=True)
-                    time.sleep(1)
+    ignore_names = {"ps3", "images", "videos", "manuals", "media"}
 
-                os.rename(old_path, new_path)
-                logger.info(f"Dossier renommé avec succès: {old_path} -> {new_path}")
-                return True, None
-                
-            except Exception as e:
-                logger.warning(f"Tentative {attempt + 1}/{max_retries} échouée: {str(e)}")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                else:
-                    error_msg = f"Erreur lors du renommage de {old_path} en {new_path}: {str(e)}"
-                    logger.error(error_msg)
-                    return False, error_msg
-                    
-    elif len(ps3_dirs) > 1:
-        logger.warning(f"Plusieurs dossiers PS3 détectés: {ps3_dirs}")
-        return True, None
+    if new_dirs is None:
+        try:
+            candidates = [d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))]
+        except Exception:
+            candidates = []
     else:
-        logger.warning("Aucun dossier PS3 à renommer trouvé")
+        candidates = list(new_dirs)
+
+    # Filtrer: ignorer .ps3 déjà traité et dossiers système
+    ps3_dirs = [d for d in candidates if not d.endswith('.ps3') and d not in ignore_names]
+    logger.debug(f"Dossiers PS3 candidats: {ps3_dirs}")
+
+    # Tenter une correspondance au nom de l'archive (remplacer '_' -> ' ' et normaliser)
+    target = None
+    if extracted_basename:
+        def norm(s: str) -> str:
+            s = s.replace('_', ' ')
+            s = ' '.join(s.split()).strip().lower()
+            return s
+        expected = norm(extracted_basename)
+        for d in ps3_dirs:
+            if norm(d) == expected:
+                target = d
+                break
+    # Si pas de match exact: si un seul candidat, prendre celui-ci
+    if target is None and len(ps3_dirs) == 1:
+        target = ps3_dirs[0]
+
+    if not target:
+        if ps3_dirs:
+            logger.warning(f"Plusieurs dossiers PS3 détectés (aucune correspondance unique): {ps3_dirs}")
+        else:
+            logger.warning("Aucun dossier PS3 à renommer trouvé")
         return True, None
+
+    old_path = os.path.join(dest_dir, target)
+    new_path = os.path.join(dest_dir, f"{target}.ps3")
+    logger.debug(f"Tentative de renommage PS3: {old_path} -> {new_path}")
+
+    max_retries = 3
+    retry_delay = 2
+    for attempt in range(max_retries):
+        try:
+            # Fermer les handles potentiellement ouverts
+            for root, dirs, files in os.walk(old_path):
+                for f in files:
+                    try:
+                        os.chmod(os.path.join(root, f), 0o644)
+                    except (OSError, PermissionError):
+                        pass
+                for d in dirs:
+                    try:
+                        os.chmod(os.path.join(root, d), 0o755)
+                    except (OSError, PermissionError):
+                        pass
+
+            if os.path.exists(new_path):
+                shutil.rmtree(new_path, ignore_errors=True)
+                time.sleep(1)
+
+            os.rename(old_path, new_path)
+            logger.info(f"Dossier renommé avec succès: {old_path} -> {new_path}")
+            return True, None
+
+        except Exception as e:
+            logger.warning(f"Tentative {attempt + 1}/{max_retries} échouée: {str(e)}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+            else:
+                error_msg = f"Erreur lors du renommage de {old_path} en {new_path}: {str(e)}"
+                logger.error(error_msg)
+                return False, error_msg
 
 
 def handle_xbox(dest_dir, iso_files, url=None):
