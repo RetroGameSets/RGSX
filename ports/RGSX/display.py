@@ -924,38 +924,44 @@ def draw_history_list(screen):
         progress = entry.get("progress", 0)
         progress = max(0, min(100, progress))  # Clamp progress between 0 and 100
 
+        # Precompute provider prefix once
+        provider_prefix = entry.get("provider_prefix") or (entry.get("provider") + ":" if entry.get("provider") else "")
         # Compute status text (optimized version without redundant prefix for errors)
         if status in ["Téléchargement", "downloading"]:
             status_text = _("history_status_downloading").format(progress)
-            provider_prefix = entry.get("provider_prefix") or (entry.get("provider") + ":" if entry.get("provider") else "")
+            # Coerce to string and prefix provider when relevant
+            status_text = str(status_text or "")
             if provider_prefix and not status_text.startswith(provider_prefix):
                 status_text = f"{provider_prefix} {status_text}"
         elif status == "Extracting":
             status_text = _("history_status_extracting").format(progress)
-            provider_prefix = entry.get("provider_prefix") or (entry.get("provider") + ":" if entry.get("provider") else "")
+            status_text = str(status_text or "")
             if provider_prefix and not status_text.startswith(provider_prefix):
                 status_text = f"{provider_prefix} {status_text}"
         elif status == "Download_OK":
             # Completed: no provider prefix (per requirement)
             status_text = _("history_status_completed")
+            status_text = str(status_text or "")
         elif status == "Erreur":
             # Prefer friendly mapped message now stored in 'message'
             status_text = entry.get('message')
             if not status_text:
                 # Some legacy entries might have only raw in result[1] or auxiliary field
                 status_text = entry.get('raw_error_realdebrid') or entry.get('error') or 'Échec'
+            # Coerce to string early for safe operations
+            status_text = str(status_text or "")
             # Strip redundant prefixes if any
             for prefix in ["Erreur :", "Erreur:", "Error:", "Error :"]:
                 if status_text.startswith(prefix):
                     status_text = status_text[len(prefix):].strip()
                     break
-            provider_prefix = entry.get("provider_prefix") or (entry.get("provider") + ":" if entry.get("provider") else "")
             if provider_prefix and not status_text.startswith(provider_prefix):
                 status_text = f"{provider_prefix} {status_text}"
         elif status == "Canceled":
             status_text = _("history_status_canceled")
+            status_text = str(status_text or "")
         else:
-            status_text = status
+            status_text = str(status or "")
 
         # Determine color dedicated to status (independent from selection for better readability)
         if status == "Erreur":
@@ -971,7 +977,7 @@ def draw_history_list(screen):
         platform_text = truncate_text_end(platform, config.small_font, col_platform_width - 10)
         game_text = truncate_text_end(game_name, config.small_font, col_game_width - 10)
         size_text = truncate_text_end(size_text, config.small_font, col_size_width - 10)
-        status_text = truncate_text_middle(status_text, config.small_font, col_status_width - 10, is_filename=False)
+        status_text = truncate_text_middle(str(status_text or ""), config.small_font, col_status_width - 10, is_filename=False)
 
         y_pos = rect_y + margin_top_bottom + header_height + idx * line_height + line_height // 2
         platform_surface = config.small_font.render(platform_text, True, color)

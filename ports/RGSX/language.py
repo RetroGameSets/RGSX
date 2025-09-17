@@ -68,19 +68,29 @@ def load_language(lang_code=None):
         return False
 
 def get_text(key, default=None):
-    """Récupère la traduction correspondant à la clé."""
-    if not translations:
-        load_language()
-    
-    if key in translations:
-        return translations[key]
-    
-    # Si la clé n'existe pas, retourner la valeur par défaut ou la clé elle-même
-    if default is not None:
-        return default
-    
-    logger.warning(f"Clé de traduction '{key}' non trouvée dans la langue {current_language}")
-    return key
+    """Récupère la traduction correspondant à la clé en garantissant une chaîne.
+
+    - Ne retourne jamais None: fallback vers default (si fourni) sinon la clé.
+    - Si la valeur traduite n'est pas une chaîne (liste/dict/etc.), fallback similaire.
+    """
+    try:
+        if not translations:
+            load_language()
+        # Valeur brute potentielle
+        val = translations.get(key) if isinstance(translations, dict) else None
+        if isinstance(val, str) and val:
+            return val
+        # Fallback: utiliser default si fourni
+        if isinstance(default, str) and default:
+            return default
+        # Dernier recours: retourner la clé elle-même (stringifiée)
+        return str(key)
+    except Exception as e:
+        try:
+            logger.warning(f"get_text fallback for key={key}: {e}")
+        except Exception:
+            pass
+        return str(default) if default is not None else str(key)
 
 def get_available_languages():
     """Récupère la liste des langues disponibles."""
