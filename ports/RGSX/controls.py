@@ -735,7 +735,6 @@ def handle_controls(event, sources, joystick, screen):
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "history"  # Passer à l'historique
                                     config.needs_redraw = True
-                                    logger.debug(f"Début du téléchargement: {game_name} pour {platform} depuis {url}, task_id={task_id}")
                                     config.pending_download = None
                                     action = "download"
                             else:

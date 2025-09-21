@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 
 RGSX_ENTRY = {
     "path": "./RGSX Retrobat.bat",
-    # 'name' left optional to preserve ES-chosen display name if already present
     "name": "RGSX",
     "desc": "Retro Games Sets X - Games Downloader",
     "image": "./images/RGSX.png",
@@ -17,44 +16,29 @@ RGSX_ENTRY = {
     "marquee": "./images/RGSX.png",
     "thumbnail": "./images/RGSX.png",
     "fanart": "./images/RGSX.png",
-    # Avoid forcing rating to not conflict with ES metadata; set only if absent
-    # "rating": "1",
     "releasedate": "20250620T165718",
     "developer": "RetroGameSets.fr",
     "genre": "Various / Utilities"
 }
 
-def _get_root_dir():
-    """Détecte le dossier racine RetroBat sans importer config."""
-    # Ce script est dans .../roms/ports/RGSX/
-    here = os.path.abspath(os.path.dirname(__file__))
-    # Remonter à .../roms/ports/
-    ports_dir = os.path.dirname(here)
-    # Remonter à .../roms/
-    roms_dir = os.path.dirname(ports_dir)
-    # Remonter à la racine RetroBat
-    root_dir = os.path.dirname(roms_dir)
-    return root_dir
-
 
 def update_gamelist():
     try:
-        root_dir = _get_root_dir()
-        gamelist_xml = os.path.join(root_dir, "roms", "windows", "gamelist.xml")
+        from config import GAMELISTXML_WINDOWS
         # Si le fichier n'existe pas, est vide ou non valide, créer une nouvelle structure
-        if not os.path.exists(gamelist_xml) or os.path.getsize(gamelist_xml) == 0:
-            logger.info(f"Création de {gamelist_xml}")
+        if not os.path.exists(GAMELISTXML_WINDOWS) or os.path.getsize(GAMELISTXML_WINDOWS) == 0:
+            logger.info(f"Création de {GAMELISTXML_WINDOWS}")
             root = ET.Element("gameList")
         else:
             try:
-                logger.info(f"Lecture de {gamelist_xml}")
-                tree = ET.parse(gamelist_xml)
+                logger.info(f"Lecture de {GAMELISTXML_WINDOWS}")
+                tree = ET.parse(GAMELISTXML_WINDOWS)
                 root = tree.getroot()
                 if root.tag != "gameList":
-                    logger.info(f"{gamelist_xml} n'a pas de balise <gameList>, création d'une nouvelle structure")
+                    logger.info(f"{GAMELISTXML_WINDOWS} n'a pas de balise <gameList>, création d'une nouvelle structure")
                     root = ET.Element("gameList")
             except ET.ParseError:
-                logger.info(f"{gamelist_xml} est invalide, création d'une nouvelle structure")
+                logger.info(f"{GAMELISTXML_WINDOWS} est invalide, création d'une nouvelle structure")
                 root = ET.Element("gameList")
 
         # Rechercher une entrée existante pour ce chemin
@@ -72,37 +56,37 @@ def update_gamelist():
                 elem = ET.SubElement(game_elem, key)
                 elem.text = value
             logger.info("Nouvelle entrée RGSX ajoutée")
-        else:
-            # Fusionner: préserver les champs gérés par ES, compléter/mettre à jour nos champs
-            def ensure(tag, value):
-                elem = game_elem.find(tag)
-                if elem is None:
-                    elem = ET.SubElement(game_elem, tag)
-                if elem.text is None or elem.text.strip() == "":
-                    elem.text = value
+        # else:
+        #     # Fusionner: préserver les champs gérés par ES, compléter/mettre à jour nos champs
+        #     def ensure(tag, value):
+        #         elem = game_elem.find(tag)
+        #         if elem is None:
+        #             elem = ET.SubElement(game_elem, tag)
+        #         if elem.text is None or elem.text.strip() == "":
+        #             elem.text = value
 
-            # S'assurer du chemin
-            ensure("path", RGSX_ENTRY["path"])
-            # Ne pas écraser le nom s'il existe déjà (ES peut le définir selon le fichier)
-            name_elem = game_elem.find("name")
-            existing_name = ""
-            if name_elem is not None and name_elem.text:
-                existing_name = name_elem.text.strip()
-            if not existing_name:
-                ensure("name", RGSX_ENTRY.get("name", "RGSX"))
+        #     # S'assurer du chemin
+        #     ensure("path", RGSX_ENTRY["path"])
+        #     # Ne pas écraser le nom s'il existe déjà (ES peut le définir selon le fichier)
+        #     name_elem = game_elem.find("name")
+        #     existing_name = ""
+        #     if name_elem is not None and name_elem.text:
+        #         existing_name = name_elem.text.strip()
+        #     if not existing_name:
+        #         ensure("name", RGSX_ENTRY.get("name", "RGSX"))
 
-            # Champs d'habillage que nous voulons imposer/mettre à jour
-            for tag in ("desc", "image", "video", "marquee", "thumbnail", "fanart", "developer", "genre", "releasedate"):
-                val = RGSX_ENTRY.get(tag)
-                if val:
-                    elem = game_elem.find(tag)
-                    if elem is None:
-                        elem = ET.SubElement(game_elem, tag)
-                    # Toujours aligner ces champs sur nos valeurs pour garder l'expérience RGSX
-                    elem.text = val
+        #     # Champs d'habillage que nous voulons imposer/mettre à jour
+        #     for tag in ("desc", "image", "video", "marquee", "thumbnail", "fanart", "developer", "genre", "releasedate"):
+        #         val = RGSX_ENTRY.get(tag)
+        #         if val:
+        #             elem = game_elem.find(tag)
+        #             if elem is None:
+        #                 elem = ET.SubElement(game_elem, tag)
+        #             # Toujours aligner ces champs sur nos valeurs pour garder l'expérience RGSX
+        #             elem.text = val
 
-            # Ne pas toucher aux champs: playcount, lastplayed, gametime, lang, favorite, kidgame, hidden, rating
-            logger.info("Entrée RGSX mise à jour (fusion)")
+        #     # Ne pas toucher aux champs: playcount, lastplayed, gametime, lang, favorite, kidgame, hidden, rating
+        #     logger.info("Entrée RGSX mise à jour (fusion)")
 
         # Générer le XML avec minidom pour une indentation correcte
         rough_string = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding='unicode')
@@ -110,13 +94,13 @@ def update_gamelist():
         pretty_xml = parsed.toprettyxml(indent="\t", encoding='utf-8').decode('utf-8')
         # Supprimer les lignes vides inutiles générées par minidom
         pretty_xml = '\n'.join(line for line in pretty_xml.split('\n') if line.strip())
-        with open(gamelist_xml, 'w', encoding='utf-8') as f:
+        with open(GAMELISTXML_WINDOWS, 'w', encoding='utf-8') as f:
             f.write(pretty_xml)
-        logger.info(f"{gamelist_xml} mis à jour avec succès")
+        logger.info(f"{GAMELISTXML_WINDOWS} mis à jour avec succès")
 
         # Définir les permissions
         try:
-            os.chmod(gamelist_xml, 0o644)
+            os.chmod(GAMELISTXML_WINDOWS, 0o644)
         except Exception:
             # Sur Windows, chmod peut être partiel; ignorer silencieusement
             pass

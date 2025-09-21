@@ -41,7 +41,7 @@ def test_internet():
     
     ping_success = False
     for dns_server in dns_servers:
-        logger.debug(f"Test ping vers {dns_server} avec option {ping_option}")
+        
         try:
             result = subprocess.run(
                 ['ping', ping_option, '2', dns_server],
@@ -66,7 +66,7 @@ def test_internet():
     dns_success = False
     try:
         import socket
-        logger.debug("Test de résolution DNS pour google.com")
+       
         socket.gethostbyname('google.com')
         logger.debug("[OK] Résolution DNS réussie")
         dns_success = True
@@ -103,11 +103,7 @@ def test_internet():
     # Analyse des résultats
     total_tests = 3
     passed_tests = sum([ping_success, dns_success, http_success])
-    
-    logger.debug(f"=== Résultats test Internet: {passed_tests}/{total_tests} tests réussis ===")
-    logger.debug(f"Ping: {'[OK]' if ping_success else '[FAIL]'}")
-    logger.debug(f"DNS:  {'[OK]' if dns_success else '[FAIL]'}")
-    logger.debug(f"HTTP: {'[OK]' if http_success else '[FAIL]'}")
+
     
     # Diagnostic et conseils
     if passed_tests == 0:
@@ -313,7 +309,7 @@ def cancel_all_downloads():
 
 
 async def download_rom(url, platform, game_name, is_zip_non_supported=False, task_id=None):
-    logger.debug(f"Début téléchargement: {game_name} depuis {url}, is_zip_non_supported={is_zip_non_supported}, task_id={task_id}")
+    logger.debug(f"Début téléchargement: {game_name} depuis {url}, zip non supporté={is_zip_non_supported}, task_id={task_id}")
     result = [None, None]
     
     # Créer une queue/cancel spécifique pour cette tâche
@@ -323,7 +319,6 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
         cancel_events[task_id] = threading.Event()
     
     def download_thread():
-        logger.debug(f"Thread téléchargement démarré pour {url}, task_id={task_id}")
         try:
             cancel_ev = cancel_events.get(task_id)
             # Use symlink path if enabled
@@ -685,17 +680,12 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
         pass
 
     # Exécuter la mise à jour de la liste des jeux d'EmulationStation UNIQUEMENT sur Batocera
-    try:
-        from config import get_operating_system
-        OPERATING_SYSTEM=get_operating_system()
-        if str(OPERATING_SYSTEM).lower() == "linux":
-            resp = requests.get("http://127.0.0.1:1234/reloadgames", timeout=2)
-            content = (resp.text or "").strip()
-            logger.debug(f"Résultat mise à jour liste des jeux: HTTP {resp.status_code} - {content}")
-        else:
-            logger.debug(f"Mise à jour liste des jeux ignorée (environnement non Linux: {getattr(config, 'OPERATING_SYSTEM', 'unknown')})")
-    except Exception as e:
-        logger.debug(f"Échec mise à jour via requête HTTP locale (Batocera): {e}")
+    if config.OPERATING_SYSTEM == "Linux":
+        resp = requests.get("http://127.0.0.1:1234/reloadgames", timeout=2)
+        content = (resp.text or "").strip()
+        logger.debug(f"Résultat mise à jour liste des jeux: HTTP {resp.status_code} - {content}")
+    else:
+        logger.debug(f"Mise à jour liste des jeux ignorée sur OS {config.OPERATING_SYSTEM}")
     
     # Nettoyer la queue
     if task_id in progress_queues:

@@ -128,7 +128,7 @@ def _detect_es_systems_cfg_paths():
     """
     candidates = []
     try:
-        if platform.system() == 'Windows':
+        if config.OPERATING_SYSTEM == 'Windows':
             base = getattr(config, 'USERDATA_FOLDER', None)
             if base:
                 candidates.append(os.path.join(base, 'system', 'templates', 'emulationstation', 'es_systems.cfg'))
@@ -716,15 +716,10 @@ def load_system_image(platform_dict):
         logger.error(f"Erreur lors du chargement de l'image pour {platform_name} : {str(e)}")
         return None
 
-def extract_zip_data(zip_path, dest_dir, url):
-    """Extrait le contenu du fichier ZIP  dans le dossier config.APP_FOLDER sans progression a l'ecran"""
+def extract_data(zip_path, dest_dir, url):
+    """Extrait le contenu de ZIP de DATA dans le dossier config.SAVE_FOLDER sans progression a l'ecran"""
     logger.debug(f"Extraction de {zip_path} dans {dest_dir}")
     try:
-        # Capture existing directories before extraction to identify the newly created one(s)
-        try:
-            before_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
-        except Exception:
-            before_dirs = set()
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.testzip()  # Vérifier l'intégrité de l'archive
             for info in zip_ref.infolist():
@@ -735,19 +730,6 @@ def extract_zip_data(zip_path, dest_dir, url):
                 with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
                     shutil.copyfileobj(source, dest)
         logger.info(f"Extraction terminée de {zip_path}")
-        # PS3: renommer uniquement le dossier nouvellement extrait (parité avec RAR)
-        ps3_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), "ps3")
-        if dest_dir == ps3_dir:
-            try:
-                after_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
-            except Exception:
-                after_dirs = set()
-            ignore_names = {"ps3", "images", "videos", "manuals", "media"}
-            new_dirs = [d for d in (after_dirs - before_dirs) if d not in ignore_names and not d.endswith('.ps3')]
-            expected_base = os.path.splitext(os.path.basename(zip_path))[0]
-            success, error_msg = handle_ps3(dest_dir, new_dirs=new_dirs, extracted_basename=expected_base)
-            if not success:
-                return False, error_msg
         return True, "Extraction terminée avec succès"
     except zipfile.BadZipFile as e:
         logger.error(f"Erreur: Archive ZIP corrompue: {str(e)}")
@@ -755,136 +737,155 @@ def extract_zip_data(zip_path, dest_dir, url):
 
     
 
+def _update_extraction_progress(url, extracted_size, total_size, lock, last_save_time_ref, save_interval=0.5):
+    """Fonction utilitaire pour mettre à jour la progression d'extraction."""
+    try:
+        current_time = time.time()
+        with lock:
+            if isinstance(config.history, list):
+                for entry in config.history:
+                    if "status" in entry and entry["status"] in ["Téléchargement", "Extracting", "downloading"]:
+                        if "url" in entry and entry["url"] == url:
+                            progress_percent = int(extracted_size / total_size * 100) if total_size > 0 else 0
+                            progress_percent = max(0, min(100, progress_percent))
+                            entry["status"] = "Extracting"
+                            entry["progress"] = progress_percent
+                            entry["message"] = "Extraction en cours"
+                            if current_time - last_save_time_ref[0] >= save_interval:
+                                save_history(config.history)
+                                last_save_time_ref[0] = current_time
+                            config.needs_redraw = True
+                            break
+    except Exception as e:
+        logger.debug(f"Erreur mise à jour progression extraction: {e}")
+
+def _finalize_extraction(archive_path, dest_dir, url):
+    """Fonction utilitaire pour finaliser l'extraction (suppression fichier + historique)."""
+    try:
+        os.remove(archive_path)
+        logger.info(f"Fichier {archive_path} extrait dans {dest_dir} et supprimé")
+        
+        # Mettre à jour le statut final dans l'historique
+        if isinstance(config.history, list):
+            for entry in config.history:
+                if entry.get("url") == url and entry.get("status") in ("Extracting", "Converting"):
+                    entry["status"] = "Download_OK"
+                    entry["progress"] = 100
+                    message_text = _("utils_extracted").format(os.path.basename(archive_path))
+                    entry["message"] = message_text
+                    save_history(config.history)
+                    config.needs_redraw = True
+                    break
+        
+        # Mettre à jour l'état de progression à 100%
+        if url in getattr(config, 'download_progress', {}):
+            try:
+                config.download_progress[url]["status"] = "Download_OK"
+                config.download_progress[url]["progress_percent"] = 100
+            except Exception:
+                pass
+                
+        return True, _("utils_extracted").format(os.path.basename(archive_path))
+    except Exception as e:
+        logger.error(f"Erreur lors de la finalisation de l'extraction: {str(e)}")
+        return True, _("utils_extracted").format(os.path.basename(archive_path))
+
+def _capture_directories_before_extraction(dest_dir):
+    """Capture les dossiers existants avant extraction pour détection PS3."""
+    try:
+        return set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
+    except Exception:
+        return set()
+
+def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=None, url=None):
+    """Gère les traitements spéciaux Xbox et PS3 après extraction."""
+    # Xbox: conversion ISO
+    xbox_dir = os.path.join(config.ROMS_FOLDER, "xbox")
+    if dest_dir == xbox_dir and iso_before is not None:
+        iso_after = set()
+        for root, dirs, files in os.walk(dest_dir):
+            for file in files:
+                if file.lower().endswith('.iso'):
+                    iso_after.add(os.path.abspath(os.path.join(root, file)))
+        new_isos = list(iso_after - iso_before)
+        if new_isos:
+            success, error_msg = handle_xbox(dest_dir, new_isos, url)
+            if not success:
+                return False, error_msg
+        else:
+            logger.warning("Aucun nouvel ISO détecté après extraction pour conversion Xbox.")
+
+    # PS3: renommage dossiers
+    ps3_dir = os.path.join(config.ROMS_FOLDER, "ps3")
+    if dest_dir == ps3_dir:
+        try:
+            after_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
+        except Exception:
+            after_dirs = set()
+        ignore_names = {"ps3", "images", "videos", "manuals", "media"}
+        new_dirs = [d for d in (after_dirs - before_dirs) if d not in ignore_names and not d.endswith('.ps3')]
+        expected_base = os.path.splitext(os.path.basename(archive_path))[0]
+        success, error_msg = handle_ps3(dest_dir, new_dirs=new_dirs, extracted_basename=expected_base)
+        if not success:
+            return False, error_msg
+    
+    return True, None
+
 def extract_zip(zip_path, dest_dir, url):
     """Extrait le contenu du fichier ZIP dans le dossier cible avec un suivi progressif de la progression."""
     logger.debug(f"Extraction de {zip_path} dans {dest_dir}")
     try:
-        lock = threading.Lock()
+        # Capture état initial
+        before_dirs = _capture_directories_before_extraction(dest_dir)
+        iso_before = set()
+        for root, dirs, files in os.walk(dest_dir):
+            for file in files:
+                if file.lower().endswith('.iso'):
+                    iso_before.add(os.path.abspath(os.path.join(root, file)))
+
+        # Vérification et extraction
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.testzip()  # Vérifier l'intégrité de l'archive
             total_size = sum(info.file_size for info in zip_ref.infolist() if not info.is_dir())
             logger.info(f"Taille totale à extraire: {total_size} octets")
+            
+            if total_size == 0:
+                logger.warning("ZIP vide ou ne contenant que des dossiers")
+                return True, "ZIP vide extrait avec succès"
+
+            # Variables de progression
+            extracted_size = 0
             lock = threading.Lock()
-            # Lister les ISO avant extraction
-            iso_before = set()
-            for root, dirs, files in os.walk(dest_dir):
-                for file in files:
-                    if file.lower().endswith('.iso'):
-                        iso_before.add(os.path.abspath(os.path.join(root, file)))
+            last_save_time = [time.time()]  # Liste pour référence mutable
+            chunk_size = 2048
+            os.makedirs(dest_dir, exist_ok=True)
 
-            # Capturer les dossiers avant extraction (pour détection PS3)
-            try:
-                before_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
-            except Exception:
-                before_dirs = set()
-
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.testzip()  # Vérifier l'intégrité de l'archive
-                total_size = sum(info.file_size for info in zip_ref.infolist() if not info.is_dir())
-                logger.info(f"Taille totale à extraire: {total_size} octets")
-                if total_size == 0:
-                    logger.warning("ZIP vide ou ne contenant que des dossiers")
-                    return True, "ZIP vide extrait avec succès"
-
-                extracted_size = 0
-                os.makedirs(dest_dir, exist_ok=True)
-                chunk_size = 2048  # Réduire pour plus de mises à jour
-                last_save_time = time.time()
-                save_interval = 0.5  # Sauvegarder toutes les 0.5 secondes
-                for info in zip_ref.infolist():
-                    if info.is_dir():
-                        continue
-                    file_path = os.path.join(dest_dir, info.filename)
-                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                    with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
-                        file_size = info.file_size
-                        file_extracted = 0
-                        while True:
-                            chunk = source.read(chunk_size)
-                            if not chunk:
-                                break
-                            dest.write(chunk)
-                            file_extracted += len(chunk)
-                            extracted_size += len(chunk)
-                            current_time = time.time()
-                            with lock:
-                                if isinstance(config.history, list):
-                                    for entry in config.history:
-                                        if "status" in entry and entry["status"] in ["Téléchargement", "Extracting", "downloading"]:
-                                            if "url" in entry and entry["url"] == url:
-                                                progress_percent = int(extracted_size / total_size * 100) if total_size > 0 else 0
-                                                progress_percent = max(0, min(100, progress_percent))
-                                                entry["status"] = "Extracting"
-                                                entry["progress"] = progress_percent
-                                                entry["message"] = "Extraction en cours"
-                                                if current_time - last_save_time >= save_interval:
-                                                    save_history(config.history)
-                                                    last_save_time = current_time
-                                                config.needs_redraw = True
-                                                break
-                    os.chmod(file_path, 0o644)
-            # Vérifier si c'est un dossier xbox et le traiter si nécessaire
-            xbox_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), "xbox")
-            if dest_dir == xbox_dir:
-                # Lister les ISO après extraction
-                iso_after = set()
-                for root, dirs, files in os.walk(dest_dir):
-                    for file in files:
-                        if file.lower().endswith('.iso'):
-                            iso_after.add(os.path.abspath(os.path.join(root, file)))
-                new_isos = list(iso_after - iso_before)
-                if new_isos:
-                    success, error_msg = handle_xbox(dest_dir, new_isos, url)
-                    if not success:
-                        return False, error_msg
-                else:
-                    logger.warning("Aucun nouvel ISO détecté après extraction pour conversion Xbox.")
-                    # On ne retourne pas d'erreur fatale ici, on continue
-
-            # PS3: renommer uniquement le dossier nouvellement extrait (parité avec RAR)
-            ps3_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), "ps3")
-            if dest_dir == ps3_dir:
-                try:
-                    after_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
-                except Exception:
-                    after_dirs = set()
-                ignore_names = {"ps3", "images", "videos", "manuals", "media"}
-                new_dirs = [d for d in (after_dirs - before_dirs) if d not in ignore_names and not d.endswith('.ps3')]
-                expected_base = os.path.splitext(os.path.basename(zip_path))[0]
-                success, error_msg = handle_ps3(dest_dir, new_dirs=new_dirs, extracted_basename=expected_base)
-                if not success:
-                    return False, error_msg
-
-        try:
-            os.remove(zip_path)
-            logger.info(f"Fichier ZIP {zip_path} extrait dans {dest_dir} et supprimé")
-            
-            # Mettre à jour le statut final dans l'historique (couvre "Extracting" et "Converting")
-            try:
-                if isinstance(config.history, list):
-                    for entry in config.history:
-                        if entry.get("url") == url and entry.get("status") in ("Extracting", "Converting"):
-                            entry["status"] = "Download_OK"
-                            entry["progress"] = 100
-                            message_text = _("utils_extracted").format(os.path.basename(zip_path))
-                            entry["message"] = message_text
-                            save_history(config.history)
-                            config.needs_redraw = True
+            # Extraction avec progression
+            for info in zip_ref.infolist():
+                if info.is_dir():
+                    continue
+                file_path = os.path.join(dest_dir, info.filename)
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                
+                with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
+                    while True:
+                        chunk = source.read(chunk_size)
+                        if not chunk:
                             break
-                # Mettre à jour l'état de progression à 100%
-                if url in getattr(config, 'download_progress', {}):
-                    try:
-                        config.download_progress[url]["status"] = "Download_OK"
-                        config.download_progress[url]["progress_percent"] = 100
-                    except Exception:
-                        pass
-            except Exception as e:
-                logger.debug(f"MAJ statut final après conversion: ignorée ({e})")
-            
-            return True, _("utils_extracted").format(os.path.basename(zip_path))
-        except Exception as e:
-            logger.error(f"Erreur lors de la finalisation de l'extraction: {str(e)}")
-            return True, _("utils_extracted").format(os.path.basename(zip_path))
+                        dest.write(chunk)
+                        extracted_size += len(chunk)
+                        _update_extraction_progress(url, extracted_size, total_size, lock, last_save_time)
+                
+                os.chmod(file_path, 0o644)
+
+        # Gestion plateformes spéciales
+        success, error_msg = _handle_special_platforms(dest_dir, zip_path, before_dirs, iso_before, url)
+        if not success:
+            return False, error_msg
+
+        # Finalisation
+        return _finalize_extraction(zip_path, dest_dir, url)
+
     except zipfile.BadZipFile as e:
         logger.error(f"Erreur: Archive ZIP corrompue: {str(e)}")
         return False, _("utils_corrupt_zip").format(str(e))
@@ -900,35 +901,30 @@ def extract_zip(zip_path, dest_dir, url):
 def extract_rar(rar_path, dest_dir, url):
     """Extrait le contenu du fichier RAR dans le dossier cible."""
     try:
-        lock = threading.Lock()
         os.makedirs(dest_dir, exist_ok=True)
-
-        system_type = platform.system()
-        if system_type == "Windows":
-            # Sur Windows, utiliser directement config.UNRAR_EXE
-            unrar_exe = config.UNRAR_EXE
-            unrar_cmd = [unrar_exe]
+        
+        # Configuration commande unrar selon l'OS
+        if config.OPERATING_SYSTEM == "Windows":
+            unrar_cmd = [config.UNRAR_EXE]
         else:
-            # Linux/Batocera: utiliser 'unrar' du système
             unrar_cmd = ["unrar"]
 
-        # Reste du code pour la vérification de unrar
+        # Vérification disponibilité unrar
         result = subprocess.run(unrar_cmd, capture_output=True, text=True)
         if result.returncode not in [0, 1]:
             logger.error("Commande unrar non disponible")
             return False, _("utils_unrar_unavailable")
 
+        # Analyse contenu RAR
         result = subprocess.run(unrar_cmd + ['l', '-v', rar_path], capture_output=True, text=True)
         if result.returncode != 0:
             error_msg = result.stderr.strip()
             logger.error(f"Erreur lors de la liste des fichiers RAR: {error_msg}")
             return False, _("utils_rar_list_failed").format(error_msg)
 
-        logger.debug(f"Sortie brute de 'unrar l -v {rar_path}':\n{result.stdout}")
-
+        # Parse liste fichiers
         total_size = 0
         files_to_extract = []
-        root_dirs = set()
         lines = result.stdout.splitlines()
         in_file_list = False
         for line in lines:
@@ -938,61 +934,35 @@ def extract_rar(rar_path, dest_dir, url):
             if in_file_list:
                 match = re.match(r'^\s*(\S+)\s+(\d+)\s+\d*\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+(.+)$', line)
                 if match:
-                    attrs = match.group(1)
-                    file_size = int(match.group(2))
-                    file_date = match.group(3)
-                    file_name = match.group(4).strip()
-                    if 'D' not in attrs:
-                        files_to_extract.append((file_name, file_size))
-                        total_size += file_size
-                        root_dir = file_name.split('/')[0] if '/' in file_name else ''
-                        if root_dir:
-                            root_dirs.add(root_dir)
-                        #logger.debug(f"Ligne parsée: {file_name}, taille: {file_size}, date: {file_date}")
-                    else:
-                        logger.debug(f"Dossier ignoré: {file_name}")
-                else:
-                    logger.debug(f"Ligne ignorée (format inattendu): {line}")
+                    attrs, file_size, file_date, file_name = match.groups()
+                    if 'D' not in attrs:  # Pas un dossier
+                        files_to_extract.append((file_name.strip(), int(file_size)))
+                        total_size += int(file_size)
 
         logger.info(f"Taille totale à extraire (RAR): {total_size} octets")
-        logger.debug(f"Fichiers à extraire: {files_to_extract}")
-        logger.debug(f"Dossiers racines détectés: {root_dirs}")
         if total_size == 0:
             logger.warning("RAR vide, ne contenant que des dossiers, ou erreur de parsing")
             return False, "RAR vide ou erreur lors de la liste des fichiers"
 
-        try:
-            with lock:
-                # Vérifier si l'URL existe dans config.download_progress
-                if url not in config.download_progress:
-                    config.download_progress[url] = {}
-                config.download_progress[url]["downloaded_size"] = 0
-                config.download_progress[url]["total_size"] = total_size
-                config.download_progress[url]["status"] = "Extracting"
-                config.download_progress[url]["progress_percent"] = 0
-                config.needs_redraw = True
-                # Mettre à jour l'historique pour indiquer le début d'extraction
-                try:
-                    if isinstance(config.history, list):
-                        for entry in config.history:
-                            if entry.get("url") == url and entry.get("status") in ["Téléchargement", "downloading", "Extracting"]:
-                                entry["status"] = "Extracting"
-                                entry["progress"] = 0
-                                entry["message"] = "Extraction en cours"
-                                save_history(config.history)
-                                break
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour de la progression: {str(e)}")
-            # Continuer l'extraction même en cas d'erreur de mise à jour de la progression
+        # Capture état initial
+        before_dirs = _capture_directories_before_extraction(dest_dir)
 
-        # Capture existing directories before extraction to identify the newly created one(s)
-        try:
-            before_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
-        except Exception:
-            before_dirs = set()
+        # Variables de progression
+        lock = threading.Lock()
+        last_save_time = [time.time()]  # Liste pour référence mutable
 
+        # Initialisation progression
+        if url not in getattr(config, 'download_progress', {}):
+            config.download_progress[url] = {}
+        config.download_progress[url].update({
+            "downloaded_size": 0,
+            "total_size": total_size,
+            "status": "Extracting",
+            "progress_percent": 0
+        })
+        config.needs_redraw = True
+
+        # Extraction RAR
         escaped_rar_path = rar_path.replace(" ", "\\ ")
         escaped_dest_dir = dest_dir.replace(" ", "\\ ")
         process = subprocess.Popen(unrar_cmd + ['x', '-y', escaped_rar_path, escaped_dest_dir],
@@ -1003,100 +973,44 @@ def extract_rar(rar_path, dest_dir, url):
             logger.error(f"Erreur lors de l'extraction de {rar_path}: {stderr}")
             return False, f"Erreur lors de l'extraction: {stderr}"
 
+        # Vérification et mise à jour progression des fichiers extraits
         extracted_size = 0
-        # Sauvegarde périodique de l'historique (comme ZIP)
-        last_save_time = time.time()
-        save_interval = 0.5
-        extracted_files = []
         total_files = len(files_to_extract)
         for i, (expected_file, file_size) in enumerate(files_to_extract):
             file_path = os.path.join(dest_dir, expected_file)
             if os.path.exists(file_path):
                 extracted_size += file_size
-                extracted_files.append(expected_file)
                 os.chmod(file_path, 0o644)
-                #logger.debug(f"Fichier extrait: {expected_file}, taille: {file_size}, chemin: {file_path}")
-                try:
-                    with lock:
-                        if url in config.download_progress:
-                            percent = int(((i + 1) / total_files * 100)) if total_files > 0 else 0
-                            percent = max(0, min(100, percent))
-                            config.download_progress[url]["downloaded_size"] = extracted_size
-                            config.download_progress[url]["status"] = "Extracting"
-                            config.download_progress[url]["progress_percent"] = percent
-                            config.needs_redraw = True
-                            # MAJ historique (progression extraction)
-                            try:
-                                if isinstance(config.history, list):
-                                    for entry in config.history:
-                                        if entry.get("url") == url and entry.get("status") in ["Téléchargement", "Extracting", "downloading"]:
-                                            entry["status"] = "Extracting"
-                                            entry["progress"] = percent
-                                            entry["message"] = "Extraction en cours"
-                                            now = time.time()
-                                            if now - last_save_time >= save_interval:
-                                                save_history(config.history)
-                                                last_save_time = now
-                                            break
-                            except Exception:
-                                pass
-                except Exception as e:
-                    logger.error(f"Erreur lors de la mise à jour de la progression d'extraction: {str(e)}")
-                    # Continuer l'extraction même en cas d'erreur de mise à jour de la progression
-            else:
-                logger.warning(f"Fichier non trouvé après extraction: {expected_file}")
-       
-        # Vérifier si c'est un dossier PS3 et le traiter si nécessaire
-        ps3_dir = os.path.join(config.ROMS_FOLDER, "ps3")
-        if dest_dir == ps3_dir:
-            # Déterminer les nouveaux dossiers créés par cette extraction
-            try:
-                after_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
-            except Exception:
-                after_dirs = set()
-            ignore_names = {"ps3", "images", "videos", "manuals", "media"}
-            new_dirs = [d for d in (after_dirs - before_dirs) if d not in ignore_names and not d.endswith('.ps3')]
-            # Nom attendu à partir du nom de l'archive
-            expected_base = os.path.splitext(os.path.basename(rar_path))[0]
-            success, error_msg = handle_ps3(dest_dir, new_dirs=new_dirs, extracted_basename=expected_base)
-            if not success:
-                return False, error_msg
+                
+                # Mise à jour progression basée sur nombre de fichiers
+                progress_percent = int(((i + 1) / total_files * 100)) if total_files > 0 else 0
+                _update_extraction_progress(url, progress_percent * total_size // 100, total_size, lock, last_save_time)
+                
+                # Mise à jour config.download_progress
+                with lock:
+                    if url in config.download_progress:
+                        config.download_progress[url]["downloaded_size"] = extracted_size
+                        config.download_progress[url]["progress_percent"] = progress_percent
+                        config.needs_redraw = True
 
+        # Permissions dossiers
         for root, dirs, files in os.walk(dest_dir):
             for dir_name in dirs:
                 os.chmod(os.path.join(root, dir_name), 0o755)
 
-        # Finaliser: marquer comme terminé dans l'historique et la progression
-        try:
-            # Mettre à jour l'historique final
-            if isinstance(config.history, list):
-                for entry in config.history:
-                    if entry.get("url") == url and entry.get("status") in ("Extracting", "Téléchargement", "downloading"):
-                        entry["status"] = "Download_OK"
-                        entry["progress"] = 100
-                        message_text = _("utils_extracted").format(os.path.basename(rar_path))
-                        entry["message"] = message_text
-                        save_history(config.history)
-                        config.needs_redraw = True
-                        break
-            # Mettre à jour la progression
-            if url in getattr(config, 'download_progress', {}):
-                try:
-                    config.download_progress[url]["status"] = "Download_OK"
-                    config.download_progress[url]["progress_percent"] = 100
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.debug(f"MAJ statut final après extraction RAR: ignorée ({e})")
+        # Gestion plateformes spéciales (uniquement PS3 pour RAR)
+        success, error_msg = _handle_special_platforms(dest_dir, rar_path, before_dirs)
+        if not success:
+            return False, error_msg
 
-        os.remove(rar_path)
-        logger.info(f"Fichier RAR {rar_path} extrait dans {dest_dir} et supprimé")
-        return True, "RAR extrait avec succès"
+        # Finalisation
+        return _finalize_extraction(rar_path, dest_dir, url)
         
     except Exception as e:
         logger.error(f"Erreur lors de l'extraction de {rar_path}: {str(e)}")
         return False, f"Erreur lors de l'extraction: {str(e)}"
     finally:
+        # Nettoyage en cas d'erreur
         if os.path.exists(rar_path):
             try:
                 os.remove(rar_path)
@@ -1196,8 +1110,7 @@ def handle_xbox(dest_dir, iso_files, url=None):
     
     # Attendre un peu que tous les processus d'extraction se terminent
     time.sleep(2)
-    system_type = platform.system()
-    if system_type == "Windows":
+    if config.OPERATING_SYSTEM == "Windows":
         # Sur Windows; telecharger le fichier exe
         XDVDFS_EXE = config.XDVDFS_EXE
         xdvdfs_cmd = [XDVDFS_EXE, "pack"]  # Liste avec 2 éléments

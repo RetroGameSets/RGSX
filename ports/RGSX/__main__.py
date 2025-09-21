@@ -32,7 +32,7 @@ from controls import handle_controls, validate_menu_state, process_key_repeats, 
 from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
 from utils import (
-    load_sources, check_extension_before_download, extract_zip_data,
+    load_sources, check_extension_before_download, extract_data,
     play_random_music, load_music_config, load_api_keys
 )
 from history import load_history, save_history
@@ -60,18 +60,16 @@ logger = logging.getLogger(__name__)
 # Ensure API key files (1Fichier, AllDebrid, RealDebrid) exist at startup so user can fill them before any download
 try:  # pragma: no cover
     load_api_keys(False)
-    logger.debug("API key files ensured at startup")
 except Exception as _e:
     logger.warning(f"Cannot prepare API key files early: {_e}")
 # Mise à jour de la gamelist Windows avant toute initialisation graphique (évite les conflits avec ES)
 def _run_windows_gamelist_update():
     try:
-        if platform.system() != "Windows":
+        if config.OPERATING_SYSTEM != "Windows":
             return
         script_path = os.path.join(config.APP_FOLDER, "update_gamelist_windows.py")
         if not os.path.exists(script_path):
             return
-        logger.info("Lancement de update_gamelist_windows.py depuis __main__ (pré-init)")
         exe = sys.executable or "python"
         # Exécuter rapidement avec capture sortie pour journaliser tout message utile
         result = subprocess.run(
@@ -90,9 +88,7 @@ def _run_windows_gamelist_update():
 
 _run_windows_gamelist_update()
 
-# Pré-boot: Désactivé — pas de test Internet ni de mise à jour avant l'init
 try:
-    logger.debug("Pré-boot: vérification des mises à jour désactivée")
     config.update_checked = False
 except Exception:
     pass
@@ -142,7 +138,7 @@ logger.debug(f"Mode sources initial: {config.sources_mode}, URL custom: {config.
 def detect_system_info():
     """Détecte les informations système (OS, architecture) via des commandes appropriées."""
     try:
-        if platform.system() == "Windows":
+        if config.OPERATING_SYSTEM == "Windows":
             # Commande pour Windows
             result = subprocess.run(["wmic", "os", "get", "caption"], capture_output=True, text=True)
             if result.returncode == 0:
@@ -167,6 +163,7 @@ config.init_font()
 # Mise à jour de la résolution dans config
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
 logger.debug(f"Résolution d'écran : {config.screen_width}x{config.screen_height}")
+print(f"Résolution écran validée: {config.screen_width}x{config.screen_height}")
 
 # Afficher un premier écran de chargement immédiatement pour éviter un écran noir
 try:
@@ -183,7 +180,7 @@ except Exception as e:
 
 # Détection des joysticks après init_display (plus stable sur Batocera)
 try:
-    if platform.system() != "Windows":
+    if config.OPERATING_SYSTEM != "Windows":
         time.sleep(0.05)  # petite latence pour stabiliser SDL sur certains builds
     count = pygame.joystick.get_count()
 except Exception:
@@ -228,7 +225,6 @@ config.selected_platform = 0
 # Charger la configuration musique AVANT d'initialiser le mixer pour respecter le paramètre music_enabled
 try:
     load_music_config()
-    logger.debug(f"Configuration musique chargée: music_enabled={getattr(config, 'music_enabled', True)}")
 except Exception as e:
     logger.warning(f"Impossible de charger la configuration musique avant init mixer: {e}")
 
@@ -239,8 +235,6 @@ if getattr(config, 'music_enabled', True):
         pygame.mixer.init()
     except Exception as e:
         logger.warning(f"Échec init mixer: {e}")
-else:
-    logger.debug("Musique désactivée, on saute l'initialisation du mixer")
 
 # Dossier musique Batocera
 music_folder = os.path.join(config.APP_FOLDER, "assets", "music")
@@ -931,7 +925,7 @@ async def main():
                             config.needs_redraw = True
                             dest_dir = config.SAVE_FOLDER
                             try:
-                                success, message = extract_zip_data(local_zip, dest_dir, local_zip)
+                                success, message = extract_data(local_zip, dest_dir, local_zip)
                                 if success:
                                     logger.debug(f"Extraction locale réussie : {message}")
                                     config.loading_progress = 70.0
@@ -979,7 +973,7 @@ async def main():
                                     config.loading_progress = 60.0
                                     config.needs_redraw = True
                                     dest_dir = config.SAVE_FOLDER
-                                    success, message = extract_zip_data(zip_path, dest_dir, sources_zip_url)
+                                    success, message = extract_data(zip_path, dest_dir, sources_zip_url)
                                     if success:
                                         logger.debug(f"Extraction réussie : {message}")
                                         config.loading_progress = 70.0
@@ -1056,7 +1050,7 @@ async def main():
     except Exception as e:
         logger.debug(f"Erreur lors de l'annulation globale des téléchargements: {e}")
     
-    if platform.system() == "Windows":
+    if config.OPERATING_SYSTEM == "Windows":
         try:
             result = subprocess.run(["taskkill", "/f", "/im", "emulatorLauncher.exe"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             if getattr(result, "returncode", 1) == 0:
@@ -1077,7 +1071,7 @@ async def main():
     pygame.quit()
     logger.debug("Application terminée")
 
-if platform.system() == "Emscripten":
+if config.OPERATING_SYSTEM == "Emscripten":
     asyncio.ensure_future(main())
 else:
     if __name__ == "__main__":
