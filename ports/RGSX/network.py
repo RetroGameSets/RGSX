@@ -354,6 +354,51 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             dest_path = os.path.join(dest_dir, f"{sanitized_name}")
             logger.debug(f"Chemin destination: {dest_path}")
             
+            # Vérifier si le fichier existe déjà (exact ou avec autre extension)
+            if os.path.exists(dest_path):
+                logger.info(f"Le fichier {dest_path} existe déjà, téléchargement ignoré")
+                result[0] = True
+                result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                # Mettre à jour l'historique avec un statut spécifique
+                if isinstance(config.history, list):
+                    for entry in config.history:
+                        if "url" in entry and entry["url"] == url:
+                            entry["status"] = "Already_Present"
+                            entry["progress"] = 100
+                            entry["message"] = result[1]
+                            save_history(config.history)
+                            config.needs_redraw = True
+                            break
+                return
+            
+            # Vérifier si un fichier avec le même nom de base mais extension différente existe
+            base_name_no_ext = os.path.splitext(sanitized_name)[0]
+            if base_name_no_ext != sanitized_name:  # Seulement si une extension était présente
+                try:
+                    # Lister tous les fichiers dans le répertoire de destination
+                    if os.path.exists(dest_dir):
+                        for existing_file in os.listdir(dest_dir):
+                            existing_base = os.path.splitext(existing_file)[0]
+                            if existing_base == base_name_no_ext:
+                                existing_path = os.path.join(dest_dir, existing_file)
+                                logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
+                                result[0] = True
+                                result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
+                                # Mettre à jour l'historique avec un statut spécifique
+                                if isinstance(config.history, list):
+                                    for entry in config.history:
+                                        if "url" in entry and entry["url"] == url:
+                                            entry["status"] = "Already_Present"
+                                            entry["progress"] = 100
+                                            entry["message"] = result[1]
+                                            save_history(config.history)
+                                            config.needs_redraw = True
+                                            break
+                                return
+                except Exception as e:
+                    logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
+            
+            
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -813,6 +858,51 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 sanitized_filename = sanitize_filename(filename)
                 dest_path = os.path.join(dest_dir, sanitized_filename)
                 logger.debug(f"Chemin destination: {dest_path}")
+                
+                # Vérifier si le fichier existe déjà (exact ou avec autre extension)
+                if os.path.exists(dest_path):
+                    logger.info(f"Le fichier {dest_path} existe déjà, téléchargement ignoré")
+                    result[0] = True
+                    result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                    # Mettre à jour l'historique avec un statut spécifique
+                    if isinstance(config.history, list):
+                        for entry in config.history:
+                            if "url" in entry and entry["url"] == url:
+                                entry["status"] = "Already_Present"
+                                entry["progress"] = 100
+                                entry["message"] = result[1]
+                                save_history(config.history)
+                                config.needs_redraw = True
+                                break
+                    return
+                
+                # Vérifier si un fichier avec le même nom de base mais extension différente existe
+                base_name_no_ext = os.path.splitext(sanitized_filename)[0]
+                if base_name_no_ext != sanitized_filename:  # Seulement si une extension était présente
+                    try:
+                        # Lister tous les fichiers dans le répertoire de destination
+                        if os.path.exists(dest_dir):
+                            for existing_file in os.listdir(dest_dir):
+                                existing_base = os.path.splitext(existing_file)[0]
+                                if existing_base == base_name_no_ext:
+                                    existing_path = os.path.join(dest_dir, existing_file)
+                                    logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
+                                    result[0] = True
+                                    result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
+                                    # Mettre à jour l'historique avec un statut spécifique
+                                    if isinstance(config.history, list):
+                                        for entry in config.history:
+                                            if "url" in entry and entry["url"] == url:
+                                                entry["status"] = "Already_Present"
+                                                entry["progress"] = 100
+                                                entry["message"] = result[1]
+                                                save_history(config.history)
+                                                config.needs_redraw = True
+                                                break
+                                    return
+                    except Exception as e:
+                        logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
+                
                 logger.debug(f"Envoi requête 1fichier get_token pour {link}")
                 response = requests.post("https://api.1fichier.com/v1/download/get_token.cgi", headers=headers, json=payload, timeout=30)
                 status_1f = response.status_code
@@ -1014,6 +1104,50 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     filename = game_name
                 sanitized_filename = sanitize_filename(filename)
                 dest_path = os.path.join(dest_dir, sanitized_filename)
+                
+                # Vérifier si le fichier existe déjà (exact ou avec autre extension)
+                if os.path.exists(dest_path):
+                    logger.info(f"Le fichier {dest_path} existe déjà, téléchargement ignoré")
+                    result[0] = True
+                    result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                    # Mettre à jour l'historique avec un statut spécifique
+                    if isinstance(config.history, list):
+                        for entry in config.history:
+                            if "url" in entry and entry["url"] == url:
+                                entry["status"] = "Already_Present"
+                                entry["progress"] = 100
+                                entry["message"] = result[1]
+                                save_history(config.history)
+                                config.needs_redraw = True
+                                break
+                    return
+                
+                # Vérifier si un fichier avec le même nom de base mais extension différente existe
+                base_name_no_ext = os.path.splitext(sanitized_filename)[0]
+                if base_name_no_ext != sanitized_filename:  # Seulement si une extension était présente
+                    try:
+                        # Lister tous les fichiers dans le répertoire de destination
+                        if os.path.exists(dest_dir):
+                            for existing_file in os.listdir(dest_dir):
+                                existing_base = os.path.splitext(existing_file)[0]
+                                if existing_base == base_name_no_ext:
+                                    existing_path = os.path.join(dest_dir, existing_file)
+                                    logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
+                                    result[0] = True
+                                    result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
+                                    # Mettre à jour l'historique avec un statut spécifique
+                                    if isinstance(config.history, list):
+                                        for entry in config.history:
+                                            if "url" in entry and entry["url"] == url:
+                                                entry["status"] = "Already_Present"
+                                                entry["progress"] = 100
+                                                entry["message"] = result[1]
+                                                save_history(config.history)
+                                                config.needs_redraw = True
+                                                break
+                                    return
+                    except Exception as e:
+                        logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
             lock = threading.Lock()
             retries = 10
             retry_delay = 10

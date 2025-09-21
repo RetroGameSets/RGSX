@@ -104,6 +104,8 @@
     "network_api_error": "Erro na requisição da API, a chave pode estar incorreta: {0}",
     "network_download_error": "Erro de download {0}: {1}",
     "network_download_ok": "Download OK: {0}",
+    "download_already_present": " (já presente)",
+    "download_already_extracted": " (já extraído)",
     "utils_extracted": "Extraído: {0}",
     "utils_corrupt_zip": "Arquivo ZIP corrompido: {0}",
     "utils_permission_denied": "Permissão negada durante extração: {0}",
@@ -196,5 +198,6 @@
     ,"controls_mapping_instruction": "Mantenha para confirmar o mapeamento:"
     ,"controls_mapping_waiting": "Aguardando uma tecla ou botão..."
     ,"controls_mapping_press": "Pressione uma tecla ou um botão"
+    ,"status_already_present": "Já Presente"
     ,"footer_joystick": "Joystick: {0}"
 }

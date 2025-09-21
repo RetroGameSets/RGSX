@@ -104,6 +104,8 @@
     "network_api_error": "Errore richiesta API, la chiave potrebbe essere errata: {0}",
     "network_download_error": "Errore download {0}: {1}",
     "network_download_ok": "Download OK: {0}",
+    "download_already_present": " (già presente)",
+    "download_already_extracted": " (già estratto)",
     "utils_extracted": "Estratto: {0}",
     "utils_corrupt_zip": "Archivio ZIP corrotto: {0}",
     "utils_permission_denied": "Permesso negato durante l'estrazione: {0}",
@@ -196,5 +198,6 @@
     ,"controls_mapping_instruction": "Tieni premuto per confermare l'associazione:"
     ,"controls_mapping_waiting": "In attesa di un tasto o pulsante..."
     ,"controls_mapping_press": "Premi un tasto o un pulsante"
+    ,"status_already_present": "Già Presente"
     ,"footer_joystick": "Joystick: {0}"
 }

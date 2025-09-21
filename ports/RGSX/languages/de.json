@@ -117,6 +117,8 @@
     "network_api_error": "Fehler bei der API-Anfrage, der Schlüssel könnte falsch sein: {0}",
     "network_download_error": "Downloadfehler {0}: {1}",
     "network_download_ok": "Download erfolgreich: {0}",
+    "download_already_present": " (bereits vorhanden)",
+    "download_already_extracted": " (bereits extrahiert)",
     "utils_extracted": "Extrahiert: {0}",
     "utils_corrupt_zip": "Beschädigtes ZIP-Archiv: {0}",
     "utils_permission_denied": "Berechtigung während der Extraktion verweigert: {0}",
@@ -196,5 +198,6 @@
     ,"controls_mapping_instruction": "Zum Bestätigen gedrückt halten:"
     ,"controls_mapping_waiting": "Warte auf eine Taste oder einen Button..."
     ,"controls_mapping_press": "Drücke eine Taste oder einen Button"
+    ,"status_already_present": "Bereits Vorhanden"
     ,"footer_joystick": "Joystick: {0}"
 }

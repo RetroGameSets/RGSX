@@ -104,6 +104,8 @@
     "network_api_error": "API request error, the key may be incorrect: {0}",
     "network_download_error": "Download error {0}: {1}",
     "network_download_ok": "Download OK: {0}",
+    "download_already_present": " (already present)",
+    "download_already_extracted": " (already extracted)",
     "utils_extracted": "Extracted: {0}",
     "utils_corrupt_zip": "Corrupted ZIP archive: {0}",
     "utils_permission_denied": "Permission denied during extraction: {0}",
@@ -196,5 +198,6 @@
     ,"controls_mapping_instruction": "Hold to confirm the mapping:"
     ,"controls_mapping_waiting": "Waiting for a key or button..."
     ,"controls_mapping_press": "Press a key or a button"
+    ,"status_already_present": "Already Present"
     ,"footer_joystick": "Joystick: {0}"
 }

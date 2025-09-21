@@ -117,6 +117,8 @@
     "network_api_error": "Erreur lors de la requête API, la clé est peut-être incorrecte: {0}",
     "network_download_error": "Erreur téléchargement {0}: {1}",
     "network_download_ok": "Téléchargement ok : {0}",
+    "download_already_present": " (déjà présent)",
+    "download_already_extracted": " (déjà extrait)",
     "utils_extracted": "Extracted: {0}",
     "utils_corrupt_zip": "Archive ZIP corrompue: {0}",
     "utils_permission_denied": "Permission refusée lors de l'extraction: {0}",
@@ -196,5 +198,6 @@
     ,"controls_mapping_instruction": "Maintenez pour confirmer l'association :"
     ,"controls_mapping_waiting": "En attente d'une touche ou d'un bouton..."
     ,"controls_mapping_press": "Appuyez sur une touche ou un bouton"
+    ,"status_already_present": "Déjà Présent"
     ,"footer_joystick": "Joystick : {0}"
 }
