@@ -1,4 +1,5 @@
 {
+  "device": "Microsoft Xbox Controller",
   "confirm": { "type": "button", "button": 1, "display": "A" },
   "cancel":  { "type": "button", "button": 2, "display": "B" },
   "clear_history": { "type": "button", "button": 3, "display": "X" },
@@ -12,8 +13,5 @@
   "left": { "type": "hat", "value": [-1, 0], "display": "\u2190" },
   "right": { "type": "hat", "value": [1, 0], "display": "\u2192" },
   "page_up": { "type": "axis", "axis": 5, "direction": -1, "display": "RT" },
-  "page_down": { "type": "axis", "axis": 2, "direction": -1, "display": "LT" },
-  "meta": {
-    "notes": "Mapping spécifique Xbox Elite basé sur log fourni. Triggers décalés: LEFT_TRIGGER=AXIS2 -, RIGHT_TRIGGER=AXIS5 -. Les boutons semblent décalés de +1 vs profil 360 standard."
-  }
+  "page_down": { "type": "axis", "axis": 2, "direction": -1, "display": "LT" }
 }

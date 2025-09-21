@@ -1,0 +1,20 @@
+{
+    "device": "Retroid Pocket Controller",
+    "confirm": { "type": "button", "button": 1, "display": "A" },
+    "cancel": { "type": "button", "button": 2, "display": "B" },
+    "clear_history": { "type": "button", "button": 4, "display": "X" },
+    "history": { "type": "button", "button": 3, "display": "Y" },
+    "start": { "type": "button", "button": 8, "display": "Start" },
+    "filter": { "type": "button", "button": 7, "display": "Select" },
+
+    "up": { "type": "button", "button": 12, "display": "↑" },
+    "down": { "type": "button", "button": 13, "display": "↓" },
+    "left": { "type": "button", "button": 14, "display": "←" },
+    "right": { "type": "button", "button": 15, "display": "→" },
+
+    "delete": { "type": "button", "button": 5, "display": "LB" },
+    "space": { "type": "button", "button": 6, "display": "RB" },
+
+    "page_up": { "type": "axis", "axis": 2, "direction": -1, "display": "LT" },
+    "page_down": { "type": "axis", "axis": 5, "direction": -1, "display": "RT" }
+}

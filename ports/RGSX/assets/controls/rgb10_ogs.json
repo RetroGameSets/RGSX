@@ -1,0 +1,20 @@
+{
+    "device": "GO-Super Gamepad",
+    "confirm": { "type": "button", "button": 0, "display": "A" },
+    "cancel": { "type": "button", "button": 1, "display": "B" },
+    "clear_history": { "type": "button", "button": 3, "display": "X" },
+    "history": { "type": "button", "button": 2, "display": "Y" },
+    "start": { "type": "button", "button": 13, "display": "Start" },
+    "filter": { "type": "button", "button": 12, "display": "Select" },
+
+    "up": { "type": "button", "button": 8, "display": "↑" },
+    "down": { "type": "button", "button": 9, "display": "↓" },
+    "left": { "type": "button", "button": 10, "display": "←" },
+    "right": { "type": "button", "button": 11, "display": "→" },
+
+    "delete": { "type": "button", "button": 6, "display": "LB" },
+    "space": { "type": "button", "button": 7, "display": "RB" },
+
+    "page_up": { "type": "button", "button": 4, "display": "LT" },
+    "page_down": { "type": "button", "button": 5, "display": "RT" }
+}

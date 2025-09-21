@@ -1,4 +1,5 @@
 {
+    "device": "Steam Deck",
     "confirm": {
         "type": "button",
         "button": 3,
@@ -10,44 +11,46 @@
         "display": "B"
     },
     "up": {
-        "type": "hat",
-        "value": [0, 1],
+        "type": "button",
+        "button": 16,
         "display": "↑"
     },
     "down": {
-        "type": "hat",
-        "value": [0, -1],
+        "type": "button",
+        "button": 17,
         "display": "↓"
     },
     "left": {
-        "type": "hat",
-        "value": [-1, 0],
+        "type": "button",
+        "button": 18,
         "display": "←"
     },
     "right": {
-        "type": "hat",
-        "value": [1, 0],
+        "type": "button",
+        "button": 19,
         "display": "→"
     },
     "start": {
         "type": "button",
-        "button": 10,
+        "button": 12,
         "display": "Start"
     },
     "filter": {
         "type": "button",
-        "button": 9,
+        "button": 11,
         "display": "Select"
     },
     "page_up": {
-        "type": "button",
-        "button": 7,
-        "display": "LT"
+        "type": "axis",
+        "axis": 2,
+        "direction": -1,
+        "display": "L2"
     },
     "page_down": {
-        "type": "button",
-        "button": 8,
-        "display": "RT"
+        "type": "axis",
+        "axis": 5,
+        "direction": -1,
+        "display": "R2"
     },
     "history": {
         "type": "button",
@@ -61,12 +64,12 @@
     },
     "delete": {
         "type": "button",
-        "button": 13,
-        "display": "LB"
+        "button": 7,
+        "display": "L1"
     },
     "space": {
         "type": "button",
-        "button": 14,
-        "display": "RB"
+        "button": 8,
+        "display": "R1"
     }
 }

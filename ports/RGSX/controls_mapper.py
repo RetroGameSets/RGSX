@@ -1,12 +1,21 @@
 import pygame # type: ignore
 import json
 import os
+import io
 import logging
 import config
 import language
 from config import CONTROLS_CONFIG_PATH
 from display import draw_gradient
 import xml.etree.ElementTree as ET
+from collections import OrderedDict
+from typing import Optional, Tuple
+
+# Optional: SVG to PNG conversion (if installed)
+try:
+    import cairosvg  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    cairosvg = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -282,8 +291,76 @@ MOUSE_BUTTON_NAMES = {
 
 # Durée de maintien pour valider une entrée (en millisecondes)
 HOLD_DURATION = 1000
+INPUT_ACCEPT_COOLDOWN = 350  # ms to ignore inputs right after accepting one (avoid axis release bounce)
 
 JOYHAT_DEBOUNCE = 200  # Délai anti-rebond pour JOYHATMOTION (ms)
+
+# ---- Icônes: helpers pour charger et afficher des SVG ----
+_ICON_CACHE: dict[Tuple[str, int], Optional[pygame.Surface]] = {}
+
+def _images_base_dir() -> str:
+    return os.path.join(os.path.dirname(__file__), "assets", "images")
+
+def _action_icon_filename(action_name: str) -> Optional[str]:
+    # Map actions to icon filenames present in assets/images
+    mapping = {
+        "up": "dpad_up.svg",
+        "down": "dpad_down.svg",
+        "left": "dpad_left.svg",
+        "right": "dpad_right.svg",
+        "confirm": "buttons_south.svg",  # A (south)
+        "cancel": "buttons_east.svg",    # B (east)
+        "clear_history": "buttons_west.svg",  # X (west)
+        "history": "buttons_north.svg",       # Y (north)
+        "start": "button_start.svg",
+        "filter": "button_select.svg",
+        "delete": "button_l.svg",   # LB
+        "space": "button_r.svg",    # RB
+        "page_up": "button_lt.svg",
+        "page_down": "button_rt.svg",
+    }
+    return mapping.get(action_name)
+
+def _load_svg_icon_surface(svg_path: str, size: int) -> Optional[pygame.Surface]:
+    # Try to load SVG via cairosvg; fallback: let pygame try to load (only if supported)
+    try:
+        if cairosvg is not None:
+            with open(svg_path, "rb") as f:
+                svg_bytes = f.read()
+            png_bytes = cairosvg.svg2png(bytestring=svg_bytes, output_width=size, output_height=size)
+            return pygame.image.load(io.BytesIO(png_bytes), "icon.png").convert_alpha()
+        else:
+            # Some pygame builds may support SVG; try directly.
+            surf = pygame.image.load(svg_path)
+            # Scale to requested size while keeping aspect ratio
+            w, h = surf.get_size()
+            if w != size or h != size:
+                # uniform scale to fit in size x size
+                scale = min(size / max(w, 1), size / max(h, 1))
+                new_w = max(1, int(w * scale))
+                new_h = max(1, int(h * scale))
+                surf = pygame.transform.smoothscale(surf, (new_w, new_h))
+            return surf.convert_alpha()
+    except Exception as e:
+        logger.debug(f"Icon load failed for {svg_path}: {e}")
+        return None
+
+def get_action_icon_surface(action_name: str, size: int) -> Optional[pygame.Surface]:
+    key = (action_name, size)
+    if key in _ICON_CACHE:
+        return _ICON_CACHE[key]
+    filename = _action_icon_filename(action_name)
+    if not filename:
+        _ICON_CACHE[key] = None
+        return None
+    full_path = os.path.join(_images_base_dir(), filename)
+    if not os.path.exists(full_path):
+        logger.debug(f"Icon file not found: {full_path}")
+        _ICON_CACHE[key] = None
+        return None
+    surf = _load_svg_icon_surface(full_path, size)
+    _ICON_CACHE[key] = surf
+    return surf
 
 def load_controls_config(path=CONTROLS_CONFIG_PATH):
     """Charge la configuration des contrôles depuis controls.json"""
@@ -347,9 +424,64 @@ def get_readable_input_name(event):
     return "Inconnu"
 
 
+def get_preferred_display_for_action(action_name: str, input_type: str, input_value):
+    """Retourne un libellé display standardisé pour correspondre à controller_debug.
+
+    Règles:
+    - Pour les actions manette, on force un libellé stable (A/B/X/Y, LB/RB, LT/RT, Start/Select, flèches).
+    - Pour le clavier, on conserve le nom lisible de la touche.
+    - Pour le D-Pad et axes directionnels, on affiche des flèches.
+    """
+    # Clavier: garder la touche lisible
+    if input_type == "key":
+        try:
+            key_value = int(input_value)
+        except Exception:
+            key_value = input_value
+        key_value = SDL_TO_PYGAME_KEY.get(key_value, key_value)
+        return KEY_NAMES.get(key_value, pygame.key.name(key_value) or f"Touche {key_value}")
+
+    # Mapping stable par action (manette)
+    action_display = {
+        "confirm": "A",
+        "cancel": "B",
+        "clear_history": "X",
+        "history": "Y",
+        "start": "Start",
+        "filter": "Select",
+        "delete": "LB",
+        "space": "RB",
+        "page_up": "LT",
+        "page_down": "RT",
+        "up": "↑",
+        "down": "↓",
+        "left": "←",
+        "right": "→",
+    }
+
+    # Directions: flèches (peu importe hat/axis/button)
+    if action_name in ("up", "down", "left", "right"):
+        return action_display[action_name]
+
+    # Autres actions: renvoyer le libellé normalisé ci-dessus
+    if action_name in action_display:
+        return action_display[action_name]
+
+    # Fallback: si on ne sait pas, retourner chaîne vide (appelant fera un secours)
+    return ""
+
+
 def map_controls(screen):
     """Interface de mappage des contrôles avec maintien de 3 secondes"""
-    controls_config = load_controls_config()
+    # Construire un objet ordonné pour forcer l'ordre des clés dans le JSON final
+    # Placer "device" en premier si disponible
+    controls_config = OrderedDict()
+    try:
+        device_name = getattr(config, "controller_device_name", "") or ""
+        if device_name:
+            controls_config["device"] = device_name
+    except Exception:
+        pass
     current_action_index = 0
     current_input = None
     input_held_time = 0
@@ -357,6 +489,7 @@ def map_controls(screen):
     last_frame_time = pygame.time.get_ticks()
     config.needs_redraw = True
     last_joyhat_time = 0
+    next_input_allowed_time = 0  # timestamp until which new inputs are ignored after accept
     
     # État des entrées maintenues
     held_keys = set()
@@ -424,6 +557,9 @@ def map_controls(screen):
             
             # Détection des nouvelles entrées
             if event.type in (pygame.KEYDOWN, pygame.JOYBUTTONDOWN, pygame.JOYAXISMOTION, pygame.JOYHATMOTION, pygame.MOUSEBUTTONDOWN):
+                # Ignorer les événements pendant un court délai après validation d'un mapping
+                if current_time < next_input_allowed_time:
+                    continue
                 if event.type == pygame.JOYHATMOTION:
                     if (current_time - last_joyhat_time) < JOYHAT_DEBOUNCE:
                         continue
@@ -485,36 +621,41 @@ def map_controls(screen):
                 
                 # Sauvegarder avec la structure attendue par controls.py
                 if current_input["type"] == "key":
+                    disp = get_preferred_display_for_action(action_name, "key", current_input["value"]) or last_input_name
                     controls_config[action_name] = {
                         "type": "key",
                         "key": current_input["value"],
-                        "display": last_input_name
+                        "display": disp
                     }
                 elif current_input["type"] == "button":
+                    disp = get_preferred_display_for_action(action_name, "button", current_input["value"]) or last_input_name
                     controls_config[action_name] = {
                         "type": "button",
                         "button": current_input["value"],
-                        "display": last_input_name
+                        "display": disp
                     }
                 elif current_input["type"] == "axis":
                     axis, direction = current_input["value"]
+                    disp = get_preferred_display_for_action(action_name, "axis", (axis, direction)) or last_input_name
                     controls_config[action_name] = {
                         "type": "axis",
                         "axis": axis,
                         "direction": direction,
-                        "display": last_input_name
+                        "display": disp
                     }
                 elif current_input["type"] == "hat":
+                    disp = get_preferred_display_for_action(action_name, "hat", current_input["value"]) or last_input_name
                     controls_config[action_name] = {
                         "type": "hat",
                         "value": current_input["value"],
-                        "display": last_input_name
+                        "display": disp
                     }
                 elif current_input["type"] == "mouse":
+                    disp = get_preferred_display_for_action(action_name, "mouse", current_input["value"]) or last_input_name
                     controls_config[action_name] = {
                         "type": "mouse",
                         "button": current_input["value"],
-                        "display": last_input_name
+                        "display": disp
                     }
                 
                 logger.debug(f"Contrôle mappé: {action_name} -> {controls_config[action_name]}")
@@ -523,6 +664,8 @@ def map_controls(screen):
                 input_held_time = 0
                 last_input_name = None
                 config.needs_redraw = True
+                # Activer un court délai pour ignorer les rebonds (ex: relâchement d'un axe)
+                next_input_allowed_time = pygame.time.get_ticks() + INPUT_ACCEPT_COOLDOWN
                 
                 # Réinitialiser les entrées maintenues
                 held_keys.clear()
@@ -542,7 +685,7 @@ def map_controls(screen):
 
 
 def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_progress):
-    #Affiche l'interface de mappage des contrôles avec une barre de progression pour le maintien
+    # Affiche l'interface de mappage des contrôles avec une barre de progression pour le maintien
     draw_gradient(screen, (28, 37, 38), (47, 59, 61))
 
     # Paramètres de l'interface
@@ -552,12 +695,18 @@ def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_pr
     border_radius = 24
     border_width = 4
     shadow_offset = 8
+    bar_height = 25
+    min_bar_inner_width = 200  # largeur minimale utile de la barre
 
     # Titre principal (traduction)
     title_text = language.get_text("controls_mapping_title", "Configuration des contrôles")
     title_surface = config.title_font.render(title_text, True, (255, 255, 255))
     title_rect = title_surface.get_rect(center=(config.screen_width // 2, 80))
     screen.blit(title_surface, title_rect)
+
+    # Icône de l'action courante (facultatif si dépendances disponibles)
+    icon_size = 72  # px
+    icon_surface = get_action_icon_surface(action.get('name', ''), icon_size)
 
     # Instructions (traduction)
     instruction_text = language.get_text("controls_mapping_instruction", "Maintenez pendant 3s pour configurer :")
@@ -574,11 +723,22 @@ def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_pr
     input_surface = config.small_font.render(input_text, True, (0, 255, 0) if last_input else (255, 255, 255))
     input_width, input_height = input_surface.get_size()
 
-    # Dimensions de la popup
-    text_width = max(instruction_width, description_width, input_width)
-    text_height = instruction_height + description_height + input_height + 2 * padding_between
-    popup_width = text_width + 2 * padding_horizontal
-    popup_height = text_height + 40 + 2 * padding_vertical  # +40 pour la barre de progression
+    # Dimensions de la popup (s'adapte au contenu et inclut la barre)
+    icon_width, icon_height = (icon_surface.get_size() if icon_surface else (0, 0))
+    inner_text_width = max(instruction_width, description_width, input_width, min_bar_inner_width, icon_width)
+    inner_text_height = 0
+    if icon_surface:
+        inner_text_height += icon_height + padding_between
+    inner_text_height += instruction_height + description_height + input_height + 2 * padding_between
+    inner_width = inner_text_width
+    inner_height = inner_text_height + padding_between + bar_height
+
+    popup_width = inner_width + 2 * padding_horizontal
+    # Eviter de dépasser l'écran (marge de 20px de chaque côté)
+    popup_width = min(popup_width, config.screen_width - 40)
+    popup_height = inner_height + 2 * padding_vertical
+    popup_height = min(popup_height, config.screen_height - 40)
+
     popup_x = (config.screen_width - popup_width) // 2
     popup_y = (config.screen_height - popup_height) // 2
 
@@ -597,31 +757,40 @@ def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_pr
     # Bordure blanche
     pygame.draw.rect(screen, (255, 255, 255), popup_rect, border_width, border_radius=border_radius)
 
-    # Afficher les textes
+    # Afficher les textes (centrés dans la popup)
+    center_x = popup_x + popup_width // 2
     start_y = popup_y + padding_vertical
-    instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, start_y + instruction_height // 2))
+    # Icône en premier (si dispo)
+    if icon_surface:
+        icon_rect = icon_surface.get_rect(center=(center_x, start_y + icon_height // 2))
+        screen.blit(icon_surface, icon_rect)
+        start_y += icon_height + padding_between
+    instruction_rect = instruction_surface.get_rect(center=(center_x, start_y + instruction_height // 2))
     screen.blit(instruction_surface, instruction_rect)
     start_y += instruction_height + padding_between
-    description_rect = description_surface.get_rect(center=(config.screen_width // 2, start_y + description_height // 2))
+
+    description_rect = description_surface.get_rect(center=(center_x, start_y + description_height // 2))
     screen.blit(description_surface, description_rect)
     start_y += description_height + padding_between
-    input_rect = input_surface.get_rect(center=(config.screen_width // 2, start_y + input_height // 2))
+
+    input_rect = input_surface.get_rect(center=(center_x, start_y + input_height // 2))
     screen.blit(input_surface, input_rect)
     start_y += input_height + padding_between
 
-    # Barre de progression pour le maintien
-    bar_width = 300
-    bar_height = 25
-    bar_x = (config.screen_width - bar_width) // 2
-    bar_y = start_y + 20
-    pygame.draw.rect(screen, (50, 50, 50), (bar_x, bar_y, bar_width, bar_height)) 
-    progress_width = bar_width * hold_progress
-    pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, progress_width, bar_height)) 
+    # Barre de progression pour le maintien (adaptée à la largeur intérieure de la popup)
+    bar_x = popup_x + padding_horizontal
+    bar_y = start_y
+    bar_width = popup_width - 2 * padding_horizontal
+
+    pygame.draw.rect(screen, (50, 50, 50), (bar_x, bar_y, bar_width, bar_height))
+    progress_width = int(bar_width * max(0.0, min(1.0, hold_progress)))
+    if progress_width > 0:
+        pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, progress_width, bar_height))
     pygame.draw.rect(screen, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 2)
-    
-    # Afficher le pourcentage de progression
+
+    # Pourcentage de progression (affiché au centre de la barre)
     if hold_progress > 0:
         progress_text = f"{int(hold_progress * 100)}%"
         progress_surface = config.small_font.render(progress_text, True, (255, 255, 255))
-        progress_rect = progress_surface.get_rect(center=(config.screen_width // 2, bar_y + bar_height + 30))
+        progress_rect = progress_surface.get_rect(center=(bar_x + bar_width // 2, bar_y + bar_height // 2))
         screen.blit(progress_surface, progress_rect)

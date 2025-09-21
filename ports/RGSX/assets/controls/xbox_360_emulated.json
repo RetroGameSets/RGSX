@@ -1,33 +1,46 @@
 {
+    "device": "XBOX 360 For Windows (Controller)",
     "confirm": {
-        "type": "button",
-        "button": 1,
-        "display": "B"
-    },
-    "cancel": {
         "type": "button",
         "button": 0,
         "display": "A"
     },
+    "cancel": {
+        "type": "button",
+        "button": 1,
+        "display": "B"
+    },
     "up": {
         "type": "hat",
-        "value": [0, 1],
-        "display": "↑"
+        "value": [
+            0,
+            1
+        ],
+        "display": "\u2191"
     },
     "down": {
         "type": "hat",
-        "value": [0, -1],
-        "display": "↓"
+        "value": [
+            0,
+            -1
+        ],
+        "display": "\u2193"
     },
     "left": {
         "type": "hat",
-        "value": [-1, 0],
-        "display": "←"
+        "value": [
+            -1,
+            0
+        ],
+        "display": "\u2190"
     },
     "right": {
         "type": "hat",
-        "value": [1, 0],
-        "display": "→"
+        "value": [
+            1,
+            0
+        ],
+        "display": "\u2192"
     },
     "start": {
         "type": "button",
@@ -43,13 +56,13 @@
         "type": "axis",
         "axis": 4,
         "direction": 1,
-        "display": "ZR"
+        "display": "RT"
     },
     "page_down": {
         "type": "axis",
         "axis": 5,
         "direction": -1,
-        "display": "ZL"
+        "display": "LT"
     },
     "history": {
         "type": "button",
@@ -64,11 +77,11 @@
     "delete": {
         "type": "button",
         "button": 4,
-        "display": "L"
+        "display": "LB"
     },
     "space": {
         "type": "button",
         "button": 5,
-        "display": "R"
+        "display": "RB"
     }
 }

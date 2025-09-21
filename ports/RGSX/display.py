@@ -1,4 +1,8 @@
+ 
+
 import pygame  # type: ignore
+import os
+import io
 import config
 from utils import truncate_text_middle, wrap_text, load_system_image, truncate_text_end
 import logging
@@ -9,6 +13,145 @@ from language import _  # Import de la fonction de traduction
 logger = logging.getLogger(__name__)
 
 OVERLAY = None  # Initialisé dans init_display()
+
+# --- Helpers: SVG icons for controls (local cache, optional cairosvg) ---
+_HELP_ICON_CACHE = {}
+
+def _images_base_dir():
+    try:
+        base_dir = os.path.join(os.path.dirname(__file__), "assets", "images")
+    except Exception:
+        base_dir = "assets/images"
+    return base_dir
+
+def _action_icon_filename(action_name: str):
+    mapping = {
+        "up": "dpad_up.svg",
+        "down": "dpad_down.svg",
+        "left": "dpad_left.svg",
+        "right": "dpad_right.svg",
+        "confirm": "buttons_south.svg",
+        "cancel": "buttons_east.svg",
+        "clear_history": "buttons_west.svg",
+        "history": "buttons_north.svg",
+        "start": "button_start.svg",
+        "filter": "button_select.svg",
+        "delete": "button_l.svg",
+        "space": "button_r.svg",
+        "page_up": "button_lt.svg",
+        "page_down": "button_rt.svg",
+    }
+    return mapping.get(action_name)
+
+def _load_svg_icon_surface(svg_path: str, size: int):
+    try:
+        # Prefer cairosvg if available for crisp rasterization
+        try:
+            import cairosvg  # type: ignore
+        except Exception:
+            cairosvg = None  # type: ignore
+        if cairosvg is not None:
+            with open(svg_path, "rb") as f:
+                svg_bytes = f.read()
+            png_bytes = cairosvg.svg2png(bytestring=svg_bytes, output_width=size, output_height=size)
+            return pygame.image.load(io.BytesIO(png_bytes), "icon.png").convert_alpha()
+        # Fallback: try direct load (works if SDL_image has SVG support)
+        surf = pygame.image.load(svg_path)
+        w, h = surf.get_size()
+        if w != size or h != size:
+            scale = min(size / max(w, 1), size / max(h, 1))
+            new_w = max(1, int(w * scale))
+            new_h = max(1, int(h * scale))
+            surf = pygame.transform.smoothscale(surf, (new_w, new_h))
+        return surf.convert_alpha()
+    except Exception as e:
+        try:
+            logger.debug(f"Help icon load failed for {svg_path}: {e}")
+        except Exception:
+            pass
+        return None
+
+def get_help_icon_surface(action_name: str, size: int):
+    key = (action_name, size)
+    if key in _HELP_ICON_CACHE:
+        return _HELP_ICON_CACHE[key]
+    filename = _action_icon_filename(action_name)
+    if not filename:
+        _HELP_ICON_CACHE[key] = None
+        return None
+    full_path = os.path.join(_images_base_dir(), filename)
+    if not os.path.exists(full_path):
+        _HELP_ICON_CACHE[key] = None
+        return None
+    surf = _load_svg_icon_surface(full_path, size)
+    _HELP_ICON_CACHE[key] = surf
+    return surf
+
+def _render_icons_line(actions, text, target_col_width, font, text_color, icon_size=28, icon_gap=8, icon_text_gap=12):
+    """Compose une ligne avec une rangée d'icônes (actions) et un texte à droite.
+    Renvoie un pygame.Surface prêt à être blité, limité à target_col_width.
+    """
+    # Charger icônes (ignorer celles manquantes)
+    icon_surfs = []
+    for a in actions:
+        surf = get_help_icon_surface(a, icon_size)
+        if surf is not None:
+            icon_surfs.append(surf)
+    # Si aucune icône, rendre simplement le texte (le layout appelant ajoutera les espacements)
+    if not icon_surfs:
+        try:
+            lines = wrap_text(text, font, target_col_width)
+        except Exception:
+            lines = [text]
+        line_surfs = [font.render(l, True, text_color) for l in lines]
+        width = max((s.get_width() for s in line_surfs), default=1)
+        height = sum(s.get_height() for s in line_surfs) + max(0, (len(line_surfs) - 1)) * 4
+        surf = pygame.Surface((width, height), pygame.SRCALPHA)
+        y = 0
+        for s in line_surfs:
+            surf.blit(s, (0, y))
+            y += s.get_height() + 4
+        return surf
+
+    # Calcul largeur totale des icônes
+    icons_width = sum(s.get_width() for s in icon_surfs) + (len(icon_surfs) - 1) * icon_gap
+    if icons_width + icon_text_gap > target_col_width:
+        scale = (target_col_width - icon_text_gap) / max(1, icons_width)
+        scale = max(0.6, min(1.0, scale))
+        new_icon_surfs = []
+        for s in icon_surfs:
+            new_size = (max(1, int(s.get_width() * scale)), max(1, int(s.get_height() * scale)))
+            new_icon_surfs.append(pygame.transform.smoothscale(s, new_size))
+        icon_surfs = new_icon_surfs
+        icons_width = sum(s.get_width() for s in icon_surfs) + (len(icon_surfs) - 1) * icon_gap
+
+    text_area_width = max(60, target_col_width - icons_width - icon_text_gap)
+    try:
+        lines = wrap_text(text, font, text_area_width)
+    except Exception:
+        lines = [text]
+    line_surfs = [font.render(l, True, text_color) for l in lines]
+    text_block_width = max((s.get_width() for s in line_surfs), default=1)
+    text_block_height = sum(s.get_height() for s in line_surfs) + max(0, (len(line_surfs) - 1)) * 4
+
+    total_width = min(target_col_width, icons_width + icon_text_gap + text_block_width)
+    total_height = max(max((s.get_height() for s in icon_surfs), default=0), text_block_height)
+    surf = pygame.Surface((total_width, total_height), pygame.SRCALPHA)
+
+    x = 0
+    icon_y_center = total_height // 2
+    for idx, s in enumerate(icon_surfs):
+        r = s.get_rect()
+        y = icon_y_center - r.height // 2
+        surf.blit(s, (x, y))
+        x += r.width + (icon_gap if idx < len(icon_surfs) - 1 else 0)
+
+    text_x = x + icon_text_gap
+    y = (total_height - text_block_height) // 2
+    for ls in line_surfs:
+        surf.blit(ls, (text_x, y))
+        y += ls.get_height() + 4
+    return surf
 
 # Couleurs modernes pour le thème
 THEME_COLORS = {
@@ -1270,6 +1413,24 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
     start_button = get_control_display('start', 'START')
     start_text = _("controls_action_start")
     control_text = f"RGSX v{config.app_version} - {start_button} : {start_text}"
+
+    # Afficher le nom du joystick s'il est détecté
+    try:
+        device_name = getattr(config, 'controller_device_name', '') or ''
+        if device_name:
+            # Utilise la clé i18n si disponible, sinon fallback
+            try:
+                joy_label = _("footer_joystick")
+            except Exception:
+                joy_label = "Joystick: {0}"
+            # Formater si le placeholder {0} est présent
+            if isinstance(joy_label, str) and "{0}" in joy_label:
+                joy_text = joy_label.format(device_name)
+            else:
+                joy_text = f"{joy_label} {device_name}" if joy_label else f"Joystick: {device_name}"
+            control_text += f" | {joy_text}"
+    except Exception:
+        pass
     
     # Ajouter le nom de la musique si disponible
     if config.current_music_name and config.music_popup_start_time > 0:
@@ -1995,25 +2156,25 @@ def draw_filter_platforms_menu(screen):
 # Menu aide contrôles
 def draw_controls_help(screen, previous_state):
     """Affiche la liste des contrôles (aide) avec mise en page adaptative."""
-    # Contenu des catégories
+    # Contenu des catégories (avec icônes si disponibles)
     control_categories = {
         _("controls_category_navigation"): [
-            f"{get_control_display('up', '↑')} {get_control_display('down', '↓')} {get_control_display('left', '←')} {get_control_display('right', '→')} : {_('controls_navigation')}",
-            f"{get_control_display('page_up', 'LB')} {get_control_display('page_down', 'RB')} : {_('controls_pages')}",
+            ("icons", ["up", "down", "left", "right"], f"{get_control_display('up', '↑')} {get_control_display('down', '↓')} {get_control_display('left', '←')} {get_control_display('right', '→')} : {_('controls_navigation')}"),
+            ("icons", ["page_up", "page_down"], f"{get_control_display('page_up', 'LB')} {get_control_display('page_down', 'RB')} : {_('controls_pages')}"),
         ],
         _("controls_category_main_actions"): [
-            f"{get_control_display('confirm', 'A')} : {_('controls_confirm_select')}",
-            f"{get_control_display('cancel', 'B')} : {_('controls_cancel_back')}",
-            f"{get_control_display('start', 'Start')} : {_('controls_action_start')}",
+            ("icons", ["confirm"], f"{get_control_display('confirm', 'A')} : {_('controls_confirm_select')}"),
+            ("icons", ["cancel"], f"{get_control_display('cancel', 'B')} : {_('controls_cancel_back')}"),
+            ("icons", ["start"], f"{get_control_display('start', 'Start')} : {_('controls_action_start')}"),
         ],
         _("controls_category_downloads"): [
-            f"{get_control_display('history', 'Y')} : {_('controls_action_history')}",
-            f"{get_control_display('clear_history', 'X')} : {_('controls_action_clear_history')}",
+            ("icons", ["history"], f"{get_control_display('history', 'Y')} : {_('controls_action_history')}"),
+            ("icons", ["clear_history"], f"{get_control_display('clear_history', 'X')} : {_('controls_action_clear_history')}"),
         ],
         _("controls_category_search"): [
-            f"{get_control_display('filter', 'Select')} : {_('controls_filter_search')}",
-            f"{get_control_display('delete', 'Suppr')} : {_('controls_action_delete')}",
-            f"{get_control_display('space', 'Espace')} : {_('controls_action_space')}",
+            ("icons", ["filter"], f"{get_control_display('filter', 'Select')} : {_('controls_filter_search')}"),
+            ("icons", ["delete"], f"{get_control_display('delete', 'Suppr')} : {_('controls_action_delete')}"),
+            ("icons", ["space"], f"{get_control_display('space', 'Espace')} : {_('controls_action_space')}"),
         ],
     }
 
@@ -2062,28 +2223,40 @@ def draw_controls_help(screen, previous_state):
             total_height += sec_surf.get_height() + line_spacing
 
             for raw_line in lines:
-                # Wrap par mots
-                words = raw_line.split()
-                cur = ""
-                for word in words:
-                    test = (cur + " " + word).strip()
-                    if font.size(test)[0] <= target_col_width:
-                        cur = test
-                    else:
-                        if cur:
-                            line_surf = font.render(cur, True, THEME_COLORS["text"])
-
-
-
-                            wrapped.append((False, line_surf))
-                            total_height += line_surf.get_height() + line_spacing
-                            max_width = max(max_width, line_surf.get_width())
-                        cur = word
-                if cur:
-                    line_surf = font.render(cur, True, THEME_COLORS["text"])
-                    wrapped.append((False, line_surf))
-                    total_height += line_surf.get_height() + line_spacing
-                    max_width = max(max_width, line_surf.get_width())
+                # Deux formats possibles:
+                # - tuple ("icons", [actions], text)
+                # - chaîne texte simple
+                line_surface = None
+                if isinstance(raw_line, tuple) and len(raw_line) >= 3 and raw_line[0] == "icons":
+                    _, actions, text = raw_line
+                    try:
+                        line_surface = _render_icons_line(actions, text, target_col_width, font, THEME_COLORS["text"])
+                    except Exception:
+                        line_surface = None
+                if line_surface is None:
+                    # Fallback: traitement texte comme avant
+                    words = str(raw_line).split()
+                    cur = ""
+                    for word in words:
+                        test = (cur + " " + word).strip()
+                        if font.size(test)[0] <= target_col_width:
+                            cur = test
+                        else:
+                            if cur:
+                                line_surf = font.render(cur, True, THEME_COLORS["text"])
+                                wrapped.append((False, line_surf))
+                                total_height += line_surf.get_height() + line_spacing
+                                max_width = max(max_width, line_surf.get_width())
+                            cur = word
+                    if cur:
+                        line_surf = font.render(cur, True, THEME_COLORS["text"])
+                        wrapped.append((False, line_surf))
+                        total_height += line_surf.get_height() + line_spacing
+                        max_width = max(max_width, line_surf.get_width())
+                else:
+                    wrapped.append((False, line_surface))
+                    total_height += line_surface.get_height() + line_spacing
+                    max_width = max(max_width, line_surface.get_width())
 
             total_height += section_spacing  # espace après section
             max_width = max(max_width, sec_surf.get_width())

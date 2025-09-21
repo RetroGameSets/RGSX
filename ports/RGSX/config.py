@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.2.5"
+app_version = "2.2.2.6"
 
 
 def get_application_root():
@@ -78,9 +78,9 @@ OTA_UPDATE_ZIP = os.path.join(OTA_SERVER_URL, "RGSX.zip")
 OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "games.zip")
 
 #CHEMINS DES EXECUTABLES
-UNRAR_EXE = os.path.join(APP_FOLDER,"assets", "unrar.exe")
-XDVDFS_EXE = os.path.join(APP_FOLDER,"assets", "xdvdfs.exe")
-XDVDFS_LINUX = os.path.join(APP_FOLDER,"assets", "xdvdfs")
+UNRAR_EXE = os.path.join(APP_FOLDER,"assets","progs","unrar.exe")
+XDVDFS_EXE = os.path.join(APP_FOLDER,"assets", "progs", "xdvdfs.exe")
+XDVDFS_LINUX = os.path.join(APP_FOLDER,"assets", "progs", "xdvdfs")
 
 if not HEADLESS:
     # Print des chemins pour debug
@@ -191,6 +191,7 @@ trimui_controller = False
 generic_controller = False
 xbox_elite_controller = False  # Flag spécifique manette Xbox Elite
 anbernic_rg35xx_controller = False  # Flag spécifique Anbernic RG3xxx
+controller_device_name = ""  # Nom exact du joystick détecté (pour auto-préréglages)
 
 # --- Filtre plateformes (UI) ---
 selected_filter_index = 0  # index dans la liste visible triée
@@ -253,7 +254,7 @@ def init_font():
         search_size = 48
         small_size = 28
         if fam == "pixel":
-            path = os.path.join(APP_FOLDER, "assets", "Pixel-UniCode.ttf")
+            path = os.path.join(APP_FOLDER, "assets", "fonts", "Pixel-UniCode.ttf")
             f = pygame.font.Font(path, int(base_size * font_scale))
             t = pygame.font.Font(path, int(title_size * font_scale))
             s = pygame.font.Font(path, int(search_size * font_scale))

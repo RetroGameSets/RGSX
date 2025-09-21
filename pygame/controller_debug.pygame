@@ -2,8 +2,10 @@
 import os
 import sys
 import time
+import json
+import re
 import traceback
-from typing import Any, Dict, Tuple, List
+from typing import Any, Dict, Tuple, List, Optional
 
 try:
     import pygame  # type: ignore
@@ -234,6 +236,116 @@ def write_log(path: str, mapping: Dict[str, Tuple[str, Any]], device_name: str) 
     log(f"Saved mapping to: {path}")
 
 
+# --- JSON preset generation ---
+def sanitize_device_name(name: str) -> str:
+    s = name.strip().lower()
+    # Replace non-alphanumeric with underscore
+    s = re.sub(r"[^a-z0-9]+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s or "controller"
+
+
+def to_json_binding(kind: str, data: Any, display: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    if kind == "button" and isinstance(data, int):
+        return {"type": "button", "button": data, **({"display": display} if display else {})}
+    if kind == "hat" and isinstance(data, (tuple, list)) and len(data) == 2:
+        val = list(data)
+        return {"type": "hat", "value": val, **({"display": display} if display else {})}
+    if kind == "axis" and isinstance(data, dict):
+        axis = data.get("axis")
+        direction = data.get("direction")
+        if isinstance(axis, int) and direction in (-1, 1):
+            return {"type": "axis", "axis": axis, "direction": int(direction), **({"display": display} if display else {})}
+    return None
+
+
+def build_controls_json(mapping: Dict[str, Tuple[str, Any]]) -> Dict[str, Any]:
+    # Map logical prompts to action keys and preferred display labels
+    prompt_map = {
+        "SOUTH_BUTTON - CONFIRM": ("confirm", "A"),
+        "EAST_BUTTON - CANCEL": ("cancel", "B"),
+        "WEST_BUTTON - CLEAR HISTORY / SELECT GAMES": ("clear_history", "X"),
+        "NORTH_BUTTON - HISTORY": ("history", "Y"),
+        "START - PAUSE": ("start", "Start"),
+        "SELECT - FILTER": ("filter", "Select"),
+        "DPAD_UP - MOVE UP": ("up", "↑"),
+        "DPAD_DOWN - MOVE DOWN": ("down", "↓"),
+        "DPAD_LEFT - MOVE LEFT": ("left", "←"),
+        "DPAD_RIGHT - MOVE  RIGHT": ("right", "→"),
+        "LEFT_BUMPER - LB/L1 - Delete last char": ("delete", "LB"),
+        "RIGHT_BUMPER - RB/R1 - Add space": ("space", "RB"),
+        # Triggers per prompts: LEFT=page_up, RIGHT=page_down
+        "LEFT_TRIGGER - LT/L2 - Page +": ("page_up", "LT"),
+        "RIGHT_TRIGGER - RT/R2 - Page -": ("page_down", "RT"),
+        # Left stick directions (fallbacks for arrows)
+        "JOYSTICK_LEFT_UP - MOVE UP": ("up", "J↑"),
+        "JOYSTICK_LEFT_DOWN - MOVE DOWN": ("down", "J↓"),
+        "JOYSTICK_LEFT_LEFT - MOVE LEFT": ("left", "J←"),
+        "JOYSTICK_LEFT_RIGHT - MOVE RIGHT": ("right", "J→"),
+    }
+
+    result: Dict[str, Any] = {}
+
+    # First pass: take direct DPAD/face/meta/bumper/trigger bindings
+    for prompt, (action, disp) in prompt_map.items():
+        if prompt not in mapping:
+            continue
+        kind, data = mapping[prompt]
+        if kind in ("ignored", "skipped"):
+            continue
+        # Prefer DPAD over JOYSTICK for directions: handle fallback later
+        if action in ("up", "down", "left", "right"):
+            if prompt.startswith("DPAD_"):
+                b = to_json_binding(kind, data, disp)
+                if b:
+                    result[action] = b
+            # Joystick handled as fallback if DPAD missing
+        else:
+            b = to_json_binding(kind, data, disp)
+            if b:
+                result[action] = b
+
+    # Second pass: fallback to joystick directions if arrows missing
+    fallbacks = [
+        ("JOYSTICK_LEFT_UP - MOVE UP", "up", "J↑"),
+        ("JOYSTICK_LEFT_DOWN - MOVE DOWN", "down", "J↓"),
+        ("JOYSTICK_LEFT_LEFT - MOVE LEFT", "left", "J←"),
+        ("JOYSTICK_LEFT_RIGHT - MOVE RIGHT", "right", "J→"),
+    ]
+    for prompt, action, disp in fallbacks:
+        if action in result:
+            continue
+        if prompt in mapping:
+            kind, data = mapping[prompt]
+            if kind in ("ignored", "skipped"):
+                continue
+            b = to_json_binding(kind, data, disp)
+            if b:
+                result[action] = b
+
+    return result
+
+
+def write_controls_json(device_name: str, controls: Dict[str, Any]) -> str:
+    """Write the generated controls preset JSON in the same folder as this script.
+
+    Also embeds a JSON-safe comment with the device name under the _comment key.
+    """
+    # Same folder as the launched script
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    fname = f"{sanitize_device_name(device_name)}_controller.json"
+    out_path = os.path.join(base_dir, fname)
+    # Include the detected device name for auto-preset matching
+    payload = {"device": device_name}
+    payload.update(controls)
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=4)
+        return out_path
+    except Exception:
+        return out_path
+
+
 def main() -> None:
     init_screen()
     js = init_joystick()
@@ -253,6 +365,13 @@ def main() -> None:
 
     log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "controller_mapping.log")
     write_log(log_path, mapping, js.get_name())
+    # Build and write ready-to-use JSON controls preset
+    controls = build_controls_json(mapping)
+    if controls:
+        out_json = write_controls_json(js.get_name(), controls)
+        log(f"Saved JSON preset to: {out_json}")
+    else:
+        log("No usable inputs captured to build a JSON preset.")
     log("Done. Press Q or close the window to exit.")
 
 

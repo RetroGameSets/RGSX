@@ -1,74 +1,85 @@
 {
+    "device": "TRIMUI Smart Pro Controller",
     "confirm": {
         "type": "button",
-        "button": 3,
+        "button": 0,
         "display": "A"
     },
     "cancel": {
         "type": "button",
-        "button": 4,
+        "button": 1,
         "display": "B"
     },
     "up": {
-        "type": "button",
-        "button": 16,
+        "type": "hat",
+        "value": [
+            0,
+            1
+        ],
         "display": "↑"
     },
     "down": {
-        "type": "button",
-        "button": 17,
+        "type": "hat",
+        "value": [
+            0,
+            -1
+        ],
         "display": "↓"
     },
     "left": {
-        "type": "button",
-        "button": 18,
+        "type": "hat",
+        "value": [
+            -1,
+            0
+        ],
         "display": "←"
     },
     "right": {
-        "type": "button",
-        "button": 19,
+        "type": "hat",
+        "value": [
+            1,
+            0
+        ],
         "display": "→"
     },
     "start": {
         "type": "button",
-        "button": 12,
-        "display": "Start"
+        "button": 9,
+        "display": "START"
     },
     "filter": {
         "type": "button",
-        "button": 11,
-        "display": "Select"
+        "button": 8,
+        "display": "SELECT"
     },
     "page_up": {
-        "type": "axis",
-        "axis": 2,
-        "direction": -1,
+        "type": "button",
+        "button": 6,
         "display": "L2"
     },
     "page_down": {
-        "type": "axis",
-        "axis": 5,
-        "direction": -1,
+        "type": "button",
+        "button": 7,
         "display": "R2"
     },
     "history": {
         "type": "button",
-        "button": 6,
-        "display": "Y"
+        "button": 2,
+        "display": "X"
     },
     "clear_history": {
         "type": "button",
-        "button": 5,
-        "display": "X"
+        "button": 3,
+        "display": "Y"
     },
     "delete": {
         "type": "button",
-        "button": 7,
+        "button": 4,
         "display": "L1"
     },
     "space": {
         "type": "button",
-        "button": 8,
+        "button": 5,
         "display": "R1"
     }
 }

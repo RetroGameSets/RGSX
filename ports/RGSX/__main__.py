@@ -16,7 +16,6 @@ import datetime
 import subprocess
 import sys
 import config
-import shutil
 
 from display import (
     init_display, draw_loading_screen, draw_error_screen, draw_platform_grid,
@@ -64,7 +63,6 @@ try:  # pragma: no cover
     logger.debug("API key files ensured at startup")
 except Exception as _e:
     logger.warning(f"Cannot prepare API key files early: {_e}")
-
 # Mise à jour de la gamelist Windows avant toute initialisation graphique (évite les conflits avec ES)
 def _run_windows_gamelist_update():
     try:
@@ -198,6 +196,15 @@ for i in range(count):
         joystick_names.append(j.get_name())
     except Exception as e:
         logger.debug(f"Impossible de lire le nom du joystick {i}: {e}")
+    
+# Enregistrer le nom du premier joystick détecté pour l'auto-préréglage
+try:
+    if joystick_names:
+        config.controller_device_name = joystick_names[0]
+    else:
+        config.controller_device_name = ""
+except Exception:
+    pass
 normalized_names = [n.lower() for n in joystick_names]
 if not joystick_names:
     joystick_names = ["Clavier"]
@@ -205,73 +212,12 @@ if not joystick_names:
     logger.debug("Aucun joystick détecté, utilisation du clavier par défaut.")
     config.joystick = False
     config.keyboard = True
-    # Si aucune marque spécifique détectée mais un joystick est présent, marquer comme générique
-    if not any([config.xbox_controller, config.playstation_controller, config.nintendo_controller,
-                config.eightbitdo_controller, config.steam_controller, config.trimui_controller,
-                config.logitech_controller]):
-        config.generic_controller = True
-        logger.debug("Aucun contrôleur spécifique détecté, utilisation du profil générique")
 else:
-    # Des joysticks sont présents, activer le mode joystick et tenter la détection spécifique
+    # Des joysticks sont présents: activer le mode joystick et mémoriser le nom pour l'auto-préréglage
     config.joystick = True
     config.keyboard = False
-    print(f"Joysticks détectés: YES")
-    logger.debug(f"Joysticks détectés: YES")
-    for idx, name in enumerate(joystick_names):
-        lname = name.lower()
-        # Détection Anbernic RG35XX
-        if ("rg35xx" in lname):
-            config.anbernic_rg35xx_controller = True
-            logger.debug(f"Anbernic Controller detected : {name}")
-            print(f"Controller detected : {name}")
-            break
-        # Détection spécifique Elite AVANT la détection générique Xbox
-        elif ("microsoft xbox controller" in lname):
-            config.xbox_elite_controller = True
-            logger.debug(f"Controller detected: {name}")
-            print(f"Controller detected: {name}")
-            break
-        elif ("xbox" in lname) or ("x-box" in lname) or ("xinput" in lname) or ("microsoft x-box" in lname) or ("x-box 360" in lname) or ("360" in lname):
-            config.xbox_controller = True
-            logger.debug(f"Xbox Controller detected : {name}")
-            print(f"Controller detected : {name}")
-            break
-        elif "playstation" in lname or "ps3" in lname or "sony" in lname:
-            config.playstation_controller = True
-            logger.debug(f"Playstation Controller detected : {name}")
-            print(f"Controller detected : {name}")
-            break
-        elif "nintendo" in lname:
-            config.nintendo_controller = True
-            logger.debug(f"Nintendo Controller detected : {name}")
-            print(f"Controller detected : {name}")
-            break
-        elif "trimui" in lname:
-            config.trimui_controller = True
-            logger.debug(f"Trimui Controller detected : {name}")
-            print(f"Controller detected : {name}")
-            break
-        elif "logitech" in lname:
-            config.logitech_controller = True
-            logger.debug(f"Logitech Controller detected : {name}")
-            print(f"Controller detected : {name}")
-            break
-        elif "8bitdo" in lname or "8-bitdo" in lname:
-            config.eightbitdo_controller = True
-            logger.debug(f"8bitdoController detected : {name}")
-            print(f"Controller detected : {name}")
-            break
-        elif "steam" in lname:
-            config.steam_controller = True
-            logger.debug(f"Steam Controller detected : {name}")
-            print(f"Controller detected : {name}")
-        else:
-            # Si aucune marque spécifique détectée mais un joystick est présent, marquer comme générique
-            config.generic_controller = True
-            logger.debug(f"Generic Controller detected : {name}")
-            print(f"Generic Controller detected : {name}")
-        # Note: virtual keyboard display now depends on controller presence (config.joystick)
-    logger.debug(f"Flags contrôleur: xbox={config.xbox_controller}, ps={config.playstation_controller}, nintendo={config.nintendo_controller}, eightbitdo={config.eightbitdo_controller}, steam={config.steam_controller}, trimui={config.trimui_controller}, logitech={config.logitech_controller}, generic={config.generic_controller}")
+    print("Joystick détecté:", ", ".join(joystick_names))
+    logger.debug(f"Joysticks détectés: {joystick_names}")
 
 
 

@@ -1,14 +1,5 @@
 {
-    "confirm": {
-        "type": "button",
-        "button": 0,
-        "display": "A"
-    },
-    "cancel": {
-        "type": "button",
-        "button": 1,
-        "display": "B"
-    },
+    "device": "Xbox 360 Controller",
     "up": {
         "type": "hat",
         "value": [
@@ -41,27 +32,15 @@
         ],
         "display": "\u2192"
     },
-    "start": {
+    "confirm": {
         "type": "button",
-        "button": 7,
-        "display": "Start"
+        "button": 0,
+        "display": "A"
     },
-    "filter": {
+    "cancel": {
         "type": "button",
-        "button": 6,
-        "display": "Select"
-    },
-    "page_up": {
-        "type": "axis",
-        "axis": 4,
-        "direction": 1,
-        "display": "RT"
-    },
-    "page_down": {
-        "type": "axis",
-        "axis": 5,
-        "direction": -1,
-        "display": "LT"
+        "button": 1,
+        "display": "B"
     },
     "history": {
         "type": "button",
@@ -73,6 +52,16 @@
         "button": 2,
         "display": "X"
     },
+    "start": {
+        "type": "button",
+        "button": 7,
+        "display": "Start"
+    },
+    "filter": {
+        "type": "button",
+        "button": 6,
+        "display": "Select"
+    },
     "delete": {
         "type": "button",
         "button": 4,
@@ -82,5 +71,17 @@
         "type": "button",
         "button": 5,
         "display": "RB"
+    },
+    "page_up": {
+        "type": "axis",
+        "axis": 4,
+        "direction": -1,
+        "display": "LT"
+    },
+    "page_down": {
+        "type": "axis",
+        "axis": 5,
+        "direction": -1,
+        "display": "RT"
     }
 }

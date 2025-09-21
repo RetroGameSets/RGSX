@@ -2,6 +2,7 @@ import pygame # type: ignore
 import shutil
 import asyncio
 import json
+import re
 import os
 import config
 from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE
@@ -96,44 +97,65 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
 
         # 2) Préréglages sans copie si aucun fichier utilisateur
         try:
-            candidates = []
-            # Si aucun contrôleur détecté, privilégier le préréglage clavier
-            if not getattr(config, 'joystick', False) or getattr(config, 'keyboard', False):
-                candidates.append('keyboard.json')
-            # Déterminer les préréglages disponibles selon les flags détectés au démarrage
-            if getattr(config, 'steam_controller', False):
-                candidates.append('steam_controller.json')
-            if getattr(config, 'trimui_controller', False):
-                candidates.append('trimui_controller.json')
-            if getattr(config, 'xbox_elite_controller', False):
-                candidates.append('xbox_elite_controller.json')
-            elif getattr(config, 'xbox_controller', False):
-                candidates.append('xbox_controller.json')
-            if getattr(config, 'nintendo_controller', False):
-                candidates.append('nintendo_controller.json')
-            if getattr(config, 'eightbitdo_controller', False):
-                candidates.append('8bitdo_controller.json')
-            if getattr(config, 'anbernic_rg35xx_controller', False):
-                candidates.append('anbernic_rg34xx_sp_controller.json')
-            # Fallbacks génériques
-            if 'generic_controller.json' not in candidates:
-                candidates.append('generic_controller.json')
-            if 'xbox_controller.json' not in candidates:
-                candidates.append('xbox_controller.json')
+            # --- Auto-match par nom de périphérique détecté ---
+            def _sanitize(s: str) -> str:
+                s = (s or "").strip().lower()
+                s = re.sub(r"[^a-z0-9]+", "_", s)
+                s = re.sub(r"_+", "_", s).strip("_")
+                return s
 
-            for fname in candidates:
-                src = os.path.join(config.PRECONF_CONTROLS_PATH, fname)
+            def _extract_device_from_comment(val: str) -> str:
+                try:
+                    if not isinstance(val, str):
+                        return ""
+                    # Expect formats like "# Device: NAME" or just NAME
+                    if "Device:" in val:
+                        part = val.split("Device:", 1)[1]
+                        return part.strip().lstrip('#').strip()
+                    return val.strip().lstrip('#').strip()
+                except Exception:
+                    return ""
+
+            device_name = getattr(config, 'controller_device_name', '') or ''
+            if getattr(config, 'joystick', False) and device_name:
+                target_norm = _sanitize(device_name)
+                try:
+                    for fname in os.listdir(config.PRECONF_CONTROLS_PATH):
+                        if not fname.lower().endswith('.json'):
+                            continue
+                        src = os.path.join(config.PRECONF_CONTROLS_PATH, fname)
+                        try:
+                            with open(src, 'r', encoding='utf-8') as f:
+                                preset = json.load(f)
+                        except Exception:
+                            continue
+                        # Match by explicit device field
+                        dev_field = preset.get('device') if isinstance(preset, dict) else None
+                        if isinstance(dev_field, str) and _sanitize(dev_field) == target_norm:
+                            logging.getLogger(__name__).info(f"Chargement préréglage (device) depuis le fichier: {fname}")
+                            print(f"Chargement préréglage (device) depuis le fichier: {fname}")
+                            return preset
+                except Exception as e:
+                    logging.getLogger(__name__).warning(f"Échec scan préréglages par device: {e}")
+
+            # Fallback préréglage explicite clavier si pas de joystick
+            if not getattr(config, 'joystick', False) or getattr(config, 'keyboard', False):
+                src = os.path.join(config.PRECONF_CONTROLS_PATH, 'keyboard.json')
                 if os.path.exists(src):
-                    with open(src, "r", encoding="utf-8") as f:
+                    with open(src, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                         if isinstance(data, dict) and data:
-                            logging.getLogger(__name__).info(f"Chargement des contrôles préréglés: {fname}")
+                            logging.getLogger(__name__).info("Chargement des contrôles préréglés: keyboard.json")
                             return data
         except Exception as e:
             logging.getLogger(__name__).warning(f"Échec du chargement des contrôles préréglés: {e}")
 
-        # 3) Fallback clavier par défaut
-        logging.getLogger(__name__).info("Aucun fichier utilisateur ou préréglage trouvé, utilisation des contrôles par défaut")
+        # 3) Fallback: si joystick présent mais aucun préréglage trouvé, retourner {} pour déclencher le remap
+        if getattr(config, 'joystick', False):
+            logging.getLogger(__name__).info("Aucun préréglage trouvé pour le joystick connecté, ouverture du remap")
+            return {}
+        # Sinon, fallback clavier par défaut
+        logging.getLogger(__name__).info("Aucun fichier utilisateur ou préréglage trouvé, utilisation des contrôles clavier par défaut")
         return default_config.copy()
     
     except Exception as e:
