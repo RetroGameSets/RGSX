@@ -1,0 +1,77 @@
+{
+    "device": "DragonRise Inc.   Generic   USB  Joystick  ",
+    "up": {
+        "type": "axis",
+        "axis": 0,
+        "direction": -1,
+        "display": "\u2191"
+    },
+    "down": {
+        "type": "axis",
+        "axis": 0,
+        "direction": 1,
+        "display": "\u2193"
+    },
+    "left": {
+        "type": "axis",
+        "axis": 1,
+        "direction": 1,
+        "display": "\u2190"
+    },
+    "right": {
+        "type": "axis",
+        "axis": 1,
+        "direction": -1,
+        "display": "\u2192"
+    },
+    "confirm": {
+        "type": "button",
+        "button": 0,
+        "display": "A"
+    },
+    "cancel": {
+        "type": "button",
+        "button": 1,
+        "display": "B"
+    },
+    "history": {
+        "type": "button",
+        "button": 4,
+        "display": "Y"
+    },
+    "clear_history": {
+        "type": "button",
+        "button": 3,
+        "display": "X"
+    },
+    "start": {
+        "type": "button",
+        "button": 9,
+        "display": "Start"
+    },
+    "filter": {
+        "type": "button",
+        "button": 8,
+        "display": "Select"
+    },
+    "delete": {
+        "type": "button",
+        "button": 5,
+        "display": "LB"
+    },
+    "space": {
+        "type": "button",
+        "button": 2,
+        "display": "RB"
+    },
+    "page_up": {
+        "type": "button",
+        "button": 5,
+        "display": "LT"
+    },
+    "page_down": {
+        "type": "button",
+        "button": 2,
+        "display": "RT"
+    }
+}
