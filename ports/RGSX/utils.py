@@ -270,6 +270,14 @@ def check_extension_before_download(url, platform, game_name):
         except Exception:
             pass
 
+        # Traitement spécifique PS Vita: ne pas extraire les archives ZIP même si non supportées
+        try:
+            if dest_folder_name == "psvita" and extension == ".zip":
+                logger.debug(f"Plateforme PS Vita détectée pour {sanitized_name}, pas d'extraction automatique pour {extension}")
+                return (url, platform, game_name, False)
+        except Exception:
+            pass
+
         if is_supported:
             logger.debug(f"L'extension de {sanitized_name} est supportée pour {platform}")
             return (url, platform, game_name, False)
