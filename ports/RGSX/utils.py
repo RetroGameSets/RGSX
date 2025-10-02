@@ -278,6 +278,14 @@ def check_extension_before_download(url, platform, game_name):
         except Exception:
             pass
 
+        # Traitement spécifique DOS: forcer extraction des ZIP pour structurer en dossiers .pc
+        try:
+            if dest_folder_name == "dos" and extension == ".zip":
+                logger.debug(f"Plateforme DOS détectée pour {sanitized_name}, extraction forcée pour {extension}")
+                return (url, platform, game_name, True)
+        except Exception:
+            pass
+
         if is_supported:
             logger.debug(f"L'extension de {sanitized_name} est supportée pour {platform}")
             return (url, platform, game_name, False)
@@ -805,8 +813,19 @@ def _capture_directories_before_extraction(dest_dir):
     except Exception:
         return set()
 
-def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=None, url=None):
-    """Gère les traitements spéciaux Xbox et PS3 après extraction."""
+def _capture_all_items_before_extraction(dest_dir):
+    """Capture tous les éléments (fichiers et dossiers) existants avant extraction pour DOS."""
+    try:
+        return set(os.listdir(dest_dir))
+    except Exception:
+        return set()
+
+def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=None, url=None, before_items=None):
+    """Gère les traitements spéciaux Xbox, PS3 et DOS après extraction.
+    
+    Args:
+        before_items: Set de tous les éléments (fichiers+dossiers) avant extraction (pour DOS)
+    """
     # Xbox: conversion ISO
     xbox_dir = os.path.join(config.ROMS_FOLDER, "xbox")
     if dest_dir == xbox_dir and iso_before is not None:
@@ -836,6 +855,16 @@ def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=No
         success, error_msg = handle_ps3(dest_dir, new_dirs=new_dirs, extracted_basename=expected_base)
         if not success:
             return False, error_msg
+
+    # DOS: organisation en dossiers .pc
+    dos_dir = os.path.join(config.ROMS_FOLDER, "dos")
+    if dest_dir == dos_dir:
+        expected_base = os.path.splitext(os.path.basename(archive_path))[0]
+        # Utiliser before_items si fourni, sinon before_dirs pour rétro-compatibilité
+        items_before = before_items if before_items is not None else before_dirs
+        success, error_msg = handle_dos(dest_dir, items_before, extracted_basename=expected_base)
+        if not success:
+            return False, error_msg
     
     return True, None
 
@@ -845,6 +874,8 @@ def extract_zip(zip_path, dest_dir, url):
     try:
         # Capture état initial
         before_dirs = _capture_directories_before_extraction(dest_dir)
+        # Capture tous les items pour DOS
+        before_items = _capture_all_items_before_extraction(dest_dir)
         iso_before = set()
         for root, dirs, files in os.walk(dest_dir):
             for file in files:
@@ -887,7 +918,7 @@ def extract_zip(zip_path, dest_dir, url):
                 os.chmod(file_path, 0o644)
 
         # Gestion plateformes spéciales
-        success, error_msg = _handle_special_platforms(dest_dir, zip_path, before_dirs, iso_before, url)
+        success, error_msg = _handle_special_platforms(dest_dir, zip_path, before_dirs, iso_before, url, before_items)
         if not success:
             return False, error_msg
 
@@ -1110,6 +1141,115 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None):
                 error_msg = f"Erreur lors du renommage de {old_path} en {new_path}: {str(e)}"
                 logger.error(error_msg)
                 return False, error_msg
+
+
+def handle_dos(dest_dir, before_items, extracted_basename=None):
+    """Gère l'organisation spécifique des dossiers DOS extraits.
+
+    - Si le ZIP contient un seul dossier: extraire et renommer ce dossier en <nom_zip>.pc
+    - Si le ZIP contient plusieurs fichiers/dossiers: déplacer tout dans un nouveau dossier <nom_zip>.pc
+    
+    Args:
+        before_items: Set des éléments (fichiers+dossiers) présents avant extraction
+    """
+    logger.debug(f"Traitement spécifique DOS dans: {dest_dir}")
+    time.sleep(2)  # petite latence post-extraction
+
+    try:
+        # Déterminer les nouveaux éléments extraits
+        after_items = set(os.listdir(dest_dir))
+    except Exception:
+        after_items = set()
+
+    ignore_names = {"dos", "images", "videos", "manuals", "media"}
+    # Filtrer les nouveaux éléments (fichiers ou dossiers)
+    new_items = [item for item in (after_items - before_items) 
+                 if item not in ignore_names and not item.endswith('.pc')]
+
+    if not new_items:
+        logger.warning("Aucun nouveau contenu DOS détecté après extraction")
+        return True, None
+
+    if not extracted_basename:
+        logger.warning("Nom de base du ZIP non fourni pour le traitement DOS")
+        return True, None
+
+    target_name = f"{extracted_basename}.pc"
+    target_path = os.path.join(dest_dir, target_name)
+
+    # Cas 1: Un seul dossier extrait -> le renommer en .pc
+    if len(new_items) == 1:
+        item_path = os.path.join(dest_dir, new_items[0])
+        if os.path.isdir(item_path):
+            logger.debug(f"DOS: Un seul dossier détecté '{new_items[0]}', renommage en '{target_name}'")
+            max_retries = 3
+            retry_delay = 2
+            for attempt in range(max_retries):
+                try:
+                    # Fermer les handles potentiellement ouverts
+                    for root, dirs, files in os.walk(item_path):
+                        for f in files:
+                            try:
+                                os.chmod(os.path.join(root, f), 0o644)
+                            except (OSError, PermissionError):
+                                pass
+                        for d in dirs:
+                            try:
+                                os.chmod(os.path.join(root, d), 0o755)
+                            except (OSError, PermissionError):
+                                pass
+
+                    if os.path.exists(target_path):
+                        shutil.rmtree(target_path, ignore_errors=True)
+                        time.sleep(1)
+
+                    os.rename(item_path, target_path)
+                    logger.info(f"Dossier DOS renommé avec succès: {item_path} -> {target_path}")
+                    return True, None
+
+                except Exception as e:
+                    logger.warning(f"Tentative {attempt + 1}/{max_retries} échouée: {str(e)}")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                    else:
+                        error_msg = f"Erreur lors du renommage DOS de {item_path} en {target_path}: {str(e)}"
+                        logger.error(error_msg)
+                        return False, error_msg
+
+    # Cas 2: Un seul fichier OU plusieurs fichiers/dossiers -> créer un dossier .pc et tout y déplacer
+    logger.debug(f"DOS: {len(new_items)} élément(s) détecté(s), création du dossier '{target_name}'")
+    try:
+        # Créer le dossier .pc s'il n'existe pas
+        if os.path.exists(target_path):
+            logger.warning(f"Le dossier {target_path} existe déjà, il sera remplacé")
+            shutil.rmtree(target_path, ignore_errors=True)
+            time.sleep(1)
+
+        os.makedirs(target_path, exist_ok=True)
+
+        # Déplacer tous les nouveaux éléments dans le dossier .pc
+        for item in new_items:
+            src_path = os.path.join(dest_dir, item)
+            dst_path = os.path.join(target_path, item)
+            
+            try:
+                if os.path.isdir(src_path):
+                    shutil.move(src_path, dst_path)
+                else:
+                    shutil.move(src_path, dst_path)
+                    os.chmod(dst_path, 0o644)
+                logger.debug(f"Déplacé: {item} -> {target_name}/{item}")
+            except Exception as e:
+                logger.error(f"Erreur lors du déplacement de {item}: {str(e)}")
+                return False, f"Erreur lors du déplacement de {item}: {str(e)}"
+
+        logger.info(f"Contenu DOS organisé avec succès dans: {target_path}")
+        return True, None
+
+    except Exception as e:
+        error_msg = f"Erreur lors de l'organisation DOS dans {target_path}: {str(e)}"
+        logger.error(error_msg)
+        return False, error_msg
 
 
 def handle_xbox(dest_dir, iso_files, url=None):
