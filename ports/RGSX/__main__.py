@@ -162,8 +162,8 @@ config.init_font()
 
 # Mise à jour de la résolution dans config
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
-logger.debug(f"Résolution d'écran : {config.screen_width}x{config.screen_height}")
-print(f"Résolution écran validée: {config.screen_width}x{config.screen_height}")
+logger.debug(f"Resolution d'ecran : {config.screen_width}x{config.screen_height}")
+print(f"Resolution ecran validee: {config.screen_width}x{config.screen_height}")
 
 # Afficher un premier écran de chargement immédiatement pour éviter un écran noir
 try:
@@ -176,7 +176,7 @@ try:
     pygame.display.flip()
     pygame.event.pump()
 except Exception as e:
-    logger.debug(f"Impossible d'afficher l'écran de chargement initial: {e}")
+    logger.debug(f"Impossible d'afficher l'ecran de chargement initial: {e}")
 
 # Détection des joysticks après init_display (plus stable sur Batocera)
 try:
@@ -213,8 +213,8 @@ else:
     # Des joysticks sont présents: activer le mode joystick et mémoriser le nom pour l'auto-préréglage
     config.joystick = True
     config.keyboard = False
-    print("Joystick détecté:", ", ".join(joystick_names))
-    logger.debug(f"Joysticks détectés: {joystick_names}")
+    print("Joystick detecte:", ", ".join(joystick_names))
+    logger.debug(f"Joysticks detectes: {joystick_names}")
 
 
 
