@@ -12,7 +12,8 @@ from network import download_rom, download_from_1fichier, is_1fichier_url, reque
 from utils import (
     load_games, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
-    save_music_config, load_api_keys
+    save_music_config, load_api_keys, _get_dest_folder_name,
+    extract_zip, extract_rar, find_file_with_or_without_extension
 )
 from history import load_history, clear_history, add_to_history, save_history
 import logging
@@ -32,13 +33,20 @@ VALID_STATES = [
     "platform", "game", "confirm_exit",
     "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
     "reload_games_data", "restart_popup", "error", "loading", "confirm_clear_history",
-    "language_select", "filter_platforms", "display_menu",
+    "language_select", "filter_platforms", "display_menu", "confirm_cancel_download",
     # Nouveaux sous-menus hiérarchiques (refonte pause menu)
     "pause_controls_menu",      # sous-menu Controls (aide, remap)
     "pause_display_menu",       # sous-menu Display (layout, font size, unsupported, unknown ext, filter)
     "pause_games_menu",         # sous-menu Games (source mode, update/redownload cache)
     "pause_settings_menu",      # sous-menu Settings (music on/off, symlink toggle, api keys status)
-    "pause_api_keys_status"     # sous-menu API Keys (affichage statut des clés)
+    "pause_api_keys_status",    # sous-menu API Keys (affichage statut des clés)
+    # Nouveaux menus historique
+    "history_game_options",     # menu options pour un jeu de l'historique
+    "history_show_folder",      # afficher le dossier de téléchargement
+    "history_scraper_info",     # info scraper non implémenté
+    "history_error_details",    # détails de l'erreur
+    "history_confirm_delete",   # confirmation suppression jeu
+    "history_extract_archive"   # extraction d'archive
 ]
 
 def validate_menu_state(state):
@@ -709,10 +717,12 @@ def handle_controls(event, sources, joystick, screen):
                         else:
                             config.pending_download = check_extension_before_download(url, platform, game_name)
                             if config.pending_download:
+                                extensions_data = load_extensions_json()
+                                logger.debug(f"Extensions chargées: {len(extensions_data)} systèmes")
                                 is_supported = is_extension_supported(
                                     sanitize_filename(game_name),
                                     platform,
-                                    load_extensions_json()
+                                    extensions_data
                                 )
                                 zip_ok = bool(config.pending_download[3])
                                 allow_unknown = False
@@ -721,6 +731,7 @@ def handle_controls(event, sources, joystick, screen):
                                     allow_unknown = get_allow_unknown_extensions()
                                 except Exception:
                                     allow_unknown = False
+                                logger.debug(f"Extension check pour {game_name}: is_supported={is_supported}, zip_ok={zip_ok}, allow_unknown={allow_unknown}")
                                 if (not is_supported and not zip_ok) and not allow_unknown:
                                     config.previous_menu_state = config.menu_state
                                     config.menu_state = "extension_warning"
@@ -971,6 +982,14 @@ def handle_controls(event, sources, joystick, screen):
                 config.confirm_clear_selection = 0  # 0 pour "Non", 1 pour "Oui"
                 config.needs_redraw = True
                 logger.debug("Passage à confirm_clear_history depuis history")
+            elif is_input_matched(event, "confirm"):
+                # Ouvrir le menu d'options pour le jeu sélectionné
+                if config.history and config.current_history_item < len(config.history):
+                    config.previous_menu_state = "history"
+                    config.menu_state = "history_game_options"
+                    config.history_game_option_selection = 0
+                    config.needs_redraw = True
+                    logger.debug("Ouverture history_game_options depuis history")
             elif is_input_matched(event, "cancel") or is_input_matched(event, "history"):
                 if config.history and config.current_history_item < len(config.history):
                     entry = config.history[config.current_history_item]
@@ -982,8 +1001,8 @@ def handle_controls(event, sources, joystick, screen):
                         return action
                 # Retour à l'origine capturée si disponible sinon previous_menu_state
                 target = getattr(config, 'history_origin', getattr(config, 'previous_menu_state', 'platform'))
-                # Éviter boucle si target reste 'history'
-                if target == 'history':
+                # Éviter boucle si target reste 'history' ou pointe vers un sous-menu history
+                if target == 'history' or target.startswith('history_'):
                     target = 'platform'
                 config.menu_state = validate_menu_state(target)
                 if hasattr(config, 'history_origin'):
@@ -1028,7 +1047,7 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "cancel"):
                 config.menu_state = "history"
                 config.needs_redraw = True
-
+        
         # Confirmation vider l'historique   
         elif config.menu_state == "confirm_clear_history":
             
@@ -1051,6 +1070,292 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "history"
                 config.needs_redraw = True
                 logger.debug("Annulation du vidage de l'historique, retour à history")
+
+        # Menu options du jeu dans l'historique
+        elif config.menu_state == "history_game_options":
+            if not config.history or config.current_history_item >= len(config.history):
+                config.menu_state = "history"
+                config.needs_redraw = True
+            else:
+                entry = config.history[config.current_history_item]
+                status = entry.get("status", "")
+                game_name = entry.get("game_name", "")
+                platform = entry.get("platform", "")
+                
+                # Vérifier l'existence du fichier (avec ou sans extension)
+                dest_folder = _get_dest_folder_name(platform)
+                base_path = os.path.join(config.ROMS_FOLDER, dest_folder)
+                file_exists, actual_filename, actual_path = find_file_with_or_without_extension(base_path, game_name)
+                
+                # Stocker les informations pour les autres handlers
+                config.history_actual_filename = actual_filename
+                config.history_actual_path = actual_path
+                
+                # Déterminer les options disponibles selon le statut
+                options = []
+                # Option commune: dossier de téléchargement
+                options.append("download_folder")
+                
+                # Options selon statut
+                if status == "Download_OK" or status == "Completed":
+                    # Vérifier si c'est une archive ET si le fichier existe
+                    if actual_filename and file_exists:
+                        ext = os.path.splitext(actual_filename)[1].lower()
+                        if ext in ['.zip', '.rar']:
+                            options.append("extract_archive")
+                    # Scraper et suppression uniquement si le fichier existe
+                    if file_exists:
+                        options.append("scraper")
+                        options.append("delete_game")
+                elif status in ["Erreur", "Error", "Canceled"]:
+                    options.append("error_info")
+                    options.append("retry")
+                
+                # Option commune: retour
+                options.append("back")
+                
+                total_options = len(options)
+                sel = getattr(config, 'history_game_option_selection', 0)
+                
+                if is_input_matched(event, "up"):
+                    config.history_game_option_selection = (sel - 1) % total_options
+                    update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
+                    config.needs_redraw = True
+                    logger.debug(f"history_game_options: UP sel={config.history_game_option_selection}/{total_options}")
+                elif is_input_matched(event, "down"):
+                    config.history_game_option_selection = (sel + 1) % total_options
+                    update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
+                    config.needs_redraw = True
+                    logger.debug(f"history_game_options: DOWN sel={config.history_game_option_selection}/{total_options}")
+                elif is_input_matched(event, "confirm"):
+                    selected_option = options[sel]
+                    logger.debug(f"history_game_options: CONFIRM option={selected_option}")
+                    
+                    if selected_option == "download_folder":
+                        # Afficher le chemin de destination
+                        config.previous_menu_state = "history_game_options"
+                        config.menu_state = "history_show_folder"
+                        config.needs_redraw = True
+                        logger.debug(f"Affichage du dossier de téléchargement pour {game_name}")
+                        
+                    elif selected_option == "extract_archive":
+                        # L'option n'apparaît que si le fichier existe, pas besoin de re-vérifier
+                        config.previous_menu_state = "history_game_options"
+                        config.menu_state = "history_extract_archive"
+                        config.needs_redraw = True
+                        logger.debug(f"Extraction de l'archive {game_name}")
+                        
+                    elif selected_option == "scraper":
+                        # Scraper (non implémenté pour le moment)
+                        config.previous_menu_state = "history_game_options"
+                        config.menu_state = "history_scraper_info"
+                        config.needs_redraw = True
+                        logger.debug(f"Scraper pour {game_name} (non implémenté)")
+                        
+                    elif selected_option == "delete_game":
+                        # Demander confirmation avant suppression
+                        config.previous_menu_state = "history_game_options"
+                        config.menu_state = "history_confirm_delete"
+                        config.history_delete_confirm_selection = 0
+                        config.needs_redraw = True
+                        logger.debug(f"Demande de confirmation de suppression pour {game_name}")
+                        
+                    elif selected_option == "error_info":
+                        # Afficher les détails de l'erreur
+                        config.previous_menu_state = "history_game_options"
+                        config.menu_state = "history_error_details"
+                        config.needs_redraw = True
+                        logger.debug(f"Affichage des détails de l'erreur pour {game_name}")
+                        
+                    elif selected_option == "retry":
+                        # Relancer le téléchargement
+                        config.menu_state = "history"
+                        # Réinitialiser l'entrée et relancer
+                        url = entry.get("url")
+                        if url:
+                            # Mettre à jour le statut
+                            entry["status"] = "downloading"
+                            entry["progress"] = 0
+                            entry["message"] = "Téléchargement en cours"
+                            save_history(config.history)
+                            
+                            # Relancer le téléchargement
+                            pending_download = check_extension_before_download(url, platform, game_name)
+                            if pending_download:
+                                task_id = str(pygame.time.get_ticks())
+                                is_zip_non_supported = pending_download[3] if len(pending_download) > 3 else False
+                                
+                                if is_1fichier_url(url):
+                                    task = asyncio.create_task(download_from_1fichier(url, platform, game_name, is_zip_non_supported, task_id))
+                                else:
+                                    task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported, task_id))
+                                
+                                config.download_tasks[task_id] = (task, url, game_name, platform)
+                                logger.debug(f"Relance du téléchargement: {game_name} pour {platform}")
+                        config.needs_redraw = True
+                        
+                    elif selected_option == "back":
+                        # Retour à l'historique
+                        config.menu_state = "history"
+                        # Ne pas mettre à jour previous_menu_state pour éviter les boucles
+                        config.needs_redraw = True
+                        logger.debug("Retour à history depuis history_game_options")
+                        
+                elif is_input_matched(event, "cancel"):
+                    config.menu_state = "history"
+                    # Ne pas mettre à jour previous_menu_state pour éviter les boucles
+                    config.needs_redraw = True
+                    logger.debug("Retour à history depuis history_game_options (cancel)")
+
+        # Affichage du dossier de téléchargement
+        elif config.menu_state == "history_show_folder":
+            if is_input_matched(event, "confirm") or is_input_matched(event, "cancel"):
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.needs_redraw = True
+
+        # Information scraper (non implémenté)
+        elif config.menu_state == "history_scraper_info":
+            if is_input_matched(event, "confirm") or is_input_matched(event, "cancel"):
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.needs_redraw = True
+
+        # Affichage détails erreur
+        elif config.menu_state == "history_error_details":
+            if is_input_matched(event, "confirm") or is_input_matched(event, "cancel"):
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.needs_redraw = True
+
+        # Confirmation suppression jeu
+        elif config.menu_state == "history_confirm_delete":
+            if is_input_matched(event, "confirm"):
+                if config.history_delete_confirm_selection == 1:  # Oui
+                    # Supprimer le fichier
+                    if config.history and config.current_history_item < len(config.history):
+                        entry = config.history[config.current_history_item]
+                        
+                        # Utiliser le chemin réel trouvé (avec ou sans extension)
+                        file_path = getattr(config, 'history_actual_path', None)
+                        
+                        if not file_path:
+                            # Fallback si pas trouvé (ne devrait pas arriver)
+                            game_name = entry.get("game_name", "")
+                            platform = entry.get("platform", "")
+                            sanitized_name = sanitize_filename(game_name)
+                            dest_folder = _get_dest_folder_name(platform)
+                            dest_dir = os.path.join(config.ROMS_FOLDER, dest_folder)
+                            file_path = os.path.join(dest_dir, sanitized_name)
+                        
+                        try:
+                            if os.path.exists(file_path):
+                                os.remove(file_path)
+                                logger.info(f"Fichier supprimé: {file_path}")
+                                # Mettre à jour l'historique
+                                entry["message"] = _("history_delete_success")
+                                save_history(config.history)
+                                config.popup_message = _("history_delete_success")
+                                config.popup_timer = 2000
+                            else:
+                                logger.warning(f"Fichier introuvable: {file_path}")
+                                config.popup_message = _("history_delete_error").format("File not found")
+                                config.popup_timer = 3000
+                        except Exception as e:
+                            logger.error(f"Erreur suppression {file_path}: {e}")
+                            config.popup_message = _("history_delete_error").format(str(e))
+                            config.popup_timer = 3000
+                    
+                    config.menu_state = "history"
+                    config.needs_redraw = True
+                else:  # Non
+                    config.menu_state = "history_game_options"
+                    config.needs_redraw = True
+            elif is_input_matched(event, "left") or is_input_matched(event, "right"):
+                config.history_delete_confirm_selection = 1 - config.history_delete_confirm_selection
+                config.needs_redraw = True
+            elif is_input_matched(event, "cancel"):
+                config.menu_state = "history_game_options"
+                config.needs_redraw = True
+
+        # Extraction archive depuis historique
+        elif config.menu_state == "history_extract_archive":
+            if is_input_matched(event, "confirm") or is_input_matched(event, "cancel"):
+                if is_input_matched(event, "confirm"):
+                    # Lancer l'extraction
+                    if config.history and config.current_history_item < len(config.history):
+                        entry = config.history[config.current_history_item]
+                        platform = entry.get("platform", "")
+                        
+                        import threading
+                        
+                        # Utiliser le chemin réel trouvé (avec ou sans extension)
+                        file_path = getattr(config, 'history_actual_path', None)
+                        actual_filename = getattr(config, 'history_actual_filename', None)
+                        
+                        if not file_path or not actual_filename:
+                            # Fallback si pas trouvé (ne devrait pas arriver)
+                            game_name = entry.get("game_name", "")
+                            sanitized_name = sanitize_filename(game_name)
+                            dest_folder = _get_dest_folder_name(platform)
+                            dest_dir = os.path.join(config.ROMS_FOLDER, dest_folder)
+                            file_path = os.path.join(dest_dir, sanitized_name)
+                            actual_filename = sanitized_name
+                        else:
+                            dest_folder = _get_dest_folder_name(platform)
+                            dest_dir = os.path.join(config.ROMS_FOLDER, dest_folder)
+                        
+                        ext = os.path.splitext(actual_filename)[1].lower()
+                        url = entry.get("url", "")
+                        
+                        if os.path.exists(file_path):
+                            # Mettre à jour le statut avant extraction
+                            entry["status"] = "Extracting"
+                            entry["progress"] = 0
+                            entry["message"] = _("history_extracting") if _ else "Extracting..."
+                            save_history(config.history)
+                            config.needs_redraw = True
+                            
+                            def do_extract():
+                                try:
+                                    if ext == '.zip':
+                                        success, msg = extract_zip(file_path, dest_dir, url)
+                                    elif ext == '.rar':
+                                        success, msg = extract_rar(file_path, dest_dir, url)
+                                    else:
+                                        success, msg = False, "Not an archive"
+                                    
+                                    # Mettre à jour le statut après extraction
+                                    if success:
+                                        entry["status"] = "Completed"
+                                        entry["progress"] = 100
+                                        entry["message"] = _("history_extracted") if _ else "Extracted"
+                                        logger.info(f"Extraction réussie: {actual_filename}")
+                                    else:
+                                        entry["status"] = "Error"
+                                        entry["progress"] = 0
+                                        entry["message"] = f"Extraction failed: {msg}"
+                                        logger.error(f"Échec extraction: {msg}")
+                                    save_history(config.history)
+                                    config.needs_redraw = True
+                                except Exception as e:
+                                    logger.error(f"Erreur extraction: {e}")
+                                    entry["status"] = "Error"
+                                    entry["progress"] = 0
+                                    entry["message"] = f"Error: {str(e)}"
+                                    save_history(config.history)
+                                    config.needs_redraw = True
+                            
+                            extract_thread = threading.Thread(target=do_extract, daemon=True)
+                            extract_thread.start()
+                            logger.info(f"Extraction lancée: {file_path}")
+                
+                # Retourner à l'historique pour voir la progression
+                config.menu_state = "history"
+                config.needs_redraw = True
 
         # Confirmation quitter
         elif config.menu_state == "confirm_exit":

@@ -92,7 +92,7 @@
     "network_no_update_available": "Nessun aggiornamento disponibile",
     "network_update_error": "Errore durante l'aggiornamento: {0}",
     "network_check_update_error": "Errore durante il controllo degli aggiornamenti: {0}",
-    "network_extraction_failed": "Impossibile estrarre l'aggiornamento: {0}",
+    "network_extraction_failed": "Impossibile estrarre: {0}",
     "network_extraction_partial": "Estrazione riuscita, ma alcuni file sono stati ignorati a causa di errori: {0}",
     "network_extraction_success": "Estrazione riuscita",
     "network_download_extract_ok": "Download ed estrazione riusciti di {0}",
@@ -200,4 +200,22 @@
     ,"controls_mapping_press": "Premi un tasto o un pulsante"
     ,"status_already_present": "Già Presente"
     ,"footer_joystick": "Joystick: {0}"
+    ,"history_game_options_title": "Opzioni gioco"
+    ,"history_option_download_folder": "Localizza file"
+    ,"history_option_extract_archive": "Estrai archivio"
+    ,"history_option_scraper": "Scraper metadati"
+    ,"history_option_delete_game": "Elimina gioco"
+    ,"history_option_error_info": "Dettagli errore"
+    ,"history_option_retry": "Riprova download"
+    ,"history_option_back": "Indietro"
+    ,"history_folder_path_label": "Percorso destinazione:"
+    ,"history_scraper_not_implemented": "Scraper non ancora implementato"
+    ,"history_confirm_delete": "Eliminare questo gioco dal disco?"
+    ,"history_file_not_found": "File non trovato"
+    ,"history_extracting": "Estrazione in corso..."
+    ,"history_extracted": "Estratto"
+    ,"history_delete_success": "Gioco eliminato con successo"
+    ,"history_delete_error": "Errore durante l'eliminazione del gioco: {0}"
+    ,"history_error_details_title": "Dettagli errore"
+    ,"history_no_error_message": "Nessun messaggio di errore disponibile"
 }

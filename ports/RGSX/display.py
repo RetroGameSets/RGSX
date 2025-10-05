@@ -2457,3 +2457,316 @@ def draw_popup(screen):
     countdown_rect = countdown_surface.get_rect(center=(config.screen_width // 2, popup_y + margin_top_bottom + len(wrapped_lines) * line_height + line_height // 2))
     screen.blit(countdown_surface, countdown_rect)
 
+
+def draw_history_game_options(screen):
+    """Affiche le menu d'options pour un jeu de l'historique."""
+    import os
+    from utils import _get_dest_folder_name, find_file_with_or_without_extension
+    
+    screen.blit(OVERLAY, (0, 0))
+    
+    if not config.history or config.current_history_item >= len(config.history):
+        return
+    
+    entry = config.history[config.current_history_item]
+    status = entry.get("status", "")
+    game_name = entry.get("game_name", "Unknown")
+    platform = entry.get("platform", "Unknown")
+    
+    # Vérifier l'existence du fichier (avec ou sans extension)
+    dest_folder = _get_dest_folder_name(platform)
+    base_path = os.path.join(config.ROMS_FOLDER, dest_folder)
+    file_exists, actual_filename, actual_path = find_file_with_or_without_extension(base_path, game_name)
+    
+    # Déterminer les options disponibles selon le statut
+    options = []
+    option_labels = []
+    
+    # Option commune: dossier de téléchargement
+    options.append("download_folder")
+    option_labels.append(_("history_option_download_folder"))
+    
+    # Options selon statut
+    if status == "Download_OK" or status == "Completed":
+        # Vérifier si c'est une archive ET si le fichier existe
+        if actual_filename and file_exists:
+            ext = os.path.splitext(actual_filename)[1].lower()
+            if ext in ['.zip', '.rar']:
+                options.append("extract_archive")
+                option_labels.append(_("history_option_extract_archive"))
+        # Scraper et suppression uniquement si le fichier existe
+        if file_exists:
+            options.append("scraper")
+            option_labels.append(_("history_option_scraper"))
+            options.append("delete_game")
+            option_labels.append(_("history_option_delete_game"))
+    elif status in ["Erreur", "Error", "Canceled"]:
+        options.append("error_info")
+        option_labels.append(_("history_option_error_info"))
+        options.append("retry")
+        option_labels.append(_("history_option_retry"))
+    
+    # Option commune: retour
+    options.append("back")
+    option_labels.append(_("history_option_back"))
+    
+    # Calculer dimensions
+    title = _("history_game_options_title")
+    line_height = config.font.get_height() + 10
+    margin_top_bottom = 30
+    margin_sides = 40
+    
+    # Hauteur pour titre + options
+    total_height = margin_top_bottom * 2 + line_height + len(option_labels) * line_height
+    max_width = max(
+        config.font.size(title)[0],
+        max([config.font.size(label)[0] for label in option_labels], default=300)
+    ) + margin_sides * 2
+    
+    rect_width = min(max_width + 100, config.screen_width - 100)
+    rect_height = total_height
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+    
+    # Fond
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+    
+    # Titre
+    title_surface = config.font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom))
+    screen.blit(title_surface, title_rect)
+    
+    # Options
+    sel = getattr(config, 'history_game_option_selection', 0)
+    for i, label in enumerate(option_labels):
+        y_pos = rect_y + margin_top_bottom + line_height + i * line_height
+        
+        if i == sel:
+            # Option sélectionnée
+            highlight_rect = pygame.Rect(rect_x + 20, y_pos - 5, rect_width - 40, line_height)
+            pygame.draw.rect(screen, THEME_COLORS["button_hover"], highlight_rect, border_radius=8)
+            text_color = THEME_COLORS["text_selected"]
+        else:
+            text_color = THEME_COLORS["text"]
+        
+        text_surface = config.font.render(label, True, text_color)
+        text_rect = text_surface.get_rect(left=rect_x + margin_sides, centery=y_pos + line_height // 2 - 5)
+        screen.blit(text_surface, text_rect)
+
+
+def draw_history_show_folder(screen):
+    """Affiche le chemin complet du fichier téléchargé."""
+    import os
+    from utils import _get_dest_folder_name
+    
+    screen.blit(OVERLAY, (0, 0))
+    
+    if not config.history or config.current_history_item >= len(config.history):
+        return
+    
+    entry = config.history[config.current_history_item]
+    game_name = entry.get("game_name", "Unknown")
+    platform = entry.get("platform", "Unknown")
+    
+    # Utiliser le chemin réel trouvé (avec ou sans extension)
+    actual_path = getattr(config, 'history_actual_path', None)
+    actual_filename = getattr(config, 'history_actual_filename', None)
+    
+    if not actual_path or not actual_filename:
+        # Fallback si pas trouvé
+        dest_folder = _get_dest_folder_name(platform)
+        actual_path = os.path.join(config.ROMS_FOLDER, dest_folder, game_name)
+        actual_filename = game_name
+    
+    # Vérifier si le fichier existe
+    file_exists = os.path.exists(actual_path)
+    
+    # Message
+    title = _("history_folder_path_label") if _ else "Destination path:"
+    
+    # Calculer dimensions d'abord pour avoir la largeur correcte
+    line_height = config.font.get_height() + 10
+    small_line_height = config.small_font.get_height() + 5
+    margin_top_bottom = 30
+    rect_width = min(config.screen_width - 100, 800)
+    
+    # Wrapper le chemin avec la bonne largeur (largeur de la boîte - marges)
+    path_wrapped = wrap_text(actual_path, config.small_font, rect_width - 80)
+    
+    # Ajouter un message si le fichier n'existe pas
+    warning_lines = []
+    if not file_exists:
+        warning_text = "⚠️ " + (_("history_file_not_found") if _ else "File not found")
+        warning_lines = wrap_text(warning_text, config.small_font, rect_width - 80)
+    
+    total_height = margin_top_bottom * 2 + line_height + len(path_wrapped) * small_line_height + len(warning_lines) * small_line_height + 60
+    rect_height = total_height
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+    
+    # Fond
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+    
+    # Titre
+    title_surface = config.font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom))
+    screen.blit(title_surface, title_rect)
+    
+    # Chemin
+    current_y = rect_y + margin_top_bottom + line_height + 10
+    for i, line in enumerate(path_wrapped):
+        color = THEME_COLORS["text_selected"] if file_exists else THEME_COLORS["error_text"]
+        path_surface = config.small_font.render(line, True, color)
+        path_rect = path_surface.get_rect(left=rect_x + 40, top=current_y + i * small_line_height)
+        screen.blit(path_surface, path_rect)
+    
+    # Avertissement si fichier non trouvé
+    if warning_lines:
+        current_y += len(path_wrapped) * small_line_height + 10
+        for i, line in enumerate(warning_lines):
+            warning_surface = config.small_font.render(line, True, THEME_COLORS["error_text"])
+            warning_rect = warning_surface.get_rect(left=rect_x + 40, top=current_y + i * small_line_height)
+            screen.blit(warning_surface, warning_rect)
+    
+    # Bouton OK
+    button_height = int(config.screen_height * 0.0463)
+    button_width = 120
+    draw_stylized_button(screen, _("button_OK"), rect_x + (rect_width - button_width) // 2, rect_y + rect_height - button_height - 20, button_width, button_height, selected=True)
+
+
+def draw_history_scraper_info(screen):
+    """Affiche l'information que le scraper n'est pas implémenté."""
+    screen.blit(OVERLAY, (0, 0))
+    
+    message = _("history_scraper_not_implemented")
+    wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
+    line_height = config.font.get_height() + 5
+    text_height = len(wrapped_message) * line_height
+    button_height = int(config.screen_height * 0.0463)
+    margin_top_bottom = 20
+    rect_height = text_height + button_height + 2 * margin_top_bottom
+    max_text_width = max([config.font.size(line)[0] for line in wrapped_message], default=300)
+    rect_width = max_text_width + 150
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+    
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+    
+    for i, line in enumerate(wrapped_message):
+        text = config.font.render(line, True, THEME_COLORS["text"])
+        text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
+        screen.blit(text, text_rect)
+    
+    button_width = 120
+    draw_stylized_button(screen, _("button_OK"), rect_x + (rect_width - button_width) // 2, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=True)
+
+
+def draw_history_error_details(screen):
+    """Affiche les détails de l'erreur du téléchargement."""
+    screen.blit(OVERLAY, (0, 0))
+    
+    if not config.history or config.current_history_item >= len(config.history):
+        return
+    
+    entry = config.history[config.current_history_item]
+    error_message = entry.get("message", _("history_no_error_message"))
+    
+    title = _("history_error_details_title")
+    wrapped_error = wrap_text(error_message, config.small_font, config.screen_width - 120)
+    
+    line_height = config.font.get_height() + 10
+    small_line_height = config.small_font.get_height() + 5
+    text_height = len(wrapped_error) * small_line_height
+    button_height = int(config.screen_height * 0.0463)
+    margin_top_bottom = 30
+    rect_height = text_height + button_height + line_height + 3 * margin_top_bottom
+    max_text_width = max([config.small_font.size(line)[0] for line in wrapped_error], default=300)
+    rect_width = min(max_text_width + 150, config.screen_width - 100)
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+    
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+    
+    # Titre
+    title_surface = config.font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom))
+    screen.blit(title_surface, title_rect)
+    
+    # Message d'erreur
+    for i, line in enumerate(wrapped_error):
+        text = config.small_font.render(line, True, THEME_COLORS["text_selected"])
+        text_rect = text.get_rect(left=rect_x + 40, top=rect_y + margin_top_bottom + line_height + 10 + i * small_line_height)
+        screen.blit(text, text_rect)
+    
+    button_width = 120
+    draw_stylized_button(screen, _("button_OK"), rect_x + (rect_width - button_width) // 2, rect_y + rect_height - button_height - 20, button_width, button_height, selected=True)
+
+
+def draw_history_confirm_delete(screen):
+    """Affiche la confirmation de suppression d'un jeu."""
+    screen.blit(OVERLAY, (0, 0))
+    
+    message = _("history_confirm_delete")
+    wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
+    line_height = config.font.get_height() + 5
+    text_height = len(wrapped_message) * line_height
+    button_height = int(config.screen_height * 0.0463)
+    margin_top_bottom = 20
+    rect_height = text_height + button_height + 2 * margin_top_bottom
+    max_text_width = max([config.font.size(line)[0] for line in wrapped_message], default=300)
+    rect_width = max_text_width + 150
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+    
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+    
+    for i, line in enumerate(wrapped_message):
+        text = config.font.render(line, True, THEME_COLORS["text"])
+        text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
+        screen.blit(text, text_rect)
+    
+    button_width = min(160, (rect_width - 60) // 2)
+    sel = getattr(config, 'history_delete_confirm_selection', 0)
+    draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - button_width - 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=sel == 1)
+    draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=sel == 0)
+
+
+def draw_history_extract_archive(screen):
+    """Affiche la confirmation d'extraction d'archive."""
+    screen.blit(OVERLAY, (0, 0))
+    
+    if not config.history or config.current_history_item >= len(config.history):
+        return
+    
+    entry = config.history[config.current_history_item]
+    game_name = entry.get("game_name", "Unknown")
+    
+    message = f"Extract archive: {game_name}?"
+    wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
+    line_height = config.font.get_height() + 5
+    text_height = len(wrapped_message) * line_height
+    button_height = int(config.screen_height * 0.0463)
+    margin_top_bottom = 20
+    rect_height = text_height + button_height + 2 * margin_top_bottom
+    max_text_width = max([config.font.size(line)[0] for line in wrapped_message], default=300)
+    rect_width = max_text_width + 150
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+    
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+    
+    for i, line in enumerate(wrapped_message):
+        text = config.font.render(line, True, THEME_COLORS["text"])
+        text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
+        screen.blit(text, text_rect)
+    
+    button_width = 120
+    draw_stylized_button(screen, _("button_OK"), rect_x + (rect_width - button_width) // 2, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=True)
+
+

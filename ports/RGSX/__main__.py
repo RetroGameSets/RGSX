@@ -316,7 +316,7 @@ if pygame.joystick.get_count() > 0:
 
 # Boucle principale
 async def main():
-    global current_music, music_files, music_folder
+    global current_music, music_files, music_folder, joystick
     logger.debug("Début main")
     running = True
     loading_step = "none"
@@ -329,7 +329,7 @@ async def main():
 
 
     while running:
-        clock.tick(30)  # Limite à 60 FPS
+        clock.tick(60)  # Limite à 60 FPS pour une meilleure réactivité
         if config.update_triggered:
             logger.debug("Mise à jour déclenchée, arrêt de la boucle principale")
             break
@@ -396,6 +396,67 @@ async def main():
                 logger.debug("Événement QUIT détecté, passage à confirm_exit")
                 continue
 
+            # Gestion de la reconnexion/déconnexion de manettes (Bluetooth)
+            if event.type == pygame.JOYDEVICEADDED:
+                try:
+                    device_index = event.device_index
+                    new_joystick = pygame.joystick.Joystick(device_index)
+                    new_joystick.init()
+                    # Si c'est la première manette, on l'utilise
+                    if joystick is None:
+                        joystick = new_joystick
+                        logger.info(f"Manette connectée et activée: {new_joystick.get_name()} (index {device_index})")
+                        # Basculer sur les contrôles joystick
+                        config.joystick = True
+                        config.keyboard = False
+                        config.controller_device_name = new_joystick.get_name()
+                        # Recharger la configuration des contrôles pour le joystick
+                        config.controls_config = load_controls_config()
+                        logger.info(f"Contrôles joystick chargés pour {new_joystick.get_name()}")
+                    else:
+                        logger.info(f"Manette connectée: {new_joystick.get_name()} (index {device_index})")
+                    config.needs_redraw = True
+                except Exception as e:
+                    logger.error(f"Erreur lors de la connexion de la manette: {e}")
+                continue
+
+            if event.type == pygame.JOYDEVICEREMOVED:
+                try:
+                    # Pour JOYDEVICEREMOVED, utiliser instance_id pas device_index
+                    instance_id = event.instance_id
+                    logger.info(f"Manette déconnectée (instance_id {instance_id})")
+                    # Si c'était notre manette active, essayer de trouver une autre
+                    if joystick is not None and joystick.get_instance_id() == instance_id:
+                        joystick = None
+                        logger.info("Aucune manette active, basculement automatique sur clavier")
+                        # Chercher une autre manette disponible
+                        if pygame.joystick.get_count() > 0:
+                            try:
+                                joystick = pygame.joystick.Joystick(0)
+                                joystick.init()
+                                logger.info(f"Basculement vers la manette: {joystick.get_name()}")
+                            except Exception as e:
+                                logger.warning(f"Impossible de basculer vers une autre manette: {e}")
+                                logger.info("Utilisation du clavier")
+                                # Basculer sur les contrôles clavier
+                                config.joystick = False
+                                config.keyboard = True
+                                # Recharger la configuration des contrôles pour le clavier
+                                config.controls_config = load_controls_config()
+                                logger.info("Contrôles clavier chargés")
+                        else:
+                            logger.info("Utilisation du clavier")
+                            # Basculer sur les contrôles clavier
+                            config.joystick = False
+                            config.keyboard = True
+                            # Recharger la configuration des contrôles pour le clavier
+                            config.controls_config = load_controls_config()
+                            logger.info("Contrôles clavier chargés")
+                    config.needs_redraw = True
+                except Exception as e:
+                    logger.error(f"Erreur lors de la déconnexion de la manette: {e}")
+                continue
+
             start_config = config.controls_config.get("start", {})
             if start_config and (
                 (event.type == pygame.KEYDOWN and start_config.get("type") == "key" and event.key == start_config.get("key")) or
@@ -432,6 +493,13 @@ async def main():
                 "controls_help",
                 "confirm_cancel_download",
                 "reload_games_data",
+                # Menus historique
+                "history_game_options",
+                "history_show_folder",
+                "history_scraper_info",
+                "history_error_details",
+                "history_confirm_delete",
+                "history_extract_archive",
             }
             if config.menu_state in SIMPLE_HANDLE_STATES:
                 action = handle_controls(event, sources, joystick, screen)
@@ -776,6 +844,24 @@ async def main():
             elif config.menu_state == "history":
                 draw_history_list(screen)                
                 # logger.debug("Screen updated with draw_history_list")
+            elif config.menu_state == "history_game_options":
+                from display import draw_history_game_options
+                draw_history_game_options(screen)
+            elif config.menu_state == "history_show_folder":
+                from display import draw_history_show_folder
+                draw_history_show_folder(screen)
+            elif config.menu_state == "history_scraper_info":
+                from display import draw_history_scraper_info
+                draw_history_scraper_info(screen)
+            elif config.menu_state == "history_error_details":
+                from display import draw_history_error_details
+                draw_history_error_details(screen)
+            elif config.menu_state == "history_confirm_delete":
+                from display import draw_history_confirm_delete
+                draw_history_confirm_delete(screen)
+            elif config.menu_state == "history_extract_archive":
+                from display import draw_history_extract_archive
+                draw_history_extract_archive(screen)
             elif config.menu_state == "confirm_clear_history":
                 draw_clear_history_dialog(screen)
             elif config.menu_state == "confirm_cancel_download":

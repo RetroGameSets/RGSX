@@ -2,7 +2,6 @@
     "welcome_message": "Bienvenue dans RGSX",
     "disclaimer_line1": "It's dangerous to go alone, take all you need!",
     "disclaimer_line2": "Mais ne téléchargez que des jeux",
-    "disclaimer_line3": "dont vous possédez les originaux !",
     "disclaimer_line4": "RGSX n'est pas responsable des contenus téléchargés,",
     "disclaimer_line5": "et n'heberge pas de ROMs.",
     "loading_test_connection": "Test de la connexion...",
@@ -93,7 +92,7 @@
     "network_update_error": "Erreur lors de la mise à jour : {0}",
     "network_download_extract_ok": "Téléchargement et extraction réussi de {0}",
     "network_check_update_error": "Erreur lors de la vérification des mises à jour : {0}",
-    "network_extraction_failed": "Échec de l'extraction de la mise à jour : {0}",
+    "network_extraction_failed": "Échec de l'extraction: {0}",
     "network_extraction_partial": "Extraction réussie, mais certains fichiers ont été ignorés en raison d'erreurs : {0}",
     "network_extraction_success": "Extraction réussie",
     "network_zip_extraction_error": "Erreur lors de l'extraction du ZIP {0}: {1}",
@@ -200,4 +199,22 @@
     ,"controls_mapping_press": "Appuyez sur une touche ou un bouton"
     ,"status_already_present": "Déjà Présent"
     ,"footer_joystick": "Joystick : {0}"
+    ,"history_game_options_title": "Options du jeu"
+    ,"history_option_download_folder": "Localiser le fichier"
+    ,"history_option_extract_archive": "Extraire l'archive"
+    ,"history_option_scraper": "Scraper métadonnées"
+    ,"history_option_delete_game": "Supprimer le jeu"
+    ,"history_option_error_info": "Détails de l'erreur"
+    ,"history_option_retry": "Réessayer le téléchargement"
+    ,"history_option_back": "Retour"
+    ,"history_folder_path_label": "Chemin de destination :"
+    ,"history_scraper_not_implemented": "Scraper pas encore implémenté"
+    ,"history_confirm_delete": "Supprimer ce jeu du disque ?"
+    ,"history_file_not_found": "Fichier introuvable"
+    ,"history_extracting": "Extraction en cours..."
+    ,"history_extracted": "Extrait"
+    ,"history_delete_success": "Jeu supprimé avec succès"
+    ,"history_delete_error": "Erreur lors de la suppression du jeu : {0}"
+    ,"history_error_details_title": "Détails de l'erreur"
+    ,"history_no_error_message": "Aucun message d'erreur disponible"
 }

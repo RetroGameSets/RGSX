@@ -415,11 +415,21 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             if 'archive.org/download/' in url:
                 try:
                     pre_id = url.split('/download/')[1].split('/')[0]
-                    session.get('https://archive.org/robots.txt', timeout=10)
-                    session.get(f'https://archive.org/metadata/{pre_id}', timeout=10)
+                    session.get('https://archive.org/robots.txt', timeout=20)
+                    session.get(f'https://archive.org/metadata/{pre_id}', timeout=20)
                     logger.debug(f"Pré-chargement cookies/metadata archive.org pour {pre_id}")
                 except Exception as e:
                     logger.debug(f"Pré-chargement archive.org ignoré: {e}")
+            
+            # Initialiser la progression pour afficher les tentatives
+            if url not in config.download_progress:
+                config.download_progress[url] = {
+                    "downloaded_size": 0,
+                    "total_size": 0,
+                    "status": "Connecting",
+                    "progress_percent": 0
+                }
+            
             # Tentatives multiples avec variations d'en-têtes pour contourner certains 401/403 (archive.org / hotlink protection)
             header_variants = [
                 download_headers,
@@ -443,8 +453,16 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             last_status = None
             for attempt, hv in enumerate(header_variants, start=1):
                 try:
+                    # Mettre à jour la progression pour afficher la tentative en cours
+                    if url in config.download_progress:
+                        config.download_progress[url]["status"] = f"Try {attempt}/{len(header_variants)}"
+                        config.download_progress[url]["progress_percent"] = 0
+                        config.needs_redraw = True
+                    
                     logger.debug(f"Tentative téléchargement {attempt}/{len(header_variants)} avec headers: {hv}")
-                    r = session.get(url, stream=True, timeout=30, allow_redirects=True, headers=hv)
+                    # Timeout plus long pour archive.org, avec tuple (connect_timeout, read_timeout)
+                    timeout_val = (60, 90) if 'archive.org' in url else 30
+                    r = session.get(url, stream=True, timeout=timeout_val, allow_redirects=True, headers=hv)
                     last_status = r.status_code
                     logger.debug(f"Status code tentative {attempt}: {r.status_code}")
                     if r.status_code in (401, 403):
@@ -463,12 +481,15 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     # Si ce n'est pas une erreur auth explicite et qu'on a un code => on sort
                     if isinstance(e, requests.HTTPError) and last_status not in (401, 403):
                         break
+                    # Délai entre tentatives pour archive.org (éviter saturation)
+                    if 'archive.org' in url and attempt < len(header_variants):
+                        time.sleep(2)
             if response is None:
                 # Fallback metadata archive.org pour message clair
                 if 'archive.org/download/' in url:
                     try:
                         identifier = url.split('/download/')[1].split('/')[0]
-                        meta_resp = session.get(f'https://archive.org/metadata/{identifier}', timeout=15)
+                        meta_resp = session.get(f'https://archive.org/metadata/{identifier}', timeout=30)
                         if meta_resp.status_code == 200:
                             meta_json = meta_resp.json()
                             if meta_json.get('is_dark'):
@@ -486,6 +507,11 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         raise requests.HTTPError(f"HTTP {last_status} après variations; metadata échec: {e}")
                 auth_msg = f"HTTP {last_status} après variations d'en-têtes" if last_status else "Aucune réponse valide"
                 raise requests.HTTPError(auth_msg)
+            
+            # Mettre à jour le statut: connexion réussie, début du téléchargement
+            if url in config.download_progress:
+                config.download_progress[url]["status"] = "Downloading"
+                config.needs_redraw = True
             
             total_size = int(response.headers.get('content-length', 0))
             logger.debug(f"Taille totale: {total_size} octets")
@@ -505,12 +531,14 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             last_update_time = time.time()
             last_downloaded = 0
             update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
+            download_cancelled = False
             with open(dest_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=chunk_size):
                     if cancel_ev is not None and cancel_ev.is_set():
                         logger.debug(f"Annulation détectée, arrêt du téléchargement pour task_id={task_id}")
                         result[0] = False
                         result[1] = _("download_canceled") if _ else "Download canceled"
+                        download_cancelled = True
                         try:
                             f.close()
                         except Exception:
@@ -534,6 +562,9 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             last_update_time = current_time
                             progress_queues[task_id].put((task_id, downloaded, total_size, speed))
 
+            # Si annulé, ne pas continuer avec extraction
+            if download_cancelled:
+                return
             
             os.chmod(dest_path, 0o644)
             logger.debug(f"Téléchargement terminé: {dest_path}")
@@ -1171,6 +1202,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         last_update_time = time.time()
                         last_downloaded = 0
                         update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
+                        download_cancelled = False
                         logger.debug(f"Ouverture fichier: {dest_path}")
                         with open(dest_path, 'wb') as f:
                             for chunk in response.iter_content(chunk_size=chunk_size):
@@ -1178,6 +1210,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                     logger.debug(f"Annulation détectée, arrêt du téléchargement 1fichier pour task_id={task_id}")
                                     result[0] = False
                                     result[1] = _("download_canceled") if _ else "Download canceled"
+                                    download_cancelled = True
                                     try:
                                         f.close()
                                     except Exception:
@@ -1212,6 +1245,10 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         last_update_time = current_time
                                         progress_queues[task_id].put((task_id, downloaded, total_size, speed))
 
+                    # Si annulé, ne pas continuer avec extraction
+                    if download_cancelled:
+                        return
+                    
                     if is_zip_non_supported:
                         with lock:
                             if isinstance(config.history, list):

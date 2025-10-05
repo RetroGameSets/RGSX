@@ -29,6 +29,7 @@ import sys
 
 logger = logging.getLogger(__name__)
 # Désactiver les logs DEBUG de urllib3 e requests pour supprimer les messages de connexion HTTP
+
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("requests").setLevel(logging.WARNING)
 
@@ -278,9 +279,9 @@ def check_extension_before_download(url, platform, game_name):
         except Exception:
             pass
 
-        # Traitement spécifique DOS: forcer extraction des ZIP pour structurer en dossiers .pc
+        # Traitement spécifique DOS: forcer extraction des ZIP et RAR pour structurer en dossiers .pc
         try:
-            if dest_folder_name == "dos" and extension == ".zip":
+            if dest_folder_name == "dos" and is_archive:
                 logger.debug(f"Plateforme DOS détectée pour {sanitized_name}, extraction forcée pour {extension}")
                 return (url, platform, game_name, True)
         except Exception:
@@ -330,9 +331,12 @@ def is_extension_supported(filename, platform_key, extensions_data):
         dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform_key)
     
     dest_folder_name = os.path.basename(dest_dir)
+    logger.debug(f"Vérification extension {extension} pour {filename} dans dossier {dest_folder_name}, {len(extensions_data)} systèmes disponibles")
+    
     for i, system in enumerate(extensions_data):
         if system["folder"] == dest_folder_name:
             result = extension in system["extensions"]
+            logger.debug(f"Système trouvé: {dest_folder_name}, extensions: {system['extensions']}, résultat: {result}")
             return result
     
     logger.warning(f"Aucun système trouvé pour le dossier {dest_dir}")
@@ -1002,9 +1006,7 @@ def extract_rar(rar_path, dest_dir, url):
         config.needs_redraw = True
 
         # Extraction RAR
-        escaped_rar_path = rar_path.replace(" ", "\\ ")
-        escaped_dest_dir = dest_dir.replace(" ", "\\ ")
-        process = subprocess.Popen(unrar_cmd + ['x', '-y', escaped_rar_path, escaped_dest_dir],
+        process = subprocess.Popen(unrar_cmd + ['x', '-y', rar_path, dest_dir],
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
 
@@ -1551,3 +1553,28 @@ def save_music_config():
 def normalize_platform_name(platform):
     """Normalise un nom de plateforme en supprimant espaces et convertissant en minuscules."""
     return platform.lower().replace(" ", "")
+
+
+def find_file_with_or_without_extension(base_path, filename):
+    """
+    Cherche un fichier, avec son extension ou sans (cherche jeuxxx.* si jeuxxx.zip n'existe pas).
+    Retourne (file_exists, actual_filename, actual_path).
+    """
+    # 1. Tester d'abord le fichier tel quel
+    full_path = os.path.join(base_path, filename)
+    if os.path.exists(full_path):
+        return True, filename, full_path
+    
+    # 2. Si pas trouvé et que le fichier a une extension, chercher sans extension
+    name_without_ext, ext = os.path.splitext(filename)
+    if ext:  # Si le fichier a une extension
+        # Chercher tous les fichiers commençant par le nom sans extension
+        if os.path.exists(base_path):
+            for existing_file in os.listdir(base_path):
+                existing_name, _ = os.path.splitext(existing_file)
+                if existing_name == name_without_ext:
+                    found_path = os.path.join(base_path, existing_file)
+                    return True, existing_file, found_path
+    
+    # 3. Fichier non trouvé
+    return False, filename, full_path

@@ -92,7 +92,7 @@
     "network_no_update_available": "No update available",
     "network_update_error": "Error during update: {0}",
     "network_check_update_error": "Error checking for updates: {0}",
-    "network_extraction_failed": "Failed to extract update: {0}",
+    "network_extraction_failed": "Failed to extract: {0}",
     "network_extraction_partial": "Extraction successful, but some files were skipped due to errors: {0}",
     "network_extraction_success": "Extraction successful",
     "network_download_extract_ok": "Download and extraction successful of {0}",
@@ -200,4 +200,22 @@
     ,"controls_mapping_press": "Press a key or a button"
     ,"status_already_present": "Already Present"
     ,"footer_joystick": "Joystick: {0}"
+    ,"history_game_options_title": "Game Options"
+    ,"history_option_download_folder": "Locate file"
+    ,"history_option_extract_archive": "Extract archive"
+    ,"history_option_scraper": "Scrape metadata"
+    ,"history_option_delete_game": "Delete game"
+    ,"history_option_error_info": "Error details"
+    ,"history_option_retry": "Retry download"
+    ,"history_option_back": "Back"
+    ,"history_folder_path_label": "Destination path:"
+    ,"history_scraper_not_implemented": "Scraper not yet implemented"
+    ,"history_confirm_delete": "Delete this game from disk?"
+    ,"history_file_not_found": "File not found"
+    ,"history_extracting": "Extracting..."
+    ,"history_extracted": "Extracted"
+    ,"history_delete_success": "Game deleted successfully"
+    ,"history_delete_error": "Error deleting game: {0}"
+    ,"history_error_details_title": "Error Details"
+    ,"history_no_error_message": "No error message available"
 }

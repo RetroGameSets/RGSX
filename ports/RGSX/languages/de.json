@@ -93,7 +93,7 @@
     "network_update_error": "Fehler während des Updates: {0}",
     "network_download_extract_ok": "Download und Extraktion von {0} erfolgreich",
     "network_check_update_error": "Fehler bei der Überprüfung von Updates: {0}",
-    "network_extraction_failed": "Fehler beim Extrahieren des Updates: {0}",
+    "network_extraction_failed": "Fehler beim Extrahieren: {0}",
     "network_extraction_partial": "Extraktion erfolgreich, aber einige Dateien wurden aufgrund von Fehlern übersprungen: {0}",
     "network_extraction_success": "Extraktion erfolgreich",
     "network_zip_extraction_error": "Fehler beim Extrahieren des ZIP {0}: {1}",
@@ -200,4 +200,22 @@
     ,"controls_mapping_press": "Drücke eine Taste oder einen Button"
     ,"status_already_present": "Bereits Vorhanden"
     ,"footer_joystick": "Joystick: {0}"
+    ,"history_game_options_title": "Spiel Optionen"
+    ,"history_option_download_folder": "Datei lokalisieren"
+    ,"history_option_extract_archive": "Archiv extrahieren"
+    ,"history_option_scraper": "Metadaten scrapen"
+    ,"history_option_delete_game": "Spiel löschen"
+    ,"history_option_error_info": "Fehlerdetails"
+    ,"history_option_retry": "Download wiederholen"
+    ,"history_option_back": "Zurück"
+    ,"history_folder_path_label": "Zielpfad:"
+    ,"history_scraper_not_implemented": "Scraper noch nicht implementiert"
+    ,"history_confirm_delete": "Dieses Spiel von der Festplatte löschen?"
+    ,"history_file_not_found": "Datei nicht gefunden"
+    ,"history_extracting": "Extrahieren..."
+    ,"history_extracted": "Extrahiert"
+    ,"history_delete_success": "Spiel erfolgreich gelöscht"
+    ,"history_delete_error": "Fehler beim Löschen des Spiels: {0}"
+    ,"history_error_details_title": "Fehlerdetails"
+    ,"history_no_error_message": "Keine Fehlermeldung verfügbar"
 }
