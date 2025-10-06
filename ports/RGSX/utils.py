@@ -846,9 +846,24 @@ def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=No
         else:
             logger.warning("Aucun nouvel ISO détecté après extraction pour conversion Xbox.")
 
-    # PS3: renommage dossiers
+    # PS3 et PS3 Redump: traitement unifié
     ps3_dir = os.path.join(config.ROMS_FOLDER, "ps3")
+    ps3_dir = os.path.join(config.ROMS_FOLDER, "ps3")
+    
     if dest_dir == ps3_dir:
+        # PS3 Redump: décryptage et extraction
+        logger.info("Détection PS3 Redump - lancement du traitement spécifique")
+        success, error_msg = handle_ps3(
+            dest_dir=dest_dir,
+            url=url,
+            archive_name=os.path.basename(archive_path)
+        )
+        if not success:
+            return False, error_msg
+        return True, None
+    
+    elif dest_dir == ps3_dir:
+        # PS3 classique: renommage simple
         try:
             after_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
         except Exception:
@@ -856,7 +871,11 @@ def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=No
         ignore_names = {"ps3", "images", "videos", "manuals", "media"}
         new_dirs = [d for d in (after_dirs - before_dirs) if d not in ignore_names and not d.endswith('.ps3')]
         expected_base = os.path.splitext(os.path.basename(archive_path))[0]
-        success, error_msg = handle_ps3(dest_dir, new_dirs=new_dirs, extracted_basename=expected_base)
+        success, error_msg = handle_ps3(
+            dest_dir=dest_dir,
+            new_dirs=new_dirs,
+            extracted_basename=expected_base
+        )
         if not success:
             return False, error_msg
 
@@ -1059,92 +1078,205 @@ def extract_rar(rar_path, dest_dir, url):
             except Exception as e:
                 logger.error(f"Erreur lors de la suppression de {rar_path}: {str(e)}")
 
-def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None):
-    """Gère le renommage spécifique des dossiers PS3 extraits.
-
-    - Si new_dirs est fourni, ne considère que ces dossiers.
-    - Ignore les dossiers système connus: images, videos, manuals, ps3, media.
-    - Essaie de faire correspondre le dossier attendu au nom du RAR (underscores -> espaces).
+def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archive_name=None):
+    """Gère le traitement spécifique des jeux PS3.
+   PS3 Redump (ps3): Décryptage ISO + extraction dans dossier .ps3
+    
+    Args:
+        dest_dir: Dossier de destination (ps3 ou ps3)
+        new_dirs: Liste des nouveaux dossiers créés (mode classique)
+        extracted_basename: Nom de base de l'archive extraite
+        url: URL du jeu (nécessaire pour PS3 Redump)
+        archive_name: Nom complet de l'archive avec extension (pour PS3 Redump)
+    
+    Returns:
+        (success: bool, message: str)
     """
     logger.debug(f"Traitement spécifique PS3 dans: {dest_dir}")
-    time.sleep(2)  # petite latence post-extraction
-
-    ignore_names = {"ps3", "images", "videos", "manuals", "media"}
-
-    if new_dirs is None:
+    
+    # Détection du mode PS3 
+    ps3_dir = os.path.join(config.ROMS_FOLDER, "ps3")
+    is_ps3 = (dest_dir == ps3_dir)
+    
+    if is_ps3:
+        # ============================================
+        # MODE PS3 : Décryptage et extraction
+        # ============================================
+        logger.info(f"Mode PS3  détecté pour: {archive_name}")
+        
         try:
-            candidates = [d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))]
-        except Exception:
-            candidates = []
-    else:
-        candidates = list(new_dirs)
-
-    # Filtrer: ignorer .ps3 déjà traité et dossiers système
-    ps3_dirs = [d for d in candidates if not d.endswith('.ps3') and d not in ignore_names]
-    logger.debug(f"Dossiers PS3 candidats: {ps3_dirs}")
-
-    # Tenter une correspondance au nom de l'archive (remplacer '_' -> ' ' et normaliser)
-    target = None
-    if extracted_basename:
-        def norm(s: str) -> str:
-            s = s.replace('_', ' ')
-            s = ' '.join(s.split()).strip().lower()
-            return s
-        expected = norm(extracted_basename)
-        for d in ps3_dirs:
-            if norm(d) == expected:
-                target = d
-                break
-    # Si pas de match exact: si un seul candidat, prendre celui-ci
-    if target is None and len(ps3_dirs) == 1:
-        target = ps3_dirs[0]
-
-    if not target:
-        if ps3_dirs:
-            logger.warning(f"Plusieurs dossiers PS3 détectés (aucune correspondance unique): {ps3_dirs}")
-        else:
-            logger.warning("Aucun dossier PS3 à renommer trouvé")
-        return True, None
-
-    old_path = os.path.join(dest_dir, target)
-    new_path = os.path.join(dest_dir, f"{target}.ps3")
-    logger.debug(f"Tentative de renommage PS3: {old_path} -> {new_path}")
-
-    max_retries = 3
-    retry_delay = 2
-    for attempt in range(max_retries):
-        try:
-            # Fermer les handles potentiellement ouverts
-            for root, dirs, files in os.walk(old_path):
-                for f in files:
-                    try:
-                        os.chmod(os.path.join(root, f), 0o644)
-                    except (OSError, PermissionError):
-                        pass
-                for d in dirs:
-                    try:
-                        os.chmod(os.path.join(root, d), 0o755)
-                    except (OSError, PermissionError):
-                        pass
-
-            if os.path.exists(new_path):
-                shutil.rmtree(new_path, ignore_errors=True)
-                time.sleep(1)
-
-            os.rename(old_path, new_path)
-            logger.info(f"Dossier renommé avec succès: {old_path} -> {new_path}")
-            return True, None
-
-        except Exception as e:
-            logger.warning(f"Tentative {attempt + 1}/{max_retries} échouée: {str(e)}")
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
+            # Construire l'URL de la clé en remplaçant le dossier
+            if url and ("Sony%20-%20PlayStation%203/" in url or "Sony - PlayStation 3/" in url):
+                key_url = url.replace("Sony%20-%20PlayStation%203/", "Sony%20-%20PlayStation%203%20-%20Disc%20Keys%20TXT/")
+                key_url = key_url.replace("Sony - PlayStation 3/", "Sony - PlayStation 3 - Disc Keys TXT/")
             else:
-                error_msg = f"Erreur lors du renommage de {old_path} en {new_path}: {str(e)}"
+                logger.warning("URL PS3  invalide ou manquante, tentative sans clé distante")
+                key_url = None
+            
+            logger.debug(f"URL jeu: {url}")
+            logger.debug(f"URL clé: {key_url}")
+            
+            # Chercher le fichier .iso déjà extrait
+            iso_files = [f for f in os.listdir(dest_dir) if f.endswith('.iso') and not f.endswith('_decrypted.iso')]
+            if not iso_files:
+                return False, "Aucun fichier .iso trouvé après extraction"
+            
+            iso_file = iso_files[0]
+            iso_path = os.path.join(dest_dir, iso_file)
+            logger.info(f"Fichier ISO trouvé: {iso_path}")
+            
+            # Étape 1: Télécharger et extraire la clé si URL disponible
+            dkey_path = None
+            if key_url:
+                logger.info("Téléchargement de la clé de décryption...")
+                key_zip_name = os.path.basename(archive_name) if archive_name else "key.zip"
+                key_zip_path = os.path.join(dest_dir, f"_temp_key_{key_zip_name}")
+                
+                try:
+                    import requests
+                    response = requests.get(key_url, stream=True, timeout=30)
+                    response.raise_for_status()
+                    
+                    with open(key_zip_path, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                    
+                    logger.info(f"Clé téléchargée: {key_zip_path}")
+                    
+                    # Extraire la clé
+                    logger.info("Extraction de la clé...")
+                    with zipfile.ZipFile(key_zip_path, 'r') as zf:
+                        dkey_files = [f for f in zf.namelist() if f.endswith('.dkey')]
+                        if not dkey_files:
+                            logger.warning("Aucun fichier .dkey trouvé dans l'archive de clé")
+                        else:
+                            dkey_file = dkey_files[0]
+                            zf.extract(dkey_file, dest_dir)
+                            dkey_path = os.path.join(dest_dir, dkey_file)
+                            logger.info(f"Clé extraite: {dkey_path}")
+                    
+                    # Supprimer le ZIP de la clé
+                    os.remove(key_zip_path)
+                    
+                except Exception as e:
+                    logger.error(f"Erreur lors du téléchargement/extraction de la clé: {e}")
+            
+            # Chercher une clé .dkey si pas téléchargée
+            if not dkey_path:
+                dkey_files = [f for f in os.listdir(dest_dir) if f.endswith('.dkey')]
+                if dkey_files:
+                    dkey_path = os.path.join(dest_dir, dkey_files[0])
+                    logger.info(f"Clé trouvée localement: {dkey_path}")
+                else:
+                    return False, "Aucune clé de décryption trouvée (.dkey)"
+            
+            # Étape 2: Décrypter l'ISO
+            logger.info("Décryptage de l'ISO...")
+            decrypted_iso_path = iso_path.replace('.iso', '_decrypted.iso')
+            
+            # Vérifier et corriger les permissions de ps3dec sur Linux
+            if config.OPERATING_SYSTEM != "Windows":
+                ps3dec_tool = config.PS3DEC_LINUX
+                try:
+                    if os.path.exists(ps3dec_tool):
+                        current_perms = os.stat(ps3dec_tool).st_mode
+                        if not os.access(ps3dec_tool, os.X_OK):
+                            logger.warning(f"ps3dec_linux n'est pas exécutable, correction des permissions...")
+                            os.chmod(ps3dec_tool, 0o755)
+                            logger.info(f"Permissions corrigées pour {ps3dec_tool}")
+                        else:
+                            logger.debug(f"ps3dec_linux a déjà les permissions d'exécution")
+                    else:
+                        return False, f"ps3dec_linux non trouvé: {ps3dec_tool}"
+                except Exception as e:
+                    logger.error(f"Erreur lors de la vérification des permissions: {e}")
+                    # Continuer quand même, l'erreur sera capturée plus tard
+            
+            if config.OPERATING_SYSTEM == "Windows":
+                cmd = [
+                    "powershell", "-Command",
+                    f"$key = (Get-Content '{dkey_path}' -Raw).Trim(); " +
+                    f"& '{config.PS3DEC_EXE}' d key $key '{iso_path}' '{decrypted_iso_path}'"
+                ]
+            else:  # Linux
+                cmd = [
+                    "bash", "-c",
+                    f"key=$(cat '{dkey_path}' | tr -d ' \\n\\r\\t'); " +
+                    f"'{config.PS3DEC_LINUX}' d key \"$key\" '{iso_path}' '{decrypted_iso_path}'"
+                ]
+            
+            logger.debug(f"Commande de décryptage: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                error_msg = f"Erreur lors du décryptage: {result.stderr}"
                 logger.error(error_msg)
                 return False, error_msg
-
-
+            
+            logger.info("Décryptage réussi")
+            os.remove(iso_path)
+            logger.debug(f"ISO original supprimé: {iso_path}")
+            
+            # Étape 3: Extraire l'ISO décrypté dans un dossier .ps3
+            logger.info("Extraction de l'ISO décrypté...")
+            game_folder_name = os.path.splitext(os.path.basename(iso_file))[0] + ".ps3"
+            game_folder_path = os.path.join(dest_dir, game_folder_name)
+            os.makedirs(game_folder_path, exist_ok=True)
+            
+            try:
+                if config.OPERATING_SYSTEM == "Windows":
+                    seven_z_cmd = config.SEVEN_Z_EXE
+                else:
+                    seven_z_cmd = config.SEVEN_Z_LINUX
+                    # Vérifier et corriger les permissions de 7zz sur Linux
+                    try:
+                        if os.path.exists(seven_z_cmd):
+                            if not os.access(seven_z_cmd, os.X_OK):
+                                logger.warning(f"7zz n'est pas exécutable, correction des permissions...")
+                                os.chmod(seven_z_cmd, 0o755)
+                                logger.info(f"Permissions corrigées pour {seven_z_cmd}")
+                        else:
+                            return False, f"7zz non trouvé: {seven_z_cmd}"
+                    except Exception as e:
+                        logger.error(f"Erreur lors de la vérification des permissions de 7zz: {e}")
+                
+                extract_cmd = [seven_z_cmd, "x", decrypted_iso_path, f"-o{game_folder_path}", "-y"]
+                logger.debug(f"Commande d'extraction ISO: {' '.join(extract_cmd)}")
+                result = subprocess.run(extract_cmd, capture_output=True, text=True)
+                
+                if result.returncode > 2:
+                    error_msg = f"Erreur critique lors de l'extraction ISO (code {result.returncode}): {result.stderr}"
+                    logger.error(error_msg)
+                    return False, error_msg
+                
+                if result.returncode != 0:
+                    logger.warning(f"7z a retourné un avertissement (code {result.returncode}): {result.stderr}")
+                    logger.info("Extraction poursuivie malgré l'avertissement")
+                
+                logger.info(f"ISO extrait dans: {game_folder_path}")
+                
+            except FileNotFoundError:
+                return False, "7z non trouvé - vérifiez que 7z.exe (Windows) ou 7zz (Linux) est présent dans assets/progs"
+            except Exception as e:
+                return False, f"Erreur lors de l'extraction ISO: {str(e)}"
+            
+            # Nettoyage
+            os.remove(decrypted_iso_path)
+            logger.debug(f"ISO décrypté supprimé: {decrypted_iso_path}")
+            
+            if dkey_path and os.path.exists(dkey_path):
+                os.remove(dkey_path)
+                logger.debug(f"Fichier .dkey supprimé: {dkey_path}")
+            
+            logger.info(f"Traitement PS3 Redump terminé avec succès: {game_folder_name}")
+            return True, f"Jeu décrypté et extrait: {game_folder_name}"
+            
+        except Exception as e:
+            error_msg = f"Erreur lors du traitement PS3 Redump: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
+    
 def handle_dos(dest_dir, before_items, extracted_basename=None):
     """Gère l'organisation spécifique des dossiers DOS extraits.
 

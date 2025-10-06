@@ -1,0 +1,87 @@
+{
+    "device": "Generic X-Box pad",
+    "up": {
+        "type": "hat",
+        "value": [
+            0,
+            1
+        ],
+        "display": "\u2191"
+    },
+    "down": {
+        "type": "hat",
+        "value": [
+            0,
+            -1
+        ],
+        "display": "\u2193"
+    },
+    "left": {
+        "type": "hat",
+        "value": [
+            -1,
+            0
+        ],
+        "display": "\u2190"
+    },
+    "right": {
+        "type": "hat",
+        "value": [
+            1,
+            0
+        ],
+        "display": "\u2192"
+    },
+    "confirm": {
+        "type": "button",
+        "button": 0,
+        "display": "A"
+    },
+    "cancel": {
+        "type": "button",
+        "button": 1,
+        "display": "B"
+    },
+    "history": {
+        "type": "button",
+        "button": 3,
+        "display": "Y"
+    },
+    "clear_history": {
+        "type": "button",
+        "button": 2,
+        "display": "X"
+    },
+    "start": {
+        "type": "button",
+        "button": 7,
+        "display": "Start"
+    },
+    "filter": {
+        "type": "button",
+        "button": 6,
+        "display": "Select"
+    },
+    "delete": {
+        "type": "button",
+        "button": 4,
+        "display": "LB"
+    },
+    "space": {
+        "type": "button",
+        "button": 5,
+        "display": "RB"
+    },
+    "page_up": {
+        "type": "axis",
+        "axis": 2,
+        "direction": 1,
+        "display": "LT"
+    },
+    "page_down": {
+        "type": "axis",
+        "axis": 5,
+        "direction": 1,
+        "display": "RT"
+    }
+}
