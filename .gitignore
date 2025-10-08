@@ -14,4 +14,5 @@ ports/gamelist.xml
 .vscode/
 ports/RGSX.bat
 .venv/
-*.py
+audit_i18n.py
+prune_i18n.py

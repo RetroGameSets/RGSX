@@ -322,7 +322,7 @@ def start_web_server():
     """Démarre le serveur web en arrière-plan dans un processus séparé."""
     global web_server_process
     try:
-        web_server_script = os.path.join(config.APP_FOLDER, "rgsx_web_minimal.py")
+        web_server_script = os.path.join(config.APP_FOLDER, "rgsx_web.py")
         logger.info(f"Tentative de démarrage du serveur web...")
         logger.info(f"Script: {web_server_script}")
         logger.info(f"Fichier existe: {os.path.exists(web_server_script)}")
