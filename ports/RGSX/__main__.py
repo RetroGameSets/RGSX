@@ -15,6 +15,7 @@ import queue
 import datetime
 import subprocess
 import sys
+import threading
 import config
 
 from display import (
@@ -314,10 +315,102 @@ if pygame.joystick.get_count() > 0:
         logger.warning(f"Échec initialisation gamepad: {e}")
 
 
+# ===== GESTION DU SERVEUR WEB =====
+web_server_process = None
+
+def start_web_server():
+    """Démarre le serveur web en arrière-plan dans un processus séparé."""
+    global web_server_process
+    try:
+        web_server_script = os.path.join(config.APP_FOLDER, "rgsx_web_minimal.py")
+        logger.info(f"Tentative de démarrage du serveur web...")
+        logger.info(f"Script: {web_server_script}")
+        logger.info(f"Fichier existe: {os.path.exists(web_server_script)}")
+        
+        if not os.path.exists(web_server_script):
+            logger.warning(f"Script serveur web introuvable: {web_server_script}")
+            return False
+        
+        exe = sys.executable or "python"
+        logger.info(f"Exécutable Python: {exe}")
+        logger.info(f"Répertoire de travail: {config.APP_FOLDER}")
+        logger.info(f"Système: {config.OPERATING_SYSTEM}")
+        
+        # Créer un fichier de log pour les erreurs du serveur web
+        web_server_log = os.path.join(config.log_dir, "rgsx_web_startup.log")
+        
+        # Démarrer le processus en arrière-plan sans fenêtre console sur Windows
+        if config.OPERATING_SYSTEM == "Windows":
+            # Utiliser DETACHED_PROCESS pour cacher la console sur Windows
+            CREATE_NO_WINDOW = 0x08000000
+            logger.info(f"🚀 Lancement du serveur web (mode Windows CREATE_NO_WINDOW)...")
+            
+            # Rediriger stdout/stderr vers un fichier de log pour capturer les erreurs
+            with open(web_server_log, 'w', encoding='utf-8') as log_file:
+                web_server_process = subprocess.Popen(
+                    [exe, web_server_script],
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    cwd=config.APP_FOLDER,
+                    creationflags=CREATE_NO_WINDOW
+                )
+        else:
+            logger.info(f"🚀 Lancement du serveur web (mode Linux/Unix)...")
+            with open(web_server_log, 'w', encoding='utf-8') as log_file:
+                web_server_process = subprocess.Popen(
+                    [exe, web_server_script],
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    cwd=config.APP_FOLDER
+                )
+        
+        logger.info(f"✅ Serveur web démarré (PID: {web_server_process.pid})")
+        logger.info(f"🌐 Serveur accessible sur http://localhost:5000")
+        logger.info(f"📝 Logs de démarrage: {web_server_log}")
+        
+        # Attendre un peu pour voir si le processus crash immédiatement
+        import time
+        time.sleep(0.5)
+        if web_server_process.poll() is not None:
+            logger.error(f"❌ Le serveur web s'est arrêté immédiatement (code: {web_server_process.returncode})")
+            logger.error(f"📝 Vérifiez les logs: {web_server_log}")
+            return False
+        
+        return True
+    except Exception as e:
+        logger.error(f"❌ Erreur lors du démarrage du serveur web: {e}")
+        logger.exception("Détails de l'exception:")
+        return False
+
+def stop_web_server():
+    """Arrête proprement le serveur web."""
+    global web_server_process
+    if web_server_process is not None:
+        try:
+            logger.info("Arrêt du serveur web...")
+            web_server_process.terminate()
+            # Attendre jusqu'à 5 secondes que le processus se termine
+            try:
+                web_server_process.wait(timeout=5)
+                logger.info("Serveur web arrêté proprement")
+            except subprocess.TimeoutExpired:
+                logger.warning("Serveur web ne répond pas, forçage de l'arrêt...")
+                web_server_process.kill()
+                web_server_process.wait()
+                logger.info("Serveur web forcé à l'arrêt")
+            web_server_process = None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'arrêt du serveur web: {e}")
+
+
 # Boucle principale
 async def main():
     global current_music, music_files, music_folder, joystick
     logger.debug("Début main")
+    
+    # Démarrer le serveur web en arrière-plan
+    start_web_server()
+    
     running = True
     loading_step = "none"
     sources = []
@@ -1135,6 +1228,9 @@ async def main():
         cancel_all_downloads()
     except Exception as e:
         logger.debug(f"Erreur lors de l'annulation globale des téléchargements: {e}")
+    
+    # Arrêter le serveur web
+    stop_web_server()
     
     if config.OPERATING_SYSTEM == "Windows":
         try:

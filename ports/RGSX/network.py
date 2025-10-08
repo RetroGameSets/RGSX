@@ -19,14 +19,21 @@ from utils import sanitize_filename, extract_zip, extract_rar, load_api_key_1fic
 from history import save_history
 import logging
 import datetime
+from datetime import datetime
+from history import load_history
+
 import queue
 import time
 import os
+import json
+from pathlib import Path
 from language import _  # Import de la fonction de traduction
 
 
 logger = logging.getLogger(__name__)
 
+# Plus besoin de web_progress.json - l'interface web lit directement history.json
+# Les fonctions update_web_progress() et remove_web_progress() sont supprimées
 
 cache = {}
 CACHE_TTL = 3600  # 1 heure
@@ -320,6 +327,44 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     
     def download_thread():
         try:
+            # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "downloading"
+            # pour que l'interface web puisse afficher le téléchargement en cours
+            
+            # TOUJOURS charger l'historique existant depuis le fichier pour éviter d'écraser les anciennes entrées
+            config.history = load_history()
+            
+            # Vérifier si l'entrée existe déjà
+            entry_exists = False
+            for entry in config.history:
+                if entry.get("url") == url:
+                    entry_exists = True
+                    # Réinitialiser le status à "downloading"
+                    entry["status"] = "downloading"
+                    entry["progress"] = 0
+                    entry["downloaded_size"] = 0
+                    entry["platform"] = platform
+                    entry["game_name"] = game_name
+                    entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    break
+            
+            # Si l'entrée n'existe pas, la créer
+            if not entry_exists:
+                config.history.append({
+                    "platform": platform,
+                    "game_name": game_name,
+                    "url": url,
+                    "status": "downloading",
+                    "progress": 0,
+                    "downloaded_size": 0,
+                    "total_size": 0,
+                    "speed": 0,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "message": f"Téléchargement de {game_name}"
+                })
+            
+            # Sauvegarder history.json immédiatement
+            save_history(config.history)
+            
             cancel_ev = cancel_events.get(task_id)
             # Use symlink path if enabled
             from rgsx_settings import apply_symlink_path
@@ -427,8 +472,12 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     "downloaded_size": 0,
                     "total_size": 0,
                     "status": "Connecting",
-                    "progress_percent": 0
+                    "progress_percent": 0,
+                    "speed": 0,
+                    "game_name": game_name,
+                    "platform": platform
                 }
+                # Plus besoin d'update_web_progress - history.json est mis à jour automatiquement
             
             # Tentatives multiples avec variations d'en-têtes pour contourner certains 401/403 (archive.org / hotlink protection)
             header_variants = [
@@ -451,6 +500,9 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             ]
             response = None
             last_status = None
+            last_error = None
+            last_error_type = None
+            
             for attempt, hv in enumerate(header_variants, start=1):
                 try:
                     # Mettre à jour la progression pour afficher la tentative en cours
@@ -458,6 +510,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         config.download_progress[url]["status"] = f"Try {attempt}/{len(header_variants)}"
                         config.download_progress[url]["progress_percent"] = 0
                         config.needs_redraw = True
+                        # Mettre à jour le fichier web
+                # Plus besoin de update_web_progress
                     
                     logger.debug(f"Tentative téléchargement {attempt}/{len(header_variants)} avec headers: {hv}")
                     # Timeout plus long pour archive.org, avec tuple (connect_timeout, read_timeout)
@@ -476,14 +530,32 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     r.raise_for_status()
                     response = r
                     break
+                except requests.Timeout as e:
+                    last_error = str(e)
+                    last_error_type = "timeout"
+                    logger.debug(f"Timeout tentative {attempt}: {e}")
+                except requests.ConnectionError as e:
+                    last_error = str(e)
+                    last_error_type = "connection"
+                    logger.debug(f"Erreur connexion tentative {attempt}: {e}")
+                except requests.HTTPError as e:
+                    last_error = str(e)
+                    last_error_type = "http"
+                    logger.debug(f"Erreur HTTP tentative {attempt}: {e}")
+                    # Si ce n'est pas une erreur auth explicite et qu'on a un code => on sort
+                    if last_status not in (401, 403):
+                        break
                 except requests.RequestException as e:
-                    logger.debug(f"Erreur tentative {attempt}: {e}")
+                    last_error = str(e)
+                    last_error_type = "request"
+                    logger.debug(f"Erreur requête tentative {attempt}: {e}")
                     # Si ce n'est pas une erreur auth explicite et qu'on a un code => on sort
                     if isinstance(e, requests.HTTPError) and last_status not in (401, 403):
                         break
                     # Délai entre tentatives pour archive.org (éviter saturation)
                     if 'archive.org' in url and attempt < len(header_variants):
                         time.sleep(2)
+            
             if response is None:
                 # Fallback metadata archive.org pour message clair
                 if 'archive.org/download/' in url:
@@ -505,8 +577,36 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         raise
                     except Exception as e:
                         raise requests.HTTPError(f"HTTP {last_status} après variations; metadata échec: {e}")
-                auth_msg = f"HTTP {last_status} après variations d'en-têtes" if last_status else "Aucune réponse valide"
-                raise requests.HTTPError(auth_msg)
+                
+                # Construire un message d'erreur détaillé et traduit
+                error_msg = None
+                if last_status:
+                    # Erreurs HTTP avec codes spécifiques
+                    if last_status == 401:
+                        error_msg = _("network_auth_required").format(last_status) if _ else f"Authentication required (HTTP {last_status})"
+                    elif last_status == 403:
+                        error_msg = _("network_access_denied").format(last_status) if _ else f"Access denied (HTTP {last_status})"
+                    elif last_status >= 500:
+                        error_msg = _("network_server_error").format(last_status) if _ else f"Server error (HTTP {last_status})"
+                    else:
+                        error_msg = _("network_http_error").format(last_status) if _ else f"HTTP error {last_status}"
+                elif last_error_type == "timeout":
+                    error_msg = _("network_timeout_error") if _ else "Connection timeout"
+                elif last_error_type == "connection":
+                    error_msg = _("network_connection_error") if _ else "Network connection error"
+                else:
+                    error_msg = _("network_no_response") if _ else "No response from server"
+                
+                # Ajouter le nombre de tentatives
+                attempts_count = len(header_variants)
+                full_error_msg = _("network_connection_failed").format(attempts_count) if _ else f"Connection failed after {attempts_count} attempts"
+                full_error_msg += f" - {error_msg}"
+                
+                # Ajouter les détails techniques en log
+                if last_error:
+                    logger.error(f"Détails de l'erreur: {last_error}")
+                
+                raise requests.HTTPError(full_error_msg)
             
             # Mettre à jour le statut: connexion réussie, début du téléchargement
             if url in config.download_progress:
@@ -561,6 +661,16 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             last_downloaded = downloaded
                             last_update_time = current_time
                             progress_queues[task_id].put((task_id, downloaded, total_size, speed))
+            
+            # Forcer une dernière mise à jour de progression pour les petits fichiers
+            # (au cas où aucune mise à jour n'a été envoyée pendant la boucle)
+            if downloaded > 0 and downloaded != last_downloaded:
+                current_time = time.time()
+                delta = downloaded - last_downloaded
+                elapsed = current_time - last_update_time
+                speed = delta / elapsed / (1024 * 1024) if elapsed > 0 else 0
+                progress_queues[task_id].put((task_id, downloaded, total_size, speed))
+                logger.debug(f"Mise à jour finale de progression: {downloaded}/{total_size} octets")
 
             # Si annulé, ne pas continuer avec extraction
             if download_cancelled:
@@ -634,10 +744,22 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             logger.error(f"Erreur téléchargement {url}: {str(e)}")
             result[0] = False
             result[1] = _("network_download_error").format(game_name, str(e))
-        finally:
-            logger.debug(f"Thread téléchargement terminé pour {url}, task_id={task_id}")
-            progress_queues[task_id].put((task_id, result[0], result[1]))
-            logger.debug(f"Final result sent to queue: success={result[0]}, message={result[1]}, task_id={task_id}")
+        
+        # AVANT le finally : Mettre à jour la progression à 100% si succès
+        if result[0] and url in config.download_progress:
+            logger.info(f"[WEB PROGRESS] Mise à jour finale à 100% pour {game_name}")
+            config.download_progress[url]["progress_percent"] = 100
+            config.download_progress[url]["status"] = "Completed"
+            config.download_progress[url]["downloaded_size"] = config.download_progress[url].get("total_size", 0)
+                # Plus besoin de update_web_progress
+            logger.info(f"[WEB PROGRESS] Attente 1.5s pour affichage...")
+            time.sleep(1.5)  # Laisser l'interface afficher 100% pendant 1.5 secondes
+            logger.info(f"[WEB PROGRESS] Fin de l'attente, envoi signal de fin")
+        
+        # Maintenant on peut envoyer le signal de fin à la boucle
+        logger.debug(f"Thread téléchargement terminé pour {url}, task_id={task_id}")
+        progress_queues[task_id].put((task_id, result[0], result[1]))
+        logger.debug(f"Final result sent to queue: success={result[0]}, message={result[1]}, task_id={task_id}")
 
     thread = threading.Thread(target=download_thread, daemon=True)
     download_threads[task_id] = thread
@@ -653,6 +775,12 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     #logger.debug(f"Progress queue data received: {data}")
                     if isinstance(data[1], bool):  # Fin du téléchargement
                         success, message = data[1], data[2]
+                        
+                        # Nettoyer download_progress et web_progress
+                        if url in config.download_progress:
+                            del config.download_progress[url]
+                        # Plus besoin de remove_web_progress
+                        
                         if isinstance(config.history, list):
                             for entry in config.history:
                                 if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
@@ -671,15 +799,34 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             speed = 0.0
                         progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
                         progress_percent = max(0, min(100, progress_percent))
+                        
+                        # Mettre à jour config.download_progress pour compatibilité
+                        if url in config.download_progress:
+                            config.download_progress[url]["downloaded_size"] = downloaded
+                            config.download_progress[url]["total_size"] = total_size
+                            config.download_progress[url]["speed"] = speed
+                            config.download_progress[url]["progress_percent"] = progress_percent
+                            # Si 100%, afficher "Completed" au lieu de "Downloading"
+                            config.download_progress[url]["status"] = "Completed" if progress_percent >= 100 else "Downloading"
                             
+                            # Mettre à jour le fichier web
+                # Plus besoin de update_web_progress
+                        
+                        # IMPORTANT: Mettre à jour config.history PENDANT le téléchargement aussi
+                        # pour que l'interface web affiche la progression en temps réel
+                        # NOTE: On ne touche PAS au timestamp qui doit rester celui de création
                         if isinstance(config.history, list):
                             for entry in config.history:
                                 if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
-                                    entry["progress"] = progress_percent
-                                    entry["status"] = "Téléchargement"
                                     entry["downloaded_size"] = downloaded
                                     entry["total_size"] = total_size
-                                    entry["speed"] = speed  # Ajout de la vitesse
+                                    entry["speed"] = speed
+                                    entry["progress"] = progress_percent
+                                    entry["status"] = "Téléchargement"
+                                    # Sauvegarder toutes les 5% pour éviter trop d'I/O
+                                    if progress_percent % 5 == 0 or progress_percent >= 99:
+                                        save_history(config.history)
+                                    break
                                     config.needs_redraw = True
                                     break           
             await asyncio.sleep(0.1)
@@ -779,6 +926,46 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             cancel_ev = cancel_events.get(task_id)
             link = url.split('&af=')[0]
             logger.debug(f"URL nettoyée: {link}")
+            
+            # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "downloading"
+            # pour que l'interface web puisse afficher le téléchargement en cours
+
+            # Charger l'historique existant depuis le fichier
+            if not isinstance(config.history, list):
+                config.history = load_history()
+            
+            # Vérifier si l'entrée existe déjà
+            entry_exists = False
+            for entry in config.history:
+                if entry.get("url") == url:
+                    entry_exists = True
+                    # Réinitialiser le status à "downloading"
+                    entry["status"] = "downloading"
+                    entry["progress"] = 0
+                    entry["downloaded_size"] = 0
+                    entry["platform"] = platform
+                    entry["game_name"] = game_name
+                    entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    break
+            
+            # Si l'entrée n'existe pas, la créer
+            if not entry_exists:
+                config.history.append({
+                    "platform": platform,
+                    "game_name": game_name,
+                    "url": url,
+                    "status": "downloading",
+                    "progress": 0,
+                    "downloaded_size": 0,
+                    "total_size": 0,
+                    "speed": 0,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "message": f"Téléchargement 1fichier de {game_name}"
+                })
+            
+            # Sauvegarder history.json immédiatement
+            save_history(config.history)
+            
             # Use symlink path if enabled
             from rgsx_settings import apply_symlink_path
             

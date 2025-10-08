@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.3.1"
+app_version = "2.2.4.0"
 
 
 def get_application_root():
@@ -34,8 +34,27 @@ def get_application_root():
 # Chemins de base
 APP_FOLDER = os.path.join(get_application_root(), "RGSX")
 USERDATA_FOLDER = os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))) # remonte de /userdata/roms/ports/rgsx à /userdata ou \Retrobat
-ROMS_FOLDER = os.path.join(USERDATA_FOLDER, "roms")
 SAVE_FOLDER = os.path.join(USERDATA_FOLDER, "saves", "ports", "rgsx")
+
+# ROMS_FOLDER - Charger depuis rgsx_settings.json si défini, sinon valeur par défaut
+_default_roms_folder = os.path.join(USERDATA_FOLDER, "roms")
+try:
+    # Import tardif pour éviter les dépendances circulaires
+    _settings_path = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
+    if os.path.exists(_settings_path):
+        import json
+        with open(_settings_path, 'r', encoding='utf-8') as _f:
+            _settings = json.load(_f)
+            _custom_roms = _settings.get("roms_folder", "").strip()
+            if _custom_roms and os.path.isdir(_custom_roms):
+                ROMS_FOLDER = _custom_roms
+            else:
+                ROMS_FOLDER = _default_roms_folder
+    else:
+        ROMS_FOLDER = _default_roms_folder
+except Exception as _e:
+    ROMS_FOLDER = _default_roms_folder
+    logging.getLogger(__name__).debug(f"Impossible de charger roms_folder depuis settings: {_e}")
 
 
 # Configuration du logging

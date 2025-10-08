@@ -68,7 +68,8 @@ def load_rgsx_settings():
             "custom_url": ""      
     },
     "show_unsupported_platforms": False,
-    "allow_unknown_extensions": False
+    "allow_unknown_extensions": False,
+    "roms_folder": ""
     }
     
     try:
@@ -315,3 +316,24 @@ def set_font_family(family: str):
     disp["font_family"] = family
     save_rgsx_settings(settings)
     return family
+
+# ----------------------- ROMs folder (custom path) ----------------------- #
+
+def get_roms_folder(settings=None):
+    """Retourne le chemin du dossier ROMs personnalisé (ou chaîne vide si par défaut)."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return settings.get("roms_folder", "").strip()
+
+def set_roms_folder(path: str):
+    """Définit le chemin du dossier ROMs personnalisé et sauvegarde."""
+    settings = load_rgsx_settings()
+    settings["roms_folder"] = path.strip()
+    save_rgsx_settings(settings)
+    return path.strip()
+
+def get_language(settings=None):
+    """Retourne la langue configurée (par défaut 'en')."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return settings.get("language", "en")

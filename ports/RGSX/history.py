@@ -25,15 +25,31 @@ def init_history():
     return history_path
 
 def load_history():
-    """Charge l'historique depuis history.json."""
+    """Charge l'historique depuis history.json avec gestion d'erreur robuste."""
     history_path = getattr(config, 'HISTORY_PATH')
     try:
         if not os.path.exists(history_path):
             logger.debug(f"Aucun fichier d'historique trouvé à {history_path}")
             return []
+        
+        # Vérifier que le fichier n'est pas vide avant de lire
+        if os.path.getsize(history_path) == 0:
+            logger.warning(f"Fichier history.json vide détecté, retour liste vide")
+            return []
+        
         with open(history_path, "r", encoding='utf-8') as f:
-            history = json.load(f)
+            content = f.read()
+            if not content or content.strip() == '':
+                logger.warning(f"Contenu history.json vide, retour liste vide")
+                return []
+            
+            history = json.loads(content)
+            
             # Valider la structure : liste de dictionnaires avec 'platform', 'game_name', 'status'
+            if not isinstance(history, list):
+                logger.warning(f"Format history.json invalide (pas une liste), retour liste vide")
+                return []
+            
             for entry in history:
                 if not all(key in entry for key in ['platform', 'game_name', 'status']):
                     logger.warning(f"Entrée d'historique invalide : {entry}")
@@ -43,16 +59,33 @@ def load_history():
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logger.error(f"Erreur lors de la lecture de {history_path} : {e}")
         return []
+    except Exception as e:
+        logger.error(f"Erreur inattendue lors de la lecture de {history_path} : {e}")
+        return []
 
 def save_history(history):
-    """Sauvegarde l'historique dans history.json."""
+    """Sauvegarde l'historique dans history.json de manière atomique."""
     history_path = getattr(config, 'HISTORY_PATH')
     try:
         os.makedirs(os.path.dirname(history_path), exist_ok=True)
-        with open(history_path, "w", encoding='utf-8') as f:
+        
+        # Écriture atomique : écrire dans un fichier temporaire puis renommer
+        temp_path = history_path + '.tmp'
+        with open(temp_path, "w", encoding='utf-8') as f:
             json.dump(history, f, indent=2, ensure_ascii=False)
+            f.flush()  # Forcer l'écriture sur disque
+            os.fsync(f.fileno())  # Synchroniser avec le système de fichiers
+        
+        # Renommer atomiquement (remplace l'ancien fichier)
+        os.replace(temp_path, history_path)
     except Exception as e:
         logger.error(f"Erreur lors de l'écriture de {history_path} : {e}")
+        # Nettoyer le fichier temporaire en cas d'erreur
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except:
+            pass
 
 def add_to_history(platform, game_name, status, url=None, progress=0, message=None, timestamp=None):
     """Ajoute une entrée à l'historique."""
