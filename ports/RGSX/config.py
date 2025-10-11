@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.4.0"
+app_version = "2.2.4.1"
 
 
 def get_application_root():
@@ -61,6 +61,7 @@ except Exception as _e:
 logger = logging.getLogger(__name__)
 log_dir = os.path.join(APP_FOLDER, "logs")
 log_file = os.path.join(log_dir, "RGSX.log")
+log_file_web = os.path.join(log_dir, 'rgsx_web.log')
 
 # Dans le Dossier de l'APP : /roms/ports/rgsx
 UPDATE_FOLDER = os.path.join(APP_FOLDER, "update")

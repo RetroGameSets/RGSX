@@ -51,14 +51,14 @@ TRANSLATIONS = load_translations()
 
 # Configuration logging - Enregistrer dans rgsx_web.log
 os.makedirs(config.log_dir, exist_ok=True)
-log_file = os.path.join(config.log_dir, 'rgsx_web.log')
+
 
 # Supprimer les handlers existants pour éviter les doublons
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
 
 # Créer le handler de fichier avec mode 'a' (append) et force flush
-file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
+file_handler = logging.FileHandler(config.log_file_web, mode='a', encoding='utf-8')
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
@@ -69,7 +69,7 @@ class FlushFileHandler(logging.FileHandler):
         self.flush()
 
 # Recréer le handler avec la classe qui flush automatiquement
-file_handler = FlushFileHandler(log_file, mode='a', encoding='utf-8')
+file_handler = FlushFileHandler(config.log_file_web, mode='a', encoding='utf-8')
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
@@ -87,7 +87,7 @@ logger = logging.getLogger(__name__)
 
 logger.info("=" * 60)
 logger.info("RGSX Web Server - Démarrage du logging")
-logger.info(f"Fichier de log: {log_file}")
+logger.info(f"Fichier de log: {config.log_file_web}")
 logger.info(f"Répertoire de log: {config.log_dir}")
 logger.info(f"Python version: {sys.version}")
 logger.info(f"Plateforme: {sys.platform}")
@@ -101,7 +101,7 @@ for handler in logging.root.handlers:
 
 # Test d'écriture pour vérifier que le fichier fonctionne
 try:
-    with open(log_file, 'a', encoding='utf-8') as test_file:
+    with open(config.log_file_web, 'a', encoding='utf-8') as test_file:
         test_file.write(f"\n{'='*60}\n")
         test_file.write(f"Test d'écriture directe - {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         test_file.write(f"{'='*60}\n")
@@ -109,7 +109,7 @@ try:
     logger.info("Test d'écriture dans le fichier de log réussi")
 except Exception as e:
     logger.error(f"Erreur lors du test d'écriture : {e}")
-    print(f"ERREUR: Impossible d'écrire dans {log_file}: {e}", file=sys.stderr)
+    print(f"ERREUR: Impossible d'écrire dans {config.log_file_web}: {e}", file=sys.stderr)
 
 # Initialiser les données au démarrage
 logger.info("Chargement initial des données...")
@@ -612,7 +612,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
             # Route: Redémarrer l'application
             elif path == '/api/restart':
                 try:
-                    logger.info("🔄 Demande de redémarrage via l'interface web")
+                    logger.info("Demande de redémarrage via l'interface web")
                     
                     # Importer restart_application depuis utils
                     from utils import restart_application
@@ -639,6 +639,104 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     
                 except Exception as e:
                     logger.error(f"Erreur lors du redémarrage: {e}")
+                    self._send_json({
+                        'success': False,
+                        'error': str(e)
+                    }, status=500)
+            
+            # Route: Générer un fichier ZIP de support
+            elif path == '/api/support':
+                try:
+                    import zipfile
+                    import tempfile
+                    from datetime import datetime
+                    
+                    logger.info("Génération d'un fichier de support")
+                    
+                    # Créer un fichier ZIP temporaire
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    zip_filename = f"rgsx_support_{timestamp}.zip"
+                    zip_path = os.path.join(tempfile.gettempdir(), zip_filename)
+                    
+                    # Liste des fichiers à inclure
+                    files_to_include = []
+                    
+                    # Ajouter les fichiers de configuration
+                    if hasattr(config, 'CONTROLS_CONFIG_PATH') and os.path.exists(config.CONTROLS_CONFIG_PATH):
+                        files_to_include.append(('controls.json', config.CONTROLS_CONFIG_PATH))
+                    
+                    if hasattr(config, 'HISTORY_PATH') and os.path.exists(config.HISTORY_PATH):
+                        files_to_include.append(('history.json', config.HISTORY_PATH))
+                    
+                    if hasattr(config, 'RGSX_SETTINGS_PATH') and os.path.exists(config.RGSX_SETTINGS_PATH):
+                        files_to_include.append(('rgsx_settings.json', config.RGSX_SETTINGS_PATH))
+                    
+                    # Ajouter les fichiers de log
+                    if hasattr(config, 'log_file') and os.path.exists(config.log_file):
+                        files_to_include.append(('RGSX.log', config.log_file))
+                    
+                    # Log du serveur web
+                    web_log = os.path.join(config.log_dir, 'rgsx_web.log')
+                    if os.path.exists(web_log):
+                        files_to_include.append(('rgsx_web.log', web_log))
+                    
+                    # Log de démarrage du serveur web
+                    web_startup_log = os.path.join(config.log_dir, 'rgsx_web_startup.log')
+                    if os.path.exists(web_startup_log):
+                        files_to_include.append(('rgsx_web_startup.log', web_startup_log))
+                    
+                    # Créer le fichier ZIP
+                    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                        for archive_name, file_path in files_to_include:
+                            try:
+                                zipf.write(file_path, archive_name)
+                                logger.debug(f"Ajouté au ZIP: {archive_name}")
+                            except Exception as e:
+                                logger.warning(f"Impossible d'ajouter {archive_name}: {e}")
+                        
+                        # Ajouter un fichier README avec des informations système
+                        readme_content = f"""RGSX Support Package
+Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+System Information:
+- OS: {config.OPERATING_SYSTEM}
+- Python: {sys.version}
+- Platform: {sys.platform}
+
+Included Files:
+"""
+                        for archive_name, _ in files_to_include:
+                            readme_content += f"- {archive_name}\n"
+                        
+                        readme_content += """
+Instructions:
+1. Join RGSX Discord server
+2. Describe your issue in the support channel
+3. Upload this ZIP file to help the team diagnose your problem
+
+DO NOT share this file publicly as it may contain sensitive information.
+"""
+                        zipf.writestr('README.txt', readme_content)
+                    
+                    # Lire le fichier ZIP pour l'envoyer
+                    with open(zip_path, 'rb') as f:
+                        zip_data = f.read()
+                    
+                    # Supprimer le fichier temporaire
+                    os.remove(zip_path)
+                    
+                    # Envoyer le fichier ZIP
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/zip')
+                    self.send_header('Content-Disposition', f'attachment; filename="{zip_filename}"')
+                    self.send_header('Content-Length', str(len(zip_data)))
+                    self.end_headers()
+                    self.wfile.write(zip_data)
+                    
+                    logger.info(f"Fichier de support généré: {zip_filename} ({len(zip_data)} bytes)")
+                    
+                except Exception as e:
+                    logger.error(f"Erreur lors de la génération du fichier de support: {e}")
                     self._send_json({
                         'success': False,
                         'error': str(e)
@@ -904,7 +1002,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
             padding: 20px;
         }
         .container {
-            max-width: 1200px;
+            max-width: 90%;
             margin: 0 auto;
             background: white;
             border-radius: 16px;
@@ -974,6 +1072,17 @@ class RGSXHandler(BaseHTTPRequestHandler):
             border-bottom: 3px solid #667eea;
             font-weight: bold;
         }
+        .tab.support-btn {
+            margin-left: auto;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 20px;
+            padding: 8px 20px;
+        }
+        .tab.support-btn:hover {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            transform: scale(1.05);
+        }
         
         .content {
             padding: 30px;
@@ -1004,8 +1113,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
             box-shadow: 0 10px 30px rgba(0,0,0,0.4);
         }
         .platform-card img {
-            width: 120px;
-            height: 120px;
+            width: 200px;
+            height: 200px;
             object-fit: contain;
             margin-bottom: 15px;
             filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));
@@ -1261,6 +1370,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 <button class="mobile-tab" onclick="showTab('history')" data-translate-title="web_tooltip_history" title="History">📜</button>
                 <button class="mobile-tab" onclick="showTab('settings')" data-translate-title="web_tooltip_settings" title="Settings">⚙️</button>                
                 <button class="mobile-tab" onclick="updateGamesList()" data-translate-title="web_tooltip_update" title="Update games list">🔄</button>
+                <button class="mobile-tab" onclick="generateSupportZip()" data-translate-title="web_support" title="Support">🆘</button>
             </div>
         </header>
         
@@ -1270,6 +1380,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
             <button class="tab" onclick="showTab('history')">📜 <span data-translate="web_tab_history">History</span></button>
             <button class="tab" onclick="showTab('settings')">⚙️ <span data-translate="web_tab_settings">Settings</span></button>
             <button class="tab" onclick="updateGamesList()">🔄 <span data-translate="web_tab_update">Update games list</span></button>
+            <button class="tab" onclick="generateSupportZip()">🆘 <span data-translate="web_support">Support</span></button>
         </div>
         
         <div class="content">
@@ -1989,7 +2100,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 const allowUnknownLabel = t('web_settings_allow_unknown');
                 
                 container.innerHTML = `
-                    <h2 data-translate="web_settings_title">ℹ️ ${t('web_settings_title')} ⚙️</h2>
+                    <h2 data-translate="web_settings_title">ℹ️ ${t('web_settings_title')}</h2>
                     
                     <div class="info-grid" style="margin-bottom: 20px; margin-top: 20px">
                         <div class="info-item">
@@ -2001,6 +2112,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             ${info.platforms_count}
                         </div>
                     </div>
+                    
+                    <h3 style="margin-top: 30px; margin-bottom: 15px;">RGSX Configuration ⚙️</h3>
                     
                     <div style="margin-bottom: 20px; background: #f0f8ff; padding: 15px; border-radius: 8px; border: 2px solid #007bff;">
                         <label style="display: block; font-weight: bold; margin-bottom: 10px; font-size: 1.1em;">📁 ${t('web_settings_roms_folder')}</label>
@@ -2019,7 +2132,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         </small>
                     </div>
                     
-                    <h3 style="margin-top: 30px; margin-bottom: 15px;">Configuration RGSX</h3>
+                
                     
                     <div style="background: #f9f9f9; padding: 20px; border-radius: 8px;">
                         <div style="margin-bottom: 20px;">
@@ -2234,6 +2347,72 @@ class RGSXHandler(BaseHTTPRequestHandler):
             }
         }
         
+        // Générer un fichier ZIP de support
+        async function generateSupportZip() {
+            try {
+                // Afficher un message de chargement
+                const loadingMsg = t('web_support_generating');
+                const originalButton = event ? event.target : null;
+                if (originalButton) {
+                    originalButton.disabled = true;
+                    originalButton.innerHTML = '⏳ ' + loadingMsg;
+                }
+                
+                // Appeler l'API pour générer le ZIP
+                const response = await fetch('/api/support', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || t('web_error_unknown'));
+                }
+                
+                // Télécharger le fichier
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                
+                // Extraire le nom du fichier depuis les headers
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'rgsx_support.zip';
+                if (contentDisposition) {
+                    const matches = /filename="?([^"]+)"?/.exec(contentDisposition);
+                    if (matches && matches[1]) {
+                        filename = matches[1];
+                    }
+                }
+                
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                // Afficher le message d'instructions
+                alert(t('web_support_title') + '\\n\\n' + t('web_support_message'));
+                
+                // Restaurer le bouton
+                if (originalButton) {
+                    originalButton.disabled = false;
+                    originalButton.innerHTML = '🆘 ' + t('web_support');
+                }
+                
+            } catch (error) {
+                console.error('Erreur génération support:', error);
+                alert('❌ ' + t('web_support_error', error.message));
+                
+                // Restaurer le bouton en cas d'erreur
+                const originalButton = event ? event.target : null;
+                if (originalButton) {
+                    originalButton.disabled = false;
+                    originalButton.innerHTML = '🆘 ' + t('web_support');
+                }
+            }
+        }
+        
         // Navigateur de répertoires pour ROMs folder
         let currentBrowsePath = '';
         let browseInitialized = false;
@@ -2445,7 +2624,7 @@ def run_server(host='0.0.0.0', port=5000):
 if __name__ == '__main__':
     print("="*60, flush=True)
     print("Démarrage du serveur RGSX Web...", flush=True)
-    print(f"Fichier de log prévu: {log_file}", flush=True)
+    print(f"Fichier de log prévu: {config.log_file_web}", flush=True)
     print("="*60, flush=True)
     
     parser = argparse.ArgumentParser(description='RGSX Web Server')

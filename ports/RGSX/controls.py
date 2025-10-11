@@ -1849,9 +1849,8 @@ def handle_controls(event, sources, joystick, screen):
                             if os.path.exists(config.SOURCES_FILE):
                                 os.remove(config.SOURCES_FILE)
                                 logger.debug("Fichier system_list.json supprimé avec succès")
-                            if os.path.exists(config.SAVE_FOLDER + "/sources.json"):
-                                os.remove(config.SAVE_FOLDER + "/sources.json")
-                                logger.debug("Fichier sources.json supprimé avec succès")
+                            if os.path.exists(os.path.join(config.SAVE_FOLDER, "sources.json")):
+                                os.remove(os.path.join(config.SAVE_FOLDER, "sources.json"))
                             if os.path.exists(config.GAMES_FOLDER):
                                 shutil.rmtree(config.GAMES_FOLDER)
                                 logger.debug("Dossier games supprimé avec succès")

@@ -2025,7 +2025,7 @@ def draw_pause_api_keys_status(screen):
         y += row_height
 
     # Indication basique: utiliser config.SAVE_FOLDER (chemin dynamique)
-    save_folder_path = getattr(config, 'SAVE_FOLDER', '/saves/ports/rgsx')
+    save_folder_path = config.SAVE_FOLDER
     # Utiliser placeholder {path} si traduction fournie
     if _ and _("api_keys_hint_manage") != "api_keys_hint_manage":
         try:

@@ -301,4 +301,10 @@
     ,"web_restart_no": "No, later"
     ,"web_restart_success": "Restarting..."
     ,"web_restart_error": "Restart error: {0}"
+    ,"web_support": "Support"
+    ,"web_support_title": "📦 Support File Generated"
+    ,"web_support_message": "Support file created successfully!\\n\\n📁 Contents:\\n• Controls configuration\\n• Download history\\n• RGSX settings\\n• Application logs\\n• Web server logs\\n\\n💬 To get help:\\n1. Join RGSX Discord\\n2. Describe your issue\\n3. Share this ZIP file\\n\\nDownload will start..."
+    ,"web_support_generating": "Generating support file..."
+    ,"web_support_download": "Download support file"
+    ,"web_support_error": "Error generating support file: {0}"
 }
