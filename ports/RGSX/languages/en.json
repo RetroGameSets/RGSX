@@ -37,6 +37,11 @@
     "history_status_completed": "Completed",
     "history_status_error": "Error: {0}",
     "history_status_canceled": "Canceled",
+    "free_mode_waiting": "[Free mode] Waiting: {0}/{1}s",
+    "free_mode_download": "[Free mode] Downloading: {0}",
+    "free_mode_submitting": "[Free mode] Submitting form...",
+    "free_mode_link_found": "[Free mode] Link found: {0}...",
+    "free_mode_completed": "[Free mode] Completed: {0}",
     "download_status": "{0}: {1}",
     "download_canceled": "Download canceled by user.",
     "extension_warning_zip": "The file '{0}' is an archive and Batocera does not support archives for this system. Automatic extraction will occur after download, continue?",
@@ -73,16 +78,20 @@
     "menu_allow_unknown_ext_off": "Hide unknown extension warning: No",
     "menu_allow_unknown_ext_enabled": "Hide unknown extension warning enabled",
     "menu_allow_unknown_ext_disabled": "Hide unknown extension warning disabled",
+    "menu_support": "Support",
     "menu_quit": "Quit",
     "button_yes": "Yes",
     "button_no": "No",
     "button_OK": "OK",
     "popup_restarting": "Restarting...",
     "controls_action_clear_history": "Multi-select / Clear History",
-    "controls_action_history": "History",
     "controls_action_delete": "Delete",
     "controls_action_space": "Space",
     "controls_action_start": "Help / Settings",
+    "support_dialog_title": "Support File",
+    "support_dialog_message": "A support file has been created with all your configuration and log files.\n\nFile: {0}\n\nTo get help:\n1. Join the RGSX Discord server\n2. Describe your issue\n3. Share this ZIP file\n\nPress {1} to return to the menu.",
+    "support_dialog_error": "Error generating support file:\n{0}\n\nPress {1} to return to the menu.",
+    "controls_action_history": "History",
     "network_checking_updates": "Checking for updates...",
     "network_update_available": "Update available: {0}",
     "network_extracting_update": "Extracting update...",
@@ -171,6 +180,7 @@
     "instruction_pause_games": "Open history, switch source or refresh list",
     "instruction_pause_settings": "Music, symlink option & API keys status",
     "instruction_pause_restart": "Restart RGSX to reload configuration"
+    ,"instruction_pause_support": "Generate a diagnostic ZIP file for support"
     ,"instruction_pause_quit": "Exit the RGSX application"
     ,"instruction_controls_help": "Show full controller & keyboard reference"
     ,"instruction_controls_remap": "Change button / key bindings"

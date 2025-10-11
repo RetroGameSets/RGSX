@@ -37,6 +37,11 @@
     "history_status_completed": "Completado",
     "history_status_error": "Error: {0}",
     "history_status_canceled": "Cancelado",
+    "free_mode_waiting": "[Modo gratuito] Esperando: {0}/{1}s",
+    "free_mode_download": "[Modo gratuito] Descargando: {0}",
+    "free_mode_submitting": "[Modo gratuito] Enviando formulario...",
+    "free_mode_link_found": "[Modo gratuito] Enlace encontrado: {0}...",
+    "free_mode_completed": "[Modo gratuito] Completado: {0}",
     "download_status": "{0}: {1}",
     "download_canceled": "Descarga cancelada por el usuario.",
     "extension_warning_zip": "El archivo '{0}' es un archivo comprimido y Batocera no soporta archivos comprimidos para este sistema. La extracción automática del archivo se realizará después de la descarga, ¿continuar?",
@@ -63,6 +68,7 @@
     "menu_music_enabled": "Música activada: {0}",
     "menu_music_disabled": "Música desactivada",
     "menu_restart": "Reiniciar",
+    "menu_support": "Soporte",
     "menu_filter_platforms": "Filtrar sistemas",
     "filter_platforms_title": "Visibilidad de sistemas",
     "filter_platforms_info": "Visibles: {0} | Ocultos: {1} / Total: {2}",
@@ -74,6 +80,9 @@
     "menu_allow_unknown_ext_enabled": "Aviso de extensión desconocida oculto (activado)",
     "menu_allow_unknown_ext_disabled": "Aviso de extensión desconocida visible (desactivado)",
     "menu_quit": "Salir",
+    "support_dialog_title": "Archivo de soporte",
+    "support_dialog_message": "Se ha creado un archivo de soporte con todos sus archivos de configuración y registros.\n\nArchivo: {0}\n\nPara obtener ayuda:\n1. Únete al servidor Discord de RGSX\n2. Describe tu problema\n3. Comparte este archivo ZIP\n\nPresiona {1} para volver al menú.",
+    "support_dialog_error": "Error al generar el archivo de soporte:\n{0}\n\nPresiona {1} para volver al menú.",
     "button_yes": "Sí",
     "button_no": "No",
     "button_OK": "OK",
@@ -171,6 +180,7 @@
     ,"instruction_pause_games": "Abrir historial, cambiar fuente o refrescar lista"
     ,"instruction_pause_settings": "Música, opción symlink y estado de claves API"
     ,"instruction_pause_restart": "Reiniciar RGSX para recargar configuración"
+    ,"instruction_pause_support": "Generar un archivo ZIP de diagnóstico para soporte"
     ,"instruction_pause_quit": "Salir de la aplicación RGSX"
     ,"instruction_controls_help": "Mostrar referencia completa de mando y teclado"
     ,"instruction_controls_remap": "Cambiar asignación de botones / teclas"

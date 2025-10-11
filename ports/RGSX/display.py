@@ -1069,13 +1069,22 @@ def draw_history_list(screen):
 
         # Precompute provider prefix once
         provider_prefix = entry.get("provider_prefix") or (entry.get("provider") + ":" if entry.get("provider") else "")
+        
         # Compute status text (optimized version without redundant prefix for errors)
         if status in ["Téléchargement", "downloading"]:
-            status_text = _("history_status_downloading").format(progress)
-            # Coerce to string and prefix provider when relevant
-            status_text = str(status_text or "")
-            if provider_prefix and not status_text.startswith(provider_prefix):
-                status_text = f"{provider_prefix} {status_text}"
+            # Vérifier si un message personnalisé existe (ex: mode gratuit avec attente)
+            custom_message = entry.get('message', '')
+            # Détecter les messages du mode gratuit (commencent par '[' dans toutes les langues)
+            if custom_message and custom_message.strip().startswith('['):
+                # Utiliser le message personnalisé pour le mode gratuit
+                status_text = custom_message
+            else:
+                # Comportement normal: afficher le pourcentage
+                status_text = _("history_status_downloading").format(progress)
+                # Coerce to string and prefix provider when relevant
+                status_text = str(status_text or "")
+                if provider_prefix and not status_text.startswith(provider_prefix):
+                    status_text = f"{provider_prefix} {status_text}"
         elif status == "Extracting":
             status_text = _("history_status_extracting").format(progress)
             status_text = str(status_text or "")
@@ -1653,7 +1662,7 @@ def draw_display_menu(screen):
 def draw_pause_menu(screen, selected_option):
     """Dessine le menu pause racine (catégories)."""
     screen.blit(OVERLAY, (0, 0))
-    # Nouvel ordre: Language / Controls / Display / Games / Settings / Restart / Quit
+    # Nouvel ordre: Language / Controls / Display / Games / Settings / Restart / Support / Quit
     options = [
         _("menu_language") if _ else "Language",          # 0 -> sélecteur de langue direct
         _("menu_controls"),                                 # 1 -> sous-menu controls
@@ -1661,7 +1670,8 @@ def draw_pause_menu(screen, selected_option):
     _("menu_games") if _ else "Games",                  # 3 -> sous-menu games (history + sources + update)
         _("menu_settings_category") if _ else "Settings",  # 4 -> sous-menu settings
         _("menu_restart"),                                  # 5 -> reboot
-        _("menu_quit")                                      # 6 -> quit
+        _("menu_support"),                                  # 6 -> support
+        _("menu_quit")                                      # 7 -> quit
     ]
     menu_width = int(config.screen_width * 0.6)
     button_height = int(config.screen_height * 0.048)
@@ -1692,6 +1702,7 @@ def draw_pause_menu(screen, selected_option):
         "instruction_pause_games",
         "instruction_pause_settings",
         "instruction_pause_restart",
+        "instruction_pause_support",
         "instruction_pause_quit",
     ]
     try:
@@ -2414,6 +2425,75 @@ def draw_reload_games_data_dialog(screen):
     buttons_y = rect_y + text_height + margin_top_bottom
     draw_stylized_button(screen, _("button_yes"), yes_x, buttons_y, button_width, button_height, selected=config.redownload_confirm_selection == 1)
     draw_stylized_button(screen, _("button_no"), no_x, buttons_y, button_width, button_height, selected=config.redownload_confirm_selection == 0)
+
+
+def draw_support_dialog(screen):
+    """Affiche la boîte de dialogue du fichier de support généré."""
+    global OVERLAY
+    if OVERLAY is None or OVERLAY.get_size() != (config.screen_width, config.screen_height):
+        OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
+        OVERLAY.fill((0, 0, 0, 150))
+        logger.debug("OVERLAY recréé dans draw_support_dialog")
+
+    screen.blit(OVERLAY, (0, 0))
+    
+    # Récupérer le nom du bouton "cancel/back" depuis la configuration des contrôles
+    cancel_key = "SELECT"
+    try:
+        from controls_mapper import get_mapped_button
+        cancel_key = get_mapped_button("cancel") or "SELECT"
+    except Exception:
+        pass
+    
+    # Déterminer le message à afficher (succès ou erreur)
+    if hasattr(config, 'support_zip_error') and config.support_zip_error:
+        title = _("support_dialog_title")
+        message = _("support_dialog_error").format(config.support_zip_error, cancel_key)
+    else:
+        title = _("support_dialog_title")
+        zip_path = getattr(config, 'support_zip_path', 'rgsx_support.zip')
+        message = _("support_dialog_message").format(zip_path, cancel_key)
+    
+    # Diviser le message par les retours à la ligne puis wrapper chaque segment
+    raw_segments = message.split('\n') if message else []
+    wrapped_message = []
+    for seg in raw_segments:
+        if seg.strip() == "":
+            wrapped_message.append("")  # Ligne vide pour espacement
+        else:
+            wrapped_message.extend(wrap_text(seg, config.small_font, config.screen_width - 100))
+    
+    line_height = config.small_font.get_height() + 5
+    text_height = len(wrapped_message) * line_height
+    
+    # Calculer la hauteur du titre
+    title_height = config.font.get_height() + 10
+    
+    # Calculer les dimensions de la boîte
+    margin_top_bottom = 20
+    rect_height = title_height + text_height + 2 * margin_top_bottom
+    max_text_width = max([config.small_font.size(line)[0] for line in wrapped_message if line], default=300)
+    title_width = config.font.size(title)[0]
+    rect_width = max(max_text_width, title_width) + 100
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+
+    # Dessiner la boîte
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+
+    # Afficher le titre
+    title_surf = config.font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surf.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + title_height // 2))
+    screen.blit(title_surf, title_rect)
+
+    # Afficher le message
+    for i, line in enumerate(wrapped_message):
+        if line:  # Ne pas rendre les lignes vides
+            text = config.small_font.render(line, True, THEME_COLORS["text"])
+            text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + title_height + i * line_height + line_height // 2))
+            screen.blit(text, text_rect)
+
 
 # Popup avec compte à rebours
 def draw_popup(screen):

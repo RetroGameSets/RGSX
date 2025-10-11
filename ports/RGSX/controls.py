@@ -660,22 +660,30 @@ def handle_controls(event, sources, joystick, screen):
                         if is_1fichier_url(url):
                             from utils import ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
                             ensure_download_provider_keys(False)
+                            
+                            # SUPPRIMÉ: Vérification clés API obligatoires
+                            # Maintenant on a le mode gratuit en fallback automatique
+                            # if missing_all_provider_keys():
+                            #     config.previous_menu_state = config.menu_state
+                            #     config.menu_state = "error"
+                            #     try:
+                            #         config.error_message = _("error_api_key").format(build_provider_paths_string())
+                            #     except Exception as e:
+                            #         logger.error(f"Erreur lors de la traduction de error_api_key: {str(e)}")
+                            #         config.error_message = "Please enter API key (1fichier or AllDebrid or RealDebrid)"
+                            #     config.history[-1]["status"] = "Erreur"
+                            #     config.history[-1]["progress"] = 0
+                            #     config.history[-1]["message"] = "API NOT FOUND"
+                            #     save_history(config.history)
+                            #     config.needs_redraw = True
+                            #     logger.error("Clés API manquantes pour tous les fournisseurs (1fichier/AllDebrid/RealDebrid).")
+                            #     config.pending_download = None
+                            #     return action
+                            
+                            # Avertissement si pas de clé (utilisation mode gratuit)
                             if missing_all_provider_keys():
-                                config.previous_menu_state = config.menu_state
-                                config.menu_state = "error"
-                                try:
-                                    config.error_message = _("error_api_key").format(build_provider_paths_string())
-                                except Exception as e:
-                                    logger.error(f"Erreur lors de la traduction de error_api_key: {str(e)}")
-                                    config.error_message = "Please enter API key (1fichier or AllDebrid or RealDebrid)"
-                                config.history[-1]["status"] = "Erreur"
-                                config.history[-1]["progress"] = 0
-                                config.history[-1]["message"] = "API NOT FOUND"
-                                save_history(config.history)
-                                config.needs_redraw = True
-                                logger.error("Clés API manquantes pour tous les fournisseurs (1fichier/AllDebrid/RealDebrid).")
-                                config.pending_download = None
-                                return action
+                                logger.warning("Aucune clé API - Mode gratuit 1fichier sera utilisé (attente requise)")
+                            
                             config.pending_download = check_extension_before_download(url, platform, game_name)
                             if config.pending_download:
                                 is_supported = is_extension_supported(
@@ -778,21 +786,29 @@ def handle_controls(event, sources, joystick, screen):
                         if is_1fichier_url(url):
                             from utils import ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
                             ensure_download_provider_keys(False)
+                            
+                            # SUPPRIMÉ: Vérification clés API obligatoires
+                            # Maintenant on a le mode gratuit en fallback automatique
+                            # if missing_all_provider_keys():
+                            #     config.previous_menu_state = config.menu_state
+                            #     config.menu_state = "error"
+                            #     try:
+                            #         config.error_message = _("error_api_key").format(build_provider_paths_string())
+                            #     except Exception:
+                            #         config.error_message = "Please enter API key (1fichier or AllDebrid or RealDebrid)"
+                            #     config.history[-1]["status"] = "Erreur"
+                            #     config.history[-1]["progress"] = 0
+                            #     config.history[-1]["message"] = "API NOT FOUND"
+                            #     save_history(config.history)
+                            #     config.needs_redraw = True
+                            #     logger.error("Clés API manquantes pour tous les fournisseurs (1fichier/AllDebrid/RealDebrid).")
+                            #     config.pending_download = None
+                            #     return action
+                            
+                            # Avertissement si pas de clé (utilisation mode gratuit)
                             if missing_all_provider_keys():
-                                config.previous_menu_state = config.menu_state
-                                config.menu_state = "error"
-                                try:
-                                    config.error_message = _("error_api_key").format(build_provider_paths_string())
-                                except Exception:
-                                    config.error_message = "Please enter API key (1fichier or AllDebrid or RealDebrid)"
-                                config.history[-1]["status"] = "Erreur"
-                                config.history[-1]["progress"] = 0
-                                config.history[-1]["message"] = "API NOT FOUND"
-                                save_history(config.history)
-                                config.needs_redraw = True
-                                logger.error("Clés API manquantes pour tous les fournisseurs (1fichier/AllDebrid/RealDebrid).")
-                                config.pending_download = None
-                                return action
+                                logger.warning("Aucune clé API - Mode gratuit 1fichier sera utilisé (attente requise)")
+                            
                             task_id = str(pygame.time.get_ticks())
                             task = asyncio.create_task(download_from_1fichier(url, platform, game_name, is_zip_non_supported, task_id))
                         else:
@@ -1070,6 +1086,19 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "history"
                 config.needs_redraw = True
                 logger.debug("Annulation du vidage de l'historique, retour à history")
+
+        # Dialogue fichier de support
+        elif config.menu_state == "support_dialog":
+            if is_input_matched(event, "confirm") or is_input_matched(event, "cancel"):
+                # Retour au menu pause
+                config.menu_state = "pause_menu"
+                config.needs_redraw = True
+                # Nettoyage des variables temporaires
+                if hasattr(config, 'support_zip_path'):
+                    delattr(config, 'support_zip_path')
+                if hasattr(config, 'support_zip_error'):
+                    delattr(config, 'support_zip_error')
+                logger.debug("Retour au menu pause depuis support_dialog")
 
         # Menu options du jeu dans l'historique
         elif config.menu_state == "history_game_options":
@@ -1438,7 +1467,19 @@ def handle_controls(event, sources, joystick, screen):
                 elif config.selected_option == 5:  # Restart
                     from utils import restart_application
                     restart_application(2000)
-                elif config.selected_option == 6:  # Quit
+                elif config.selected_option == 6:  # Support
+                    from utils import generate_support_zip
+                    success, message, zip_path = generate_support_zip()
+                    if success:
+                        config.support_zip_path = zip_path
+                        config.support_zip_error = None
+                    else:
+                        config.support_zip_path = None
+                        config.support_zip_error = message
+                    config.menu_state = "support_dialog"
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+                elif config.selected_option == 7:  # Quit
                     # Capturer l'origine pause_menu pour retour si annulation
                     config.confirm_exit_origin = "pause_menu"
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)

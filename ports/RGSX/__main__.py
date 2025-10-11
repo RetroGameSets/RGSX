@@ -697,22 +697,30 @@ async def main():
                             except Exception as e:
                                 logger.error(f"Impossible de charger les clés via helpers: {e}")
                                 keys_info = {'1fichier': getattr(config,'API_KEY_1FICHIER',''), 'alldebrid': getattr(config,'API_KEY_ALLDEBRID',''), 'realdebrid': getattr(config,'API_KEY_REALDEBRID','')}
+                            
+                            # SUPPRIMÉ: Vérification clés API obligatoires
+                            # Maintenant on a le mode gratuit en fallback automatique
+                            # if missing_all_provider_keys():
+                            #     config.previous_menu_state = config.menu_state
+                            #     config.menu_state = "error"
+                            #     try:
+                            #         config.error_message = _("error_api_key").format(build_provider_paths_string())
+                            #     except Exception:
+                            #         config.error_message = "Please enter API key (1fichier or AllDebrid or RealDebrid)"
+                            #     # Mise à jour historique
+                            #     config.history[-1]["status"] = "Erreur"
+                            #     config.history[-1]["progress"] = 0
+                            #     config.history[-1]["message"] = "API NOT FOUND"
+                            #     save_history(config.history)
+                            #     config.needs_redraw = True
+                            #     logger.error("Aucune clé fournisseur (1fichier/AllDebrid/RealDebrid) disponible")
+                            #     config.pending_download = None
+                            #     continue
+                            
+                            # Avertissement si pas de clé (utilisation mode gratuit)
                             if missing_all_provider_keys():
-                                config.previous_menu_state = config.menu_state
-                                config.menu_state = "error"
-                                try:
-                                    config.error_message = _("error_api_key").format(build_provider_paths_string())
-                                except Exception:
-                                    config.error_message = "Please enter API key (1fichier or AllDebrid or RealDebrid)"
-                                # Mise à jour historique
-                                config.history[-1]["status"] = "Erreur"
-                                config.history[-1]["progress"] = 0
-                                config.history[-1]["message"] = "API NOT FOUND"
-                                save_history(config.history)
-                                config.needs_redraw = True
-                                logger.error("Aucune clé fournisseur (1fichier/AllDebrid/RealDebrid) disponible")
-                                config.pending_download = None
-                                continue
+                                logger.warning("Aucune clé API - Mode gratuit 1fichier sera utilisé (attente requise)")
+                            
                             pending = check_extension_before_download(url, platform_name, game_name)
                             if not pending:
                                 config.menu_state = "error"
@@ -957,6 +965,9 @@ async def main():
                 draw_history_extract_archive(screen)
             elif config.menu_state == "confirm_clear_history":
                 draw_clear_history_dialog(screen)
+            elif config.menu_state == "support_dialog":
+                from display import draw_support_dialog
+                draw_support_dialog(screen)
             elif config.menu_state == "confirm_cancel_download":
                 draw_cancel_download_dialog(screen)
             elif config.menu_state == "reload_games_data":

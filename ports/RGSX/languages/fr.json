@@ -36,6 +36,11 @@
     "history_status_completed": "Terminé",
     "history_status_error": "Erreur : {0}",
     "history_status_canceled": "Annulé",
+    "free_mode_waiting": "[Mode gratuit] Attente: {0}/{1}s",
+    "free_mode_download": "[Mode gratuit] Téléchargement: {0}",
+    "free_mode_submitting": "[Mode gratuit] Soumission formulaire...",
+    "free_mode_link_found": "[Mode gratuit] Lien trouvé: {0}...",
+    "free_mode_completed": "[Mode gratuit] Terminé: {0}",
     "download_status": "{0} : {1}",
     "download_canceled": "Téléchargement annulé par l'utilisateur.",
     "extension_warning_zip": "Le fichier '{0}' est une archive et Batocera ne prend pas en charge les archives pour ce système. L'extraction automatique du fichier aura lieu après le téléchargement, continuer ?",
@@ -59,6 +64,7 @@
     "menu_display": "Affichage",
     "display_layout": "Disposition",
     "menu_redownload_cache": "Mettre à jour la liste des jeux",
+    "menu_support": "Support",
     "menu_quit": "Quitter",
     "menu_music_enabled": "Musique activée : {0}",
     "menu_music_disabled": "Musique désactivée",
@@ -68,6 +74,9 @@
     "filter_platforms_info": "Visibles: {0} | Masqués: {1} / Total: {2}",
     "filter_unsaved_warning": "Modifications non sauvegardées",
     "menu_show_unsupported_enabled": "Affichage systèmes non supportés activé",
+    "support_dialog_title": "Fichier de support",
+    "support_dialog_message": "Un fichier de support a été créé avec tous vos fichiers de configuration et logs.\n\nFichier: {0}\n\nPour obtenir de l'aide :\n1. Rejoignez le Discord RGSX\n2. Décrivez votre problème\n3. Partagez ce fichier ZIP\n\nAppuyez sur {1} pour revenir au menu.",
+    "support_dialog_error": "Erreur lors de la génération du fichier de support :\n{0}\n\nAppuyez sur {1} pour revenir au menu.",
     "menu_show_unsupported_disabled": "Affichage systèmes non supportés désactivé",
     "menu_allow_unknown_ext_on": "Masquer avertissement extension inconnue : Oui",
     "menu_allow_unknown_ext_off": "Masquer avertissement extension inconnue : Non",
@@ -170,6 +179,7 @@
     ,"instruction_pause_games": "Historique, source de liste ou rafraîchissement"
     ,"instruction_pause_settings": "Musique, option symlink & statut des clés API"
     ,"instruction_pause_restart": "Redémarrer RGSX pour recharger la configuration"
+    ,"instruction_pause_support": "Générer un fichier ZIP de diagnostic pour l'assistance"
     ,"instruction_pause_quit": "Quitter l'application RGSX"
     ,"instruction_controls_help": "Afficher la référence complète manette & clavier"
     ,"instruction_controls_remap": "Modifier l'association boutons / touches"

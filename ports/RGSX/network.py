@@ -28,9 +28,197 @@ import os
 import json
 from pathlib import Path
 from language import _  # Import de la fonction de traduction
+import re
+import html as html_module
+from urllib.parse import urljoin, unquote
 
 
 logger = logging.getLogger(__name__)
+
+# ================== TÉLÉCHARGEMENT 1FICHIER GRATUIT ==================
+# Fonction pour télécharger depuis 1fichier sans API key (mode gratuit)
+# Compatible RGSX - Sans BeautifulSoup ni httpx
+
+# Regex pour détecter le compte à rebours
+WAIT_REGEXES_1F = [
+    r'(?:veuillez\s+)?patiente[rz]\s*(\d+)\s*(?:sec|secondes?|s)\b',
+    r'please\s+wait\s*(\d+)\s*(?:sec|seconds?)\b',
+    r'var\s+ct\s*=\s*(\d+)\s*;',
+    r'var\s+ct\s*=\s*(\d+)\s*\*\s*60\s*;',
+]
+
+def extract_wait_seconds_1f(html_text):
+    """Extrait le temps d'attente depuis le HTML 1fichier"""
+    for pattern in WAIT_REGEXES_1F:
+        match = re.search(pattern, html_text, re.IGNORECASE)
+        if match:
+            seconds = int(match.group(1))
+            # Si c'est en minutes (pattern avec *60)
+            if '*60' in pattern or r'*\s*60' in pattern:
+                seconds = seconds * 60
+            return seconds
+    return 0
+
+def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progress_callback=None, wait_callback=None, cancel_event=None):
+    """
+    Télécharge un fichier depuis 1fichier.com en mode gratuit (sans API key).
+    Compatible RGSX - Sans BeautifulSoup ni httpx.
+    
+    Args:
+        url: URL 1fichier
+        dest_dir: Dossier de destination
+        session: Session requests
+        log_callback: Fonction appelée avec les messages de log
+        progress_callback: Fonction appelée avec (filename, downloaded, total, percent)
+        wait_callback: Fonction appelée avec (remaining_seconds, total_seconds)
+        cancel_event: threading.Event pour annuler le téléchargement
+        
+    Returns:
+        (success: bool, filepath: str|None, error_message: str|None)
+    """
+    
+    def _log(msg):
+        if log_callback:
+            try:
+                log_callback(msg)
+            except Exception:
+                pass
+        logger.info(msg)
+    
+    def _progress(filename, downloaded, total, pct):
+        if progress_callback:
+            try:
+                progress_callback(filename, downloaded, total, pct)
+            except Exception:
+                pass
+    
+    def _wait(remaining, total_wait):
+        if wait_callback:
+            try:
+                wait_callback(remaining, total_wait)
+            except Exception:
+                pass
+    
+    try:
+        os.makedirs(dest_dir, exist_ok=True)
+        _log(_("free_mode_download").format(url))
+        
+        # 1. GET page initiale
+        if cancel_event and cancel_event.is_set():
+            return (False, None, "Annulé")
+        
+        r = session.get(url, allow_redirects=True, timeout=30)
+        r.raise_for_status()
+        html = r.text
+        
+        # 2. Détection compte à rebours
+        wait_s = extract_wait_seconds_1f(html)
+        
+        if wait_s > 0:
+            _log(f"{wait_s}s...")
+            for remaining in range(wait_s, 0, -1):
+                if cancel_event and cancel_event.is_set():
+                    return (False, None, "Annulé")
+                _wait(remaining, wait_s)
+                time.sleep(1)
+        
+        # 3. Chercher formulaire et soumettre
+        if cancel_event and cancel_event.is_set():
+            return (False, None, "Annulé")
+            
+        form_match = re.search(r'<form[^>]*id=[\"\']f1[\"\'][^>]*>(.*?)</form>', html, re.DOTALL | re.IGNORECASE)
+        
+        if form_match:
+            form_html = form_match.group(1)
+            
+            # Extraire les champs
+            data = {}
+            for inp_match in re.finditer(r'<input[^>]+>', form_html, re.IGNORECASE):
+                inp = inp_match.group(0)
+                
+                name_m = re.search(r'name=[\"\']([^\"\']+)', inp)
+                value_m = re.search(r'value=[\"\']([^\"\']*)', inp)
+                
+                if name_m:
+                    name = name_m.group(1)
+                    value = value_m.group(1) if value_m else ''
+                    data[name] = html_module.unescape(value)
+            
+            # POST formulaire
+            _log(_("free_mode_submitting"))
+            r2 = session.post(str(r.url), data=data, allow_redirects=True, timeout=30)
+            r2.raise_for_status()
+            html = r2.text
+        
+        # 4. Chercher lien de téléchargement
+        if cancel_event and cancel_event.is_set():
+            return (False, None, "Annulé")
+            
+        patterns = [
+            r'href=[\"\']([^\"\']+)[\"\'][^>]*>(?:cliquer|click|télécharger|download)',
+            r'href=[\"\']([^\"\']*/dl/[^\"\']+)',
+            r'https?://[a-z0-9.-]*1fichier\.com/[A-Za-z0-9]{8,}'
+        ]
+        
+        direct_link = None
+        for pattern in patterns:
+            match = re.search(pattern, html, re.IGNORECASE)
+            if match:
+                direct_link = match.group(1) if '//' in match.group(0) else urljoin(str(r.url), match.group(1))
+                break
+        
+        if not direct_link:
+            return (False, None, "Lien de téléchargement introuvable")
+        
+        _log(_("free_mode_link_found").format(direct_link[:60]))
+        
+        # 5. HEAD pour infos fichier
+        if cancel_event and cancel_event.is_set():
+            return (False, None, "Annulé")
+            
+        head = session.head(direct_link, allow_redirects=True, timeout=30)
+        
+        # Nom fichier
+        filename = 'downloaded_file'
+        cd = head.headers.get('content-disposition', '')
+        if cd:
+            fn_match = re.search(r'filename\*?=[\"\']?([^\"\';]+)', cd, re.IGNORECASE)
+            if fn_match:
+                filename = unquote(fn_match.group(1))
+        
+        filename = sanitize_filename(filename)
+        filepath = os.path.join(dest_dir, filename)
+        
+        # 6. Téléchargement
+        _log(_("free_mode_download").format(filename))
+        
+        with session.get(direct_link, stream=True, allow_redirects=True, timeout=30) as resp:
+            resp.raise_for_status()
+            total = int(resp.headers.get('content-length', 0))
+            
+            with open(filepath, 'wb') as f:
+                downloaded = 0
+                for chunk in resp.iter_content(chunk_size=128*1024):
+                    if cancel_event and cancel_event.is_set():
+                        return (False, None, "Annulé")
+                    
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    
+                    if total:
+                        pct = downloaded / total * 100
+                        _progress(filename, downloaded, total, pct)
+        
+        _log(_("free_mode_completed").format(filepath))
+        return (True, filepath, None)
+        
+    except Exception as e:
+        error_msg = f"Erreur mode gratuit: {str(e)}"
+        _log(error_msg)
+        logger.error(error_msg, exc_info=True)
+        return (False, None, error_msg)
+
+# ==================== FIN TÉLÉCHARGEMENT GRATUIT ====================
 
 # Plus besoin de web_progress.json - l'interface web lit directement history.json
 # Les fonctions update_web_progress() et remove_web_progress() sont supprimées
@@ -1303,7 +1491,110 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     except Exception as e:
                         logger.error(f"Exception RealDebrid fallback: {e}")
                 if not final_url:
-                    logger.error("Aucune URL directe obtenue (AllDebrid & RealDebrid échoués ou absents)")
+                    # NOUVEAU: Fallback mode gratuit 1fichier si aucune clé API disponible
+                    logger.warning("Aucune URL directe obtenue via API - Tentative mode gratuit 1fichier")
+                    
+                    # Créer un lock pour ce téléchargement
+                    free_lock = threading.Lock()
+                    
+                    try:
+                        # Créer une session requests pour le mode gratuit
+                        free_session = requests.Session()
+                        free_session.headers.update({'User-Agent': 'Mozilla/5.0'})
+                        
+                        # Callbacks pour le mode gratuit
+                        def log_cb(msg):
+                            logger.info(msg)
+                            if isinstance(config.history, list):
+                                for entry in config.history:
+                                    if "url" in entry and entry["url"] == url:
+                                        entry["message"] = msg
+                                        config.needs_redraw = True
+                                        break
+                        
+                        def progress_cb(filename, downloaded, total, pct):
+                            with free_lock:
+                                if isinstance(config.history, list):
+                                    for entry in config.history:
+                                        if "url" in entry and entry["url"] == url and entry["status"] == "downloading":
+                                            entry["progress"] = int(pct) if pct else 0
+                                            entry["downloaded_size"] = downloaded
+                                            entry["total_size"] = total
+                                            # Effacer le message personnalisé pour afficher le pourcentage
+                                            entry["message"] = ""
+                                            config.needs_redraw = True
+                                            save_history(config.history)
+                                            break
+                                progress_queues[task_id].put((task_id, downloaded, total))
+                        
+                        def wait_cb(remaining, total_wait):
+                            if isinstance(config.history, list):
+                                for entry in config.history:
+                                    if "url" in entry and entry["url"] == url:
+                                        entry["message"] = _("free_mode_waiting").format(remaining, total_wait)
+                                        config.needs_redraw = True
+                                        save_history(config.history)
+                                        break
+                        
+                        # Lancer le téléchargement gratuit
+                        success, filepath, error_msg = download_1fichier_free_mode(
+                            url=link,
+                            dest_dir=dest_dir,
+                            session=free_session,
+                            log_callback=log_cb,
+                            progress_callback=progress_cb,
+                            wait_callback=wait_cb,
+                            cancel_event=cancel_ev
+                        )
+                        
+                        if success:
+                            logger.info(f"Téléchargement gratuit réussi: {filepath}")
+                            result[0] = True
+                            result[1] = _("network_download_ok").format(game_name) if _ else f"Download successful: {game_name}"
+                            provider_used = 'FREE'
+                            _set_provider_in_history(provider_used)
+                            
+                            # Mettre à jour l'historique
+                            if isinstance(config.history, list):
+                                for entry in config.history:
+                                    if "url" in entry and entry["url"] == url:
+                                        entry["status"] = "Completed"
+                                        entry["progress"] = 100
+                                        entry["message"] = result[1]
+                                        entry["provider"] = "FREE"
+                                        entry["provider_prefix"] = "FREE:"
+                                        save_history(config.history)
+                                        config.needs_redraw = True
+                                        break
+                            
+                            # Traiter le fichier (extraction si nécessaire)
+                            if not is_zip_non_supported:
+                                try:
+                                    if filepath.lower().endswith('.zip'):
+                                        logger.info(f"Extraction ZIP: {filepath}")
+                                        extract_zip(filepath, dest_dir)
+                                        os.remove(filepath)
+                                        logger.info("ZIP extrait et supprimé")
+                                    elif filepath.lower().endswith('.rar'):
+                                        logger.info(f"Extraction RAR: {filepath}")
+                                        extract_rar(filepath, dest_dir)
+                                        os.remove(filepath)
+                                        logger.info("RAR extrait et supprimé")
+                                except Exception as e:
+                                    logger.error(f"Erreur extraction: {e}")
+                            
+                            return
+                        else:
+                            logger.error(f"Échec téléchargement gratuit: {error_msg}")
+                            result[0] = False
+                            result[1] = f"Erreur mode gratuit: {error_msg}"
+                            return
+                    
+                    except Exception as e:
+                        logger.error(f"Exception mode gratuit: {e}", exc_info=True)
+                    
+                    # Si le mode gratuit a échoué aussi
+                    logger.error("Échec de tous les providers (API + mode gratuit)")
                     result[0] = False
                     if result[1] is None:
                         result[1] = _("network_api_error").format("No provider available") if _ else "No provider available"
