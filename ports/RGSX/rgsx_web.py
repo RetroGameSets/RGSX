@@ -475,15 +475,30 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     }, status=400)
                     return
                 
+                # Vérifier l'extension et déterminer si extraction nécessaire
+                from utils import check_extension_before_download
+                check_result = check_extension_before_download(game_url, platform, game_name)
+                
+                if not check_result:
+                    self._send_json({
+                        'success': False,
+                        'error': 'Extension non supportée ou erreur de vérification'
+                    }, status=400)
+                    return
+                
+                # check_result est un tuple: (url, platform, game_name, is_zip_non_supported)
+                is_zip_non_supported = check_result[3] if len(check_result) > 3 else False
+                
                 # Détecter si c'est un lien 1fichier et utiliser la fonction appropriée
                 is_1fichier = "1fichier.com" in game_url
                 
                 # Lancer le téléchargement dans un thread séparé
                 if is_1fichier:
                     download_func = download_from_1fichier
-                    logger.info(f"🔗 Détection 1fichier, utilisation de download_from_1fichier() pour {game_name}")
+                    logger.info(f"🔗 Détection 1fichier, utilisation de download_from_1fichier() pour {game_name}, extraction={is_zip_non_supported}")
                 else:
                     download_func = download_rom
+                    logger.info(f"📦 Téléchargement {game_name}, extraction={is_zip_non_supported}")
                 
                 task_id = f"web_{int(time.time() * 1000)}"
                 
@@ -492,7 +507,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     asyncio.set_event_loop(loop)
                     try:
                         loop.run_until_complete(
-                            download_func(game_url, platform, game_name, False, task_id)
+                            download_func(game_url, platform, game_name, is_zip_non_supported, task_id)
                         )
                     finally:
                         loop.close()

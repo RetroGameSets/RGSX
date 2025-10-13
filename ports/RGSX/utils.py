@@ -1011,19 +1011,42 @@ def extract_zip(zip_path, dest_dir, url):
             for info in zip_ref.infolist():
                 if info.is_dir():
                     continue
-                file_path = os.path.join(dest_dir, info.filename)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                # Normaliser le chemin pour Windows (remplacer / par \)
+                normalized_filename = info.filename.replace('/', os.sep)
+                file_path = os.path.join(dest_dir, normalized_filename)
                 
-                with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
-                    while True:
-                        chunk = source.read(chunk_size)
-                        if not chunk:
-                            break
-                        dest.write(chunk)
-                        extracted_size += len(chunk)
-                        _update_extraction_progress(url, extracted_size, total_size, lock, last_save_time)
+                try:
+                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                except Exception as dir_err:
+                    logger.error(f"Erreur création dossier pour {file_path}: {dir_err}")
+                    raise
                 
-                os.chmod(file_path, 0o644)
+                try:
+                    # Vérifier si le fichier existe déjà et est en lecture seule
+                    if os.path.exists(file_path):
+                        try:
+                            # Retirer l'attribut lecture seule si présent (Windows)
+                            os.chmod(file_path, 0o644)
+                        except Exception:
+                            pass
+                    
+                    with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
+                        while True:
+                            chunk = source.read(chunk_size)
+                            if not chunk:
+                                break
+                            dest.write(chunk)
+                            extracted_size += len(chunk)
+                            _update_extraction_progress(url, extracted_size, total_size, lock, last_save_time)
+                    
+                    # Définir les permissions (skip sur Windows si erreur)
+                    try:
+                        os.chmod(file_path, 0o644)
+                    except (OSError, PermissionError) as chmod_err:
+                        logger.debug(f"Impossible de définir chmod pour {file_path}: {chmod_err}")
+                except Exception as file_err:
+                    logger.error(f"Erreur extraction fichier {info.filename} vers {file_path}: {file_err}")
+                    raise
 
         # Gestion plateformes spéciales
         success, error_msg = _handle_special_platforms(dest_dir, zip_path, before_dirs, iso_before, url, before_items)
