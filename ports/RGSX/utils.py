@@ -993,6 +993,27 @@ def extract_zip(zip_path, dest_dir, url):
         # Vérification et extraction
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.testzip()  # Vérifier l'intégrité de l'archive
+            
+            # Pré-analyse pour détecter les conflits fichier/dossier
+            all_paths = set()
+            file_paths = set()
+            for info in zip_ref.infolist():
+                normalized = info.filename.replace('/', os.sep)
+                if not info.is_dir():
+                    file_paths.add(normalized)
+                all_paths.add(normalized)
+            
+            # Identifier les conflits (un fichier existe avec un nom qui est aussi un dossier parent)
+            conflicts = set()
+            for file_path in file_paths:
+                # Vérifier si un parent de ce fichier existe aussi comme fichier
+                parts = file_path.split(os.sep)
+                for i in range(1, len(parts)):
+                    parent_path = os.sep.join(parts[:i])
+                    if parent_path in file_paths:
+                        conflicts.add(parent_path)
+                        logger.warning(f"Conflit détecté: '{parent_path}' est à la fois un fichier et un dossier parent")
+            
             total_size = sum(info.file_size for info in zip_ref.infolist() if not info.is_dir())
             logger.info(f"Taille totale à extraire: {total_size} octets")
             
@@ -1007,23 +1028,48 @@ def extract_zip(zip_path, dest_dir, url):
             chunk_size = 2048
             os.makedirs(dest_dir, exist_ok=True)
 
+            # Trier les fichiers par profondeur (nombre de séparateurs) pour extraire les fichiers racine d'abord
+            files_to_extract = [info for info in zip_ref.infolist() if not info.is_dir()]
+            files_to_extract.sort(key=lambda x: x.filename.count('/'))
+            
             # Extraction avec progression
-            for info in zip_ref.infolist():
-                if info.is_dir():
-                    continue
+            for info in files_to_extract:
                 # Normaliser le chemin pour Windows (remplacer / par \)
                 normalized_filename = info.filename.replace('/', os.sep)
+                
+                # Debug pour fichiers .nca
+                if normalized_filename.endswith('.nca'):
+                    logger.debug(f"Traitement fichier NCA: {normalized_filename}")
+                
+                # Ignorer les fichiers en conflit (ils sont des dossiers parents pour d'autres fichiers)
+                if normalized_filename in conflicts:
+                    logger.warning(f"Fichier ignoré (conflit avec dossier): {normalized_filename}")
+                    continue
+                
                 file_path = os.path.join(dest_dir, normalized_filename)
                 
                 try:
-                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                    # Créer uniquement le dossier parent, pas le fichier lui-même
+                    parent_dir = os.path.dirname(file_path)
+                    # Vérifier que parent_dir n'est pas vide et est différent de dest_dir
+                    if parent_dir and parent_dir != dest_dir:
+                        os.makedirs(parent_dir, exist_ok=True)
                 except Exception as dir_err:
-                    logger.error(f"Erreur création dossier pour {file_path}: {dir_err}")
+                    logger.error(f"Erreur création dossier parent pour {file_path}: {dir_err}")
                     raise
                 
                 try:
+                    # Vérifier si un dossier existe avec le même nom (conflit)
+                    if os.path.isdir(file_path):
+                        logger.warning(f"Conflit: dossier existant avec le même nom que le fichier {file_path}, suppression du dossier")
+                        try:
+                            import shutil
+                            shutil.rmtree(file_path)
+                        except Exception as rm_err:
+                            logger.error(f"Impossible de supprimer le dossier {file_path}: {rm_err}")
+                            raise
                     # Vérifier si le fichier existe déjà et est en lecture seule
-                    if os.path.exists(file_path):
+                    elif os.path.exists(file_path):
                         try:
                             # Retirer l'attribut lecture seule si présent (Windows)
                             os.chmod(file_path, 0o644)

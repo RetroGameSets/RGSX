@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.4.3"
+app_version = "2.2.4.4"
 
 
 def get_application_root():
@@ -103,6 +103,86 @@ SEVEN_Z_EXE = os.path.join(APP_FOLDER,"assets", "progs", "7z.exe")
 # Détection du système d'exploitation (une seule fois au démarrage)
 OPERATING_SYSTEM = platform.system()
 
+# Informations système (Batocera)
+SYSTEM_INFO = {
+    "model": "",
+    "system": "",
+    "architecture": "",
+    "cpu_model": "",
+    "cpu_cores": "",
+    "cpu_max_frequency": "",
+    "cpu_features": "",
+    "temperature": "",
+    "available_memory": "",
+    "total_memory": "",
+    "display_resolution": "",
+    "display_refresh_rate": "",
+    "data_partition_format": "",
+    "data_partition_space": "",
+    "network_ip": ""
+}
+
+def get_batocera_system_info():
+    """Récupère les informations système via la commande batocera-info."""
+    global SYSTEM_INFO
+    try:
+        import subprocess
+        result = subprocess.run(['batocera-info'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            lines = result.stdout.strip().split('\n')
+            for line in lines:
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    
+                    if key == "Model":
+                        SYSTEM_INFO["model"] = value
+                    elif key == "System":
+                        SYSTEM_INFO["system"] = value
+                    elif key == "Architecture":
+                        SYSTEM_INFO["architecture"] = value
+                    elif key == "CPU Model":
+                        SYSTEM_INFO["cpu_model"] = value
+                    elif key == "CPU Cores":
+                        SYSTEM_INFO["cpu_cores"] = value
+                    elif key == "CPU Max Frequency":
+                        SYSTEM_INFO["cpu_max_frequency"] = value
+                    elif key == "CPU Features":
+                        SYSTEM_INFO["cpu_features"] = value
+                    elif key == "Temperature":
+                        SYSTEM_INFO["temperature"] = value
+                    elif key == "Available Memory":
+                        SYSTEM_INFO["available_memory"] = value.split('/')[0].strip() if '/' in value else value
+                        SYSTEM_INFO["total_memory"] = value.split('/')[1].strip() if '/' in value else ""
+                    elif key == "Display Resolution":
+                        SYSTEM_INFO["display_resolution"] = value
+                    elif key == "Display Refresh Rate":
+                        SYSTEM_INFO["display_refresh_rate"] = value
+                    elif key == "Data Partition Format":
+                        SYSTEM_INFO["data_partition_format"] = value
+                    elif key == "Data Partition Available Space":
+                        SYSTEM_INFO["data_partition_space"] = value
+                    elif key == "Network IP Address":
+                        SYSTEM_INFO["network_ip"] = value
+            
+            logger.debug(f"Informations système Batocera récupérées: {SYSTEM_INFO}")      
+            print(f"SYSTEM_INFO: {SYSTEM_INFO}")
+            return True
+    except FileNotFoundError:
+        logger.debug("Commande batocera-info non disponible (système non-Batocera)")
+    except subprocess.TimeoutExpired:
+        logger.warning("Timeout lors de l'exécution de batocera-info")
+    except Exception as e:
+        logger.debug(f"Erreur lors de la récupération des infos système: {e}")
+    
+    # Fallback: informations basiques avec platform
+    SYSTEM_INFO["system"] = f"{platform.system()} {platform.release()}"
+    SYSTEM_INFO["architecture"] = platform.machine()
+    SYSTEM_INFO["cpu_model"] = platform.processor() or "Unknown"
+    
+    return False
+
 if not HEADLESS:
     # Print des chemins pour debug
     print(f"OPERATING_SYSTEM: {OPERATING_SYSTEM}")
@@ -116,6 +196,9 @@ if not HEADLESS:
     print(f"IMAGES_FOLDER: {IMAGES_FOLDER}")
     print(f"GAMES_FOLDER: {GAMES_FOLDER}")
     print(f"SOURCES_FILE: {SOURCES_FILE}")
+
+# Récupérer les informations système au démarrage
+get_batocera_system_info()
 
 ### Variables d'état par défaut
 

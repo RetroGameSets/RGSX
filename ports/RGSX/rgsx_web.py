@@ -158,7 +158,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
         
         # DEBUG: Log immédiat avec flush forcé
         print(f"[DEBUG] Requête: {path}", flush=True)
-        logger.info(f"GET {path}")
+        # logger.info(f"GET {path}")
         
         try:
             # Route: Page d'accueil (avec ou sans paramètres pour navigation)
@@ -179,6 +179,75 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     'count': len(platforms),
                     'platforms': platforms
                 })
+            
+            # Route: API - Recherche universelle (systèmes + jeux)
+            elif path == '/api/search':
+                try:
+                    query_params = urllib.parse.parse_qs(parsed_path.query)
+                    search_term = query_params.get('q', [''])[0].lower().strip()
+                    
+                    if not search_term:
+                        self._send_json({
+                            'success': True,
+                            'search_term': '',
+                            'results': {'platforms': [], 'games': []}
+                        })
+                        return
+                    
+                    # Charger toutes les plateformes
+                    platforms = load_sources()
+                    games_count_dict = getattr(config, 'games_count', {})
+                    
+                    matching_platforms = []
+                    matching_games = []
+                    
+                    # Rechercher dans les plateformes et leurs jeux
+                    for platform in platforms:
+                        platform_name = platform.get('platform_name', '')
+                        platform_name_lower = platform_name.lower()
+                        
+                        # Vérifier si le système correspond
+                        platform_matches = search_term in platform_name_lower
+                        
+                        if platform_matches:
+                            matching_platforms.append({
+                                'platform_name': platform_name,
+                                'folder': platform.get('folder', ''),
+                                'platform_image': platform.get('platform_image', ''),
+                                'games_count': games_count_dict.get(platform_name, 0)
+                            })
+                        
+                        # Rechercher dans les jeux de cette plateforme
+                        try:
+                            games = load_games(platform_name)
+                            for game in games:
+                                game_name = game[0] if isinstance(game, (list, tuple)) else str(game)
+                                if search_term in game_name.lower():
+                                    matching_games.append({
+                                        'game_name': game_name,
+                                        'platform': platform_name,
+                                        'url': game[1] if len(game) > 1 and isinstance(game, (list, tuple)) else None,
+                                        'size': game[2] if len(game) > 2 and isinstance(game, (list, tuple)) else None
+                                    })
+                        except Exception as e:
+                            logger.debug(f"Erreur lors de la recherche dans {platform_name}: {e}")
+                            continue
+                    
+                    self._send_json({
+                        'success': True,
+                        'search_term': search_term,
+                        'results': {
+                            'platforms': matching_platforms,
+                            'games': matching_games
+                        }
+                    })
+                    
+                except Exception as e:
+                    logger.error(f"Erreur lors de la recherche: {e}")
+                    self._send_json({
+                        'success': False,
+                        'error': str(e)
+                    }, status=500)
             
             # Route: API - Traductions
             elif path == '/api/translations':
@@ -300,6 +369,23 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     })
                 except Exception as e:
                     logger.error(f"Erreur lors de la lecture des settings: {e}")
+                    self._send_json({
+                        'success': False,
+                        'error': str(e)
+                    }, status=500)
+            
+            # Route: API - System Info (informations système Batocera)
+            elif path == '/api/system_info':
+                try:
+                    # Rafraîchir les informations système avant de les renvoyer
+                    config.get_batocera_system_info()
+                    
+                    self._send_json({
+                        'success': True,
+                        'system_info': config.SYSTEM_INFO
+                    })
+                except Exception as e:
+                    logger.error(f"Erreur lors de la récupération des infos système: {e}")
                     self._send_json({
                         'success': False,
                         'error': str(e)
@@ -446,18 +532,36 @@ class RGSXHandler(BaseHTTPRequestHandler):
             if path == '/api/download':
                 platform = data.get('platform')
                 game_index = data.get('game_index')
+                game_name_param = data.get('game_name')  # Nouveau: chercher par nom
                 
-                if not platform or game_index is None:
+                if not platform or (game_index is None and not game_name_param):
                     self._send_json({
                         'success': False,
-                        'error': 'Paramètres manquants: platform et game_index requis'
+                        'error': 'Paramètres manquants: platform et (game_index ou game_name) requis'
                     }, status=400)
                     return
                 
                 # Charger les jeux de la plateforme
                 games = load_games(platform)
                 
-                if game_index < 0 or game_index >= len(games):
+                # Si game_name est fourni, chercher l'index correspondant
+                if game_name_param and game_index is None:
+                    game_index = None
+                    for idx, game in enumerate(games):
+                        current_game_name = game[0] if isinstance(game, (list, tuple)) else str(game)
+                        if current_game_name == game_name_param:
+                            game_index = idx
+                            break
+                    
+                    if game_index is None:
+                        self._send_json({
+                            'success': False,
+                            'error': f'Jeu non trouvé: {game_name_param}'
+                        }, status=400)
+                        return
+                
+                # Vérifier que game_index est valide (après recherche ou direct)
+                if game_index is None or game_index < 0 or game_index >= len(games):
                     self._send_json({
                         'success': False,
                         'error': f'Index de jeu invalide: {game_index}'
@@ -867,7 +971,6 @@ DO NOT share this file publicly as it may contain sensitive information.
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 self.wfile.write(image_data)
-                logger.debug(f"Image servie: {image_path} pour {platform_name}")
             else:
                 # Image par défaut (pixel transparent)
                 logger.warning(f"Aucune image trouvée pour {platform_name}, envoi PNG transparent")
@@ -906,7 +1009,6 @@ DO NOT share this file publicly as it may contain sensitive information.
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 self.wfile.write(favicon_data)
-                logger.debug(f"Favicon servi: {favicon_path}")
             else:
                 logger.warning(f"Favicon non trouvé: {favicon_path}")
                 self.send_response(404)
@@ -1591,21 +1693,14 @@ DO NOT share this file publicly as it may contain sensitive information.
         
         // ===== FONCTIONS PRINCIPALES =====
         
-        // Filtrer les plateformes
-        function filterPlatforms(searchTerm) {
-            const cards = document.querySelectorAll('.platform-card');
-            const term = searchTerm.toLowerCase();
-            let visibleCount = 0;
-            
-            cards.forEach(card => {
-                const name = card.querySelector('h3').textContent.toLowerCase();
-                if (name.includes(term)) {
-                    card.style.display = '';
-                    visibleCount++;
-                } else {
-                    card.style.display = 'none';
-                }
-            });
+        // Variables globales pour la recherche
+        let searchTimeout = null;
+        let currentSearchTerm = '';
+        
+        // Filtrer les plateformes avec recherche universelle
+        async function filterPlatforms(searchTerm) {
+            currentSearchTerm = searchTerm.trim();
+            const term = currentSearchTerm.toLowerCase();
             
             // Afficher/masquer le bouton clear
             const clearBtn = document.getElementById('clear-platforms-search');
@@ -1613,7 +1708,134 @@ DO NOT share this file publicly as it may contain sensitive information.
                 clearBtn.style.display = searchTerm ? 'block' : 'none';
             }
             
-            return visibleCount;
+            // Si la recherche est vide, afficher toutes les plateformes normalement
+            if (!term) {
+                const cards = document.querySelectorAll('.platform-card');
+                cards.forEach(card => card.style.display = '');
+                // Masquer les résultats de recherche
+                const searchResults = document.getElementById('search-results');
+                if (searchResults) searchResults.style.display = 'none';
+                const platformGrid = document.querySelector('.platform-grid');
+                if (platformGrid) platformGrid.style.display = 'grid';
+                return;
+            }
+            
+            // Debounce pour éviter trop de requêtes
+            if (searchTimeout) clearTimeout(searchTimeout);
+            
+            searchTimeout = setTimeout(async () => {
+                try {
+                    // Appeler l'API de recherche universelle
+                    const response = await fetch('/api/search?q=' + encodeURIComponent(term));
+                    const data = await response.json();
+                    
+                    if (!data.success) throw new Error(data.error);
+                    
+                    const results = data.results;
+                    const platformsMatch = results.platforms || [];
+                    const gamesMatch = results.games || [];
+                    
+                    // Masquer la grille normale des plateformes
+                    const platformGrid = document.querySelector('.platform-grid');
+                    if (platformGrid) platformGrid.style.display = 'none';
+                    
+                    // Créer ou mettre à jour la zone de résultats
+                    let searchResults = document.getElementById('search-results');
+                    if (!searchResults) {
+                        searchResults = document.createElement('div');
+                        searchResults.id = 'search-results';
+                        searchResults.style.cssText = 'margin-top: 20px;';
+                        const container = document.getElementById('platforms-content');
+                        container.appendChild(searchResults);
+                    }
+                    searchResults.style.display = 'block';
+                    
+                    // Construire le HTML des résultats
+                    let html = '<div style="padding: 20px; background: #f9f9f9; border-radius: 8px;">';
+                    
+                    // Résumé
+                    const totalResults = platformsMatch.length + gamesMatch.length;
+                    html += `<h3 style="margin-bottom: 15px;">🔍 ${totalResults} ${t('web_search_results')} "${term}"</h3>`;
+                    
+                    if (totalResults === 0) {
+                        html += `<p style="color: #666;">${t('web_no_results')}</p>`;
+                    }
+                    
+                    // Afficher les systèmes correspondants
+                    if (platformsMatch.length > 0) {
+                        html += `<h4 style="margin-top: 20px; margin-bottom: 10px;">🎮 ${t('web_platforms')} (${platformsMatch.length})</h4>`;
+                        html += '<div class="platform-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">';
+                        
+                        platformsMatch.forEach(platform => {
+                            const imageUrl = '/api/platform-image/' + encodeURIComponent(platform.platform_name);
+                            html += `
+                                <div class="platform-card" onclick="loadGames('${platform.platform_name.replace(/'/g, "\\'")}')">
+                                    <img src="${imageUrl}" alt="${platform.platform_name}" onerror="this.src='/favicon.ico'">
+                                    <h3>${platform.platform_name}</h3>
+                                    <p>${platform.games_count} ${t('web_games')}</p>
+                                </div>
+                            `;
+                        });
+                        
+                        html += '</div>';
+                    }
+                    
+                    // Afficher les jeux correspondants (groupés par système)
+                    if (gamesMatch.length > 0) {
+                        html += `<h4 style="margin-top: 20px; margin-bottom: 10px;">🎯 ${t('web_games')} (${gamesMatch.length})</h4>`;
+                        
+                        // Grouper les jeux par plateforme
+                        const gamesByPlatform = {};
+                        gamesMatch.forEach(game => {
+                            if (!gamesByPlatform[game.platform]) {
+                                gamesByPlatform[game.platform] = [];
+                            }
+                            gamesByPlatform[game.platform].push(game);
+                        });
+                        
+                        // Afficher chaque groupe
+                        for (const [platformName, games] of Object.entries(gamesByPlatform)) {
+                            html += `
+                                <div style="margin-bottom: 15px; background: white; padding: 15px; border-radius: 5px; border: 1px solid #ddd;">
+                                    <h5 style="margin: 0 0 10px 0; color: #007bff; cursor: pointer;" onclick="loadGames('${platformName.replace(/'/g, "\\'")}')">
+                                        📁 ${platformName} (${games.length})
+                                    </h5>
+                                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                            `;
+                            
+                            games.forEach((game, idx) => {
+                                const downloadTitle = t('web_download');
+                                html += `
+                                    <div style="padding: 10px; background: #f0f8ff; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                                        <span style="font-weight: 500; flex: 1;">${game.game_name}</span>
+                                        ${game.size ? `<span style="color: #666; font-size: 0.9em; white-space: nowrap;">${game.size}</span>` : ''}
+                                        <button class="download-btn" title="${downloadTitle}" 
+                                                onclick="downloadGame('${platformName.replace(/'/g, "\\\\'")}', '${game.game_name.replace(/'/g, "\\\\'")}', null)"
+                                                style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 16px; min-width: 40px;">
+                                            ⬇️
+                                        </button>
+                                    </div>
+                                `;
+                            });
+                            
+                            html += `
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    }
+                    
+                    html += '</div>';
+                    searchResults.innerHTML = html;
+                    
+                } catch (error) {
+                    console.error('Erreur recherche:', error);
+                    const searchResults = document.getElementById('search-results');
+                    if (searchResults) {
+                        searchResults.innerHTML = `<p style="color: red;">❌ ${t('web_error_search')}: ${error.message}</p>`;
+                    }
+                }
+            }, 300); // Attendre 300ms après la dernière frappe
         }
         
         // Filtrer les jeux
@@ -1769,13 +1991,23 @@ DO NOT share this file publicly as it may contain sensitive information.
             btn.title = t('web_download') + '...';
             
             try {
+                // Préparer le body de la requête
+                const requestBody = {
+                    platform: platform
+                };
+                
+                // Si gameIndex est fourni ET valide (nombre >= 0), l'utiliser
+                // Sinon utiliser le nom du jeu (pour les résultats de recherche)
+                if (typeof gameIndex === 'number' && gameIndex >= 0) {
+                    requestBody.game_index = gameIndex;
+                } else {
+                    requestBody.game_name = gameName;
+                }
+                
                 const response = await fetch('/api/download', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        platform: platform,
-                        game_index: gameIndex
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 const data = await response.json();
@@ -2100,13 +2332,20 @@ DO NOT share this file publicly as it may contain sensitive information.
             container.innerHTML = '<div class="loading">⏳ Chargement...</div>';
             
             try {
-                const response = await fetch('/api/settings');
-                const data = await response.json();
+                // Charger les settings et les infos système en parallèle
+                const [settingsResponse, systemInfoResponse] = await Promise.all([
+                    fetch('/api/settings'),
+                    fetch('/api/system_info')
+                ]);
                 
-                if (!data.success) throw new Error(data.error);
+                const settingsData = await settingsResponse.json();
+                const systemInfoData = await systemInfoResponse.json();
                 
-                const settings = data.settings;
-                const info = data.system_info;
+                if (!settingsData.success) throw new Error(settingsData.error);
+                
+                const settings = settingsData.settings;
+                const info = settingsData.system_info;
+                const systemInfo = systemInfoData.success ? systemInfoData.system_info : null;
                 
                 // Pré-charger les traductions
                 const osLabel = t('web_settings_os');
@@ -2114,19 +2353,108 @@ DO NOT share this file publicly as it may contain sensitive information.
                 const showUnsupportedLabel = t('web_settings_show_unsupported');
                 const allowUnknownLabel = t('web_settings_allow_unknown');
                 
+                // Construire la section d'informations système détaillées
+                let systemInfoHTML = '';
+                if (systemInfo && (systemInfo.model || systemInfo.cpu_model)) {
+                    systemInfoHTML = `
+                        <h3 style="margin-top: 20px; margin-bottom: 15px;">🖥️ System Information</h3>
+                        <div class="info-grid" style="margin-bottom: 20px; background: #f0f8ff; padding: 15px; border-radius: 8px; border: 2px solid #007bff;">
+                            ${systemInfo.model ? `
+                                <div class="info-item">
+                                    <strong>💻 Model</strong>
+                                    ${systemInfo.model}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.system ? `
+                                <div class="info-item">
+                                    <strong>🐧 System</strong>
+                                    ${systemInfo.system}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.architecture ? `
+                                <div class="info-item">
+                                    <strong>⚙️ Architecture</strong>
+                                    ${systemInfo.architecture}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.cpu_model ? `
+                                <div class="info-item">
+                                    <strong>🔧 CPU Model</strong>
+                                    ${systemInfo.cpu_model}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.cpu_cores ? `
+                                <div class="info-item">
+                                    <strong>🧮 CPU Cores</strong>
+                                    ${systemInfo.cpu_cores}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.cpu_max_frequency ? `
+                                <div class="info-item">
+                                    <strong>⚡ CPU Frequency</strong>
+                                    ${systemInfo.cpu_max_frequency}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.cpu_features ? `
+                                <div class="info-item">
+                                    <strong>✨ CPU Features</strong>
+                                    ${systemInfo.cpu_features}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.temperature ? `
+                                <div class="info-item">
+                                    <strong>🌡️ Temperature</strong>
+                                    ${systemInfo.temperature}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.available_memory && systemInfo.total_memory ? `
+                                <div class="info-item">
+                                    <strong>💾 Memory</strong>
+                                    ${systemInfo.available_memory} / ${systemInfo.total_memory}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.display_resolution ? `
+                                <div class="info-item">
+                                    <strong>🖥️ Display Resolution</strong>
+                                    ${systemInfo.display_resolution}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.display_refresh_rate ? `
+                                <div class="info-item">
+                                    <strong>🔄 Refresh Rate</strong>
+                                    ${systemInfo.display_refresh_rate}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.data_partition_format ? `
+                                <div class="info-item">
+                                    <strong>💽 Partition Format</strong>
+                                    ${systemInfo.data_partition_format}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.data_partition_space ? `
+                                <div class="info-item">
+                                    <strong>💿 Available Space</strong>
+                                    ${systemInfo.data_partition_space}
+                                </div>
+                            ` : ''}
+                            ${systemInfo.network_ip ? `
+                                <div class="info-item">
+                                    <strong>🌐 Network IP</strong>
+                                    ${systemInfo.network_ip}
+                                </div>
+                            ` : ''}
+                            <div class="info-item">
+                                <strong>🎮 ${platformsCountLabel}</strong>
+                                ${info.platforms_count}
+                            </div>
+                        </div>
+                    `;
+                }
+                
                 container.innerHTML = `
                     <h2 data-translate="web_settings_title">ℹ️ ${t('web_settings_title')}</h2>
                     
-                    <div class="info-grid" style="margin-bottom: 20px; margin-top: 20px">
-                        <div class="info-item">
-                            <strong>🖥️ ${osLabel}</strong>
-                            ${info.system}
-                        </div>
-                        <div class="info-item">
-                            <strong>🎮 ${platformsCountLabel}</strong>
-                            ${info.platforms_count}
-                        </div>
-                    </div>
+                    ${systemInfoHTML}
                     
                     <h3 style="margin-top: 30px; margin-bottom: 15px;">RGSX Configuration ⚙️</h3>
                     
@@ -2638,7 +2966,7 @@ def run_server(host='0.0.0.0', port=5000):
 
 if __name__ == '__main__':
     print("="*60, flush=True)
-    print("Démarrage du serveur RGSX Web...", flush=True)
+    print("Demarrage du serveur RGSX Web...", flush=True)
     print(f"Fichier de log prévu: {config.log_file_web}", flush=True)
     print("="*60, flush=True)
     
