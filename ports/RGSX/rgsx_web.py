@@ -1806,14 +1806,16 @@ DO NOT share this file publicly as it may contain sensitive information.
                             games.forEach((game, idx) => {
                                 const downloadTitle = t('web_download');
                                 html += `
-                                    <div style="padding: 10px; background: #f0f8ff; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
-                                        <span style="font-weight: 500; flex: 1;">${game.game_name}</span>
-                                        ${game.size ? `<span style="color: #666; font-size: 0.9em; white-space: nowrap;">${game.size}</span>` : ''}
-                                        <button class="download-btn" title="${downloadTitle}" 
-                                                onclick="downloadGame('${platformName.replace(/'/g, "\\\\'")}', '${game.game_name.replace(/'/g, "\\\\'")}', null)"
-                                                style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 16px; min-width: 40px;">
-                                            ⬇️
-                                        </button>
+                                    <div class="search-game-item" style="padding: 15px; background: #f9f9f9; border-radius: 8px; transition: background 0.2s;">
+                                        <div class="search-game-name" style="font-weight: 500; margin-bottom: 10px; word-wrap: break-word; overflow-wrap: break-word;">${game.game_name}</div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            ${game.size ? `<span style="background: #667eea; color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.9em; white-space: nowrap;">${game.size}</span>` : '<span></span>'}
+                                            <button class="download-btn" title="${downloadTitle}" 
+                                                    onclick="downloadGame('${platformName.replace(/'/g, "\\\\'")}', '${game.game_name.replace(/'/g, "\\\\'")}', null)"
+                                                    style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">
+                                                ⬇️
+                                            </button>
+                                        </div>
                                     </div>
                                 `;
                             });
