@@ -3430,7 +3430,30 @@ DO NOT share this file publicly as it may contain sensitive information.
 def run_server(host='0.0.0.0', port=5000):
     """Démarre le serveur HTTP"""
     server_address = (host, port)
-    httpd = HTTPServer(server_address, RGSXHandler)
+    
+    # Créer une classe HTTPServer personnalisée qui réutilise le port
+    class ReuseAddrHTTPServer(HTTPServer):
+        allow_reuse_address = True
+    
+    # Tuer les processus existants utilisant le port
+    try:
+        import subprocess
+        result = subprocess.run(['lsof', '-ti', f':{port}'], capture_output=True, text=True, timeout=2)
+        pids = result.stdout.strip().split('\n')
+        for pid in pids:
+            if pid:
+                try:
+                    subprocess.run(['kill', '-9', pid], timeout=2)
+                    logger.info(f"Processus {pid} tué (port {port} libéré)")
+                except Exception as e:
+                    logger.warning(f"Impossible de tuer le processus {pid}: {e}")
+    except Exception as e:
+        logger.warning(f"Impossible de libérer le port {port}: {e}")
+    
+    # Attendre un peu pour que le port se libère
+    time.sleep(1)
+    
+    httpd = ReuseAddrHTTPServer(server_address, RGSXHandler)
     
     logger.info("=" * 60)
     logger.info("RGSX Web Server démarré !")
