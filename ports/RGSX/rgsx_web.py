@@ -185,6 +185,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 try:
                     query_params = urllib.parse.parse_qs(parsed_path.query)
                     search_term = query_params.get('q', [''])[0].lower().strip()
+                    search_words = [w for w in search_term.split() if w]
                     
                     if not search_term:
                         self._send_json({
@@ -222,7 +223,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             games = load_games(platform_name)
                             for game in games:
                                 game_name = game[0] if isinstance(game, (list, tuple)) else str(game)
-                                if search_term in game_name.lower():
+                                game_name_lower = game_name.lower()
+                                if all(word in game_name_lower for word in search_words):
                                     matching_games.append({
                                         'game_name': game_name,
                                         'platform': platform_name,
