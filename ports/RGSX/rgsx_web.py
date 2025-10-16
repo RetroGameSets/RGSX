@@ -48,6 +48,65 @@ def load_translations():
 # Charger les traductions globalement
 TRANSLATIONS = load_translations()
 
+# Fonction d'aide pour obtenir une traduction
+def get_translation(key, default=None):
+    """Obtient une traduction depuis le dictionnaire global TRANSLATIONS"""
+    if key in TRANSLATIONS:
+        return TRANSLATIONS[key]
+    if default is not None:
+        return default
+    return key
+
+# Fonction pour normaliser les tailles de fichier
+def normalize_size(size_str):
+    """
+    Normalise une taille de fichier dans différents formats (Ko, KiB, Mo, MiB, Go, GiB)
+    en un format uniforme (Mo ou Go).
+    Exemples: "150 Mo" -> "150 Mo", "1.5 Go" -> "1.5 Go", "500 Ko" -> "0.5 Mo", "2 GiB" -> "2.15 Go"
+    """
+    if not size_str:
+        return None
+    
+    import re
+    
+    # Utiliser regex pour extraire le nombre et l'unité
+    match = re.match(r'([0-9.]+)\s*(ko|kio|kib|kb|mo|mio|mib|mb|go|gio|gib|gb)', 
+                     str(size_str).lower().strip())
+    
+    if not match:
+        return size_str  # Retourner original si ne correspond pas au format
+    
+    try:
+        value = float(match.group(1))
+        unit = match.group(2).lower()
+        
+        # Convertir tout en Mo
+        if unit in ['ko', 'kb']:
+            value = value / 1024  # Ko en Mo
+        elif unit in ['kio', 'kib']:
+            value = value / 1024  # KiB en Mo
+        elif unit in ['mo', 'mb']:
+            pass  # Déjà en Mo
+        elif unit in ['mio', 'mib']:
+            pass  # MiB ≈ Mo
+        elif unit in ['go', 'gb']:
+            value = value * 1024  # Go en Mo
+        elif unit in ['gio', 'gib']:
+            value = value * 1024  # GiB en Mo
+        
+        # Afficher en Go si > 1024 Mo, sinon en Mo
+        if value >= 1024:
+            return f"{value / 1024:.2f} Go".rstrip('0').rstrip('.')
+        else:
+            # Arrondir à 1 décimale pour Mo
+            rounded = round(value, 1)
+            if rounded == int(rounded):
+                return f"{int(rounded)} Mo"
+            else:
+                return f"{rounded} Mo".rstrip('0').rstrip('.')
+    except (ValueError, TypeError):
+        return size_str  # Retourner original si conversion échoue
+
 
 # Configuration logging - Enregistrer dans rgsx_web.log
 os.makedirs(config.log_dir, exist_ok=True)
@@ -229,7 +288,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                                         'game_name': game_name,
                                         'platform': platform_name,
                                         'url': game[1] if len(game) > 1 and isinstance(game, (list, tuple)) else None,
-                                        'size': game[2] if len(game) > 2 and isinstance(game, (list, tuple)) else None
+                                        'size': normalize_size(game[2] if len(game) > 2 and isinstance(game, (list, tuple)) else None)
                                     })
                         except Exception as e:
                             logger.debug(f"Erreur lors de la recherche dans {platform_name}: {e}")
@@ -269,7 +328,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     {
                         'name': g[0],
                         'url': g[1] if len(g) > 1 else None,
-                        'size': g[2] if len(g) > 2 else None
+                        'size': normalize_size(g[2] if len(g) > 2 else None)
                     }
                     for g in games
                 ]
@@ -332,7 +391,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 print(f"\n[DEBUG HISTORY] history.json chargé avec {len(history)} entrées totales")
                 
                 # Filtrer les entrées avec status "Download_OK" ou "Erreur"
-                completed_statuses = ["Download_OK", "Erreur", "error", "Canceled"]
+                completed_statuses = ["Download_OK", "Erreur", "error", "Canceled", "Already_Present"]
                 completed_history = [
                     entry for entry in history
                     if entry.get('status', '') in completed_statuses
@@ -353,6 +412,23 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     'count': len(completed_history),
                     'history': completed_history
                 })
+            
+            # Route: API - Queue (lecture)
+            elif path == '/api/queue':
+                try:
+                    queue_status = {
+                        'success': True,
+                        'active': config.download_active,
+                        'queue': config.download_queue,
+                        'queue_size': len(config.download_queue)
+                    }
+                    self._send_json(queue_status)
+                except Exception as e:
+                    logger.error(f"Erreur lors de la récupération de la queue: {e}")
+                    self._send_json({
+                        'success': False,
+                        'error': str(e)
+                    }, status=500)
             
             # Route: API - Settings (lecture)
             elif path == '/api/settings':
@@ -516,6 +592,44 @@ class RGSXHandler(BaseHTTPRequestHandler):
             except:
                 pass  # Éviter le crash si la réponse échoue
     
+    def _process_queued_download(self, queue_item):
+        """Traite un élément de la queue de téléchargement"""
+        game_url = queue_item['url']
+        platform = queue_item['platform']
+        game_name = queue_item['game_name']
+        is_zip_non_supported = queue_item['is_zip_non_supported']
+        is_1fichier = queue_item['is_1fichier']
+        task_id = queue_item['task_id']
+        
+        config.download_active = True
+        
+        if is_1fichier:
+            download_func = download_from_1fichier
+            logger.info(f"🔗 Queue: download_from_1fichier() pour {game_name}, extraction={is_zip_non_supported}")
+        else:
+            download_func = download_rom
+            logger.info(f"📦 Queue: Téléchargement {game_name}, extraction={is_zip_non_supported}")
+        
+        def run_download():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    download_func(game_url, platform, game_name, is_zip_non_supported, task_id)
+                )
+            finally:
+                loop.close()
+                # Après le téléchargement, traiter la queue
+                config.download_active = False
+                if config.download_queue:
+                    next_item = config.download_queue.pop(0)
+                    logger.info(f"📋 Traitement du prochain élément de la queue: {next_item['game_name']}")
+                    # Relancer de manière asynchrone
+                    threading.Thread(target=lambda: self._process_queued_download(next_item), daemon=True).start()
+        
+        thread = threading.Thread(target=run_download, daemon=True)
+        thread.start()
+    
     def do_POST(self):
         """Traite les requêtes POST"""
         parsed_path = urllib.parse.urlparse(self.path)
@@ -535,6 +649,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 platform = data.get('platform')
                 game_index = data.get('game_index')
                 game_name_param = data.get('game_name')  # Nouveau: chercher par nom
+                mode = data.get('mode', 'now')  # 'now' ou 'queue'
                 
                 if not platform or (game_index is None and not game_name_param):
                     self._send_json({
@@ -598,37 +713,110 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 # Détecter si c'est un lien 1fichier et utiliser la fonction appropriée
                 is_1fichier = "1fichier.com" in game_url
                 
-                # Lancer le téléchargement dans un thread séparé
-                if is_1fichier:
-                    download_func = download_from_1fichier
-                    logger.info(f"🔗 Détection 1fichier, utilisation de download_from_1fichier() pour {game_name}, extraction={is_zip_non_supported}")
-                else:
-                    download_func = download_rom
-                    logger.info(f"📦 Téléchargement {game_name}, extraction={is_zip_non_supported}")
-                
                 task_id = f"web_{int(time.time() * 1000)}"
                 
-                def run_download():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        loop.run_until_complete(
-                            download_func(game_url, platform, game_name, is_zip_non_supported, task_id)
-                        )
-                    finally:
-                        loop.close()
+                # Déterminer si on doit ajouter à la queue ou télécharger immédiatement
+                # - mode='now' : toujours télécharger immédiatement (parallèle autorisé) - JAMAIS addé à la queue
+                # - mode='queue' : ajouter à la queue SEULEMENT s'il y a un téléchargement actif (serial)
+                should_queue = mode == 'queue' and config.download_active
                 
-                thread = threading.Thread(target=run_download, daemon=True)
-                thread.start()
-                
-                self._send_json({
-                    'success': True,
-                    'message': f'Téléchargement de {game_name} lancé',
-                    'task_id': task_id,
-                    'game_name': game_name,
-                    'platform': platform,
-                    'is_1fichier': is_1fichier
-                })
+                if mode == 'now':
+                    # mode='now' = toujours lancer immédiatement en parallèle, indépendamment de download_active
+                    logger.info(f"⚡ Téléchargement immédiat lancé en parallèle (mode=now): {game_name}")
+                    
+                    if is_1fichier:
+                        download_func = download_from_1fichier
+                        logger.info(f"🔗 Détection 1fichier, utilisation de download_from_1fichier() pour {game_name}, extraction={is_zip_non_supported}")
+                    else:
+                        download_func = download_rom
+                        logger.info(f"📦 Téléchargement {game_name}, extraction={is_zip_non_supported}")
+                    
+                    def run_download_now():
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            loop.run_until_complete(
+                                download_func(game_url, platform, game_name, is_zip_non_supported, task_id)
+                            )
+                        finally:
+                            loop.close()
+                            # mode='now' n'affecte pas download_active - il peut y avoir plusieurs téléchargements en parallèle
+                    
+                    thread = threading.Thread(target=run_download_now, daemon=True)
+                    thread.start()
+                    
+                    self._send_json({
+                        'success': True,
+                        'message': f'Téléchargement de {game_name} lancé',
+                        'task_id': task_id,
+                        'game_name': game_name,
+                        'platform': platform,
+                        'is_1fichier': is_1fichier
+                    })
+                    
+                elif should_queue:
+                    # mode='queue' ET un téléchargement est actif -> ajouter à la queue
+                    queue_item = {
+                        'url': game_url,
+                        'platform': platform,
+                        'game_name': game_name,
+                        'is_zip_non_supported': is_zip_non_supported,
+                        'is_1fichier': is_1fichier,
+                        'task_id': task_id,
+                        'status': 'queued'
+                    }
+                    config.download_queue.append(queue_item)
+                    logger.info(f"📋 {game_name} ajouté à la file d'attente (mode=queue, active={config.download_active})")
+                    
+                    self._send_json({
+                        'success': True,
+                        'message': f'{game_name} ajouté à la file d\'attente',
+                        'task_id': task_id,
+                        'game_name': game_name,
+                        'platform': platform,
+                        'queued': True,
+                        'queue_position': len(config.download_queue)
+                    })
+                else:
+                    # mode='queue' MAIS pas de téléchargement actif -> lancer immédiatement (premier élément)
+                    config.download_active = True
+                    logger.info(f"🚀 Lancement du premier élément de la queue: {game_name}")
+                    
+                    if is_1fichier:
+                        download_func = download_from_1fichier
+                        logger.info(f"🔗 Détection 1fichier, utilisation de download_from_1fichier() pour {game_name}, extraction={is_zip_non_supported}")
+                    else:
+                        download_func = download_rom
+                        logger.info(f"📦 Téléchargement {game_name}, extraction={is_zip_non_supported}")
+                    
+                    def run_download_queue():
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            loop.run_until_complete(
+                                download_func(game_url, platform, game_name, is_zip_non_supported, task_id)
+                            )
+                        finally:
+                            loop.close()
+                            # Mode queue: marquer comme inactif et traiter le suivant
+                            config.download_active = False
+                            if config.download_queue:
+                                next_item = config.download_queue.pop(0)
+                                logger.info(f"📋 Traitement du prochain élément de la queue: {next_item['game_name']}")
+                                # Relancer de manière asynchrone
+                                threading.Thread(target=lambda: self._process_queued_download(next_item), daemon=True).start()
+                    
+                    thread = threading.Thread(target=run_download_queue, daemon=True)
+                    thread.start()
+                    
+                    self._send_json({
+                        'success': True,
+                        'message': f'Téléchargement de {game_name} lancé',
+                        'task_id': task_id,
+                        'game_name': game_name,
+                        'platform': platform,
+                        'is_1fichier': is_1fichier
+                    })
             
             # Route: Annuler un téléchargement
             elif path == '/api/cancel':
@@ -654,20 +842,31 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             # Mettre à jour le statut dans l'historique
                             entry['status'] = 'Canceled'
                             entry['progress'] = 0
-                            entry['message'] = 'Annulé par l' + "'" + 'utilisateur'
+                            entry['message'] = get_translation('web_download_canceled')
                             
-                            # Extraire le task_id si disponible (format "web_timestamp")
-                            # Sinon, créer un task_id basé sur l'URL
-                            task_id = entry.get('task_id', f"web_{hash(url) % 10000000}")
+                            # Récupérer le task_id depuis l'entrée (il a été sauvegardé lors du démarrage du téléchargement)
+                            task_id = entry.get('task_id')
                             break
                     
                     if task_id:
                         # Tenter d'annuler le téléchargement
                         cancel_success = request_cancel(task_id)
                         logger.info(f"Annulation demandée pour task_id={task_id}, success={cancel_success}")
+                    else:
+                        logger.warning(f"Impossible de trouver task_id pour l'URL: {url}")
                     
                     # Sauvegarder l'historique modifié
                     save_history(history)
+                    
+                    # Réinitialiser le flag de téléchargement actif et lancer le prochain
+                    config.download_active = False
+                    if config.download_queue:
+                        next_item = config.download_queue.pop(0)
+                        logger.info(f"📋 Traitement du prochain élément de la queue après annulation: {next_item['game_name']}")
+                        # Relancer de manière asynchrone
+                        # Créer une référence à self pour utiliser dans la lambda
+                        handler = self
+                        threading.Thread(target=lambda: handler._process_queued_download(next_item), daemon=True).start()
                     
                     self._send_json({
                         'success': True,
@@ -678,6 +877,79 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     
                 except Exception as e:
                     logger.error(f"Erreur lors de l\\'annulation du téléchargement: {e}")
+                    self._send_json({
+                        'success': False,
+                        'error': str(e)
+                    }, status=500)
+            
+            # Route: Obtenir l'état de la queue
+            elif path == '/api/queue':
+                try:
+                    queue_status = {
+                        'success': True,
+                        'active': config.download_active,
+                        'queue': config.download_queue,
+                        'queue_size': len(config.download_queue)
+                    }
+                    self._send_json(queue_status)
+                except Exception as e:
+                    logger.error(f"Erreur lors de la récupération de la queue: {e}")
+                    self._send_json({
+                        'success': False,
+                        'error': str(e)
+                    }, status=500)
+            
+            # Route: Vider la queue (sauf le premier élément en cours)
+            elif path == '/api/queue/clear':
+                try:
+                    cleared_count = len(config.download_queue)
+                    config.download_queue.clear()
+                    logger.info(f"📋 Queue vidée ({cleared_count} éléments supprimés)")
+                    self._send_json({
+                        'success': True,
+                        'message': f'{cleared_count} éléments supprimés de la queue',
+                        'cleared_count': cleared_count
+                    })
+                except Exception as e:
+                    logger.error(f"Erreur lors du nettoyage de la queue: {e}")
+                    self._send_json({
+                        'success': False,
+                        'error': str(e)
+                    }, status=500)
+            
+            # Route: Supprimer un élément de la queue
+            elif path == '/api/queue/remove':
+                try:
+                    task_id = data.get('task_id')
+                    if not task_id:
+                        self._send_json({
+                            'success': False,
+                            'error': 'Paramètre manquant: task_id requis'
+                        }, status=400)
+                        return
+                    
+                    # Chercher et supprimer l'élément
+                    found = False
+                    for idx, item in enumerate(config.download_queue):
+                        if item.get('task_id') == task_id:
+                            removed_item = config.download_queue.pop(idx)
+                            logger.info(f"📋 {removed_item['game_name']} supprimé de la queue")
+                            found = True
+                            break
+                    
+                    if found:
+                        self._send_json({
+                            'success': True,
+                            'message': f'Élément supprimé de la queue',
+                            'task_id': task_id
+                        })
+                    else:
+                        self._send_json({
+                            'success': False,
+                            'error': f'Élément non trouvé: {task_id}'
+                        }, status=404)
+                except Exception as e:
+                    logger.error(f"Erreur lors de la suppression d'un élément de la queue: {e}")
                     self._send_json({
                         'success': False,
                         'error': str(e)
@@ -1300,6 +1572,27 @@ DO NOT share this file publicly as it may contain sensitive information.
             background: #c82333;
         }
         
+        .sort-btn {
+            background: #e0e0e0;
+            color: #333;
+            border: 2px solid #999;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .sort-btn:hover {
+            background: #d0d0d0;
+            border-color: #666;
+        }
+        .sort-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
         .games-list {
             max-height: 600px;
             overflow-y: auto;
@@ -1440,9 +1733,9 @@ DO NOT share this file publicly as it may contain sensitive information.
                 margin-bottom: 8px;
             }
             
-            .game-size {
-                font-size: 0.8em;
-                padding: 3px 8px;
+            .download-btn-group {
+                display: flex;
+                gap: 4px;
             }
         }
         
@@ -1480,12 +1773,14 @@ DO NOT share this file publicly as it may contain sensitive information.
     <div class="container">
         <header>
             <h1 data-translate="web_title">RGSX Web Interface</h1>
+            <p style="font-size: 0.85em; opacity: 0.8; margin-top: 5px;">v{version}</p>
             
             
             <!-- Navigation mobile avec icônes uniquement -->
             <div class="mobile-tabs">
                 <button class="mobile-tab active" onclick="showTab('platforms')" data-translate-title="web_tooltip_platforms" title="Platforms list">🎮</button>
                 <button class="mobile-tab" onclick="showTab('downloads')" data-translate-title="web_tooltip_downloads" title="Downloads">⬇️</button>
+                <button class="mobile-tab" onclick="showTab('queue')" data-translate-title="web_tooltip_queue" title="Queue">📋</button>
                 <button class="mobile-tab" onclick="showTab('history')" data-translate-title="web_tooltip_history" title="History">📜</button>
                 <button class="mobile-tab" onclick="showTab('settings')" data-translate-title="web_tooltip_settings" title="Settings">⚙️</button>                
                 <button class="mobile-tab" onclick="updateGamesList()" data-translate-title="web_tooltip_update" title="Update games list">🔄</button>
@@ -1496,6 +1791,7 @@ DO NOT share this file publicly as it may contain sensitive information.
         <div class="tabs">
             <button class="tab active" onclick="showTab('platforms')">🎮 <span data-translate="web_tab_platforms">Platforms List</span></button>
             <button class="tab" onclick="showTab('downloads')">⬇️ <span data-translate="web_tab_downloads">Downloads</span></button>
+            <button class="tab" onclick="showTab('queue')">📋 <span data-translate="web_tab_queue">Queue</span></button>
             <button class="tab" onclick="showTab('history')">📜 <span data-translate="web_tab_history">History</span></button>
             <button class="tab" onclick="showTab('settings')">⚙️ <span data-translate="web_tab_settings">Settings</span></button>
             <button class="tab" onclick="updateGamesList()">🔄 <span data-translate="web_tab_update">Update games list</span></button>
@@ -1505,6 +1801,7 @@ DO NOT share this file publicly as it may contain sensitive information.
         <div class="content">
             <div id="platforms-content"></div>
             <div id="downloads-content" style="display:none;"></div>
+            <div id="queue-content" style="display:none;"></div>
             <div id="history-content" style="display:none;"></div>
             <div id="settings-content" style="display:none;"></div>
         </div>
@@ -1513,9 +1810,12 @@ DO NOT share this file publicly as it may contain sensitive information.
     <script>
         // ===== VARIABLES GLOBALES =====
         let currentPlatform = null;
+        let currentGameSort = 'name_asc';  // Type de tri actuel: 'name_asc', 'name_desc', 'size_asc', 'size_desc'
+        let currentGames = [];  // Stocke les jeux actuels pour le tri
         let lastProgressUpdate = Date.now();
         let autoRefreshTimeout = null;
         let progressInterval = null;
+        let queueInterval = null;
         let translations = {};  // Contiendra toutes les traductions
         
         // Charger les traductions au démarrage
@@ -1629,10 +1929,20 @@ DO NOT share this file publicly as it may contain sensitive information.
         
         // Afficher un onglet
         function showTab(tab, updateHistory = true) {
+            // Arrêter les intervalles existants
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+            }
+            if (queueInterval) {
+                clearInterval(queueInterval);
+                queueInterval = null;
+            }
+            
             // Mettre à jour l'UI - tabs desktop
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             const tabButtons = Array.from(document.querySelectorAll('.tab'));
-            const tabNames = ['platforms', 'downloads', 'history', 'settings'];
+            const tabNames = ['platforms', 'downloads', 'queue', 'history', 'settings'];
             const tabIndex = tabNames.indexOf(tab);
             if (tabIndex >= 0 && tabButtons[tabIndex]) {
                 tabButtons[tabIndex].classList.add('active');
@@ -1657,6 +1967,11 @@ DO NOT share this file publicly as it may contain sensitive information.
             
             if (tab === 'platforms') loadPlatforms();
             else if (tab === 'downloads') loadProgress();
+            else if (tab === 'queue') {
+                loadQueue();
+                // Rafraîchir la queue toutes les 2 secondes
+                queueInterval = setInterval(loadQueue, 2000);
+            }
             else if (tab === 'history') loadHistory();
             else if (tab === 'settings') loadSettings();
         }
@@ -1812,11 +2127,10 @@ DO NOT share this file publicly as it may contain sensitive information.
                                         <div class="search-game-name" style="font-weight: 500; margin-bottom: 10px; word-wrap: break-word; overflow-wrap: break-word;">${game.game_name}</div>
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
                                             ${game.size ? `<span style="background: #667eea; color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.9em; white-space: nowrap;">${game.size}</span>` : '<span></span>'}
-                                            <button class="download-btn" title="${downloadTitle}" 
-                                                    onclick="downloadGame('${platformName.replace(/'/g, "\\\\'")}', '${game.game_name.replace(/'/g, "\\\\'")}', null)"
-                                                    style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">
-                                                ⬇️
-                                            </button>
+                                            <div class="download-btn-group" style="display: flex; gap: 4px;">
+                                                <button class="download-btn" title="${downloadTitle} (now)" onclick="downloadGame('${platformName.replace(/'/g, "\\'")}', '${game.game_name.replace(/'/g, "\\'")}', null, 'now')" style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">⬇️</button>
+                                                <button class="download-btn" title="${downloadTitle} (queue)" onclick="downloadGame('${platformName.replace(/'/g, "\\'")}', '${game.game_name.replace(/'/g, "\\'")}', null, 'queue')" style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">➕</button>
+                                            </div>
                                         </div>
                                     </div>
                                 `;
@@ -1865,6 +2179,61 @@ DO NOT share this file publicly as it may contain sensitive information.
             }
             
             return visibleCount;
+        }
+        
+        // Trier les jeux
+        function sortGames(sortType) {
+            currentGameSort = sortType;
+            const items = Array.from(document.querySelectorAll('.game-item'));
+            const gamesList = document.querySelector('.games-list');
+            
+            // Trier les éléments
+            items.sort((a, b) => {
+                const nameA = a.querySelector('.game-name').textContent.toLowerCase();
+                const nameB = b.querySelector('.game-name').textContent.toLowerCase();
+                const sizeElemA = a.querySelector('.game-size');
+                const sizeElemB = b.querySelector('.game-size');
+                
+                // Extraire la taille en Mo (normalisée)
+                const getSizeInMo = (sizeElem) => {
+                    if (!sizeElem) return 0;
+                    const text = sizeElem.textContent;
+                    // Les tailles sont maintenant normalisées: "100 Mo" ou "2.5 Go"
+                    const match = text.match(/([0-9.]+)\\s*(Mo|Go)/i);
+                    if (!match) return 0;
+                    let size = parseFloat(match[1]);
+                    // Convertir Go en Mo pour comparaison
+                    if (match[2].toUpperCase() === 'GO') {
+                        size *= 1024;
+                    }
+                    return size;
+                };
+                
+                switch(sortType) {
+                    case 'name_asc':
+                        return nameA.localeCompare(nameB);
+                    case 'name_desc':
+                        return nameB.localeCompare(nameA);
+                    case 'size_asc':
+                        return getSizeInMo(sizeElemA) - getSizeInMo(sizeElemB);
+                    case 'size_desc':
+                        return getSizeInMo(sizeElemB) - getSizeInMo(sizeElemA);
+                    default:
+                        return 0;
+                }
+            });
+            
+            // Réafficher les éléments dans l'ordre
+            gamesList.innerHTML = '';
+            items.forEach(item => {
+                gamesList.appendChild(item);
+            });
+            
+            // Mettre à jour les boutons de tri
+            document.querySelectorAll('.sort-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-sort="${sortType}"]`)?.classList.add('active');
         }
         
         // Charger les plateformes
@@ -1941,6 +2310,11 @@ DO NOT share this file publicly as it may contain sensitive information.
                 let gameCountText = t('web_game_count', '', data.count);
                 let searchPlaceholder = t('web_search_game');
                 let downloadTitle = t('web_download');
+                let sortLabel = t('web_sort');
+                let sortNameAsc = t('web_sort_name_asc');
+                let sortNameDesc = t('web_sort_name_desc');
+                let sortSizeAsc = t('web_sort_size_asc');
+                let sortSizeDesc = t('web_sort_size_desc');
                 
                 let html = `
                     <button class="back-btn" onclick="goBackToPlatforms()">← ${backText}</button>
@@ -1951,6 +2325,13 @@ DO NOT share this file publicly as it may contain sensitive information.
                         <button class="clear-search" id="clear-games-search" onclick="document.getElementById('game-search').value=''; filterGames('');">✕</button>
                         <span class="search-icon">🔍</span>
                     </div>
+                    <div style="margin-top: 12px; margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                        <span style="font-weight: bold; align-self: center;">${sortLabel}:</span>
+                        <button class="sort-btn active" data-sort="name_asc" onclick="sortGames('name_asc')" title="${sortNameAsc}">${sortNameAsc}</button>
+                        <button class="sort-btn" data-sort="name_desc" onclick="sortGames('name_desc')" title="${sortNameDesc}">${sortNameDesc}</button>
+                        <button class="sort-btn" data-sort="size_asc" onclick="sortGames('size_asc')" title="${sortSizeAsc}">${sortSizeAsc}</button>
+                        <button class="sort-btn" data-sort="size_desc" onclick="sortGames('size_desc')" title="${sortSizeDesc}">${sortSizeDesc}</button>
+                    </div>
                     <div class="games-list">`;
                 
                 // Ajouter chaque jeu
@@ -1959,9 +2340,10 @@ DO NOT share this file publicly as it may contain sensitive information.
                         <div class="game-item">
                             <span class="game-name">${g.name}</span>
                             ${g.size ? `<span class="game-size">${g.size}</span>` : ''}
-                            <button class="download-btn" title="${downloadTitle}" onclick="downloadGame('${platform.replace(/'/g, "\\\\'")}', '${g.name.replace(/'/g, "\\\\'")}', ${idx})">
-                                ⬇️
-                            </button>
+                            <div class="download-btn-group" style="display: flex; gap: 4px;">
+                                <button class="download-btn" title="${downloadTitle} (now)" onclick="downloadGame('${platform.replace(/'/g, "\\'")}', '${g.name.replace(/'/g, "\\'")}', ${idx}, 'now')">⬇️</button>
+                                <button class="download-btn" title="${downloadTitle} (queue)" onclick="downloadGame('${platform.replace(/'/g, "\\'")}', '${g.name.replace(/'/g, "\\'")}', ${idx}, 'queue')" style="background: #e0e0e0; color: #333;">➕</button>
+                            </div>
                         </div>
                     `;
                 });
@@ -1970,6 +2352,9 @@ DO NOT share this file publicly as it may contain sensitive information.
                     </div>
                 `;
                 container.innerHTML = html;
+                
+                // Appliquer le tri par défaut (A-Z)
+                sortGames(currentGameSort);
                 
             } catch (error) {
                 let backText = t('web_back');
@@ -1993,38 +2378,31 @@ DO NOT share this file publicly as it may contain sensitive information.
             btn.disabled = true;
             btn.textContent = '⏳';
             btn.title = t('web_download') + '...';
-            
+            const mode = arguments.length > 3 ? arguments[3] : 'now';
             try {
                 // Préparer le body de la requête
-                const requestBody = {
-                    platform: platform
-                };
-                
-                // Si gameIndex est fourni ET valide (nombre >= 0), l'utiliser
-                // Sinon utiliser le nom du jeu (pour les résultats de recherche)
+                const requestBody = { platform: platform };
                 if (typeof gameIndex === 'number' && gameIndex >= 0) {
                     requestBody.game_index = gameIndex;
                 } else {
                     requestBody.game_name = gameName;
                 }
-                
+                requestBody.mode = mode;
                 const response = await fetch('/api/download', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(requestBody)
                 });
-                
                 const data = await response.json();
-                
                 if (data.success) {
                     btn.textContent = '✅';
                     btn.title = t('web_download') + ' ✓';
                     btn.style.color = '#28a745';
-                    
-                    // Basculer vers l'onglet téléchargements
-                    setTimeout(() => {
-                        showTab('downloads');
-                    }, 1000);
+                    // Rediriger vers downloads SEULEMENT si mode='now' (téléchargement immédiat)
+                    // Si mode='queue', rester sur la page actuelle
+                    if (mode === 'now') {
+                        setTimeout(() => { showTab('downloads'); }, 1000);
+                    }
                 } else {
                     throw new Error(data.error || t('web_error_unknown'));
                 }
@@ -2235,6 +2613,120 @@ DO NOT share this file publicly as it may contain sensitive information.
             }
         }
         
+        // Charger la file d'attente
+        async function loadQueue() {
+            const container = document.getElementById('queue-content');
+            
+            try {
+                const response = await fetch('/api/queue');
+                const data = await response.json();
+                
+                if (!data.success) throw new Error(data.error);
+                
+                const queue = data.queue || [];
+                const isActive = data.active || false;
+                
+                let html = '<div>';
+                
+                // Afficher l'état actif
+                if (isActive) {
+                    html += '<div style="background: #e8f5e9; border: 1px solid #4caf50; padding: 15px; border-radius: 5px; margin-bottom: 15px;">';
+                    html += '<strong style="color: #2e7d32;">⏳ ' + t('web_queue_active_download') + '</strong>';
+                    html += '</div>';
+                } else {
+                    html += '<div style="background: #f5f5f5; border: 1px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 15px;">';
+                    html += '<strong style="color: #666;">✓ ' + t('web_queue_no_active') + '</strong>';
+                    html += '</div>';
+                }
+                
+                // Afficher la queue
+                if (queue.length === 0) {
+                    html += '<p>' + t('web_queue_empty') + '</p>';
+                } else {
+                    html += '<h3>' + t('web_queue_title') + ' (' + queue.length + ')</h3>';
+                    html += '<div>';
+                    queue.forEach((item, idx) => {
+                        const gameName = item.game_name || 'Unknown';
+                        const platform = item.platform || 'N/A';
+                        const status = item.status || 'queued';
+                        html += `
+                            <div class="info-item" style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="flex: 1;">
+                                    <strong>${idx + 1}. 📁 ${gameName}</strong>
+                                    <div style="margin-top: 5px; font-size: 0.9em; color: #666;">
+                                        Platform: ${platform} | Status: ${status}
+                                    </div>
+                                </div>
+                                <button class="btn-action" onclick="removeFromQueue('${item.task_id.replace(/'/g, "\\\\'")}', this)" title="${t('web_remove')}">
+                                    ❌
+                                </button>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    
+                    // Bouton pour vider la queue
+                    html += '<button class="btn-action" onclick="clearQueue()" style="margin-top: 15px; background: #dc3545; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer;">';
+                    html += t('web_queue_clear') + '</button>';
+                }
+                
+                html += '</div>';
+                container.innerHTML = html;
+                
+            } catch (error) {
+                container.innerHTML = `<p style="color:red;">❌ ${t('web_error')}: ${error.message}</p>`;
+            }
+        }
+        
+        // Supprimer un élément de la queue
+        async function removeFromQueue(taskId, btn) {
+            if (!confirm(t('web_confirm_remove_queue'))) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/queue/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ task_id: taskId })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    btn.style.color = '#28a745';
+                    btn.textContent = '✅';
+                    setTimeout(() => { loadQueue(); }, 500);
+                } else {
+                    alert(t('web_error') + ': ' + data.error);
+                }
+            } catch (error) {
+                alert(t('web_error') + ': ' + error.message);
+            }
+        }
+        
+        // Vider la queue
+        async function clearQueue() {
+            if (!confirm(t('web_confirm_clear_queue'))) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/queue/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert(t('web_queue_cleared'));
+                    loadQueue();
+                } else {
+                    alert(t('web_error') + ': ' + data.error);
+                }
+            } catch (error) {
+                alert(t('web_error') + ': ' + error.message);
+            }
+        }
+        
         // Charger l'historique
         async function loadHistory() {
             const container = document.getElementById('history-content');
@@ -2256,13 +2748,31 @@ DO NOT share this file publicly as it may contain sensitive information.
                 const sizeLabel = t('web_history_size');
                 const statusCompleted = t('web_history_status_completed');
                 const statusError = t('web_history_status_error');
+                const statusCanceled = t('history_status_canceled');
+                const statusAlreadyPresent = t('status_already_present');
                 
                 container.innerHTML = data.history.map(h => {
                     const isError = h.status === 'Erreur' || h.status === 'error';
-                    const statusIcon = isError ? '❌' : '✅';
+                    const isCanceled = h.status === 'Canceled';
+                    const isAlreadyPresent = h.status === 'Already_Present';
+                    const statusIcon = isError ? '❌' : isCanceled ? '⏸️' : isAlreadyPresent ? 'ℹ️' : '✅';
                     const totalMo = h.total_size ? (h.total_size / 1024 / 1024).toFixed(1) : 'N/A';
                     const platform = h.platform || 'N/A';
                     const timestamp = h.timestamp || 'N/A';
+                    
+                    // Déterminer la couleur du statut
+                    let statusColor = '#28a745'; // vert par défaut
+                    let statusText = statusCompleted;
+                    if (isError) {
+                        statusColor = '#dc3545'; // rouge pour erreur
+                        statusText = statusError;
+                    } else if (isCanceled) {
+                        statusColor = '#ffc107'; // orange pour annulé
+                        statusText = statusCanceled;
+                    } else if (isAlreadyPresent) {
+                        statusColor = '#17a2b8'; // bleu clair pour déjà présent
+                        statusText = statusAlreadyPresent;
+                    }
                     
                     // Debug: log le timestamp pour vérifier
                     if (!h.timestamp) {
@@ -2285,8 +2795,8 @@ DO NOT share this file publicly as it may contain sensitive information.
                                     </div>
                                 </div>
                                 <div style="text-align: right; min-width: 100px;">
-                                    <span style="background: ${isError ? '#dc3545' : '#28a745'}; color: white; padding: 4px 10px; border-radius: 5px; font-size: 0.85em;">
-                                        ${isError ? statusError : statusCompleted}
+                                    <span style="background: ${statusColor}; color: white; padding: 4px 10px; border-radius: 5px; font-size: 0.85em;">
+                                        ${statusText}
                                     </span>
                                 </div>
                             </div>
@@ -2802,7 +3312,7 @@ DO NOT share this file publicly as it may contain sensitive information.
                 
                 // Boutons d'action
                 const buttonContainer = document.createElement('div');
-                buttonContainer.style.cssText = 'display: flex; gap: 10px; margin-bottom: 15px;';
+                buttonContainer.style.cssText = 'display: flex; gap: 10px; justify-content: flex-end;';
                 
                 // Bouton parent - afficher si parent_path n'est pas null (même si c'est une chaîne vide pour revenir aux lecteurs)
                 if (data.parent_path !== null && data.parent_path !== undefined) {
@@ -2914,7 +3424,7 @@ DO NOT share this file publicly as it may contain sensitive information.
     </script>
 </body>
 </html>
-        '''
+        '''.replace('{version}', config.app_version)
 
 
 def run_server(host='0.0.0.0', port=5000):

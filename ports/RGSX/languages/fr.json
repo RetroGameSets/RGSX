@@ -2,6 +2,7 @@
     "welcome_message": "Bienvenue dans RGSX",
     "disclaimer_line1": "It's dangerous to go alone, take all you need!",
     "disclaimer_line2": "Mais ne téléchargez que des jeux",
+    "disclaimer_line3": "que vous possédez !",
     "disclaimer_line4": "RGSX n'est pas responsable des contenus téléchargés,",
     "disclaimer_line5": "et n'heberge pas de ROMs.",
     "loading_test_connection": "Test de la connexion...",
@@ -321,4 +322,21 @@
     ,"web_support_generating": "Génération du fichier de support..."
     ,"web_support_download": "Télécharger le fichier de support"
     ,"web_support_error": "Erreur lors de la génération du fichier de support : {0}"
+    ,"web_tab_queue": "File d'attente"
+    ,"web_tooltip_queue": "File d'attente des téléchargements"
+    ,"web_queue_active_download": "⏳ Un téléchargement est actuellement en cours"
+    ,"web_queue_no_active": "✓ Aucun téléchargement actif"
+    ,"web_queue_title": "File d'attente des téléchargements"
+    ,"web_queue_empty": "Aucun élément en attente"
+    ,"web_queue_clear": "Vider la file d'attente"
+    ,"web_queue_cleared": "File d'attente vidée avec succès !"
+    ,"web_confirm_remove_queue": "Supprimer cet élément de la file d'attente ?"
+    ,"web_confirm_clear_queue": "Vider toute la file d'attente ?"
+    ,"web_remove": "Supprimer"
+    ,"web_loading": "Chargement..."
+    ,"web_sort": "Trier par"
+    ,"web_sort_name_asc": "A-Z (Nom)"
+    ,"web_sort_name_desc": "Z-A (Nom)"
+    ,"web_sort_size_asc": "Taille +- (Petit d'abord)"
+    ,"web_sort_size_desc": "Taille -+ (Grand d'abord)"
 }

@@ -33,7 +33,40 @@ import html as html_module
 from urllib.parse import urljoin, unquote
 
 
+
 logger = logging.getLogger(__name__)
+
+# --- File d'attente de téléchargements (worker) ---
+def download_queue_worker():
+    """Worker qui surveille la file d'attente et lance le prochain téléchargement si aucun n'est actif."""
+    import time
+    while True:
+        try:
+            if not config.download_active and config.download_queue:
+                job = config.download_queue.pop(0)
+                config.download_active = True
+                logger.info(f"[QUEUE] Lancement du téléchargement: {job.get('game_name','?')} ({job.get('url','?')})")
+                # Démarrer le téléchargement selon le provider
+                url = job['url']
+                platform = job['platform']
+                game_name = job['game_name']
+                is_zip_non_supported = job.get('is_zip_non_supported', False)
+                task_id = job.get('task_id') or f"queue_{int(time.time()*1000)}"
+                # Choix du provider (1fichier ou direct)
+                if is_1fichier_url(url):
+                    t = threading.Thread(target=lambda: asyncio.run(download_from_1fichier(url, platform, game_name, is_zip_non_supported, task_id)), daemon=True)
+                else:
+                    t = threading.Thread(target=lambda: asyncio.run(download_rom(url, platform, game_name, is_zip_non_supported, task_id)), daemon=True)
+                t.start()
+                # Le flag download_active sera remis à False à la fin du téléchargement (voir ci-dessous)
+            time.sleep(1)
+        except Exception as e:
+            logger.error(f"[QUEUE] Erreur dans le worker de file d'attente: {e}")
+            time.sleep(2)
+
+# Hook à appeler à la fin de chaque téléchargement pour libérer le slot
+def notify_download_finished():
+    config.download_active = False
 
 # ================== TÉLÉCHARGEMENT 1FICHIER GRATUIT ==================
 # Fonction pour télécharger depuis 1fichier sans API key (mode gratuit)
@@ -533,6 +566,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     entry["platform"] = platform
                     entry["game_name"] = game_name
                     entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    entry["task_id"] = task_id
                     break
             
             # Si l'entrée n'existe pas, la créer
@@ -547,7 +581,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     "total_size": 0,
                     "speed": 0,
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "message": f"Téléchargement de {game_name}"
+                    "message": f"Téléchargement de {game_name}",
+                    "task_id": task_id
                 })
             
             # Sauvegarder history.json immédiatement
@@ -1134,6 +1169,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     entry["platform"] = platform
                     entry["game_name"] = game_name
                     entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    entry["task_id"] = task_id
                     break
             
             # Si l'entrée n'existe pas, la créer
@@ -1148,7 +1184,8 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     "total_size": 0,
                     "speed": 0,
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "message": f"Téléchargement 1fichier de {game_name}"
+                    "message": f"Téléchargement 1fichier de {game_name}",
+                    "task_id": task_id
                 })
             
             # Sauvegarder history.json immédiatement
@@ -1880,6 +1917,10 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
         del progress_queues[task_id]
     cancel_events.pop(task_id, None)
     logger.debug(f"Fin download_from_1fichier, résultat: success={result[0]}, message={result[1]}")
+    try:
+        notify_download_finished()
+    except Exception:
+        pass
     return result[0], result[1]
 
 def is_1fichier_url(url):

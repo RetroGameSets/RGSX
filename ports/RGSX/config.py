@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.4.5"
+app_version = "2.2.4.6"
 
 
 def get_application_root():
@@ -59,6 +59,11 @@ except Exception as _e:
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
+
+# File d'attente de téléchargements (jobs en attente)
+download_queue = []  # Liste de dicts: {url, platform, game_name, ...}
+# Indique si un téléchargement est en cours
+download_active = False
 log_dir = os.path.join(APP_FOLDER, "logs")
 log_file = os.path.join(log_dir, "RGSX.log")
 log_file_web = os.path.join(log_dir, 'rgsx_web.log')
