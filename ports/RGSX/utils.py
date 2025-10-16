@@ -1575,12 +1575,23 @@ def handle_xbox(dest_dir, iso_files, url=None):
         xdvdfs_cmd = [XDVDFS_LINUX, "pack"]  # Liste avec 2 éléments
 
     try:
-        # Chercher les fichiers ISO à convertir (rafraîchir la liste)
+        # Utiliser uniquement la liste fournie (nouveaux ISO extraits). Fallback scan uniquement si liste vide.
+        provided_list = iso_files
         iso_files = []
-        for root, dirs, files in os.walk(dest_dir):
-            for file in files:
-                if file.lower().endswith('.iso'):
-                    iso_files.append(os.path.join(root, file))
+        if isinstance(provided_list, (list, tuple)) and len(provided_list) > 0:
+            # Normaliser/filtrer
+            for p in provided_list:
+                try:
+                    if isinstance(p, str) and p.lower().endswith('.iso') and os.path.exists(p):
+                        iso_files.append(os.path.abspath(p))
+                except Exception:
+                    continue
+        else:
+            # Fallback: scan (ancienne logique)
+            for root, dirs, files in os.walk(dest_dir):
+                for file in files:
+                    if file.lower().endswith('.iso'):
+                        iso_files.append(os.path.join(root, file))
 
         if not iso_files:
             logger.warning("Aucun fichier ISO xbox trouvé")
@@ -1624,8 +1635,27 @@ def handle_xbox(dest_dir, iso_files, url=None):
             )
 
             if process.returncode != 0:
-                logger.error(f"Erreur lors de la conversion de l'ISO: {process.stderr}")
-                return False, f"Erreur lors de la conversion de l'ISO: {process.stderr}"
+                err_msg = f"Erreur lors de la conversion de l'ISO: {process.stderr}"
+                logger.error(err_msg)
+                # Mettre à jour les statuts pour éviter de rester bloqué en 'Converting'
+                try:
+                    if url:
+                        if url not in config.download_progress:
+                            config.download_progress[url] = {}
+                        config.download_progress[url]["status"] = "Error"
+                        config.download_progress[url]["message"] = err_msg
+                        config.download_progress[url]["progress_percent"] = 0
+                        config.needs_redraw = True
+                        if isinstance(config.history, list):
+                            for entry in config.history:
+                                if entry.get("url") == url and entry.get("status") in ("Converting", "Extracting", "Téléchargement", "downloading"):
+                                    entry["status"] = "Error"
+                                    entry["message"] = err_msg
+                                    save_history(config.history)
+                                    break
+                except Exception:
+                    pass
+                return False, err_msg
 
             # Vérifier que l'ISO converti a été créé
             if os.path.exists(xiso_dest):
@@ -1652,7 +1682,25 @@ def handle_xbox(dest_dir, iso_files, url=None):
                 except Exception:
                     pass
             else:
-                logger.error(f"L'ISO converti n'a pas été créé: {xiso_dest}")
+                err_msg = f"L'ISO converti n'a pas été créé: {xiso_dest}"
+                logger.error(err_msg)
+                try:
+                    if url:
+                        if url not in config.download_progress:
+                            config.download_progress[url] = {}
+                        config.download_progress[url]["status"] = "Error"
+                        config.download_progress[url]["message"] = err_msg
+                        config.download_progress[url]["progress_percent"] = 0
+                        config.needs_redraw = True
+                        if isinstance(config.history, list):
+                            for entry in config.history:
+                                if entry.get("url") == url and entry.get("status") in ("Converting", "Extracting", "Téléchargement", "downloading"):
+                                    entry["status"] = "Error"
+                                    entry["message"] = err_msg
+                                    save_history(config.history)
+                                    break
+                except Exception:
+                    pass
                 return False, "Échec de la conversion de l'ISO"
 
         return True, "Conversion Xbox terminée avec succès"
