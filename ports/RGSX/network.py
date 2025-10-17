@@ -912,6 +912,16 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         logger.debug("Extraction forcée activée pour BIOS")
                 except Exception:
                     pass
+            
+            # Forcer extraction pour PS3 Redump (déchiffrement et extraction ISO obligatoire)
+            if not force_extract:
+                try:
+                    ps3_platforms = {"ps3", "PlayStation 3"}
+                    if platform_folder == "ps3" or platform in ps3_platforms:
+                        force_extract = True
+                        logger.debug("Extraction forcée activée pour PS3 Redump (déchiffrement ISO)")
+                except Exception:
+                    pass
 
             if force_extract:
                 logger.debug(f"Extraction automatique nécessaire pour {dest_path}")
@@ -1764,7 +1774,18 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     if download_cancelled:
                         return
                     
-                    if is_zip_non_supported:
+                    # Déterminer si extraction est nécessaire
+                    force_extract = is_zip_non_supported
+                    if not force_extract:
+                        try:
+                            ps3_platforms = {"ps3", "PlayStation 3"}
+                            if platform_folder == "ps3" or platform in ps3_platforms:
+                                force_extract = True
+                                logger.debug("Extraction forcée activée pour PS3 Redump (déchiffrement ISO)")
+                        except Exception:
+                            pass
+                    
+                    if force_extract:
                         with lock:
                             if isinstance(config.history, list):
                                 for entry in config.history:
