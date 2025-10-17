@@ -2585,6 +2585,8 @@ def draw_history_game_options(screen):
         option_labels.append(_("history_option_error_info"))
         options.append("retry")
         option_labels.append(_("history_option_retry"))
+        options.append("delete_game")
+        option_labels.append(_("history_option_delete_game"))
     
     # Option commune: retour
     options.append("back")

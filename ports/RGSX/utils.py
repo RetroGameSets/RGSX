@@ -865,24 +865,15 @@ def _update_extraction_progress(url, extracted_size, total_size, lock, last_save
         logger.debug(f"Erreur mise à jour progression extraction: {e}")
 
 def _finalize_extraction(archive_path, dest_dir, url):
-    """Fonction utilitaire pour finaliser l'extraction (suppression fichier + historique)."""
+    """Fonction utilitaire pour finaliser l'extraction (suppression fichier + historique).
+    NOTE: Ne met PAS à jour l'historique - c'est le rôle de network.py après le retour.
+    Cela évite les doublons d'entrées dans l'historique.
+    """
     try:
         os.remove(archive_path)
         logger.info(f"Fichier {archive_path} extrait dans {dest_dir} et supprimé")
         
-        # Mettre à jour le statut final dans l'historique
-        if isinstance(config.history, list):
-            for entry in config.history:
-                if entry.get("url") == url and entry.get("status") in ("Extracting", "Converting"):
-                    entry["status"] = "Download_OK"
-                    entry["progress"] = 100
-                    message_text = _("utils_extracted").format(os.path.basename(archive_path))
-                    entry["message"] = message_text
-                    save_history(config.history)
-                    config.needs_redraw = True
-                    break
-        
-        # Mettre à jour l'état de progression à 100%
+        # Mettre à jour l'état de progression à 100% (mais PAS l'historique)
         if url in getattr(config, 'download_progress', {}):
             try:
                 config.download_progress[url]["status"] = "Download_OK"
@@ -931,38 +922,36 @@ def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=No
         else:
             logger.warning("Aucun nouvel ISO détecté après extraction pour conversion Xbox.")
 
-    # PS3 et PS3 Redump: traitement unifié
-    ps3_dir = os.path.join(config.ROMS_FOLDER, "ps3")
-    ps3_dir = os.path.join(config.ROMS_FOLDER, "ps3")
+    # Dossier PS3: traitement spécifique
+    # Gérer les deux cas: symlink activé (ps3/ps3) ou désactivé (ps3)
+    ps3_dir_normal = os.path.join(config.ROMS_FOLDER, "ps3")
+    ps3_dir_symlink = os.path.join(config.ROMS_FOLDER, "ps3", "ps3")
+    is_ps3 = (dest_dir == ps3_dir_normal or dest_dir == ps3_dir_symlink)
     
-    if dest_dir == ps3_dir:
+    if is_ps3:
         # PS3 Redump: décryptage et extraction
         logger.info("Détection PS3 Redump - lancement du traitement spécifique")
+        
+        # Calculer les nouveaux dossiers créés lors de l'extraction
+        try:
+            after_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
+        except Exception:
+            after_dirs = set()
+        
+        ignore_names = {"ps3", "images", "videos", "manuals", "media"}
+        new_dirs = [d for d in (after_dirs - before_dirs) if d not in ignore_names and not d.endswith('.ps3')]
+        expected_base = os.path.splitext(os.path.basename(archive_path))[0]
+        
         success, error_msg = handle_ps3(
             dest_dir=dest_dir,
+            new_dirs=new_dirs,
+            extracted_basename=expected_base,
             url=url,
             archive_name=os.path.basename(archive_path)
         )
         if not success:
             return False, error_msg
         return True, None
-    
-    elif dest_dir == ps3_dir:
-        # PS3 classique: renommage simple
-        try:
-            after_dirs = set([d for d in os.listdir(dest_dir) if os.path.isdir(os.path.join(dest_dir, d))])
-        except Exception:
-            after_dirs = set()
-        ignore_names = {"ps3", "images", "videos", "manuals", "media"}
-        new_dirs = [d for d in (after_dirs - before_dirs) if d not in ignore_names and not d.endswith('.ps3')]
-        expected_base = os.path.splitext(os.path.basename(archive_path))[0]
-        success, error_msg = handle_ps3(
-            dest_dir=dest_dir,
-            new_dirs=new_dirs,
-            extracted_basename=expected_base
-        )
-        if not success:
-            return False, error_msg
 
     # DOS: organisation en dossiers .pc
     dos_dir = os.path.join(config.ROMS_FOLDER, "dos")
@@ -1248,9 +1237,10 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archi
     """
     logger.debug(f"Traitement spécifique PS3 dans: {dest_dir}")
     
-    # Détection du mode PS3 
-    ps3_dir = os.path.join(config.ROMS_FOLDER, "ps3")
-    is_ps3 = (dest_dir == ps3_dir)
+    # Détection du mode PS3 - supporter les deux cas: symlink activé (ps3/ps3) ou désactivé (ps3)
+    ps3_dir_normal = os.path.join(config.ROMS_FOLDER, "ps3")
+    ps3_dir_symlink = os.path.join(config.ROMS_FOLDER, "ps3", "ps3")
+    is_ps3 = (dest_dir == ps3_dir_normal or dest_dir == ps3_dir_symlink)
     
     if is_ps3:
         # ============================================

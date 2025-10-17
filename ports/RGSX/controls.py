@@ -1139,7 +1139,8 @@ def handle_controls(event, sources, joystick, screen):
                 elif status in ["Erreur", "Error", "Canceled"]:
                     options.append("error_info")
                     options.append("retry")
-                
+                    options.append("delete_game")
+
                 # Option commune: retour
                 options.append("back")
                 
