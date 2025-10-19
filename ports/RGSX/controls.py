@@ -4,10 +4,12 @@ import asyncio
 import json
 import re
 import os
+import datetime
+import threading
 import config
 from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE
 from config import CONTROLS_CONFIG_PATH
-from display import draw_validation_transition
+from display import draw_validation_transition, show_toast
 from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel
 from utils import (
     load_games, check_extension_before_download, is_extension_supported,
@@ -193,6 +195,74 @@ def is_input_matched(event, action_name):
     elif input_type == "mouse" and event.type == pygame.MOUSEBUTTONDOWN:
         return event.button == mapping.get("button")
     return False
+
+def _launch_next_queued_download():
+    """Lance le prochain téléchargement de la queue si aucun n'est actif.
+    Gère la liaison entre le système Desktop et le système de download_rom/download_from_1fichier.
+    """
+    if config.download_active or not config.download_queue:
+        return
+    
+    queue_item = config.download_queue.pop(0)
+    config.download_active = True
+    
+    url = queue_item['url']
+    platform = queue_item['platform']
+    game_name = queue_item['game_name']
+    is_zip_non_supported = queue_item['is_zip_non_supported']
+    is_1fichier = queue_item['is_1fichier']
+    task_id = queue_item['task_id']
+    
+    # Mettre à jour le statut dans l'historique: queued -> downloading
+    for entry in config.history:
+        if entry.get('task_id') == task_id and entry.get('status') == 'queued':
+            entry['status'] = 'downloading'
+            entry['message'] = _("download_in_progress")
+            save_history(config.history)
+            break
+    
+    logger.info(f"📋 Lancement du téléchargement de la queue: {game_name} (task_id={task_id})")
+    
+    # Lancer le téléchargement de manière asynchrone avec callback
+    try:
+        if is_1fichier:
+            task = asyncio.create_task(download_from_1fichier(url, platform, game_name, is_zip_non_supported, task_id))
+        else:
+            task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported, task_id))
+        
+        config.download_tasks[task_id] = (task, url, game_name, platform)
+        
+        # Callback invoqué quand la tâche est terminée
+        def on_task_done(t):
+            try:
+                # Récupérer le résultat (si erreur, elle sera levée ici)
+                result = t.result()
+            except asyncio.CancelledError:
+                logger.info(f"Tâche annulée pour {game_name} (task_id={task_id})")
+            except Exception as e:
+                logger.error(f"Erreur tâche download {game_name}: {e}")
+            finally:
+                # Toujours marquer comme inactif et lancer le prochain
+                config.download_active = False
+                if config.download_queue:
+                    _launch_next_queued_download()
+        
+        # Ajouter le callback à la tâche
+        task.add_done_callback(on_task_done)
+        
+    except Exception as e:
+        logger.error(f"Erreur lancement queue download: {e}")
+        config.download_active = False
+        # Mettre à jour l'historique en erreur
+        for entry in config.history:
+            if entry.get('task_id') == task_id:
+                entry['status'] = 'Erreur'
+                entry['message'] = str(e)
+                save_history(config.history)
+                break
+        # Relancer le suivant
+        if config.download_queue:
+            _launch_next_queued_download()
 
 def handle_controls(event, sources, joystick, screen):
     """Gère un événement clavier/joystick/souris et la répétition automatique.
@@ -552,16 +622,79 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "history"
                     config.needs_redraw = True
                     logger.debug("Ouverture history depuis game")
-                # Bascule de sélection multiple avec la touche clear_history (réutilisée)
+                # Ajouter à la file d'attente avec la touche clear_history (réutilisée)
                 elif is_input_matched(event, "clear_history"):
                     if games:
                         idx = config.current_game
-                        if idx in config.selected_games:
-                            config.selected_games.remove(idx)
+                        game = games[idx]
+                        url = game[1]
+                        game_name = game[0]
+                        platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
+                        
+                        pending_download = check_extension_before_download(url, platform, game_name)
+                        if pending_download:
+                            is_supported = is_extension_supported(
+                                sanitize_filename(game_name),
+                                platform,
+                                load_extensions_json()
+                            )
+                            zip_ok = bool(pending_download[3])
+                            allow_unknown = False
+                            try:
+                                from rgsx_settings import get_allow_unknown_extensions
+                                allow_unknown = get_allow_unknown_extensions()
+                            except Exception:
+                                allow_unknown = False
+                            
+                            # Si extension non supportée ET pas en archive connu, afficher avertissement
+                            if (not is_supported and not zip_ok) and not allow_unknown:
+                                config.pending_download = pending_download
+                                config.previous_menu_state = config.menu_state
+                                config.menu_state = "extension_warning"
+                                config.extension_confirm_selection = 0
+                                config.needs_redraw = True
+                                logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
+                            else:
+                                # Ajouter à la queue
+                                task_id = str(pygame.time.get_ticks())
+                                queue_item = {
+                                    'url': url,
+                                    'platform': platform,
+                                    'game_name': game_name,
+                                    'is_zip_non_supported': pending_download[3],
+                                    'is_1fichier': is_1fichier_url(url),
+                                    'task_id': task_id,
+                                    'status': 'queued'
+                                }
+                                config.download_queue.append(queue_item)
+                                
+                                # Ajouter une entrée à l'historique avec status "queued"
+                                config.history.append({
+                                    'platform': platform,
+                                    'game_name': game_name,
+                                    'status': 'queued',
+                                    'url': url,
+                                    'progress': 0,
+                                    'message': _("download_queued"),
+                                    'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    'downloaded_size': 0,
+                                    'total_size': 0,
+                                    'task_id': task_id
+                                })
+                                save_history(config.history)
+                                
+                                # Afficher un toast de notification
+                                show_toast(f"{game_name}\n{_('download_queued')}")
+                                
+                                config.needs_redraw = True
+                                logger.debug(f"{game_name} ajouté à la file d'attente. Queue size: {len(config.download_queue)}")
+                                
+                                # Si aucun téléchargement actif, lancer le premier de la queue
+                                if not config.download_active and config.download_queue:
+                                    _launch_next_queued_download()
                         else:
-                            config.selected_games.add(idx)
-                        config.needs_redraw = True
-                        logger.debug(f"Multi-select toggle index={idx}, now selected={len(config.selected_games)}")
+                            logger.error(f"config.pending_download est None pour {game_name}")
+                            config.needs_redraw = True
                 elif is_input_matched(event, "cancel"):
                     config.menu_state = "platform"
                     config.current_game = 0
@@ -573,113 +706,18 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "reload_games_data"
                     config.needs_redraw = True
                     logger.debug("Passage à reload_games_data depuis game")
-                # Télécharger les jeux sélectionnés (multi) ou le jeu courant
+                # Télécharger le jeu courant
                 elif is_input_matched(event, "confirm"):
-                    # Batch multi-sélection
-                    if games and config.selected_games:
-                        config.batch_download_indices = sorted({i for i in config.selected_games if 0 <= i < len(games)})
-                        config.selected_games.clear()
-                        config.batch_in_progress = True
-                        config.batch_pending_game = None
-
-                        def process_next_batch_item():
-                            # si un jeu attend encore confirmation, ne pas avancer
-                            if config.batch_pending_game:
-                                return False
-                            while config.batch_download_indices:
-                                idx = config.batch_download_indices.pop(0)
-                                g = games[idx]
-                                url = g[1]
-                                game_name = g[0]
-                                platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
-                                logger.debug(f"Batch step: {game_name} idx={idx} restants={len(config.batch_download_indices)}")
-                                config.pending_download = check_extension_before_download(url, platform, game_name)
-                                if not config.pending_download:
-                                    continue  # passe au suivant
-                                is_supported = is_extension_supported(
-                                    sanitize_filename(game_name),
-                                    platform,
-                                    load_extensions_json()
-                                )
-                                zip_ok = bool(config.pending_download[3])  # True only if archive and system known
-                                allow_unknown = False
-                                try:
-                                    from rgsx_settings import get_allow_unknown_extensions
-                                    allow_unknown = get_allow_unknown_extensions()
-                                except Exception:
-                                    allow_unknown = False
-                                if (not is_supported and not zip_ok) and not allow_unknown:
-                                    # Stocker comme pending sans dupliquer l'entrée
-                                    config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
-                                    config.previous_menu_state = config.menu_state
-                                    config.menu_state = "extension_warning"
-                                    config.extension_confirm_selection = 0
-                                    config.needs_redraw = True
-                                    return False
-                                # Téléchargement direct
-                                config.history.append(add_to_history(platform, game_name, "downloading", url, 0, "Téléchargement en cours"))
-                                config.current_history_item = len(config.history) -1
-                                task_id = str(pygame.time.get_ticks())
-                                if is_1fichier_url(url):
-                                    from utils import ensure_download_provider_keys, missing_all_provider_keys
-                                    ensure_download_provider_keys(False)
-                                    if missing_all_provider_keys():
-                                        config.history[-1]["status"] = "Erreur"
-                                        config.history[-1]["message"] = "API NOT FOUND"
-                                        save_history(config.history)
-                                        continue
-                                    task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
-                                else:
-                                    task = asyncio.create_task(download_rom(url, platform, game_name, config.pending_download[3], task_id))
-                                config.download_tasks[task_id] = (task, url, game_name, platform)
-                                # passer à l'élément suivant (boucle while)
-                            return True  # fin lot
-
-                        process_next_batch_item()
-                        # Aller à l'historique si pas d'avertissement en attente
-                        if config.menu_state == "game" and not config.batch_pending_game:
-                            config.menu_state = "history"
-                        config.needs_redraw = True
-                        action = "download"
-                    elif games:
+                    if games:
                         url = games[config.current_game][1]
                         game_name = games[config.current_game][0]
                         platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
                         logger.debug(f"Vérification pour {game_name}, URL: {url}")
-                        # Ajouter une entrée temporaire à l'historique
-                        config.history.append(add_to_history(
-                            platform=platform,
-                            game_name=game_name,
-                            status="downloading",
-                            url=url,
-                            progress=0,
-                            message="Téléchargement en cours"
-                        ))
-                        config.current_history_item = len(config.history) - 1
-                        # Vérifier d'abord si c'est un lien 1fichier
+                        # Vérifier d'abord l'extension avant d'ajouter à l'historique
                         if is_1fichier_url(url):
                             from utils import ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
                             ensure_download_provider_keys(False)
-                            
-                            # SUPPRIMÉ: Vérification clés API obligatoires
-                            # Maintenant on a le mode gratuit en fallback automatique
-                            # if missing_all_provider_keys():
-                            #     config.previous_menu_state = config.menu_state
-                            #     config.menu_state = "error"
-                            #     try:
-                            #         config.error_message = _("error_api_key").format(build_provider_paths_string())
-                            #     except Exception as e:
-                            #         logger.error(f"Erreur lors de la traduction de error_api_key: {str(e)}")
-                            #         config.error_message = "Please enter API key (1fichier or AllDebrid or RealDebrid)"
-                            #     config.history[-1]["status"] = "Erreur"
-                            #     config.history[-1]["progress"] = 0
-                            #     config.history[-1]["message"] = "API NOT FOUND"
-                            #     save_history(config.history)
-                            #     config.needs_redraw = True
-                            #     logger.error("Clés API manquantes pour tous les fournisseurs (1fichier/AllDebrid/RealDebrid).")
-                            #     config.pending_download = None
-                            #     return action
-                            
+                                               
                             # Avertissement si pas de clé (utilisation mode gratuit)
                             if missing_all_provider_keys():
                                 logger.warning("Aucune clé API - Mode gratuit 1fichier sera utilisé (attente requise)")
@@ -704,13 +742,12 @@ def handle_controls(event, sources, joystick, screen):
                                     config.extension_confirm_selection = 0
                                     config.needs_redraw = True
                                     logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
-                                    config.history.pop()  # Supprimer l'entrée temporaire
                                 else:
                                     task_id = str(pygame.time.get_ticks())
                                     task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
                                     config.download_tasks[task_id] = (task, url, game_name, platform)
-                                    config.previous_menu_state = config.menu_state
-                                    config.menu_state = "history"  # Passer à l'historique
+                                    # Afficher un toast de notification
+                                    show_toast(f"{_('download_started')}: {game_name}")
                                     config.needs_redraw = True
                                     logger.debug(f"Début du téléchargement 1fichier: {game_name} pour {platform} depuis {url}, task_id={task_id}")
                                     config.pending_download = None
@@ -721,7 +758,6 @@ def handle_controls(event, sources, joystick, screen):
                                 config.pending_download = None
                                 config.needs_redraw = True
                                 logger.error(f"config.pending_download est None pour {game_name}")
-                                config.history.pop()  # Supprimer l'entrée temporaire
                         else:
                             config.pending_download = check_extension_before_download(url, platform, game_name)
                             if config.pending_download:
@@ -746,13 +782,12 @@ def handle_controls(event, sources, joystick, screen):
                                     config.extension_confirm_selection = 0
                                     config.needs_redraw = True
                                     logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
-                                    config.history.pop()  # Supprimer l'entrée temporaire
                                 else:
                                     task_id = str(pygame.time.get_ticks())
                                     task = asyncio.create_task(download_rom(url, platform, game_name, config.pending_download[3], task_id))
                                     config.download_tasks[task_id] = (task, url, game_name, platform)
-                                    config.previous_menu_state = config.menu_state
-                                    config.menu_state = "history"  # Passer à l'historique
+                                    # Afficher un toast de notification
+                                    show_toast(f"{_('download_started')}: {game_name}")
                                     config.needs_redraw = True
                                     config.pending_download = None
                                     action = "download"
@@ -765,45 +800,17 @@ def handle_controls(event, sources, joystick, screen):
                                 config.pending_download = None
                                 config.needs_redraw = True
                                 logger.error(f"config.pending_download est None pour {game_name}")
-                                config.history.pop()  # Supprimer l'entrée temporaire
 
         # Avertissement extension
         elif config.menu_state == "extension_warning":
             if is_input_matched(event, "confirm"):
-                if config.extension_confirm_selection == 1:
+                if config.extension_confirm_selection == 0:  # 0 = Oui, 1 = Non
                     if config.pending_download and len(config.pending_download) == 4:
                         url, platform, game_name, is_zip_non_supported = config.pending_download
-                        # Ajouter une entrée temporaire à l'historique
-                        config.history.append(add_to_history(
-                            platform=platform,
-                            game_name=game_name,
-                            status="downloading",
-                            url=url,
-                            progress=0,
-                            message="Téléchargement en cours"
-                        ))
-                        config.current_history_item = len(config.history) - 1
                         if is_1fichier_url(url):
                             from utils import ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
                             ensure_download_provider_keys(False)
-                            
-                            # SUPPRIMÉ: Vérification clés API obligatoires
-                            # Maintenant on a le mode gratuit en fallback automatique
-                            # if missing_all_provider_keys():
-                            #     config.previous_menu_state = config.menu_state
-                            #     config.menu_state = "error"
-                            #     try:
-                            #         config.error_message = _("error_api_key").format(build_provider_paths_string())
-                            #     except Exception:
-                            #         config.error_message = "Please enter API key (1fichier or AllDebrid or RealDebrid)"
-                            #     config.history[-1]["status"] = "Erreur"
-                            #     config.history[-1]["progress"] = 0
-                            #     config.history[-1]["message"] = "API NOT FOUND"
-                            #     save_history(config.history)
-                            #     config.needs_redraw = True
-                            #     logger.error("Clés API manquantes pour tous les fournisseurs (1fichier/AllDebrid/RealDebrid).")
-                            #     config.pending_download = None
-                            #     return action
+                          
                             
                             # Avertissement si pas de clé (utilisation mode gratuit)
                             if missing_all_provider_keys():
@@ -815,133 +822,28 @@ def handle_controls(event, sources, joystick, screen):
                             task_id = str(pygame.time.get_ticks())
                             task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported, task_id))
                         config.download_tasks[task_id] = (task, url, game_name, platform)
+                        # Afficher un toast de notification
+                        show_toast(f"{_('download_started')}: {game_name}")
                         config.previous_menu_state = validate_menu_state(config.previous_menu_state)
-                        config.menu_state = "history"  # Passer à l'historique
                         config.needs_redraw = True
-                        logger.debug(f"Téléchargement confirmé après avertissement: {game_name} pour {platform} depuis {url}, task_id={task_id}")
+                        logger.debug(f"[CONTROLS_EXT_WARNING] Téléchargement confirmé après avertissement: {game_name} pour {platform} depuis {url}, task_id={task_id}")
                         config.pending_download = None
+                        config.extension_confirm_selection = 0  # Réinitialiser la sélection
                         action = "download"
-                        # Reprendre batch si présent
-                        # Reprise batch si un jeu était en attente
-                        if config.batch_pending_game:
-                            config.batch_pending_game = None
-                        if config.batch_in_progress:
-                            config.menu_state = "game"
-                            # Relancer la progression du lot
-                            # Appeler la fonction locale si disponible (ré-implémentation légère ici)
-                            try:
-                                games = config.filtered_games if config.filter_active or config.search_mode else config.games
-                                while config.batch_download_indices and not config.batch_pending_game:
-                                    idx = config.batch_download_indices.pop(0)
-                                    if idx < 0 or idx >= len(games):
-                                        continue
-                                    g = games[idx]
-                                    url = g[1]; game_name = g[0]
-                                    platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
-                                    config.pending_download = check_extension_before_download(url, platform, game_name)
-                                    if not config.pending_download:
-                                        continue
-                                    is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
-                                    zip_ok = bool(config.pending_download[3])
-                                    allow_unknown = False
-                                    try:
-                                        from rgsx_settings import get_allow_unknown_extensions
-                                        allow_unknown = get_allow_unknown_extensions()
-                                    except Exception:
-                                        allow_unknown = False
-                                    if (not is_supported and not zip_ok) and not allow_unknown:
-                                        config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
-                                        config.previous_menu_state = config.menu_state
-                                        config.menu_state = "extension_warning"
-                                        config.extension_confirm_selection = 0
-                                        config.needs_redraw = True
-                                        break
-                                    config.history.append(add_to_history(platform, game_name, "downloading", url, 0, "Téléchargement en cours"))
-                                    config.current_history_item = len(config.history) -1
-                                    task_id = str(pygame.time.get_ticks())
-                                    if is_1fichier_url(url):
-                                        from utils import ensure_download_provider_keys, missing_all_provider_keys
-                                        ensure_download_provider_keys(False)
-                                        if missing_all_provider_keys():
-                                            config.history[-1]["status"] = "Erreur"
-                                            config.history[-1]["message"] = "API NOT FOUND"
-                                            save_history(config.history)
-                                            continue
-                                        task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
-                                    else:
-                                        task = asyncio.create_task(download_rom(url, platform, game_name, config.pending_download[3], task_id))
-                                    config.download_tasks[task_id] = (task, url, game_name, platform)
-                                if not config.batch_download_indices and not config.batch_pending_game:
-                                    # Batch terminé
-                                    config.batch_in_progress = False
-                                    config.menu_state = "history"
-                            except Exception as e:
-                                logger.error(f"Erreur reprise batch après warning: {e}")
+                        # Téléchargement simple - retourner au menu précédent
+                        config.menu_state = config.previous_menu_state if config.previous_menu_state else "game"
+                        logger.debug(f"[CONTROLS_EXT_WARNING] Retour au menu {config.menu_state} après confirmation")
                     else:
                         config.menu_state = "error"
                         config.error_message = _("error_invalid_download_data")
                         config.pending_download = None
                         config.needs_redraw = True
                         logger.error("config.pending_download invalide")
-                        config.history.pop()  # Supprimer l'entrée temporaire
                 else:
                     config.pending_download = None
                     config.menu_state = validate_menu_state(config.previous_menu_state)
                     config.needs_redraw = True
                     logger.debug(f"Retour à {config.menu_state} depuis extension_warning")
-                    if config.batch_pending_game:
-                        # Annulation de ce jeu -> on le saute
-                        config.batch_pending_game = None
-                    if config.batch_in_progress:
-                        config.menu_state = "game"
-                        # Reprise similaire à ci-dessus
-                        try:
-                            games = config.filtered_games if config.filter_active or config.search_mode else config.games
-                            while config.batch_download_indices and not config.batch_pending_game:
-                                idx = config.batch_download_indices.pop(0)
-                                if idx < 0 or idx >= len(games):
-                                    continue
-                                g = games[idx]
-                                url = g[1]; game_name = g[0]
-                                platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
-                                config.pending_download = check_extension_before_download(url, platform, game_name)
-                                if not config.pending_download:
-                                    continue
-                                is_supported = is_extension_supported(sanitize_filename(game_name), platform, load_extensions_json())
-                                zip_ok = bool(config.pending_download[3])
-                                allow_unknown = False
-                                try:
-                                    from rgsx_settings import get_allow_unknown_extensions
-                                    allow_unknown = get_allow_unknown_extensions()
-                                except Exception:
-                                    allow_unknown = False
-                                if (not is_supported and not zip_ok) and not allow_unknown:
-                                    config.batch_pending_game = (url, platform, game_name, config.pending_download[3])
-                                    config.previous_menu_state = config.menu_state
-                                    config.menu_state = "extension_warning"
-                                    config.extension_confirm_selection = 0
-                                    config.needs_redraw = True
-                                    break
-                                config.history.append(add_to_history(platform, game_name, "downloading", url, 0, "Téléchargement en cours"))
-                                config.current_history_item = len(config.history) -1
-                                task_id = str(pygame.time.get_ticks())
-                                if is_1fichier_url(url):
-                                    from utils import ensure_download_provider_keys, missing_all_provider_keys
-                                    ensure_download_provider_keys(False)
-                                    if missing_all_provider_keys():
-                                        config.history[-1]["status"] = "Erreur"
-                                        config.history[-1]["message"] = "API NOT FOUND"
-                                        save_history(config.history)
-                                        continue
-                                    task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
-                                else:
-                                    task = asyncio.create_task(download_rom(url, platform, game_name, config.pending_download[3], task_id))
-                                config.download_tasks[task_id] = (task, url, game_name, platform)
-                            if not config.batch_download_indices and not config.batch_pending_game:
-                                config.batch_in_progress = False
-                                config.menu_state = "history"
-                        except Exception as e:
-                            logger.error(f"Erreur reprise batch annulation warning: {e}")
             elif is_input_matched(event, "left") or is_input_matched(event, "right"):
                 config.extension_confirm_selection = 1 - config.extension_confirm_selection
                 config.needs_redraw = True
@@ -950,31 +852,30 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = validate_menu_state(config.previous_menu_state)
                 config.needs_redraw = True
                 logger.debug(f"Retour à {config.menu_state} depuis extension_warning")
-                if config.batch_pending_game:
-                    config.batch_pending_game = None
-                if config.batch_in_progress:
-                    config.menu_state = "game"
 
         #Historique            
         elif config.menu_state == "history":
             history = config.history
             if is_input_matched(event, "up"):
-                if config.current_history_item > 0:
-                    config.current_history_item -= 1
+                # L'historique est inversé à l'affichage, donc UP descend dans l'index (incrément)
+                if config.current_history_item < len(history) - 1:
+                    config.current_history_item += 1
                     config.repeat_action = "up"
                     config.repeat_start_time = current_time + REPEAT_DELAY
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
             elif is_input_matched(event, "down"):
-                if config.current_history_item < len(history) - 1:
-                    config.current_history_item += 1
+                # L'historique est inversé à l'affichage, donc DOWN monte dans l'index (décrement)
+                if config.current_history_item > 0:
+                    config.current_history_item -= 1
                     config.repeat_action = "down"
                     config.repeat_start_time = current_time + REPEAT_DELAY
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                     config.needs_redraw = True
             elif is_input_matched(event, "page_up"):
+                # PAGE_UP va vers les plus récents (index décroissant)
                 config.current_history_item = max(0, config.current_history_item - config.visible_history_items)
                 config.repeat_action = None
                 config.repeat_key = None
@@ -983,6 +884,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 #logger.debug("Page précédente dans l'historique")
             elif is_input_matched(event, "page_down"):
+                # PAGE_DOWN va vers les plus anciens (index croissant)
                 config.current_history_item = min(len(history) - 1, config.current_history_item + config.visible_history_items)
                 config.repeat_action = None
                 config.repeat_key = None
@@ -1227,6 +1129,8 @@ def handle_controls(event, sources, joystick, screen):
                                     task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported, task_id))
                                 
                                 config.download_tasks[task_id] = (task, url, game_name, platform)
+                                # Afficher un toast de notification
+                                show_toast(f"{_('download_started')}: {game_name}")
                                 logger.debug(f"Relance du téléchargement: {game_name} pour {platform}")
                         config.needs_redraw = True
                         

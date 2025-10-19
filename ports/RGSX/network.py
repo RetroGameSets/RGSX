@@ -17,6 +17,7 @@ except Exception:
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
 from utils import sanitize_filename, extract_zip, extract_rar, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys
 from history import save_history
+from display import show_toast
 import logging
 import datetime
 from datetime import datetime
@@ -74,21 +75,30 @@ def notify_download_finished():
 
 # Regex pour détecter le compte à rebours
 WAIT_REGEXES_1F = [
+    # Patterns avec multiplication par 60 (minutes -> secondes)
+    r'var\s+ct\s*=\s*(\d+)\s*\*\s*60',  # var ct = X * 60;
+    r'var\s+ct\s*=\s*(\d+)\s*\*60',     # var ct = X*60;
+    # Patterns avec temps en minutes explicite
+    r'(?:veuillez\s+)?patiente[rz]\s*(\d+)\s*(?:min|minute)s?\b',
+    r'please\s+wait\s*(\d+)\s*(?:min|minute)s?\b',
+    # Patterns avec temps en secondes
     r'(?:veuillez\s+)?patiente[rz]\s*(\d+)\s*(?:sec|secondes?|s)\b',
     r'please\s+wait\s*(\d+)\s*(?:sec|seconds?)\b',
-    r'var\s+ct\s*=\s*(\d+)\s*;',
-    r'var\s+ct\s*=\s*(\d+)\s*\*\s*60\s*;',
+    r'var\s+ct\s*=\s*(\d+)\s*;',  # var ct = X;
 ]
 
 def extract_wait_seconds_1f(html_text):
     """Extrait le temps d'attente depuis le HTML 1fichier"""
-    for pattern in WAIT_REGEXES_1F:
+    for i, pattern in enumerate(WAIT_REGEXES_1F):
         match = re.search(pattern, html_text, re.IGNORECASE)
         if match:
-            seconds = int(match.group(1))
-            # Si c'est en minutes (pattern avec *60)
-            if '*60' in pattern or r'*\s*60' in pattern:
-                seconds = seconds * 60
+            value = int(match.group(1))
+            # Les deux premiers patterns sont en minutes (avec *60)
+            if i < 2 or 'min' in pattern.lower():
+                seconds = value * 60
+            else:
+                seconds = value
+            logger.debug(f"1fichier wait time detected: {value} ({'minutes' if i < 2 or 'min' in pattern.lower() else 'seconds'}) = {seconds}s total")
             return seconds
     return 0
 
@@ -179,9 +189,41 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
             
             # POST formulaire
             _log(_("free_mode_submitting"))
-            r2 = session.post(str(r.url), data=data, allow_redirects=True, timeout=30)
-            r2.raise_for_status()
-            html = r2.text
+            html = None
+            # Parfois la soumission renvoie une page demandant d'attendre encore (rate-limit) --
+            # on retry jusqu'à 3 fois en respectant le temps indiqué dans la page de réponse.
+            max_post_attempts = 3
+            post_attempt = 0
+            while post_attempt < max_post_attempts:
+                post_attempt += 1
+                try:
+                    r2 = session.post(str(r.url), data=data, allow_redirects=True, timeout=30)
+                    r2.raise_for_status()
+                    html = r2.text
+                except Exception as pe:
+                    logger.debug(f"1fichier: POST attempt {post_attempt} failed: {pe}")
+                    if post_attempt >= max_post_attempts:
+                        raise
+                    time.sleep(1)
+                    continue
+
+                # Vérifier si la page de réponse contient un nouveau compteur d'attente
+                extra_wait = extract_wait_seconds_1f(html)
+                if extra_wait and extra_wait > 0:
+                    logger.info(f"1fichier: Response requests extra wait: {extra_wait}s (attempt {post_attempt})")
+                    # Attendre proprement en appelant le callback si fourni
+                    for remaining in range(extra_wait, 0, -1):
+                        if cancel_event and cancel_event.is_set():
+                            return (False, None, "Annulé")
+                        _wait(remaining, extra_wait)
+                        time.sleep(1)
+                    # essayer de soumettre à nouveau après la temporisation
+                    continue
+                # Pas d'attente supplémentaire demandée, on peut continuer
+                break
+
+            if html is None:
+                return (False, None, "Erreur lors de la soumission du formulaire")
         
         # 4. Chercher lien de téléchargement
         if cancel_event and cancel_event.is_set():
@@ -190,17 +232,67 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
         patterns = [
             r'href=[\"\']([^\"\']+)[\"\'][^>]*>(?:cliquer|click|télécharger|download)',
             r'href=[\"\']([^\"\']*/dl/[^\"\']+)',
-            r'https?://[a-z0-9.-]*1fichier\.com/[A-Za-z0-9]{8,}'
+            r'(https?://[a-z0-9.-]*1fichier\.com/[A-Za-z0-9]{8,})'
         ]
         
         direct_link = None
-        for pattern in patterns:
+        # Examine each pattern and validate the candidate link via HEAD/GET to avoid landing pages (/register, /login)
+        for idx, pattern in enumerate(patterns):
             match = re.search(pattern, html, re.IGNORECASE)
-            if match:
-                direct_link = match.group(1) if '//' in match.group(0) else urljoin(str(r.url), match.group(1))
+            if not match:
+                continue
+            try:
+                captured_link = match.group(1)
+            except IndexError:
+                logger.warning(f"1fichier: Pattern {idx} matched but no capture group(1)")
+                continue
+
+            # Resolve relative links
+            candidate = captured_link if captured_link.startswith(('http://', 'https://')) else urljoin(str(r.url), captured_link)
+            logger.debug(f"1fichier: Pattern {idx} matched, candidate link: {candidate}")
+
+            # Quick heuristic: skip known non-download endpoints
+            lower = candidate.lower()
+            if any(x in lower for x in ['/register', '/login', '/inscription', '/compte', '/subscribe']):
+                logger.debug(f"1fichier: Skipping candidate because it looks like a landing page: {candidate}")
+                continue
+
+            # Validate with HEAD first to check content-type and status
+            try:
+                head = session.head(candidate, allow_redirects=True, timeout=10)
+                if head.status_code >= 400:
+                    logger.debug(f"1fichier: HEAD returned status {head.status_code} for {candidate}, skipping")
+                    continue
+                ctype = head.headers.get('content-type', '')
+                if 'text/html' in ctype.lower():
+                    logger.debug(f"1fichier: HEAD content-type is HTML for {candidate}, skipping")
+                    # as fallback we'll try a quick GET below
+                    raise ValueError('HTML content')
+                # Looks like a direct file
+                direct_link = candidate
+                logger.debug(f"1fichier: Direct link validated via HEAD: {direct_link}")
                 break
-        
+            except Exception as he:
+                # HEAD may be blocked; try a quick GET without streaming
+                try:
+                    logger.debug(f"1fichier: HEAD failed ({he}), trying quick GET for candidate {candidate}")
+                    rtest = session.get(candidate, allow_redirects=True, timeout=10)
+                    if rtest.status_code >= 400:
+                        logger.debug(f"1fichier: quick GET returned status {rtest.status_code} for {candidate}, skipping")
+                        continue
+                    ctype = rtest.headers.get('content-type', '')
+                    if 'text/html' in ctype.lower() or '<html' in (rtest.text or '').lower():
+                        logger.debug(f"1fichier: quick GET appears to be HTML/landing for {candidate}, skipping")
+                        continue
+                    direct_link = candidate
+                    logger.debug(f"1fichier: Direct link validated via quick GET: {direct_link}")
+                    break
+                except Exception as ge:
+                    logger.debug(f"1fichier: quick GET also failed for {candidate}: {ge}")
+                    continue
+
         if not direct_link:
+            logger.error(f"1fichier: No valid download link found. HTML preview (first 700 chars): {html[:700]}")
             return (False, None, "Lien de téléchargement introuvable")
         
         _log(_("free_mode_link_found").format(direct_link[:60]))
@@ -246,7 +338,7 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
         return (True, filepath, None)
         
     except Exception as e:
-        error_msg = f"Erreur mode gratuit: {str(e)}"
+        error_msg = f"Error downloading with free mode: {str(e)}"
         _log(error_msg)
         logger.error(error_msg, exc_info=True)
         return (False, None, error_msg)
@@ -504,6 +596,13 @@ progress_queues = {}
 # Cancellation and thread tracking per download task
 cancel_events = {}
 download_threads = {}
+# URLs actuellement en cours de téléchargement (pour éviter les doublons)
+urls_in_progress = set()
+urls_lock = threading.Lock()
+# Résultats des URLs en cours de téléchargement (pour les doublons)
+url_results = {}  # {url: (success, message)}
+# Événements pour synchroniser les appels doublons (attendre la fin du premier)
+url_done_events = {}  # {url: threading.Event}
 
 def request_cancel(task_id: str) -> bool:
     """Request cancellation for a running download task by its task_id."""
@@ -539,6 +638,37 @@ def cancel_all_downloads():
 async def download_rom(url, platform, game_name, is_zip_non_supported=False, task_id=None):
     logger.debug(f"Début téléchargement: {game_name} depuis {url}, zip non supporté={is_zip_non_supported}, task_id={task_id}")
     result = [None, None]
+    
+    # Vérifier si cette URL est déjà en cours de téléchargement (prévenir les doublons)
+    with urls_lock:
+        if url in urls_in_progress:
+            logger.warning(f"⚠️ Un téléchargement pour cette URL est déjà en cours, attente du résultat: {url}")
+            # Créer un événement d'attente si ce n'est pas déjà fait
+            if url not in url_done_events:
+                url_done_events[url] = threading.Event()
+            done_event = url_done_events[url]
+        else:
+            # Ajouter l'URL au set en cours
+            urls_in_progress.add(url)
+            done_event = None
+    
+    # Si on attendait un doublon, on attend ici
+    if done_event is not None:
+        logger.debug(f"Attente de la fin du téléchargement en doublon pour {url}")
+        # Attendre de manière asynchrone l'événement (timeout de 30 minutes pour les gros fichiers)
+        start_wait = time.time()
+        while not done_event.is_set():
+            if time.time() - start_wait > 1800:  # 30 minutes timeout
+                logger.warning(f"Timeout d'attente pour le doublon de {url}")
+                break
+            await asyncio.sleep(0.1)
+        # Vérifier si on a un résultat en cache
+        if url in url_results:
+            logger.info(f"Résultat en cache pour {url}: {url_results[url]}")
+            return url_results[url]
+        else:
+            # Fallback: retourner un message de succès (le premier téléchargement a probablement réussi)
+            return (True, _("network_download_ok").format(game_name))
     
     # Créer une queue/cancel spécifique pour cette tâche
     if task_id not in progress_queues:
@@ -617,51 +747,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             dest_path = os.path.join(dest_dir, f"{sanitized_name}")
             logger.debug(f"Chemin destination: {dest_path}")
             
-            # Vérifier si le fichier existe déjà (exact ou avec autre extension)
-            if os.path.exists(dest_path):
-                logger.info(f"Le fichier {dest_path} existe déjà, téléchargement ignoré")
-                result[0] = True
-                result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
-                # Mettre à jour l'historique avec un statut spécifique
-                if isinstance(config.history, list):
-                    for entry in config.history:
-                        if "url" in entry and entry["url"] == url:
-                            entry["status"] = "Already_Present"
-                            entry["progress"] = 100
-                            entry["message"] = result[1]
-                            save_history(config.history)
-                            config.needs_redraw = True
-                            break
-                return
-            
-            # Vérifier si un fichier avec le même nom de base mais extension différente existe
-            base_name_no_ext = os.path.splitext(sanitized_name)[0]
-            if base_name_no_ext != sanitized_name:  # Seulement si une extension était présente
-                try:
-                    # Lister tous les fichiers dans le répertoire de destination
-                    if os.path.exists(dest_dir):
-                        for existing_file in os.listdir(dest_dir):
-                            existing_base = os.path.splitext(existing_file)[0]
-                            if existing_base == base_name_no_ext:
-                                existing_path = os.path.join(dest_dir, existing_file)
-                                logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
-                                result[0] = True
-                                result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
-                                # Mettre à jour l'historique avec un statut spécifique
-                                if isinstance(config.history, list):
-                                    for entry in config.history:
-                                        if "url" in entry and entry["url"] == url:
-                                            entry["status"] = "Already_Present"
-                                            entry["progress"] = 100
-                                            entry["message"] = result[1]
-                                            save_history(config.history)
-                                            config.needs_redraw = True
-                                            break
-                                return
-                except Exception as e:
-                    logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
-            
-            
+            # Créer la session AVANT la vérification du fichier existant
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -674,6 +760,115 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             
             session = requests.Session()
             session.headers.update(headers)
+            
+            # Vérifier si le fichier existe déjà (exact ou avec autre extension)
+            file_found = False
+            if os.path.exists(dest_path):
+                logger.info(f"Le fichier {dest_path} existe déjà, vérification de la taille...")
+                
+                # Vérifier la taille du fichier local
+                local_size = os.path.getsize(dest_path)
+                logger.debug(f"Taille du fichier local: {local_size} octets")
+                
+                # Essayer de récupérer la taille du serveur via HEAD request
+                remote_size = None
+                try:
+                    head_response = session.head(url, timeout=10, allow_redirects=True)
+                    if head_response.status_code == 200:
+                        content_length = head_response.headers.get('content-length')
+                        if content_length:
+                            remote_size = int(content_length)
+                            logger.debug(f"Taille du fichier serveur: {remote_size} octets")
+                except Exception as e:
+                    logger.debug(f"Impossible de vérifier la taille serveur: {e}")
+                
+                # Comparer les tailles si on a obtenu la taille distante
+                if remote_size is not None and local_size != remote_size:
+                    logger.warning(f"Taille mismatch! Local: {local_size}, Remote: {remote_size} - le fichier sera re-téléchargé")
+                    # Les tailles ne correspondent pas, il faut re-télécharger
+                    try:
+                        if os.path.exists(dest_path):
+                            os.remove(dest_path)
+                            logger.info(f"Fichier incomplet supprimé: {dest_path}")
+                        else:
+                            logger.debug(f"Fichier déjà supprimé par un autre thread: {dest_path}")
+                    except FileNotFoundError:
+                        logger.debug(f"Fichier déjà supprimé (ou n'existe plus): {dest_path}")
+                    except Exception as e:
+                        logger.error(f"Impossible de supprimer le fichier incomplet: {e}")
+                        result[0] = False
+                        result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
+                        with urls_lock:
+                            urls_in_progress.discard(url)
+                            logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                        return
+                    # Continuer le téléchargement normal (ne pas faire return)
+                else:
+                    # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
+                    logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
+                    result[0] = True
+                    result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                    # Afficher un toast au lieu d'ouvrir l'historique
+                    try:
+                        show_toast(result[1])
+                    except Exception as e:
+                        logger.debug(f"Impossible d'afficher le toast: {e}")
+                    with urls_lock:
+                        urls_in_progress.discard(url)
+                        logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                    return result[0], result[1]
+                file_found = True
+            
+            # Vérifier si un fichier avec le même nom de base mais extension différente existe (SEULEMENT si fichier exact non trouvé)
+            if not file_found:
+                base_name_no_ext = os.path.splitext(sanitized_name)[0]
+                if base_name_no_ext != sanitized_name:  # Seulement si une extension était présente
+                    try:
+                        # Lister tous les fichiers dans le répertoire de destination
+                        if os.path.exists(dest_dir):
+                            for existing_file in os.listdir(dest_dir):
+                                existing_base = os.path.splitext(existing_file)[0]
+                                if existing_base == base_name_no_ext:
+                                    existing_path = os.path.join(dest_dir, existing_file)
+                                    logger.info(f"Un fichier avec le même nom de base existe: {existing_path}, vérification de la taille...")
+                                    
+                                    # Vérifier la taille du fichier local
+                                    local_size = os.path.getsize(existing_path)
+                                    logger.debug(f"Taille du fichier local (extension différente): {local_size} octets")
+                                    
+                                    # Essayer de récupérer la taille du serveur via HEAD request
+                                    remote_size = None
+                                    try:
+                                        head_response = session.head(url, timeout=10, allow_redirects=True)
+                                        if head_response.status_code == 200:
+                                            content_length = head_response.headers.get('content-length')
+                                            if content_length:
+                                                remote_size = int(content_length)
+                                                logger.debug(f"Taille du fichier serveur: {remote_size} octets")
+                                    except Exception as e:
+                                        logger.debug(f"Impossible de vérifier la taille serveur: {e}")
+                                    
+                                    # Comparer les tailles si on a obtenu la taille distante
+                                    if remote_size is not None and local_size != remote_size:
+                                        logger.warning(f"Taille mismatch (extension différente)! Local: {local_size}, Remote: {remote_size} - re-téléchargement")
+                                        # Continuer le téléchargement normal
+                                        break
+                                    else:
+                                        # Les tailles correspondent, fichier complet
+                                        logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
+                                        result[0] = True
+                                        result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
+                                        # Afficher un toast au lieu d'ouvrir l'historique
+                                        try:
+                                            show_toast(result[1])
+                                        except Exception as e:
+                                            logger.debug(f"Impossible d'afficher le toast: {e}")
+                                        with urls_lock:
+                                            urls_in_progress.discard(url)
+                                            logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                                        return result[0], result[1]
+                    except Exception as e:
+                        logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
             
             download_headers = headers.copy()
             download_headers['Accept'] = 'application/octet-stream, */*'
@@ -1021,6 +1216,12 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     entry["progress"] = 100 if success else 0
                                     entry["message"] = message
                                     save_history(config.history)
+                                    # Marquer le jeu comme téléchargé si succès
+                                    if success:
+                                        logger.debug(f"[WHILE_LOOP] Marking game as downloaded: platform={platform}, game={game_name}")
+                                        from history import mark_game_as_downloaded
+                                        file_size = entry.get("size", "N/A")
+                                        mark_game_as_downloaded(platform, game_name, file_size)
                                     config.needs_redraw = True
                                     logger.debug(f"Final update in history: status={entry['status']}, progress={entry['progress']}%, message={message}, task_id={task_id}")
                                     break
@@ -1079,6 +1280,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 data = task_queue.get()
                 if isinstance(data[1], bool):
                     success, message = data[1], data[2]
+                    logger.debug(f"[DRAIN_QUEUE] Processing final message: success={success}, message={message[:100] if message else 'None'}")
                     if isinstance(config.history, list):
                         for entry in config.history:
                             if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
@@ -1086,22 +1288,31 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                 entry["progress"] = 100 if success else 0
                                 entry["message"] = message
                                 save_history(config.history)
+                                # Marquer le jeu comme téléchargé si succès
+                                if success:
+                                    logger.debug(f"[DRAIN_QUEUE] Marking game as downloaded: platform={platform}, game={game_name}")
+                                    from history import mark_game_as_downloaded
+                                    file_size = entry.get("size", "N/A")
+                                    mark_game_as_downloaded(platform, game_name, file_size)
                                 break
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"[DRAIN_QUEUE] Error processing final message: {e}")
 
-    # Exécuter la mise à jour de la liste des jeux d'EmulationStation UNIQUEMENT sur Batocera
-    if config.OPERATING_SYSTEM == "Linux":
-        resp = requests.get("http://127.0.0.1:1234/reloadgames", timeout=2)
-        content = (resp.text or "").strip()
-        logger.debug(f"Résultat mise à jour liste des jeux: HTTP {resp.status_code} - {content}")
-    else:
-        logger.debug(f"Mise à jour liste des jeux ignorée sur OS {config.OPERATING_SYSTEM}")
-    
+
     # Nettoyer la queue
     if task_id in progress_queues:
         del progress_queues[task_id]
     cancel_events.pop(task_id, None)
+    
+    # Sauvegarder le résultat AVANT de retirer l'URL du set (pour les doublons)
+    with urls_lock:
+        url_results[url] = (result[0], result[1])
+        urls_in_progress.discard(url)
+        logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+        # Signaler l'événement pour les appels doublons en attente
+        if url in url_done_events:
+            url_done_events[url].set()
+    
     return result[0], result[1]
 
 async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=False, task_id=None):
@@ -1123,6 +1334,40 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
         f"RealDebrid: {'présente' if config.API_KEY_REALDEBRID else 'absente'} (reloaded={keys_info.get('reloaded')})"
     )
     result = [None, None]
+    
+    # Vérifier si cette URL est déjà en cours de téléchargement (prévenir les doublons)
+    with urls_lock:
+        if url in urls_in_progress:
+            logger.warning(f"⚠️ Un téléchargement pour cette URL est déjà en cours, attente du résultat: {url}")
+            # Créer un événement d'attente si ce n'est pas déjà fait
+            if url not in url_done_events:
+                url_done_events[url] = threading.Event()
+            done_event = url_done_events[url]
+        else:
+            # Ajouter l'URL au set en cours
+            urls_in_progress.add(url)
+            done_event = None
+    
+    # Si on attendait un doublon, on attend ici
+    if done_event is not None:
+        logger.debug(f"Attente de la fin du téléchargement en doublon pour {url}")
+        # Attendre de manière asynchrone l'événement (timeout de 30 minutes pour les gros fichiers)
+        start_wait = time.time()
+        while not done_event.is_set():
+            if time.time() - start_wait > 1800:  # 30 minutes timeout
+                logger.warning(f"Timeout d'attente pour le doublon de {url}")
+                break
+            await asyncio.sleep(0.1)
+        # Vérifier si on a un résultat en cache
+        if url in url_results:
+            logger.info(f"Résultat en cache pour {url}: {url_results[url]}")
+            return url_results[url]
+        else:
+            # Fallback: retourner un message de succès (le premier téléchargement a probablement réussi)
+            return (True, _("network_download_ok").format(game_name))
+
+        # Ajouter l'URL au set en cours
+        urls_in_progress.add(url)
 
     # Créer une queue spécifique pour cette tâche
     logger.debug(f"Création queue pour task_id={task_id}")
@@ -1302,49 +1547,97 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 dest_path = os.path.join(dest_dir, sanitized_filename)
                 logger.debug(f"Chemin destination: {dest_path}")
                 
-                # Vérifier si le fichier existe déjà (exact ou avec autre extension)
-                if os.path.exists(dest_path):
-                    logger.info(f"Le fichier {dest_path} existe déjà, téléchargement ignoré")
-                    result[0] = True
-                    result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
-                    # Mettre à jour l'historique avec un statut spécifique
-                    if isinstance(config.history, list):
-                        for entry in config.history:
-                            if "url" in entry and entry["url"] == url:
-                                entry["status"] = "Already_Present"
-                                entry["progress"] = 100
-                                entry["message"] = result[1]
-                                save_history(config.history)
-                                config.needs_redraw = True
-                                break
-                    return
+                # Récupérer la taille du serveur depuis l'API 1fichier
+                remote_size = None
+                try:
+                    remote_size = file_info.get("size")
+                    if isinstance(remote_size, str):
+                        remote_size = int(remote_size)
+                    logger.debug(f"Taille du fichier 1fichier: {remote_size} octets")
+                except Exception as e:
+                    logger.debug(f"Impossible de récupérer la taille 1fichier: {e}")
                 
-                # Vérifier si un fichier avec le même nom de base mais extension différente existe
-                base_name_no_ext = os.path.splitext(sanitized_filename)[0]
-                if base_name_no_ext != sanitized_filename:  # Seulement si une extension était présente
-                    try:
-                        # Lister tous les fichiers dans le répertoire de destination
-                        if os.path.exists(dest_dir):
-                            for existing_file in os.listdir(dest_dir):
-                                existing_base = os.path.splitext(existing_file)[0]
-                                if existing_base == base_name_no_ext:
-                                    existing_path = os.path.join(dest_dir, existing_file)
-                                    logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
-                                    result[0] = True
-                                    result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
-                                    # Mettre à jour l'historique avec un statut spécifique
-                                    if isinstance(config.history, list):
-                                        for entry in config.history:
-                                            if "url" in entry and entry["url"] == url:
-                                                entry["status"] = "Already_Present"
-                                                entry["progress"] = 100
-                                                entry["message"] = result[1]
-                                                save_history(config.history)
-                                                config.needs_redraw = True
-                                                break
-                                    return
-                    except Exception as e:
-                        logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
+                # Vérifier si le fichier existe déjà (exact ou avec autre extension)
+                file_found = False
+                if os.path.exists(dest_path):
+                    logger.info(f"Le fichier {dest_path} existe déjà, vérification de la taille...")
+                    
+                    # Vérifier la taille du fichier local
+                    local_size = os.path.getsize(dest_path)
+                    logger.debug(f"Taille du fichier local: {local_size} octets")
+                    
+                    # Comparer les tailles si on a obtenu la taille distante
+                    if remote_size is not None and local_size != remote_size:
+                        logger.warning(f"Taille mismatch! Local: {local_size}, Remote: {remote_size} - le fichier sera re-téléchargé")
+                        # Les tailles ne correspondent pas, il faut re-télécharger
+                        try:
+                            if os.path.exists(dest_path):
+                                os.remove(dest_path)
+                                logger.info(f"Fichier incomplet supprimé: {dest_path}")
+                            else:
+                                logger.debug(f"Fichier déjà supprimé par un autre thread: {dest_path}")
+                        except FileNotFoundError:
+                            logger.debug(f"Fichier déjà supprimé (ou n'existe plus): {dest_path}")
+                        except Exception as e:
+                            logger.error(f"Impossible de supprimer le fichier incomplet: {e}")
+                            result[0] = False
+                            result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
+                            return
+                        # Continuer le téléchargement normal (ne pas faire return)
+                    else:
+                        # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
+                        logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
+                        result[0] = True
+                        result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                        # Afficher un toast au lieu d'ouvrir l'historique
+                        try:
+                            show_toast(result[1])
+                        except Exception as e:
+                            logger.debug(f"Impossible d'afficher le toast: {e}")
+                        with urls_lock:
+                            urls_in_progress.discard(url)
+                            logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                        return result[0], result[1]
+                    file_found = True
+                
+                # Vérifier si un fichier avec le même nom de base mais extension différente existe (SEULEMENT si fichier exact non trouvé)
+                if not file_found:
+                    base_name_no_ext = os.path.splitext(sanitized_filename)[0]
+                    if base_name_no_ext != sanitized_filename:  # Seulement si une extension était présente
+                        try:
+                            # Lister tous les fichiers dans le répertoire de destination
+                            if os.path.exists(dest_dir):
+                                for existing_file in os.listdir(dest_dir):
+                                    existing_base = os.path.splitext(existing_file)[0]
+                                    if existing_base == base_name_no_ext:
+                                        existing_path = os.path.join(dest_dir, existing_file)
+                                        logger.info(f"Un fichier avec le même nom de base existe: {existing_path}, vérification de la taille...")
+                                        
+                                        # Vérifier la taille du fichier local
+                                        local_size = os.path.getsize(existing_path)
+                                        logger.debug(f"Taille du fichier local (extension différente): {local_size} octets")
+                                        
+                                        # Comparer les tailles si on a obtenu la taille distante
+                                        if remote_size is not None and local_size != remote_size:
+                                            logger.warning(f"Taille mismatch (extension différente)! Local: {local_size}, Remote: {remote_size} - re-téléchargement")
+                                            # Continuer le téléchargement normal
+                                            break
+                                        else:
+                                            # Les tailles correspondent, fichier complet
+                                            logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
+                                            result[0] = True
+                                            result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
+                                            # Afficher un toast au lieu d'ouvrir l'historique
+                                            try:
+                                                show_toast(result[1])
+                                            except Exception as e:
+                                                logger.debug(f"Impossible d'afficher le toast: {e}")
+                                            with urls_lock:
+                                                urls_in_progress.discard(url)
+                                                logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                                            return result[0], result[1]
+                        except Exception as e:
+                            logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
                 
                 logger.debug(f"Envoi requête 1fichier get_token pour {link}")
                 response = requests.post("https://api.1fichier.com/v1/download/get_token.cgi", headers=headers, json=payload, timeout=30)
@@ -1634,7 +1927,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         else:
                             logger.error(f"Échec téléchargement gratuit: {error_msg}")
                             result[0] = False
-                            result[1] = f"Erreur mode gratuit: {error_msg}"
+                            result[1] = f"Error downloading with free mode: {error_msg}"
                             return
                     
                     except Exception as e:
@@ -1651,49 +1944,100 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 sanitized_filename = sanitize_filename(filename)
                 dest_path = os.path.join(dest_dir, sanitized_filename)
                 
-                # Vérifier si le fichier existe déjà (exact ou avec autre extension)
-                if os.path.exists(dest_path):
-                    logger.info(f"Le fichier {dest_path} existe déjà, téléchargement ignoré")
-                    result[0] = True
-                    result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
-                    # Mettre à jour l'historique avec un statut spécifique
-                    if isinstance(config.history, list):
-                        for entry in config.history:
-                            if "url" in entry and entry["url"] == url:
-                                entry["status"] = "Already_Present"
-                                entry["progress"] = 100
-                                entry["message"] = result[1]
-                                save_history(config.history)
-                                config.needs_redraw = True
-                                break
-                    return
+                # Essayer de récupérer la taille du serveur via HEAD request
+                remote_size = None
+                try:
+                    if final_url:
+                        head_response = requests.head(final_url, timeout=10, allow_redirects=True)
+                        if head_response.status_code == 200:
+                            content_length = head_response.headers.get('content-length')
+                            if content_length:
+                                remote_size = int(content_length)
+                                logger.debug(f"Taille du fichier serveur (AllDebrid/RealDebrid): {remote_size} octets")
+                except Exception as e:
+                    logger.debug(f"Impossible de vérifier la taille serveur (AllDebrid/RealDebrid): {e}")
                 
-                # Vérifier si un fichier avec le même nom de base mais extension différente existe
-                base_name_no_ext = os.path.splitext(sanitized_filename)[0]
-                if base_name_no_ext != sanitized_filename:  # Seulement si une extension était présente
-                    try:
-                        # Lister tous les fichiers dans le répertoire de destination
-                        if os.path.exists(dest_dir):
-                            for existing_file in os.listdir(dest_dir):
-                                existing_base = os.path.splitext(existing_file)[0]
-                                if existing_base == base_name_no_ext:
-                                    existing_path = os.path.join(dest_dir, existing_file)
-                                    logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
-                                    result[0] = True
-                                    result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
-                                    # Mettre à jour l'historique avec un statut spécifique
-                                    if isinstance(config.history, list):
-                                        for entry in config.history:
-                                            if "url" in entry and entry["url"] == url:
-                                                entry["status"] = "Already_Present"
-                                                entry["progress"] = 100
-                                                entry["message"] = result[1]
-                                                save_history(config.history)
-                                                config.needs_redraw = True
-                                                break
-                                    return
-                    except Exception as e:
-                        logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
+                # Vérifier si le fichier existe déjà (exact ou avec autre extension)
+                file_found = False
+                if os.path.exists(dest_path):
+                    logger.info(f"Le fichier {dest_path} existe déjà, vérification de la taille...")
+                    
+                    # Vérifier la taille du fichier local
+                    local_size = os.path.getsize(dest_path)
+                    logger.debug(f"Taille du fichier local: {local_size} octets")
+                    
+                    # Comparer les tailles si on a obtenu la taille distante
+                    if remote_size is not None and local_size != remote_size:
+                        logger.warning(f"Taille mismatch! Local: {local_size}, Remote: {remote_size} - le fichier sera re-téléchargé")
+                        # Les tailles ne correspondent pas, il faut re-télécharger
+                        try:
+                            if os.path.exists(dest_path):
+                                os.remove(dest_path)
+                                logger.info(f"Fichier incomplet supprimé: {dest_path}")
+                            else:
+                                logger.debug(f"Fichier déjà supprimé par un autre thread: {dest_path}")
+                        except FileNotFoundError:
+                            logger.debug(f"Fichier déjà supprimé (ou n'existe plus): {dest_path}")
+                        except Exception as e:
+                            logger.error(f"Impossible de supprimer le fichier incomplet: {e}")
+                            result[0] = False
+                            result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
+                            return
+                        # Continuer le téléchargement normal (ne pas faire return)
+                    else:
+                        # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
+                        logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
+                        result[0] = True
+                        result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                        # Afficher un toast au lieu d'ouvrir l'historique
+                        try:
+                            show_toast(result[1])
+                        except Exception as e:
+                            logger.debug(f"Impossible d'afficher le toast: {e}")
+                        with urls_lock:
+                            urls_in_progress.discard(url)
+                            logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                        return result[0], result[1]
+                    file_found = True
+                
+                # Vérifier si un fichier avec le même nom de base mais extension différente existe (SEULEMENT si fichier exact non trouvé)
+                if not file_found:
+                    base_name_no_ext = os.path.splitext(sanitized_filename)[0]
+                    if base_name_no_ext != sanitized_filename:  # Seulement si une extension était présente
+                        try:
+                            # Lister tous les fichiers dans le répertoire de destination
+                            if os.path.exists(dest_dir):
+                                for existing_file in os.listdir(dest_dir):
+                                    existing_base = os.path.splitext(existing_file)[0]
+                                    if existing_base == base_name_no_ext:
+                                        existing_path = os.path.join(dest_dir, existing_file)
+                                        logger.info(f"Un fichier avec le même nom de base existe: {existing_path}, vérification de la taille...")
+                                        
+                                        # Vérifier la taille du fichier local
+                                        local_size = os.path.getsize(existing_path)
+                                        logger.debug(f"Taille du fichier local (extension différente): {local_size} octets")
+                                        
+                                        # Comparer les tailles si on a obtenu la taille distante
+                                        if remote_size is not None and local_size != remote_size:
+                                            logger.warning(f"Taille mismatch (extension différente)! Local: {local_size}, Remote: {remote_size} - re-téléchargement")
+                                            # Continuer le téléchargement normal
+                                            break
+                                        else:
+                                            # Les tailles correspondent, fichier complet
+                                            logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
+                                            result[0] = True
+                                            result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
+                                            # Afficher un toast au lieu d'ouvrir l'historique
+                                            try:
+                                                show_toast(result[1])
+                                            except Exception as e:
+                                                logger.debug(f"Impossible d'afficher le toast: {e}")
+                                            with urls_lock:
+                                                urls_in_progress.discard(url)
+                                                logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                                            return result[0], result[1]
+                        except Exception as e:
+                            logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
             lock = threading.Lock()
             retries = 10
             retry_delay = 10
@@ -1858,6 +2202,10 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             logger.debug(f"Thread téléchargement 1fichier terminé pour {url}, task_id={task_id}")
             progress_queues[task_id].put((task_id, result[0], result[1]))
             logger.debug(f"Résultat final envoyé à la queue: success={result[0]}, message={result[1]}, task_id={task_id}")
+            # Nettoyer l'URL du set en cours de téléchargement
+            with urls_lock:
+                urls_in_progress.discard(url)
+                logger.debug(f"URL supprimée du set des téléchargements en cours (finally): {url} (URLs restantes: {len(urls_in_progress)})")
 
     logger.debug(f"Démarrage thread pour {url}, task_id={task_id}")
     thread = threading.Thread(target=download_thread, daemon=True)
@@ -1882,6 +2230,12 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                     entry["progress"] = 100 if success else 0
                                     entry["message"] = message
                                     save_history(config.history)
+                                    # Marquer le jeu comme téléchargé si succès
+                                    if success:
+                                        logger.debug(f"[1F_WHILE_LOOP] Marking game as downloaded: platform={platform}, game={game_name}")
+                                        from history import mark_game_as_downloaded
+                                        file_size = entry.get("size", "N/A")
+                                        mark_game_as_downloaded(platform, game_name, file_size)
                                     config.needs_redraw = True
                                     logger.debug(f"Mise à jour finale historique: status={entry['status']}, progress={entry['progress']}%, message={message}, task_id={task_id}")
                                     break
@@ -1923,6 +2277,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 data = task_queue.get()
                 if isinstance(data[1], bool):
                     success, message = data[1], data[2]
+                    logger.debug(f"[1F_DRAIN_QUEUE] Processing final message: success={success}, message={message[:100] if message else 'None'}")
                     if isinstance(config.history, list):
                         for entry in config.history:
                             if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
@@ -1930,14 +2285,30 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                 entry["progress"] = 100 if success else 0
                                 entry["message"] = message
                                 save_history(config.history)
+                                # Marquer le jeu comme téléchargé si succès
+                                if success:
+                                    logger.debug(f"[1F_DRAIN_QUEUE] Marking game as downloaded: platform={platform}, game={game_name}")
+                                    from history import mark_game_as_downloaded
+                                    file_size = entry.get("size", "N/A")
+                                    mark_game_as_downloaded(platform, game_name, file_size)
                                 break
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"[1F_DRAIN_QUEUE] Error processing final message: {e}")
     # Nettoyer la queue
     if task_id in progress_queues:
         del progress_queues[task_id]
     cancel_events.pop(task_id, None)
     logger.debug(f"Fin download_from_1fichier, résultat: success={result[0]}, message={result[1]}")
+    
+    # Sauvegarder le résultat AVANT de retirer l'URL du set (pour les doublons)
+    with urls_lock:
+        url_results[url] = (result[0], result[1])
+        urls_in_progress.discard(url)
+        logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+        # Signaler l'événement pour les appels doublons en attente
+        if url in url_done_events:
+            url_done_events[url].set()
+    
     try:
         notify_download_finished()
     except Exception:

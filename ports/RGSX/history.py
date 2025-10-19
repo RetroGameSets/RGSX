@@ -114,3 +114,85 @@ def clear_history():
         logger.info(f"Historique vidé : {history_path}")
     except Exception as e:
         logger.error(f"Erreur lors du vidage de {history_path} : {e}")
+
+
+# ==================== GESTION DES JEUX TÉLÉCHARGÉS ====================
+
+def load_downloaded_games():
+    """Charge la liste des jeux déjà téléchargés depuis downloaded_games.json."""
+    downloaded_path = getattr(config, 'DOWNLOADED_GAMES_PATH')
+    try:
+        if not os.path.exists(downloaded_path):
+            logger.debug(f"Aucun fichier downloaded_games.json trouvé à {downloaded_path}")
+            return {}
+        
+        if os.path.getsize(downloaded_path) == 0:
+            logger.warning(f"Fichier downloaded_games.json vide")
+            return {}
+        
+        with open(downloaded_path, "r", encoding='utf-8') as f:
+            content = f.read()
+            if not content or content.strip() == '':
+                return {}
+            
+            downloaded = json.loads(content)
+            
+            if not isinstance(downloaded, dict):
+                logger.warning(f"Format downloaded_games.json invalide (pas un dict)")
+                return {}
+            
+            logger.debug(f"Jeux téléchargés chargés : {sum(len(v) for v in downloaded.values())} jeux")
+            return downloaded
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error(f"Erreur lors de la lecture de {downloaded_path} : {e}")
+        return {}
+    except Exception as e:
+        logger.error(f"Erreur inattendue lors de la lecture de {downloaded_path} : {e}")
+        return {}
+
+
+def save_downloaded_games(downloaded_games_dict):
+    """Sauvegarde la liste des jeux téléchargés dans downloaded_games.json."""
+    downloaded_path = getattr(config, 'DOWNLOADED_GAMES_PATH')
+    try:
+        os.makedirs(os.path.dirname(downloaded_path), exist_ok=True)
+        
+        # Écriture atomique
+        temp_path = downloaded_path + '.tmp'
+        with open(temp_path, "w", encoding='utf-8') as f:
+            json.dump(downloaded_games_dict, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        
+        os.replace(temp_path, downloaded_path)
+        logger.debug(f"Jeux téléchargés sauvegardés : {sum(len(v) for v in downloaded_games_dict.values())} jeux")
+    except Exception as e:
+        logger.error(f"Erreur lors de l'écriture de {downloaded_path} : {e}")
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except:
+            pass
+
+
+def mark_game_as_downloaded(platform_name, game_name, file_size=None):
+    """Marque un jeu comme téléchargé."""
+    downloaded = config.downloaded_games
+    
+    if platform_name not in downloaded:
+        downloaded[platform_name] = {}
+    
+    downloaded[platform_name][game_name] = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "size": file_size or "N/A"
+    }
+    
+    # Sauvegarder immédiatement
+    save_downloaded_games(downloaded)
+    logger.info(f"Jeu marqué comme téléchargé : {platform_name} / {game_name}")
+
+
+def is_game_downloaded(platform_name, game_name):
+    """Vérifie si un jeu a déjà été téléchargé."""
+    downloaded = config.downloaded_games
+    return platform_name in downloaded and game_name in downloaded.get(platform_name, {})

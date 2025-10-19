@@ -383,34 +383,39 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     'downloads': downloads
                 })
             
-            # Route: API - Historique (téléchargements terminés seulement)
+            # Route: API - Historique (téléchargements terminés ET en queue/cours)
             elif path == '/api/history':
-                # Lire depuis history.json - filtrer seulement les téléchargements terminés
+                # Lire depuis history.json - filtrer pour inclure en cours ET terminés
                 history = load_history() or []
                 
                 print(f"\n[DEBUG HISTORY] history.json chargé avec {len(history)} entrées totales")
                 
-                # Filtrer les entrées avec status "Download_OK" ou "Erreur"
-                completed_statuses = ["Download_OK", "Erreur", "error", "Canceled", "Already_Present"]
-                completed_history = [
+                # Inclure: statuts terminés + en queue + en cours
+                included_statuses = [
+                    "Download_OK", "Erreur", "error", "Canceled", "Already_Present",  # Terminés
+                    "queued", "downloading", "Téléchargement", "Downloading", "Connecting", "Extracting",  # En cours
+                ]
+                # Inclure aussi les statuts "Try X/Y" (tentatives)
+                visible_history = [
                     entry for entry in history
-                    if entry.get('status', '') in completed_statuses
+                    if entry.get('status', '') in included_statuses or 
+                       str(entry.get('status', '')).startswith('Try ')
                 ]
                 
-                print(f"[DEBUG HISTORY] {len(completed_history)} téléchargements terminés trouvés")
-                if completed_history:
-                    print(f"  Premier: {completed_history[0].get('game_name', '')[:50]} - Status: {completed_history[0].get('status')}")
+                print(f"[DEBUG HISTORY] {len(visible_history)} téléchargements (terminés + en queue + en cours) trouvés")
+                if visible_history:
+                    print(f"  Premier: {visible_history[0].get('game_name', '')[:50]} - Status: {visible_history[0].get('status')}")
                 
                 # Trier par timestamp (plus récent en premier)
-                completed_history.sort(
+                visible_history.sort(
                     key=lambda x: x.get('timestamp', ''),
                     reverse=True
                 )
                 
                 self._send_json({
                     'success': True,
-                    'count': len(completed_history),
-                    'history': completed_history
+                    'count': len(visible_history),
+                    'history': visible_history
                 })
             
             # Route: API - Queue (lecture)
@@ -603,6 +608,17 @@ class RGSXHandler(BaseHTTPRequestHandler):
         
         config.download_active = True
         
+        # Mettre à jour l'historique: queued -> downloading
+        from history import load_history, save_history
+        config.history = load_history()
+        for entry in config.history:
+            if entry.get('task_id') == task_id and entry.get('status') == 'queued':
+                entry['status'] = 'downloading'
+                entry['message'] = get_translation('download_in_progress')
+                save_history(config.history)
+                logger.info(f"📋 Statut mis à jour de 'queued' à 'downloading' pour {game_name} (task_id={task_id})")
+                break
+        
         if is_1fichier:
             download_func = download_from_1fichier
             logger.info(f"🔗 Queue: download_from_1fichier() pour {game_name}, extraction={is_zip_non_supported}")
@@ -766,6 +782,27 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         'status': 'queued'
                     }
                     config.download_queue.append(queue_item)
+                    
+                    # Ajouter une entrée à l'historique avec status "queued"
+                    import datetime
+                    queue_history_entry = {
+                        'platform': platform,
+                        'game_name': game_name,
+                        'status': 'queued',
+                        'url': game_url,
+                        'progress': 0,
+                        'message': get_translation('download_queued'),
+                        'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        'downloaded_size': 0,
+                        'total_size': 0,
+                        'task_id': task_id
+                    }
+                    config.history.append(queue_history_entry)
+                    
+                    # Sauvegarder l'historique
+                    from history import save_history
+                    save_history(config.history)
+                    
                     logger.info(f"📋 {game_name} ajouté à la file d'attente (mode=queue, active={config.download_active})")
                     
                     self._send_json({
@@ -781,6 +818,25 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     # mode='queue' MAIS pas de téléchargement actif -> lancer immédiatement (premier élément)
                     config.download_active = True
                     logger.info(f"🚀 Lancement du premier élément de la queue: {game_name}")
+                    
+                    # Ajouter une entrée à l'historique avec status "downloading"
+                    # (pas "queued" car on lance immédiatement)
+                    import datetime
+                    download_history_entry = {
+                        'platform': platform,
+                        'game_name': game_name,
+                        'status': 'downloading',
+                        'url': game_url,
+                        'progress': 0,
+                        'message': get_translation('download_in_progress'),
+                        'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        'downloaded_size': 0,
+                        'total_size': 0,
+                        'task_id': task_id
+                    }
+                    config.history.append(download_history_entry)
+                    from history import save_history
+                    save_history(config.history)
                     
                     if is_1fichier:
                         download_func = download_from_1fichier
@@ -2750,29 +2806,49 @@ DO NOT share this file publicly as it may contain sensitive information.
                 const statusError = t('web_history_status_error');
                 const statusCanceled = t('history_status_canceled');
                 const statusAlreadyPresent = t('status_already_present');
+                const statusQueued = t('download_queued');
+                const statusDownloading = t('download_in_progress');
                 
                 container.innerHTML = data.history.map(h => {
-                    const isError = h.status === 'Erreur' || h.status === 'error';
-                    const isCanceled = h.status === 'Canceled';
-                    const isAlreadyPresent = h.status === 'Already_Present';
-                    const statusIcon = isError ? '❌' : isCanceled ? '⏸️' : isAlreadyPresent ? 'ℹ️' : '✅';
+                    const status = h.status || '';
+                    const isError = status === 'Erreur' || status === 'error';
+                    const isCanceled = status === 'Canceled';
+                    const isAlreadyPresent = status === 'Already_Present';
+                    const isQueued = status === 'queued';
+                    const isDownloading = status === 'downloading' || status === 'Téléchargement' || status === 'Downloading' || 
+                                         status === 'Connecting' || status === 'Extracting' || status.startsWith('Try ');
+                    const isSuccess = status === 'Download_OK' || status === 'Completed';
+                    
+                    // Déterminer l'icône et la couleur
+                    let statusIcon = '✅';  // par défaut succès
+                    let statusColor = '#28a745';  // vert
+                    let statusText = statusCompleted;
+                    
+                    if (isError) {
+                        statusIcon = '❌';
+                        statusColor = '#dc3545';  // rouge
+                        statusText = statusError;
+                    } else if (isCanceled) {
+                        statusIcon = '⏸️';
+                        statusColor = '#ffc107';  // orange
+                        statusText = statusCanceled;
+                    } else if (isAlreadyPresent) {
+                        statusIcon = 'ℹ️';
+                        statusColor = '#17a2b8';  // bleu clair
+                        statusText = statusAlreadyPresent;
+                    } else if (isQueued) {
+                        statusIcon = '📋';
+                        statusColor = '#6c757d';  // gris (en attente)
+                        statusText = statusQueued;
+                    } else if (isDownloading) {
+                        statusIcon = '⬇️';
+                        statusColor = '#007bff';  // bleu (en cours)
+                        statusText = statusDownloading;
+                    }
+                    
                     const totalMo = h.total_size ? (h.total_size / 1024 / 1024).toFixed(1) : 'N/A';
                     const platform = h.platform || 'N/A';
                     const timestamp = h.timestamp || 'N/A';
-                    
-                    // Déterminer la couleur du statut
-                    let statusColor = '#28a745'; // vert par défaut
-                    let statusText = statusCompleted;
-                    if (isError) {
-                        statusColor = '#dc3545'; // rouge pour erreur
-                        statusText = statusError;
-                    } else if (isCanceled) {
-                        statusColor = '#ffc107'; // orange pour annulé
-                        statusText = statusCanceled;
-                    } else if (isAlreadyPresent) {
-                        statusColor = '#17a2b8'; // bleu clair pour déjà présent
-                        statusText = statusAlreadyPresent;
-                    }
                     
                     // Debug: log le timestamp pour vérifier
                     if (!h.timestamp) {

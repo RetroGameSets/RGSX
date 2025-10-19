@@ -25,7 +25,7 @@ from display import (
         draw_display_menu,
     draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog,
     draw_confirm_dialog, draw_reload_games_data_dialog, draw_popup, draw_gradient,
-    THEME_COLORS
+    draw_toast, show_toast, THEME_COLORS
 )
 from language import _
 from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates, cancel_all_downloads
@@ -36,7 +36,7 @@ from utils import (
     load_sources, check_extension_before_download, extract_data,
     play_random_music, load_music_config, load_api_keys
 )
-from history import load_history, save_history
+from history import load_history, save_history, load_downloaded_games
 from config import OTA_data_ZIP
 from rgsx_settings import get_sources_mode, get_custom_sources_url, get_sources_zip_url
 from accessibility import  load_accessibility_settings
@@ -259,6 +259,10 @@ config.current_music = current_music  # Met à jour la musique en cours dans con
 # Chargement de l'historique
 config.history = load_history()
 logger.debug(f"Historique de téléchargement : {len(config.history)} entrées")
+
+# Chargement des jeux téléchargés
+config.downloaded_games = load_downloaded_games()
+logger.debug(f"Jeux téléchargés : {sum(len(v) for v in config.downloaded_games.values())} jeux")
 
 # Vérification et chargement de la configuration des contrôles (après mises à jour et détection manette)
 config.controls_config = load_controls_config()
@@ -628,12 +632,14 @@ async def main():
                 continue
 
             if config.menu_state == "extension_warning":
+                logger.debug(f"[EXTENSION_WARNING] Processing extension_warning, previous_menu_state={config.previous_menu_state}, pending_download={bool(config.pending_download)}")
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 if action == "confirm":
+                    logger.debug(f"[EXTENSION_WARNING] Confirm pressed, selection={config.extension_confirm_selection}")
                     if config.pending_download and config.extension_confirm_selection == 0:  # Oui
                         url, platform_name, game_name, is_zip_non_supported = config.pending_download
-                        logger.debug(f"Téléchargement confirmé après avertissement: {game_name} pour {platform_name} depuis {url}")
+                        logger.debug(f"[EXTENSION_WARNING] Téléchargement confirmé après avertissement: {game_name} pour {platform_name}")
                         task_id = str(pygame.time.get_ticks())
                         config.history.append({
                             "platform": platform_name,
@@ -649,15 +655,24 @@ async def main():
                             asyncio.create_task(download_rom(url, platform_name, game_name, is_zip_non_supported, task_id)),
                             url, game_name, platform_name
                         )
-                        config.menu_state = "history"
+                        old_state = config.menu_state
+                        config.menu_state = config.previous_menu_state if config.previous_menu_state else "game"
+                        logger.debug(f"[EXTENSION_WARNING] Menu state changed: {old_state} -> {config.menu_state}")
                         config.pending_download = None
+                        config.extension_confirm_selection = 0  # Réinitialiser la sélection
                         config.needs_redraw = True
-                        logger.debug(f"Téléchargement démarré pour {game_name}, task_id={task_id}")
+                        # Afficher toast de téléchargement en cours
+                        config.toast_message = f"Downloading: {game_name}..."
+                        config.toast_start_time = pygame.time.get_ticks()
+                        config.toast_duration = 3000  # 3 secondes
+                        logger.debug(f"[EXTENSION_WARNING] Download started for {game_name}, task_id={task_id}, menu_state={config.menu_state}, needs_redraw={config.needs_redraw}")
                     elif config.extension_confirm_selection == 1:  # Non
+                        logger.debug(f"[EXTENSION_WARNING] Download rejected by user")
                         config.menu_state = config.previous_menu_state
                         config.pending_download = None
+                        config.extension_confirm_selection = 0  # Réinitialiser la sélection
                         config.needs_redraw = True
-                        logger.debug("Téléchargement annulé, retour à l'état précédent")
+                        logger.debug(f"[EXTENSION_WARNING] Returning to {config.menu_state}")
                 continue
 
             if config.menu_state in ["platform", "game", "error", "confirm_exit", "history"]:
@@ -678,17 +693,6 @@ async def main():
                     platform_name = config.platforms[config.current_platform]
                     if url:
                         logger.debug(f"Vérification pour {game_name}, URL: {url}")
-                        # Ajouter une entrée temporaire à l'historique
-                        config.history.append({
-                            "platform": platform_name,
-                            "game_name": game_name,
-                            "status": "downloading",
-                            "progress": 0,
-                            "message": _("download_initializing"),
-                            "url": url,
-                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        })
-                        config.current_history_item = len(config.history) - 1  # Sélectionner l'entrée en cours
                         if is_1fichier_url(url):
                             # Utilisation helpers centralisés (utils)
                             try:
@@ -727,7 +731,6 @@ async def main():
                                 config.error_message = _("error_invalid_download_data") if _ else "Invalid download data"
                                 config.needs_redraw = True
                                 logger.error(f"check_extension_before_download a échoué pour {game_name}")
-                                config.history.pop()
                             else:
                                 from utils import is_extension_supported, load_extensions_json, sanitize_filename
                                 from rgsx_settings import get_allow_unknown_extensions
@@ -744,19 +747,29 @@ async def main():
                                     config.extension_confirm_selection = 0
                                     config.needs_redraw = True
                                     logger.debug(f"Extension non reconnue pour lien 1fichier, passage à extension_warning pour {game_name}")
-                                    config.history.pop()
                                 else:
                                     config.previous_menu_state = config.menu_state
                                     logger.debug(f"Previous menu state défini: {config.previous_menu_state}")
+                                    # Ajouter une entrée à l'historique maintenant que le téléchargement démarre vraiment
+                                    config.history.append({
+                                        "platform": platform_name,
+                                        "game_name": game_name,
+                                        "status": "downloading",
+                                        "progress": 0,
+                                        "message": _("download_in_progress") if _ else "Download in progress",
+                                        "url": url,
+                                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    })
+                                    config.current_history_item = len(config.history) - 1
+                                    save_history(config.history)
                                     # Lancer le téléchargement dans une tâche asynchrone
                                     task_id = str(pygame.time.get_ticks())
                                     config.download_tasks[task_id] = (
-                                        asyncio.create_task(download_from_1fichier(url, platform_name, game_name, zip_ok)),
+                                        asyncio.create_task(download_from_1fichier(url, platform_name, game_name, zip_ok, task_id)),
                                         url, game_name, platform_name
                                     )
-                                    config.menu_state = "history"  # Passer à l'historique
                                     config.needs_redraw = True
-                                    logger.debug(f"Téléchargement 1fichier démarré pour {game_name}, passage à l'historique")
+                                    logger.debug(f"Téléchargement 1fichier démarré pour {game_name}, tâche lancée")
                         else:
                             pending = check_extension_before_download(url, platform_name, game_name)
                             if not pending:
@@ -764,7 +777,6 @@ async def main():
                                 config.error_message = _("error_invalid_download_data") if _ else "Invalid download data"
                                 config.needs_redraw = True
                                 logger.error(f"check_extension_before_download a échoué pour {game_name}")
-                                config.history.pop()
                             else:
                                 from utils import is_extension_supported, load_extensions_json, sanitize_filename
                                 from rgsx_settings import get_allow_unknown_extensions
@@ -781,19 +793,29 @@ async def main():
                                     config.extension_confirm_selection = 0
                                     config.needs_redraw = True
                                     logger.debug(f"Extension non reconnue, passage à extension_warning pour {game_name}")
-                                    config.history.pop()
                                 else:
                                     config.previous_menu_state = config.menu_state
                                     logger.debug(f"Previous menu state défini: {config.previous_menu_state}")
+                                    # Ajouter une entrée à l'historique maintenant que le téléchargement démarre vraiment
+                                    config.history.append({
+                                        "platform": platform_name,
+                                        "game_name": game_name,
+                                        "status": "downloading",
+                                        "progress": 0,
+                                        "message": _("download_in_progress") if _ else "Download in progress",
+                                        "url": url,
+                                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    })
+                                    config.current_history_item = len(config.history) - 1
+                                    save_history(config.history)
                                     # Lancer le téléchargement dans une tâche asynchrone
                                     task_id = str(pygame.time.get_ticks())
                                     config.download_tasks[task_id] = (
-                                        asyncio.create_task(download_rom(url, platform_name, game_name, zip_ok)),
+                                        asyncio.create_task(download_rom(url, platform_name, game_name, zip_ok, task_id)),
                                         url, game_name, platform_name
                                     )
-                                    config.menu_state = "history"  # Passer à l'historique
                                     config.needs_redraw = True
-                                    logger.debug(f"Téléchargement démarré pour {game_name}, passage à l'historique")
+                                    logger.debug(f"Téléchargement démarré pour {game_name}, tâche lancée")
                 
                 elif action in ("clear_history", "delete_history") and config.menu_state == "history":
                     # Ouvrir le dialogue de confirmation
@@ -808,17 +830,29 @@ async def main():
         # Gestion des téléchargements
         if config.download_tasks:
             for task_id, (task, url, game_name, platform_name) in list(config.download_tasks.items()):
+                logger.debug(f"[DOWNLOAD_CHECK] Checking task {task_id}: done={task.done()}, game={game_name}")
                 if task.done():
+                    logger.debug(f"[DOWNLOAD_COMPLETE] Task {task_id} is done, processing result for {game_name}")
                     try:
                         success, message = await task
+                        logger.debug(f"[DOWNLOAD_RESULT] Task {task_id} returned: success={success}, message={message[:100]}")
                         if "http" in message:
                             message = message.split("https://")[0].strip()
+                        logger.debug(f"[HISTORY_SEARCH] Searching in {len(config.history)} history entries for url={url[:50]}...")
                         for entry in config.history:
+                            logger.debug(f"[HISTORY_ENTRY] Checking: url_match={entry['url'] == url}, status={entry['status']}, game={entry.get('game_name')}")
                             if entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
+                                logger.debug(f"[HISTORY_MATCH] Found matching entry for {game_name}, updating status")
                                 entry["status"] = "Download_OK" if success else "Erreur"
                                 entry["progress"] = 100 if success else 0
                                 entry["message"] = message
                                 save_history(config.history)
+                                # Marquer le jeu comme téléchargé si succès
+                                if success:
+                                    logger.debug(f"[MARKING_DOWNLOAD] Marking game as downloaded: platform={platform_name}, game={game_name}")
+                                    from history import mark_game_as_downloaded
+                                    file_size = entry.get("size", "N/A")
+                                    mark_game_as_downloaded(platform_name, game_name, file_size)
                                 config.needs_redraw = True
                                 logger.debug(f"Téléchargement terminé: {game_name}, succès={success}, message={message}, task_id={task_id}")
                                 break
@@ -861,15 +895,29 @@ async def main():
                             continue
                         if isinstance(data[1], bool):  # Fin du téléchargement
                             success, message = data[1], data[2]
+                            logger.debug(f"[DOWNLOAD_TASK] Download task done - success={success}, message={message}, task_id={task_id}")
                             for entry in config.history:
                                 if entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
                                     entry["status"] = "Download_OK" if success else "Erreur"
                                     entry["progress"] = 100 if success else 0
                                     entry["message"] = message
                                     save_history(config.history)
+                                    # Marquer le jeu comme téléchargé si succès
+                                    if success:
+                                        from history import mark_game_as_downloaded
+                                        file_size = entry.get("size", "N/A")
+                                        mark_game_as_downloaded(platform_name, game_name, file_size)
                                     config.needs_redraw = True
                                     logger.debug(f"Final update in history: status={entry['status']}, progress={entry['progress']}%, message={message}, task_id={task_id}")
                                     break
+                            config.download_result_message = message
+                            config.download_result_error = not success
+                            config.download_progress.clear()
+                            config.pending_download = None
+                            config.menu_state = "history"
+                            config.needs_redraw = True
+                            logger.debug(f"[DOWNLOAD_TASK] Menu state changed to history after completion, task_id={task_id}")
+                            del config.download_tasks[task_id]
                         else:
                             downloaded, total_size = data[1], data[2]
                             progress = (downloaded / total_size * 100) if total_size > 0 else 0
@@ -878,20 +926,13 @@ async def main():
                                     entry["progress"] = progress
                                     entry["status"] = "Téléchargement"
                                     config.needs_redraw = True
-                                    # logger.debug(f"Progress updated in history: {progress:.1f}% for {game_name}, task_id={task_id}")
+                                    logger.debug(f"Progress updated in history: {progress:.1f}% for {game_name}, task_id={task_id}")
                                     break
-                        config.download_result_message = message
-                        config.download_result_error = True
-                        config.download_result_start_time = pygame.time.get_ticks()
-                        config.menu_state = "download_result"
-                        config.download_progress.clear()
-                        config.pending_download = None
-                        config.needs_redraw = True
-                        del config.download_tasks[task_id]
 
 
         # Affichage
         if config.needs_redraw:
+            #logger.debug(f"[RENDER_LOOP] Frame render - menu_state={config.menu_state}, needs_redraw={config.needs_redraw}")
             draw_gradient(screen, THEME_COLORS["background_top"], THEME_COLORS["background_bottom"])
             
             
@@ -907,6 +948,7 @@ async def main():
             elif config.menu_state == "platform":
                 draw_platform_grid(screen)
             elif config.menu_state == "game":
+                #logger.debug(f"[RENDER_GAME] Rendering game state - search_mode={config.search_mode}, filtered_games={len(config.filtered_games) if config.filtered_games else 0}, current_game={config.current_game}")
                 if not config.search_mode:
                     draw_game_list(screen)
                 if config.search_mode:
@@ -919,6 +961,7 @@ async def main():
             elif config.menu_state == "confirm_exit":
                 draw_confirm_dialog(screen)
             elif config.menu_state == "extension_warning":
+                logger.debug(f"[RENDER_EXT_WARNING] Drawing extension warning dialog")
                 draw_extension_warning(screen)
             elif config.menu_state == "pause_menu":
                 draw_pause_menu(screen, config.selected_option)
@@ -992,6 +1035,9 @@ async def main():
             # Popup générique (affiché dans n'importe quel état si timer actif), sauf si un état popup dédié déjà l'affiche
             if config.popup_timer > 0 and config.popup_message and config.menu_state not in ["update_result", "restart_popup"]:
                 draw_popup(screen)
+            
+            # Toast notification (dans le coin inférieur droit)
+            draw_toast(screen)
             
             pygame.display.flip()
             
@@ -1243,16 +1289,32 @@ async def main():
     # Arrêter le serveur web
     stop_web_server()
     
+   
+    
     if config.OPERATING_SYSTEM == "Windows":
+        logger.debug(f"Mise à jour liste des jeux ignorée sur {config.OPERATING_SYSTEM}")
         try:
             result = subprocess.run(["taskkill", "/f", "/im", "emulatorLauncher.exe"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            result2 = subprocess.run(["taskkill", "/f", "/im", "python.exe"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             if getattr(result, "returncode", 1) == 0:
                 logger.debug("Quitté avec succès: emulatorLauncher.exe")
+                print(f"Arret Emulatorlauncher ok")
             else:
                 logger.debug("Erreur lors de la tentative d'arrêt d'emulatorLauncher.exe")
+                print(f"Arret Emulatorlauncher ko")
+            if getattr(result2, "returncode", 1) == 0:
+                logger.debug("Quitté avec succès: Python.Exe")
+                print(f"Arret Python ok")
+            else:
+                logger.debug("Erreur lors de la tentative d'arrêt de Python.exe ")
+                print(f"Arret Python ko")
         except FileNotFoundError:
             logger.debug("taskkill introuvable, saut de l'étape d'arrêt d'emulatorLauncher.exe")
     else:
+        # Exécuter la mise à jour de la liste des jeux d'EmulationStation UNIQUEMENT sur Batocera
+        resp = requests.get("http://127.0.0.1:1234/reloadgames", timeout=2)
+        content = (resp.text or "").strip()
+        logger.debug(f"Résultat mise à jour liste des jeux: HTTP {resp.status_code} - {content}")
         try:
             result2 = subprocess.run(["batocera-es-swissknife", "--emukill"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             if getattr(result2, "returncode", 1) == 0:

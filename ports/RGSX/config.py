@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.2.4.8"
+app_version = "2.3.0.0"
 
 
 def get_application_root():
@@ -83,6 +83,7 @@ JSON_EXTENSIONS = os.path.join(SAVE_FOLDER, "rom_extensions.json")
 PRECONF_CONTROLS_PATH = os.path.join(APP_FOLDER, "assets", "controls")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
 HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
+DOWNLOADED_GAMES_PATH = os.path.join(SAVE_FOLDER, "downloaded_games.json")
 RGSX_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
 API_KEY_1FICHIER_PATH = os.path.join(SAVE_FOLDER, "1FichierAPI.txt")
 API_KEY_ALLDEBRID_PATH = os.path.join(SAVE_FOLDER, "AllDebridAPI.txt")
@@ -260,10 +261,6 @@ current_game = 0  # Index du jeu actuellement sélectionné
 menu_state = "loading"  # État actuel de l'interface menu
 scroll_offset = 0  # Offset de défilement pour la liste des jeux
 visible_games = 15  # Nombre de jeux visibles en même temps par défaut
-selected_games = set()  # Indices des jeux sélectionnés pour un téléchargement multiple (menu game)
-batch_download_indices = []  # File d'attente des indices de jeux à traiter en lot
-batch_in_progress = False  # Indique qu'un lot est en cours
-batch_pending_game = None  # Données du jeu en attente de confirmation d'extension
 
 # Options d'affichage
 accessibility_mode = False  # Mode accessibilité pour les polices agrandies
@@ -306,6 +303,9 @@ history_scroll_offset = 0  # Offset pour le défilement de l'historique
 visible_history_items = 15  # Nombre d'éléments d'historique visibles (ajusté dynamiquement)
 confirm_clear_selection = 0  # confirmation clear historique
 confirm_cancel_selection = 0  # confirmation annulation téléchargement
+
+# Tracking des jeux téléchargés
+downloaded_games = {}  # Dict {platform_name: {game_name: {"timestamp": "...", "size": "..."}}}
 
 # CLES API / PREMIUM HOSTS
 API_KEY_1FICHIER = ""

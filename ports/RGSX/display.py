@@ -7,8 +7,8 @@ import config
 from utils import truncate_text_middle, wrap_text, load_system_image, truncate_text_end
 import logging
 import math
-from history import load_history  # Ajout de l'import
-from language import _  # Import de la fonction de traduction
+from history import load_history, is_game_downloaded  
+from language import _  
 
 logger = logging.getLogger(__name__)
 
@@ -751,16 +751,18 @@ def draw_platform_grid(screen):
 # Liste des jeux
 def draw_game_list(screen):
     """Affiche la liste des jeux avec un style moderne."""
+    #logger.debug(f"[DRAW_GAME_LIST] Called - platform={config.current_platform}, search_mode={config.search_mode}, filter_active={config.filter_active}")
     platform = config.platforms[config.current_platform]
     platform_name = config.platform_names.get(platform, platform)
     games = config.filtered_games if config.filter_active or config.search_mode else config.games
     game_count = len(games)
+    #logger.debug(f"[DRAW_GAME_LIST] Games count={game_count}, current_game={config.current_game}, filtered_games={len(config.filtered_games) if config.filtered_games else 0}, config.games={len(config.games) if config.games else 0}")
 
     if not games:
         logger.debug("Aucune liste de jeux disponible")
         message = _("game_no_games")
         lines = wrap_text(message, config.font, config.screen_width - 80)
-        line_height = config.font.get_height() + 5
+        line_height = config.font1.get_height() + 5
         text_height = len(lines) * line_height
         margin_top_bottom = 20
         rect_height = text_height + 2 * margin_top_bottom
@@ -867,12 +869,20 @@ def draw_game_list(screen):
         else:
             game_name = str(item)
             size_val = None
+        
+        # Vérifier si le jeu est déjà téléchargé
+        is_downloaded = is_game_downloaded(platform_name, game_name)
+        
         size_text = size_val if (isinstance(size_val, str) and size_val.strip()) else "N/A"
-        is_marked = i in getattr(config, 'selected_games', set())
-        color = THEME_COLORS["fond_lignes"] if (i == config.current_game or is_marked) else THEME_COLORS["text"]
-        prefix = "[X] " if is_marked else "    "
+        color = THEME_COLORS["fond_lignes"] if i == config.current_game else THEME_COLORS["text"]
+        
+        # Ajouter un marqueur vert si le jeu est déjà téléchargé
+        prefix = "[>] " if is_downloaded else ""
         truncated_name = truncate_text_middle(prefix + game_name, config.small_font, name_col_width, is_filename=False)
-        name_surface = config.small_font.render(truncated_name, True, color)
+        
+        # Utiliser une couleur verte pour les jeux téléchargés
+        name_color = (100, 255, 100) if is_downloaded else color  # Vert clair si téléchargé
+        name_surface = config.small_font.render(truncated_name, True, name_color)
         size_surface = config.small_font.render(size_text, True, THEME_COLORS["text"])
         row_center_y = list_start_y + (i - config.scroll_offset) * line_height + line_height // 2
         # Position nom (aligné à gauche dans la boite)
@@ -929,6 +939,19 @@ def draw_history_list(screen):
     # logger.debug(f"Dessin historique, history={config.history}, needs_redraw={config.needs_redraw}")
     history = config.history if hasattr(config, 'history') else load_history()
     history_count = len(history)
+    
+    # Inverser l'historique pour afficher les plus récents en premier
+    # Convertir l'index sélectionné de l'original au tableau inversé
+    original_index = config.current_history_item
+    history = list(reversed(history))
+    
+    # Calcul de l'index dans la liste inversée
+    # Si original_index=0 (premier), devient len-1 (dernier dans la liste inversée)
+    # Si original_index=len-1 (dernier), devient 0 (premier dans la liste inversée)
+    if history_count > 0 and original_index >= 0 and original_index < history_count:
+        current_history_item_inverted = history_count - 1 - original_index
+    else:
+        current_history_item_inverted = 0
 
     # Cherche une entrée en cours de téléchargement pour afficher la vitesse
     speed_str = ""
@@ -970,16 +993,16 @@ def draw_history_list(screen):
     extra_margin_bottom = 80
     title_height = config.title_font.get_height() + 20
 
-    # Sécuriser current_history_item pour éviter IndexError
+    # Sécuriser current_history_item_inverted pour éviter IndexError
     if history:
-        if config.current_history_item < 0 or config.current_history_item >= len(history):
-            config.current_history_item = max(0, min(len(history) - 1, config.current_history_item))
+        if current_history_item_inverted < 0 or current_history_item_inverted >= len(history):
+            current_history_item_inverted = max(0, min(len(history) - 1, current_history_item_inverted))
     else:
-        config.current_history_item = 0
+        current_history_item_inverted = 0
 
     speed = 0.0
-    if history and history[config.current_history_item].get("status") in ["Téléchargement", "downloading"]:
-        speed = history[config.current_history_item].get("speed", 0.0)
+    if history and history[current_history_item_inverted].get("status") in ["Téléchargement", "downloading"]:
+        speed = history[current_history_item_inverted].get("speed", 0.0)
     if speed > 0:
         speed_str = f"{speed:.2f} Mo/s"
         title_text = _("history_title").format(history_count) + f" {speed_str}"
@@ -1028,10 +1051,10 @@ def draw_history_list(screen):
     rect_x = (config.screen_width - rect_width) // 2
 
     config.history_scroll_offset = max(0, min(config.history_scroll_offset, max(0, len(history) - items_per_page)))
-    if config.current_history_item < config.history_scroll_offset:
-        config.history_scroll_offset = config.current_history_item
-    elif config.current_history_item >= config.history_scroll_offset + items_per_page:
-        config.history_scroll_offset = config.current_history_item - items_per_page + 1
+    if current_history_item_inverted < config.history_scroll_offset:
+        config.history_scroll_offset = current_history_item_inverted
+    elif current_history_item_inverted >= config.history_scroll_offset + items_per_page:
+        config.history_scroll_offset = current_history_item_inverted - items_per_page + 1
 
 
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
@@ -1060,7 +1083,7 @@ def draw_history_list(screen):
         
         # Correction du calcul de la taille
         size = entry.get("total_size", 0)
-        color = THEME_COLORS["fond_lignes"] if i == config.current_history_item else THEME_COLORS["text"]
+        color = THEME_COLORS["fond_lignes"] if i == current_history_item_inverted else THEME_COLORS["text"]
         size_text = format_size(size)
         
         status = entry.get("status", "Inconnu")
@@ -1142,7 +1165,7 @@ def draw_history_list(screen):
         size_rect = size_surface.get_rect(center=(header_x_positions[2], y_pos))
         status_rect = status_surface.get_rect(center=(header_x_positions[3], y_pos))
 
-        if i == config.current_history_item:
+        if i == current_history_item_inverted:
             glow_surface = pygame.Surface((rect_width - 40, line_height), pygame.SRCALPHA)
             pygame.draw.rect(glow_surface, THEME_COLORS["fond_lignes"] + (50,), (0, 0, rect_width - 40, line_height), border_radius=8)
             screen.blit(glow_surface, (rect_x + 20, y_pos - line_height // 2))
@@ -1324,17 +1347,15 @@ def draw_progress_screen(screen):
 def draw_extension_warning(screen):
     """Affiche un avertissement pour une extension non reconnue ou un fichier ZIP."""
     if not config.pending_download:
-        logger.error("config.pending_download est None ou vide dans extension_warning")
-        message = "Erreur : Aucun téléchargement en attente."
-        is_zip = False
-        game_name = "Inconnu"
-    else:
-        url, platform, game_name, is_zip_non_supported = config.pending_download
+        logger.error("config.pending_download est None ou vide dans extension_warning, retour anticipé")
+        return
+    
+    url, platform, game_name, is_zip_non_supported = config.pending_download
     # Log réduit: pas de détail verbeux ici
-        is_zip = is_zip_non_supported
-        if not game_name:
-            game_name = "Inconnu"
-            logger.warning("game_name vide, utilisation de 'Inconnu'")
+    is_zip = is_zip_non_supported
+    if not game_name:
+        game_name = "Inconnu"
+        logger.warning("game_name vide, utilisation de 'Inconnu'")
 
     if is_zip:
         core = _("extension_warning_zip").format(game_name)
@@ -1393,8 +1414,8 @@ def draw_extension_warning(screen):
                 ))
                 screen.blit(hsurf, hrect)
 
-        draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - 180, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.extension_confirm_selection == 1)
-        draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 20, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.extension_confirm_selection == 0)
+        draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - 180, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.extension_confirm_selection == 0)
+        draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 20, rect_y + text_height + margin_top_bottom, 160, button_height, selected=config.extension_confirm_selection == 1)
 
     except Exception as e:
         logger.error(f"Erreur lors du rendu de extension_warning : {str(e)}")
@@ -1418,48 +1439,154 @@ def draw_extension_warning(screen):
 
 # Affichage des contrôles en bas de page
 def draw_controls(screen, menu_state, current_music_name=None, music_popup_start_time=0):
-    """Affiche les contrôles sur une seule ligne en bas de l’écran."""
-    start_button = get_control_display('start', 'START')
-    start_text = _("controls_action_start")
-    control_text = f"RGSX v{config.app_version} - {start_button} : {start_text}"
-
-    # Afficher le nom du joystick s'il est détecté
-    try:
-        device_name = getattr(config, 'controller_device_name', '') or ''
-        if device_name:
-            # Utilise la clé i18n si disponible, sinon fallback
-            try:
-                joy_label = _("footer_joystick")
-            except Exception:
-                joy_label = "Joystick: {0}"
-            # Formater si le placeholder {0} est présent
-            if isinstance(joy_label, str) and "{0}" in joy_label:
-                joy_text = joy_label.format(device_name)
-            else:
-                joy_text = f"{joy_label} {device_name}" if joy_label else f"Joystick: {device_name}"
-            control_text += f" | {joy_text}"
-    except Exception:
-        pass
+    """Affiche les contrôles contextuels en bas de l'écran selon le menu_state."""
     
-    # Ajouter le nom de la musique si disponible
-    if config.current_music_name and config.music_popup_start_time > 0:
-        current_time = pygame.time.get_ticks() / 1000
-        if current_time - config.music_popup_start_time < 3.0:  # Afficher pendant 3 secondes
-            control_text += f" | {config.current_music_name}"
+    # Import local de la fonction de traduction pour éviter les conflits de scope
+    from language import _ as i18n
+    
+    # Mapping des contrôles par menu_state
+    controls_map = {
+        "platform": [
+            ("history", i18n("controls_action_history")),
+            ("confirm", i18n("controls_confirm_select")),
+            ("start", i18n("controls_action_start")),
+        ],
+        "game": [
+            ("confirm", i18n("controls_confirm_select")),
+            ("clear_history", i18n("controls_action_queue")),
+            (("page_up", "page_down"), i18n("controls_pages")),
+            ("filter", i18n("controls_filter_search")),
+            ("history", i18n("controls_action_history")),
+        ],
+        "history": [
+            ("confirm", i18n("history_game_options_title")),
+            ("clear_history", i18n("controls_action_clear_history")),
+            ("history", i18n("controls_action_close_history")),
+            ("cancel", i18n("controls_cancel_back")),
+        ],
+        "error": [
+            ("confirm", i18n("controls_confirm_select")),
+        ],
+        "confirm_exit": [
+            ("confirm", i18n("controls_confirm_select")),
+            ("cancel", i18n("controls_cancel_back")),
+        ],
+        "extension_warning": [
+            ("confirm", i18n("controls_confirm_select")),
+        ],
+    }
+    
+    # Récupérer les contrôles pour ce menu, sinon affichage par défaut
+    controls_list = controls_map.get(menu_state, [
+        ("confirm", i18n("controls_confirm_select")),
+        ("cancel", i18n("controls_cancel_back")),
+    ])
+    
+    # Construire les lignes avec icônes
+    icon_lines = []
+    
+    # Sur la page d'accueil uniquement: afficher version et musique
+    if menu_state == "platform":
+        control_parts = []
+        
+        start_button = get_control_display('start', 'START')
+        start_text = i18n("controls_action_start")
+        control_parts.append(f"RGSX v{config.app_version} - {start_button} : {start_text}")
+        
+        # Afficher le nom du joystick s'il est détecté
+        try:
+            device_name = getattr(config, 'controller_device_name', '') or ''
+            if device_name:
+                try:
+                    joy_label = i18n("footer_joystick")
+                except Exception:
+                    joy_label = "Joystick: {0}"
+                if isinstance(joy_label, str) and "{0}" in joy_label:
+                    joy_text = joy_label.format(device_name)
+                else:
+                    joy_text = f"{joy_label} {device_name}" if joy_label else f"Joystick: {device_name}"
+                control_parts.append(f"| {joy_text}")
+        except Exception:
+            pass
+        
+        # Ajouter le nom de la musique si disponible
+        if config.current_music_name and config.music_popup_start_time > 0:
+            current_time = pygame.time.get_ticks() / 1000
+            if current_time - config.music_popup_start_time < 3.0:
+                control_parts.append(f"| {config.current_music_name}")
+        
+        control_text = " ".join(control_parts)
+        icon_lines.append(control_text)
+    else:
+        # Pour les autres menus: affichage avec icônes et contrôles contextuels sur une seule ligne
+        all_controls = []
+        for action, label in controls_list:
+            # Gérer les cas où action peut être une tuple (ex: ("page_up", "page_down"))
+            if isinstance(action, tuple):
+                # Afficher plusieurs touches avec icônes
+                all_controls.append(("icons", list(action), label))
+            else:
+                # Une seule touche avec icône
+                all_controls.append(("icons", [action], label))
+        
+        # Combiner tous les contrôles sur une seule ligne avec séparateurs
+        icon_lines.append(("icons_combined", all_controls))
+    
+    # Rendu des lignes avec icônes
     max_width = config.screen_width - 40
-    wrapped_controls = wrap_text(control_text, config.small_font, max_width)
-    line_height = config.small_font.get_height() + 5
-    rect_height = len(wrapped_controls) * line_height + 20
+    icon_surfs = []
+    
+    for line_data in icon_lines:
+        if isinstance(line_data, tuple) and len(line_data) >= 2:
+            if line_data[0] == "icons_combined":
+                # Combiner tous les contrôles sur une seule ligne
+                all_controls = line_data[1]
+                combined_surf = pygame.Surface((max_width, 50), pygame.SRCALPHA)
+                x_pos = 10
+                for action_tuple in all_controls:
+                    _, actions, label = action_tuple
+                    try:
+                        surf = _render_icons_line(actions, label, max_width - x_pos - 10, config.font, THEME_COLORS["text"], icon_size=20, icon_gap=6, icon_text_gap=10)
+                        if x_pos + surf.get_width() > max_width - 10:
+                            break  # Pas assez de place
+                        combined_surf.blit(surf, (x_pos, (50 - surf.get_height()) // 2))
+                        x_pos += surf.get_width() + 20  # Espacement entre contrôles
+                    except Exception:
+                        pass
+                # Redimensionner la surface au contenu réel
+                if x_pos > 10:
+                    final_surf = pygame.Surface((x_pos - 10, 50), pygame.SRCALPHA)
+                    final_surf.blit(combined_surf, (0, 0), (0, 0, x_pos - 10, 50))
+                    icon_surfs.append(final_surf)
+            elif line_data[0] == "icons" and len(line_data) == 3:
+                _, actions, label = line_data
+                try:
+                    surf = _render_icons_line(actions, label, max_width, config.font, THEME_COLORS["text"], icon_size=20, icon_gap=6, icon_text_gap=10)
+                    icon_surfs.append(surf)
+                except Exception:
+                    text_surface = config.font.render(f"{label}", True, THEME_COLORS["text"])
+                    icon_surfs.append(text_surface)
+        else:
+            # Texte simple (pour la ligne platform)
+            text_surface = config.font.render(line_data, True, THEME_COLORS["text"])
+            icon_surfs.append(text_surface)
+    
+    # Calculer hauteur totale
+    total_height = sum(s.get_height() for s in icon_surfs) + max(0, (len(icon_surfs) - 1)) * 4 + 8
+    rect_height = total_height
     rect_y = config.screen_height - rect_height - 5
     rect_x = (config.screen_width - max_width) // 2
 
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, max_width, rect_height), border_radius=8)
     pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, max_width, rect_height), 1, border_radius=8)
 
-    for i, line in enumerate(wrapped_controls):
-        text_surface = config.small_font.render(line, True, THEME_COLORS["text"])
-        text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + 10 + i * line_height + line_height // 2))
-        screen.blit(text_surface, text_rect)
+    # Afficher les lignes
+    y = rect_y + 4
+    for surf in icon_surfs:
+        x_centered = rect_x + (max_width - surf.get_width()) // 2
+        screen.blit(surf, (x_centered, y))
+        y += surf.get_height() + 4
+
 
 # Menu pause
 def draw_language_menu(screen):
@@ -2538,6 +2665,87 @@ def draw_popup(screen):
     screen.blit(countdown_surface, countdown_rect)
 
 
+def draw_toast(screen):
+    """Affiche une notification toast dans le coin inférieur droit (2s max).
+    
+    Utilise config.toast_message pour le contenu.
+    Utilise config.toast_duration (par défaut 2000ms) pour la durée.
+    """
+    if not hasattr(config, 'toast_message') or not config.toast_message:
+        return
+    
+    if not hasattr(config, 'toast_start_time'):
+        config.toast_start_time = pygame.time.get_ticks()
+    
+    current_time = pygame.time.get_ticks()
+    elapsed = current_time - config.toast_start_time
+    
+    # Durée configurable (par défaut 2000ms)
+    toast_duration = getattr(config, 'toast_duration', 2000)
+    
+    # Disparaître après la durée définie
+    if elapsed > toast_duration:
+        config.toast_message = ""
+        config.toast_start_time = 0
+        return
+    
+    # Animation: fade out dans les 300ms finales
+    opacity = 255
+    fade_start = max(0, toast_duration - 300)
+    if elapsed > fade_start:
+        opacity = int(255 * (1 - (elapsed - fade_start) / 300))
+    
+    # Créer une surface temporaire pour le toast
+    toast_padding = 15
+    line_height = config.small_font.get_height() + 6
+    
+    text_lines = config.toast_message.split('\n')
+    wrapped_lines = []
+    max_width = int(config.screen_width * 0.3)  # Max 30% de la largeur
+    
+    for line in text_lines:
+        if line.strip() == "":
+            wrapped_lines.append("")
+        else:
+            wrapped_lines.extend(wrap_text(line, config.small_font, max_width - 2 * toast_padding))
+    
+    toast_width = max_width
+    toast_height = len(wrapped_lines) * line_height + 2 * toast_padding
+    
+    # Position: coin inférieur droit
+    margin = 20
+    toast_x = config.screen_width - toast_width - margin
+    toast_y = config.screen_height - toast_height - margin
+    
+    # Créer une surface avec transparence
+    toast_surface = pygame.Surface((toast_width, toast_height), pygame.SRCALPHA)
+    
+    # Fond avec bordure (couleur vert succès - fond_lignes)
+    toast_bg_color = (*THEME_COLORS["fond_lignes"], int(opacity * 0.4))  # vert semi-transparent
+    toast_border_color = (*THEME_COLORS["fond_lignes"], int(opacity))  # vert opaque
+    
+    pygame.draw.rect(toast_surface, toast_bg_color, (0, 0, toast_width, toast_height), border_radius=8)
+    pygame.draw.rect(toast_surface, toast_border_color, (0, 0, toast_width, toast_height), 2, border_radius=8)
+    
+    # Afficher le texte
+    for i, line in enumerate(wrapped_lines):
+        text_render = config.small_font.render(line, True, THEME_COLORS["text"])
+        toast_surface.blit(text_render, (toast_padding, toast_padding + i * line_height))
+    
+    # Blit sur l'écran
+    screen.blit(toast_surface, (toast_x, toast_y))
+
+
+def show_toast(message, duration=2000):
+    """Fonction helper pour afficher un toast de notification.
+    
+    Args:
+        message (str): Le message à afficher (peut contenir des sauts de ligne)
+        duration (int): Durée d'affichage en millisecondes (par défaut 2000)
+    """
+    config.toast_message = message
+    config.toast_duration = duration
+    config.toast_start_time = pygame.time.get_ticks()
 def draw_history_game_options(screen):
     """Affiche le menu d'options pour un jeu de l'historique."""
     import os
