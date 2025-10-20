@@ -62,25 +62,9 @@ jobs:
             ## 📦 RGSX Release ${{ github.ref_name }}
             
             ### 📥 Installation
-            1. Téléchargez `RGSX_${{ github.ref_name }}.zip`
-            2. Extrayez le contenu dans `/userdata/roms/ports/RGSX/` (Batocera/Knulli)
-            3. Lancez RGSX depuis le menu Ports
-            
-            ### 📦 Contenu du package
-            - Application RGSX complète (tous les fichiers Python)
-            - Interface graphique pygame
-            - Interface web (rgsx_web.py)
-            - Assets complets :
-              - Polices (fonts/)
-              - Images SVG des boutons (images/)
-              - Musiques (music/)
-              - Programmes utilitaires (progs/)
-            - Mappings de contrôleurs (assets/controls/)
-            - Traductions (languages/ : FR, EN, ES, DE, IT, PT)
-            - Scripts de lancement (RGSX.sh)
-            
+            1. Extract to ROMS/PORTS/RGSX
             ### 📖 Documentation
-            Consultez le [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) pour plus d'informations.
+            [README.md](https://github.com/${{ github.repository }}/blob/main/README.md).
           files: |
             dist/RGSX_${{ github.ref_name }}.zip
             dist/RGSX_latest.zip
