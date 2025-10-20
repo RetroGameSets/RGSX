@@ -1,0 +1,88 @@
+# Pour déclencher ce workflow : git tag v1.X.X && git push origin v1.X.X
+# OU en une seule ligne : git tag v1.X.X && git push origin --tags
+name: Release on tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build RGSX Release Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          
+          echo "Building RGSX package from ports/RGSX/ directory…"
+          cd ports/RGSX
+          
+          zip -r "../../dist/RGSX_${VERSION}.zip" . \
+            -x "logs/*" \
+               "logs/**" \
+               "images/*" \
+               "images/**" \
+               "games/*" \
+               "games/**" \
+               "scripts/*" \
+               "scripts/**" \
+               "__pycache__/*" \
+               "__pycache__/**" \
+               "*.pyc" \
+               "sources.json" \
+               "*.log"
+          
+          cd ../..
+          
+          echo "Creating stable-named copy for latest download link…"
+          cp -f "dist/RGSX_${VERSION}.zip" "dist/RGSX_latest.zip"
+          
+          echo "✓ Package created successfully"
+          ls -lh dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: RGSX ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          body: |
+            ## 📦 RGSX Release ${{ github.ref_name }}
+            
+            ### 📥 Installation
+            1. Téléchargez `RGSX_${{ github.ref_name }}.zip`
+            2. Extrayez le contenu dans `/userdata/roms/ports/RGSX/` (Batocera/Knulli)
+            3. Lancez RGSX depuis le menu Ports
+            
+            ### 📦 Contenu du package
+            - Application RGSX complète (tous les fichiers Python)
+            - Interface graphique pygame
+            - Interface web (rgsx_web.py)
+            - Assets complets :
+              - Polices (fonts/)
+              - Images SVG des boutons (images/)
+              - Musiques (music/)
+              - Programmes utilitaires (progs/)
+            - Mappings de contrôleurs (assets/controls/)
+            - Traductions (languages/ : FR, EN, ES, DE, IT, PT)
+            - Scripts de lancement (RGSX.sh)
+            
+            ### 📖 Documentation
+            Consultez le [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) pour plus d'informations.
+          files: |
+            dist/RGSX_${{ github.ref_name }}.zip
+            dist/RGSX_latest.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

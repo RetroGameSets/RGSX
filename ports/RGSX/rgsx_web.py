@@ -189,8 +189,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
     """Handler HTTP pour les requêtes RGSX"""
     
     def log_message(self, format, *args):
-        """Override pour logger proprement"""
-        logger.info("%s - %s" % (self.address_string(), format % args))
+        """Override pour logger proprement (désactivé pour réduire verbosité)"""
+        pass  # Logs désactivés pour éviter la pollution des logs
     
     def _set_headers(self, content_type='application/json', status=200):
         """Définit les headers de réponse"""
@@ -215,8 +215,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
         parsed_path = urllib.parse.urlparse(self.path)
         path = parsed_path.path
         
-        # DEBUG: Log immédiat avec flush forcé
-        print(f"[DEBUG] Requête: {path}", flush=True)
+        # Logs de requêtes désactivés pour réduire verbosité
+        # print(f"[DEBUG] Requête: {path}", flush=True)
         # logger.info(f"GET {path}")
         
         try:
