@@ -928,7 +928,12 @@ async def main():
                         config.download_result_error = not success
                         config.download_progress.clear()
                         config.pending_download = None
-                        config.menu_state = "history"
+                        # Afficher un toast au lieu de changer de page
+                        if success:
+                            toast_msg = f"[OK] {game_name}\n{_('download_completed') if _ else 'Download completed'}"
+                        else:
+                            toast_msg = f"[ERROR] {game_name}\n{_('download_failed') if _ else 'Download failed'}"
+                        show_toast(toast_msg, 3000)
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
                     except Exception as e:
@@ -948,7 +953,9 @@ async def main():
                         config.download_result_error = True
                         config.download_progress.clear()
                         config.pending_download = None
-                        config.menu_state = "history"
+                        # Afficher un toast au lieu de changer de page
+                        toast_msg = f"[ERROR] {game_name}\n{_('download_failed') if _ else 'Download failed'}"
+                        show_toast(toast_msg, 3000)
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
                 else:
@@ -982,9 +989,14 @@ async def main():
                             config.download_result_error = not success
                             config.download_progress.clear()
                             config.pending_download = None
-                            config.menu_state = "history"
+                            # Afficher un toast au lieu de changer de page
+                            if success:
+                                toast_msg = f"[OK] {game_name}\n{_('download_completed') if _ else 'Download completed'}"
+                            else:
+                                toast_msg = f"[ERROR] {game_name}\n{_('download_failed') if _ else 'Download failed'}"
+                            show_toast(toast_msg, 3000)
                             config.needs_redraw = True
-                            logger.debug(f"[DOWNLOAD_TASK] Menu state changed to history after completion, task_id={task_id}")
+                            logger.debug(f"[DOWNLOAD_TASK] Toast displayed after completion, task_id={task_id}")
                             del config.download_tasks[task_id]
                         else:
                             downloaded, total_size = data[1], data[2]

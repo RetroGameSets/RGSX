@@ -2670,7 +2670,7 @@ def draw_popup(screen):
 
 
 def draw_toast(screen):
-    """Affiche une notification toast dans le coin inférieur droit (2s max).
+    """Affiche une notification toast dans le coin supérieur droit (2s max).
     
     Utilise config.toast_message pour le contenu.
     Utilise config.toast_duration (par défaut 2000ms) pour la durée.
@@ -2716,10 +2716,10 @@ def draw_toast(screen):
     toast_width = max_width
     toast_height = len(wrapped_lines) * line_height + 2 * toast_padding
     
-    # Position: coin inférieur droit
+    # Position: coin supérieur droit
     margin = 20
     toast_x = config.screen_width - toast_width - margin
-    toast_y = config.screen_height - toast_height - margin
+    toast_y = margin
     
     # Créer une surface avec transparence
     toast_surface = pygame.Surface((toast_width, toast_height), pygame.SRCALPHA)
