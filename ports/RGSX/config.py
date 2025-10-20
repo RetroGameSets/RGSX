@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.3.0.3"
+app_version = "2.3.0.4"
 
 
 def get_application_root():
@@ -91,10 +91,17 @@ API_KEY_REALDEBRID_PATH = os.path.join(SAVE_FOLDER, "RealDebridAPI.txt")
 
 
 
-# URL
-OTA_SERVER_URL = "https://github.com/RetroGameSets/RGSX/releases/download/latest/"
-OTA_VERSION_ENDPOINT = os.path.join(OTA_SERVER_URL, "version.json")
-OTA_UPDATE_ZIP = os.path.join(OTA_SERVER_URL, "RGSX_latest.zip")
+# URL - GitHub Releases
+GITHUB_REPO = "RetroGameSets/RGSX"
+GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
+
+# URLs pour les mises à jour OTA (Over-The-Air)
+# Utilise le fichier RGSX_latest.zip qui pointe toujours vers la dernière version
+OTA_UPDATE_ZIP = f"{GITHUB_RELEASES_URL}/latest/download/RGSX_latest.zip"
+OTA_VERSION_ENDPOINT = "https://retrogamesets.fr/softs/version.json"  # Endpoint pour vérifier la version disponible
+
+# URLs legacy (conservées pour compatibilité)
+OTA_SERVER_URL = "https://retrogamesets.fr/softs/"
 OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "games.zip")
 
 #CHEMINS DES EXECUTABLES

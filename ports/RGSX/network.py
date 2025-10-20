@@ -483,8 +483,9 @@ async def check_for_updates():
             return True, _("network_no_update_available") if _ else "No update (local >= remote)"
 
         # À ce stade latest_version est strictement > version locale
-        UPDATE_ZIP = OTA_UPDATE_ZIP.replace("RGSX.zip", f"RGSX_v{latest_version}.zip")
-        logger.debug(f"URL de mise à jour : {UPDATE_ZIP}")
+        # Utiliser l'URL RGSX_latest.zip qui pointe toujours vers la dernière version sur GitHub
+        UPDATE_ZIP = OTA_UPDATE_ZIP
+        logger.debug(f"URL de mise à jour : {UPDATE_ZIP} (version {latest_version})")
 
         if latest_version != config.app_version:
             config.current_loading_system = _("network_update_available").format(latest_version)
