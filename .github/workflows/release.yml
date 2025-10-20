@@ -47,7 +47,36 @@ jobs:
           echo "Creating stable-named copy for latest download link…"
           cp -f "dist/RGSX_${VERSION}.zip" "dist/RGSX_latest.zip"
           
-          echo "✓ Package created successfully"
+          echo "✓ RGSX package created successfully"
+          
+          echo ""
+          echo "Building RGSX Retrobat package (includes ports/ and windows/ directories)…"
+          zip -r "dist/RGSX_Retrobat_${VERSION}.zip" ports windows \
+            -x "ports/RGSX/logs/*" \
+               "ports/RGSX/logs/**" \
+               "ports/RGSX/images/*" \
+               "ports/RGSX/images/**" \
+               "ports/RGSX/games/*" \
+               "ports/RGSX/games/**" \
+               "ports/RGSX/scripts/*" \
+               "ports/RGSX/scripts/**" \
+               "ports/RGSX/__pycache__/*" \
+               "ports/RGSX/__pycache__/**" \
+               "ports/RGSX/*.pyc" \
+               "ports/RGSX/sources.json" \
+               "ports/RGSX/*.log" \
+               "windows/logs/*" \
+               "windows/*.xml" \
+               "ports/*.xml" \
+               "*.xml" \
+               "*.pyc" \
+               "*.xml" \
+               "*.log"
+          
+          echo "Creating stable-named copy for Retrobat package…"
+          cp -f "dist/RGSX_Retrobat_${VERSION}.zip" "dist/RGSX_Retrobat_latest.zip"
+          
+          echo "✓ All packages created successfully"
           ls -lh dist/
 
       - name: Create GitHub Release
@@ -62,11 +91,42 @@ jobs:
             ## 📦 RGSX Release ${{ github.ref_name }}
             
             ### 📥 Installation
-            1. Extract to ROMS/PORTS/RGSX
+            
+            #### Pour Batocera/Knulli/Linux
+            1. Téléchargez `RGSX_${{ github.ref_name }}.zip`
+            2. Extrayez le contenu dans `/userdata/roms/ports/RGSX/`
+            3. Lancez RGSX depuis le menu Ports
+            
+            #### Pour Retrobat/Windows
+            1. Téléchargez `RGSX_Retrobat_${{ github.ref_name }}.zip`
+            2. Extrayez le contenu à la racine de Retrobat (les dossiers `ports/` et `windows/` seront créés automatiquement)
+            3. Lancez RGSX depuis le menu Ports ou exécutez `RGSX Retrobat.bat`
+            
+            ### 📦 Contenu des packages
+            
+            **RGSX_${{ github.ref_name }}.zip** (Batocera/Knulli/Linux)
+            - Application RGSX complète (tous les fichiers Python)
+            - Interface graphique pygame
+            - Interface web (rgsx_web.py)
+            - Assets complets (polices, images SVG, musiques, utilitaires)
+            - Mappings de contrôleurs
+            - Traductions (FR, EN, ES, DE, IT, PT)
+            - Script de lancement (RGSX.sh)
+            
+            **RGSX_Retrobat_${{ github.ref_name }}.zip** (Windows/Retrobat)
+            - Tout le contenu du package standard
+            - Structure de dossiers `ports/` et `windows/` pour Retrobat
+            - Scripts batch Windows
+            - Fichiers gamelist.xml préconfigurés
+            - Vidéos et images pour l'interface Retrobat
+            
             ### 📖 Documentation
-            [README.md](https://github.com/${{ github.repository }}/blob/main/README.md).
+            Consultez le [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) pour plus d'informations.
           files: |
             dist/RGSX_${{ github.ref_name }}.zip
+            dist/RGSX_latest.zip
+            dist/RGSX_Retrobat_${{ github.ref_name }}.zip
+            dist/RGSX_Retrobat_latest.zip
             dist/RGSX_latest.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

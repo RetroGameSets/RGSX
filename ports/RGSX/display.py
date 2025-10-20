@@ -1489,8 +1489,8 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
     # Construire les lignes avec icônes
     icon_lines = []
     
-    # Sur la page d'accueil uniquement: afficher version et musique
-    if menu_state == "platform":
+    # Sur la page d'accueil et la page loading afficher version et musique
+    if menu_state == "platform" or menu_state == "loading":
         control_parts = []
         
         start_button = get_control_display('start', 'START')
