@@ -46,6 +46,7 @@ VALID_STATES = [
     "history_game_options",     # menu options pour un jeu de l'historique
     "history_show_folder",      # afficher le dossier de téléchargement
     "history_scraper_info",     # info scraper non implémenté
+    "scraper",                  # écran du scraper avec métadonnées
     "history_error_details",    # détails de l'erreur
     "history_confirm_delete",   # confirmation suppression jeu
     "history_extract_archive"   # extraction d'archive
@@ -706,100 +707,15 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "reload_games_data"
                     config.needs_redraw = True
                     logger.debug("Passage à reload_games_data depuis game")
-                # Télécharger le jeu courant
+                # Télécharger le jeu courant (ou scraper si appui long)
                 elif is_input_matched(event, "confirm"):
-                    if games:
-                        url = games[config.current_game][1]
-                        game_name = games[config.current_game][0]
-                        platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
-                        logger.debug(f"Vérification pour {game_name}, URL: {url}")
-                        # Vérifier d'abord l'extension avant d'ajouter à l'historique
-                        if is_1fichier_url(url):
-                            from utils import ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
-                            ensure_download_provider_keys(False)
-                                               
-                            # Avertissement si pas de clé (utilisation mode gratuit)
-                            if missing_all_provider_keys():
-                                logger.warning("Aucune clé API - Mode gratuit 1fichier sera utilisé (attente requise)")
-                            
-                            config.pending_download = check_extension_before_download(url, platform, game_name)
-                            if config.pending_download:
-                                is_supported = is_extension_supported(
-                                    sanitize_filename(game_name),
-                                    platform,
-                                    load_extensions_json()
-                                )
-                                zip_ok = bool(config.pending_download[3])
-                                allow_unknown = False
-                                try:
-                                    from rgsx_settings import get_allow_unknown_extensions
-                                    allow_unknown = get_allow_unknown_extensions()
-                                except Exception:
-                                    allow_unknown = False
-                                if (not is_supported and not zip_ok) and not allow_unknown:
-                                    config.previous_menu_state = config.menu_state
-                                    config.menu_state = "extension_warning"
-                                    config.extension_confirm_selection = 0
-                                    config.needs_redraw = True
-                                    logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
-                                else:
-                                    task_id = str(pygame.time.get_ticks())
-                                    task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
-                                    config.download_tasks[task_id] = (task, url, game_name, platform)
-                                    # Afficher un toast de notification
-                                    show_toast(f"{_('download_started')}: {game_name}")
-                                    config.needs_redraw = True
-                                    logger.debug(f"Début du téléchargement 1fichier: {game_name} pour {platform} depuis {url}, task_id={task_id}")
-                                    config.pending_download = None
-                                    action = "download"
-                            else:
-                                config.menu_state = "error"
-                                config.error_message = "Extension non supportée ou erreur de téléchargement"
-                                config.pending_download = None
-                                config.needs_redraw = True
-                                logger.error(f"config.pending_download est None pour {game_name}")
-                        else:
-                            config.pending_download = check_extension_before_download(url, platform, game_name)
-                            if config.pending_download:
-                                extensions_data = load_extensions_json()
-                                logger.debug(f"Extensions chargées: {len(extensions_data)} systèmes")
-                                is_supported = is_extension_supported(
-                                    sanitize_filename(game_name),
-                                    platform,
-                                    extensions_data
-                                )
-                                zip_ok = bool(config.pending_download[3])
-                                allow_unknown = False
-                                try:
-                                    from rgsx_settings import get_allow_unknown_extensions
-                                    allow_unknown = get_allow_unknown_extensions()
-                                except Exception:
-                                    allow_unknown = False
-                                logger.debug(f"Extension check pour {game_name}: is_supported={is_supported}, zip_ok={zip_ok}, allow_unknown={allow_unknown}")
-                                if (not is_supported and not zip_ok) and not allow_unknown:
-                                    config.previous_menu_state = config.menu_state
-                                    config.menu_state = "extension_warning"
-                                    config.extension_confirm_selection = 0
-                                    config.needs_redraw = True
-                                    logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
-                                else:
-                                    task_id = str(pygame.time.get_ticks())
-                                    task = asyncio.create_task(download_rom(url, platform, game_name, config.pending_download[3], task_id))
-                                    config.download_tasks[task_id] = (task, url, game_name, platform)
-                                    # Afficher un toast de notification
-                                    show_toast(f"{_('download_started')}: {game_name}")
-                                    config.needs_redraw = True
-                                    config.pending_download = None
-                                    action = "download"
-                            else:
-                                config.menu_state = "error"
-                                try:
-                                    config.error_message = _("error_invalid_download_data")
-                                except Exception:
-                                    config.error_message = "Invalid download data"
-                                config.pending_download = None
-                                config.needs_redraw = True
-                                logger.error(f"config.pending_download est None pour {game_name}")
+                    # Détecter le début de l'appui
+                    if event.type in (pygame.KEYDOWN, pygame.JOYBUTTONDOWN):
+                        config.confirm_press_start_time = current_time
+                        config.confirm_long_press_triggered = False
+                        logger.debug(f"Début appui confirm à {current_time}")
+                        # NE PAS télécharger immédiatement, attendre le relâchement
+                        # pour déterminer si c'est un appui long ou court
 
         # Avertissement extension
         elif config.menu_state == "extension_warning":
@@ -1024,8 +940,9 @@ def handle_controls(event, sources, joystick, screen):
                 
                 # Déterminer les options disponibles selon le statut
                 options = []
-                # Option commune: dossier de téléchargement
-                options.append("download_folder")
+                
+                # Option commune: scraper (toujours disponible)
+                options.append("scraper")
                 
                 # Options selon statut
                 if status == "Download_OK" or status == "Completed":
@@ -1034,15 +951,15 @@ def handle_controls(event, sources, joystick, screen):
                         ext = os.path.splitext(actual_filename)[1].lower()
                         if ext in ['.zip', '.rar']:
                             options.append("extract_archive")
-                    # Scraper et suppression uniquement si le fichier existe
-                    if file_exists:
-                        options.append("scraper")
-                        options.append("delete_game")
                 elif status in ["Erreur", "Error", "Canceled"]:
                     options.append("error_info")
                     options.append("retry")
-                    options.append("delete_game")
 
+                # Options communes si le fichier existe
+                if file_exists:
+                    options.append("download_folder")
+                    options.append("delete_game")
+                
                 # Option commune: retour
                 options.append("back")
                 
@@ -1084,11 +1001,60 @@ def handle_controls(event, sources, joystick, screen):
                         logger.debug(f"Extraction de l'archive {game_name}")
                         
                     elif selected_option == "scraper":
-                        # Scraper (non implémenté pour le moment)
+                        # Lancer le scraper
                         config.previous_menu_state = "history_game_options"
-                        config.menu_state = "history_scraper_info"
+                        config.menu_state = "scraper"
+                        config.scraper_game_name = game_name
+                        config.scraper_platform_name = platform
+                        config.scraper_loading = True
+                        config.scraper_error_message = ""
+                        config.scraper_image_surface = None
+                        config.scraper_image_url = ""
+                        config.scraper_description = ""
+                        config.scraper_genre = ""
+                        config.scraper_release_date = ""
+                        config.scraper_game_page_url = ""
                         config.needs_redraw = True
-                        logger.debug(f"Scraper pour {game_name} (non implémenté)")
+                        logger.debug(f"Lancement du scraper pour {game_name}")
+                        
+                        # Lancer la recherche des métadonnées dans un thread séparé
+                        
+                        def scrape_async():
+                            from scraper import get_game_metadata, download_image_to_surface
+                            logger.info(f"Scraping métadonnées pour {game_name} sur {platform}")
+                            metadata = get_game_metadata(game_name, platform)
+                            
+                            # Vérifier si on a une erreur
+                            if "error" in metadata:
+                                config.scraper_error_message = metadata["error"]
+                                config.scraper_loading = False
+                                config.needs_redraw = True
+                                logger.error(f"Erreur de scraping: {metadata['error']}")
+                                return
+                            
+                            # Mettre à jour les métadonnées textuelles
+                            config.scraper_description = metadata.get("description", "")
+                            config.scraper_genre = metadata.get("genre", "")
+                            config.scraper_release_date = metadata.get("release_date", "")
+                            config.scraper_game_page_url = metadata.get("game_page_url", "")
+                            
+                            # Télécharger l'image si disponible
+                            image_url = metadata.get("image_url")
+                            if image_url:
+                                logger.info(f"Téléchargement de l'image: {image_url}")
+                                image_surface = download_image_to_surface(image_url)
+                                if image_surface:
+                                    config.scraper_image_surface = image_surface
+                                    config.scraper_image_url = image_url
+                                else:
+                                    logger.warning("Échec du téléchargement de l'image")
+                            
+                            config.scraper_loading = False
+                            config.needs_redraw = True
+                            logger.info("Scraping terminé")
+                        
+                        thread = threading.Thread(target=scrape_async, daemon=True)
+                        thread.start()
                         
                     elif selected_option == "delete_game":
                         # Demander confirmation avant suppression
@@ -1153,7 +1119,26 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = validate_menu_state(config.previous_menu_state)
                 config.needs_redraw = True
 
-        # Information scraper (non implémenté)
+        # Scraper
+        elif config.menu_state == "scraper":
+            if is_input_matched(event, "confirm") or is_input_matched(event, "cancel"):
+                logger.info(f"Scraper: fermeture demandée")
+                # Retour au menu précédent
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                # Nettoyer les variables du scraper
+                config.scraper_image_surface = None
+                config.scraper_image_url = ""
+                config.scraper_game_name = ""
+                config.scraper_platform_name = ""
+                config.scraper_loading = False
+                config.scraper_error_message = ""
+                config.scraper_description = ""
+                config.scraper_genre = ""
+                config.scraper_release_date = ""
+                config.scraper_game_page_url = ""
+                config.needs_redraw = True
+        
+        # Information scraper (ancien, gardé pour compatibilité)
         elif config.menu_state == "history_scraper_info":
             if is_input_matched(event, "confirm") or is_input_matched(event, "cancel"):
                 config.menu_state = validate_menu_state(config.previous_menu_state)
@@ -1224,7 +1209,7 @@ def handle_controls(event, sources, joystick, screen):
                         entry = config.history[config.current_history_item]
                         platform = entry.get("platform", "")
                         
-                        import threading
+                        # threading est déjà importé en haut du fichier (ligne 8)
                         
                         # Utiliser le chemin réel trouvé (avec ou sans extension)
                         file_path = getattr(config, 'history_actual_path', None)
@@ -1995,6 +1980,104 @@ def handle_controls(event, sources, joystick, screen):
             if config.controls_config.get(action_name, {}).get("type") == "key" and \
                config.controls_config.get(action_name, {}).get("key") == event.key:
                 update_key_state(action_name, False)
+                
+                # Gestion spéciale pour confirm dans le menu game
+                if action_name == "confirm" and config.menu_state == "game":
+                    press_duration = current_time - config.confirm_press_start_time
+                    # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
+                    if press_duration < config.confirm_long_press_threshold and not config.confirm_long_press_triggered:
+                        # Déclencher le téléchargement normal
+                        games = config.filtered_games if config.filter_active or config.search_mode else config.games
+                        if games:
+                            url = games[config.current_game][1]
+                            game_name = games[config.current_game][0]
+                            platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
+                            logger.debug(f"Appui court sur confirm ({press_duration}ms), téléchargement pour {game_name}, URL: {url}")
+                            
+                            # Vérifier d'abord l'extension avant d'ajouter à l'historique
+                            if is_1fichier_url(url):
+                                from utils import ensure_download_provider_keys, missing_all_provider_keys
+                                ensure_download_provider_keys(False)
+                                
+                                # Avertissement si pas de clé (utilisation mode gratuit)
+                                if missing_all_provider_keys():
+                                    logger.warning("Aucune clé API - Mode gratuit 1fichier sera utilisé (attente requise)")
+                                
+                                config.pending_download = check_extension_before_download(url, platform, game_name)
+                                if config.pending_download:
+                                    is_supported = is_extension_supported(
+                                        sanitize_filename(game_name),
+                                        platform,
+                                        load_extensions_json()
+                                    )
+                                    zip_ok = bool(config.pending_download[3])
+                                    allow_unknown = False
+                                    try:
+                                        from rgsx_settings import get_allow_unknown_extensions
+                                        allow_unknown = get_allow_unknown_extensions()
+                                    except Exception:
+                                        allow_unknown = False
+                                    if (not is_supported and not zip_ok) and not allow_unknown:
+                                        config.previous_menu_state = config.menu_state
+                                        config.menu_state = "extension_warning"
+                                        config.extension_confirm_selection = 0
+                                        config.needs_redraw = True
+                                        logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
+                                    else:
+                                        task_id = str(pygame.time.get_ticks())
+                                        task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
+                                        config.download_tasks[task_id] = (task, url, game_name, platform)
+                                        show_toast(f"{_('download_started')}: {game_name}")
+                                        config.needs_redraw = True
+                                        logger.debug(f"Début du téléchargement 1fichier: {game_name} pour {platform}, task_id={task_id}")
+                                        config.pending_download = None
+                                else:
+                                    config.menu_state = "error"
+                                    config.error_message = "Extension non supportée ou erreur de téléchargement"
+                                    config.pending_download = None
+                                    config.needs_redraw = True
+                                    logger.error(f"config.pending_download est None pour {game_name}")
+                            else:
+                                config.pending_download = check_extension_before_download(url, platform, game_name)
+                                if config.pending_download:
+                                    extensions_data = load_extensions_json()
+                                    is_supported = is_extension_supported(
+                                        sanitize_filename(game_name),
+                                        platform,
+                                        extensions_data
+                                    )
+                                    zip_ok = bool(config.pending_download[3])
+                                    allow_unknown = False
+                                    try:
+                                        from rgsx_settings import get_allow_unknown_extensions
+                                        allow_unknown = get_allow_unknown_extensions()
+                                    except Exception:
+                                        allow_unknown = False
+                                    if (not is_supported and not zip_ok) and not allow_unknown:
+                                        config.previous_menu_state = config.menu_state
+                                        config.menu_state = "extension_warning"
+                                        config.extension_confirm_selection = 0
+                                        config.needs_redraw = True
+                                        logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
+                                    else:
+                                        task_id = str(pygame.time.get_ticks())
+                                        task = asyncio.create_task(download_rom(url, platform, game_name, config.pending_download[3], task_id))
+                                        config.download_tasks[task_id] = (task, url, game_name, platform)
+                                        show_toast(f"{_('download_started')}: {game_name}")
+                                        config.needs_redraw = True
+                                        config.pending_download = None
+                                else:
+                                    config.menu_state = "error"
+                                    try:
+                                        config.error_message = _("error_invalid_download_data")
+                                    except Exception:
+                                        config.error_message = "Invalid download data"
+                                    config.pending_download = None
+                                    config.needs_redraw = True
+                                    logger.error(f"config.pending_download est None pour {game_name}")
+                    # Réinitialiser les flags
+                    config.confirm_press_start_time = 0
+                    config.confirm_long_press_triggered = False
     
     elif event.type == pygame.JOYBUTTONUP:
         # Vérifier quel bouton a été relâché
@@ -2002,6 +2085,104 @@ def handle_controls(event, sources, joystick, screen):
             if config.controls_config.get(action_name, {}).get("type") == "button" and \
                config.controls_config.get(action_name, {}).get("button") == event.button:
                 update_key_state(action_name, False)
+                
+                # Gestion spéciale pour confirm dans le menu game
+                if action_name == "confirm" and config.menu_state == "game":
+                    press_duration = current_time - config.confirm_press_start_time
+                    # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
+                    if press_duration < config.confirm_long_press_threshold and not config.confirm_long_press_triggered:
+                        # Déclencher le téléchargement normal (même code que pour KEYUP)
+                        games = config.filtered_games if config.filter_active or config.search_mode else config.games
+                        if games:
+                            url = games[config.current_game][1]
+                            game_name = games[config.current_game][0]
+                            platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
+                            logger.debug(f"Appui court sur confirm ({press_duration}ms), téléchargement pour {game_name}, URL: {url}")
+                            
+                            # Vérifier d'abord l'extension avant d'ajouter à l'historique
+                            if is_1fichier_url(url):
+                                from utils import ensure_download_provider_keys, missing_all_provider_keys
+                                ensure_download_provider_keys(False)
+                                
+                                # Avertissement si pas de clé (utilisation mode gratuit)
+                                if missing_all_provider_keys():
+                                    logger.warning("Aucune clé API - Mode gratuit 1fichier sera utilisé (attente requise)")
+                                
+                                config.pending_download = check_extension_before_download(url, platform, game_name)
+                                if config.pending_download:
+                                    is_supported = is_extension_supported(
+                                        sanitize_filename(game_name),
+                                        platform,
+                                        load_extensions_json()
+                                    )
+                                    zip_ok = bool(config.pending_download[3])
+                                    allow_unknown = False
+                                    try:
+                                        from rgsx_settings import get_allow_unknown_extensions
+                                        allow_unknown = get_allow_unknown_extensions()
+                                    except Exception:
+                                        allow_unknown = False
+                                    if (not is_supported and not zip_ok) and not allow_unknown:
+                                        config.previous_menu_state = config.menu_state
+                                        config.menu_state = "extension_warning"
+                                        config.extension_confirm_selection = 0
+                                        config.needs_redraw = True
+                                        logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
+                                    else:
+                                        task_id = str(pygame.time.get_ticks())
+                                        task = asyncio.create_task(download_from_1fichier(url, platform, game_name, config.pending_download[3], task_id))
+                                        config.download_tasks[task_id] = (task, url, game_name, platform)
+                                        show_toast(f"{_('download_started')}: {game_name}")
+                                        config.needs_redraw = True
+                                        logger.debug(f"Début du téléchargement 1fichier: {game_name} pour {platform}, task_id={task_id}")
+                                        config.pending_download = None
+                                else:
+                                    config.menu_state = "error"
+                                    config.error_message = "Extension non supportée ou erreur de téléchargement"
+                                    config.pending_download = None
+                                    config.needs_redraw = True
+                                    logger.error(f"config.pending_download est None pour {game_name}")
+                            else:
+                                config.pending_download = check_extension_before_download(url, platform, game_name)
+                                if config.pending_download:
+                                    extensions_data = load_extensions_json()
+                                    is_supported = is_extension_supported(
+                                        sanitize_filename(game_name),
+                                        platform,
+                                        extensions_data
+                                    )
+                                    zip_ok = bool(config.pending_download[3])
+                                    allow_unknown = False
+                                    try:
+                                        from rgsx_settings import get_allow_unknown_extensions
+                                        allow_unknown = get_allow_unknown_extensions()
+                                    except Exception:
+                                        allow_unknown = False
+                                    if (not is_supported and not zip_ok) and not allow_unknown:
+                                        config.previous_menu_state = config.menu_state
+                                        config.menu_state = "extension_warning"
+                                        config.extension_confirm_selection = 0
+                                        config.needs_redraw = True
+                                        logger.debug(f"Extension non supportée, passage à extension_warning pour {game_name}")
+                                    else:
+                                        task_id = str(pygame.time.get_ticks())
+                                        task = asyncio.create_task(download_rom(url, platform, game_name, config.pending_download[3], task_id))
+                                        config.download_tasks[task_id] = (task, url, game_name, platform)
+                                        show_toast(f"{_('download_started')}: {game_name}")
+                                        config.needs_redraw = True
+                                        config.pending_download = None
+                                else:
+                                    config.menu_state = "error"
+                                    try:
+                                        config.error_message = _("error_invalid_download_data")
+                                    except Exception:
+                                        config.error_message = "Invalid download data"
+                                    config.pending_download = None
+                                    config.needs_redraw = True
+                                    logger.error(f"config.pending_download est None pour {game_name}")
+                    # Réinitialiser les flags
+                    config.confirm_press_start_time = 0
+                    config.confirm_long_press_triggered = False
     
     elif event.type == pygame.JOYAXISMOTION and abs(event.value) < 0.5:
         # Vérifier quel axe a été relâché

@@ -1338,16 +1338,33 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archi
                     # Continuer quand même, l'erreur sera capturée plus tard
             
             if config.OPERATING_SYSTEM == "Windows":
+                # Utiliser des guillemets doubles et échapper correctement pour PowerShell
+                # Doubler les guillemets doubles internes pour l'échappement PowerShell
+                dkey_escaped = dkey_path.replace('"', '""')
+                ps3dec_escaped = config.PS3DEC_EXE.replace('"', '""')
+                iso_escaped = iso_path.replace('"', '""')
+                decrypted_escaped = decrypted_iso_path.replace('"', '""')
+                
                 cmd = [
                     "powershell", "-Command",
-                    f"$key = (Get-Content '{dkey_path}' -Raw).Trim(); " +
-                    f"& '{config.PS3DEC_EXE}' d key $key '{iso_path}' '{decrypted_iso_path}'"
+                    f'$key = (Get-Content "{dkey_escaped}" -Raw).Trim(); ' +
+                    f'& "{ps3dec_escaped}" d key $key "{iso_escaped}" "{decrypted_escaped}"'
                 ]
             else:  # Linux
+                # Utiliser des guillemets doubles avec échappement pour bash
+                # Échapper les caractères spéciaux: $, `, \, ", et !
+                def bash_escape(path):
+                    return path.replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+                
+                dkey_escaped = bash_escape(dkey_path)
+                ps3dec_escaped = bash_escape(config.PS3DEC_LINUX)
+                iso_escaped = bash_escape(iso_path)
+                decrypted_escaped = bash_escape(decrypted_iso_path)
+                
                 cmd = [
                     "bash", "-c",
-                    f"key=$(cat '{dkey_path}' | tr -d ' \\n\\r\\t'); " +
-                    f"'{config.PS3DEC_LINUX}' d key \"$key\" '{iso_path}' '{decrypted_iso_path}'"
+                    f'key=$(cat "{dkey_escaped}" | tr -d \' \\n\\r\\t\'); ' +
+                    f'"{ps3dec_escaped}" d key "$key" "{iso_escaped}" "{decrypted_escaped}"'
                 ]
             
             logger.debug(f"Commande de décryptage: {' '.join(cmd)}")

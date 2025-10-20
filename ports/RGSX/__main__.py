@@ -478,6 +478,73 @@ async def main():
         # Gestion de la répétition automatique des actions
         process_key_repeats(sources, joystick, screen)
         
+        # Gestion de l'appui long sur confirm dans le menu game pour ouvrir le scraper
+        if (config.menu_state == "game" and 
+            config.confirm_press_start_time > 0 and 
+            not config.confirm_long_press_triggered):
+            press_duration = current_time - config.confirm_press_start_time
+            if press_duration >= config.confirm_long_press_threshold:
+                # Appui long détecté, ouvrir le scraper
+                games = config.filtered_games if config.filter_active or config.search_mode else config.games
+                if games:
+                    game_name = games[config.current_game][0]
+                    platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
+                    
+                    config.previous_menu_state = "game"
+                    config.menu_state = "scraper"
+                    config.scraper_game_name = game_name
+                    config.scraper_platform_name = platform
+                    config.scraper_loading = True
+                    config.scraper_error_message = ""
+                    config.scraper_image_surface = None
+                    config.scraper_image_url = ""
+                    config.scraper_description = ""
+                    config.scraper_genre = ""
+                    config.scraper_release_date = ""
+                    config.scraper_game_page_url = ""
+                    config.needs_redraw = True
+                    config.confirm_long_press_triggered = True  # Éviter de déclencher plusieurs fois
+                    logger.debug(f"Appui long détecté ({press_duration}ms), ouverture du scraper pour {game_name}")
+                    
+                    # Lancer la recherche des métadonnées dans un thread séparé
+                    def scrape_async():
+                        from scraper import get_game_metadata, download_image_to_surface
+                        logger.info(f"Scraping métadonnées pour {game_name} sur {platform}")
+                        metadata = get_game_metadata(game_name, platform)
+                        
+                        # Vérifier si on a une erreur
+                        if "error" in metadata:
+                            config.scraper_error_message = metadata["error"]
+                            config.scraper_loading = False
+                            config.needs_redraw = True
+                            logger.error(f"Erreur de scraping: {metadata['error']}")
+                            return
+                        
+                        # Mettre à jour les métadonnées textuelles
+                        config.scraper_description = metadata.get("description", "")
+                        config.scraper_genre = metadata.get("genre", "")
+                        config.scraper_release_date = metadata.get("release_date", "")
+                        config.scraper_game_page_url = metadata.get("game_page_url", "")
+                        
+                        # Télécharger l'image si disponible
+                        image_url = metadata.get("image_url")
+                        if image_url:
+                            logger.info(f"Téléchargement de l'image: {image_url}")
+                            image_surface = download_image_to_surface(image_url)
+                            if image_surface:
+                                config.scraper_image_surface = image_surface
+                                config.scraper_image_url = image_url
+                            else:
+                                logger.warning("Échec du téléchargement de l'image")
+                        
+                        config.scraper_loading = False
+                        config.needs_redraw = True
+                        logger.info("Scraping terminé")
+                    
+                    import threading
+                    thread = threading.Thread(target=scrape_async, daemon=True)
+                    thread.start()
+        
         # Gestion des événements
         events = pygame.event.get()
         for event in events:            
@@ -594,6 +661,7 @@ async def main():
                 "history_game_options",
                 "history_show_folder",
                 "history_scraper_info",
+                "scraper",  # Ajout du scraper pour gérer les contrôles
                 "history_error_details",
                 "history_confirm_delete",
                 "history_extract_archive",
@@ -830,7 +898,7 @@ async def main():
         # Gestion des téléchargements
         if config.download_tasks:
             for task_id, (task, url, game_name, platform_name) in list(config.download_tasks.items()):
-                logger.debug(f"[DOWNLOAD_CHECK] Checking task {task_id}: done={task.done()}, game={game_name}")
+                #logger.debug(f"[DOWNLOAD_CHECK] Checking task {task_id}: done={task.done()}, game={game_name}")
                 if task.done():
                     logger.debug(f"[DOWNLOAD_COMPLETE] Task {task_id} is done, processing result for {game_name}")
                     try:
@@ -840,9 +908,9 @@ async def main():
                             message = message.split("https://")[0].strip()
                         logger.debug(f"[HISTORY_SEARCH] Searching in {len(config.history)} history entries for url={url[:50]}...")
                         for entry in config.history:
-                            logger.debug(f"[HISTORY_ENTRY] Checking: url_match={entry['url'] == url}, status={entry['status']}, game={entry.get('game_name')}")
+                            #logger.debug(f"[HISTORY_ENTRY] Checking: url_match={entry['url'] == url}, status={entry['status']}, game={entry.get('game_name')}")
                             if entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
-                                logger.debug(f"[HISTORY_MATCH] Found matching entry for {game_name}, updating status")
+                                #logger.debug(f"[HISTORY_MATCH] Found matching entry for {game_name}, updating status")
                                 entry["status"] = "Download_OK" if success else "Erreur"
                                 entry["progress"] = 100 if success else 0
                                 entry["message"] = message
@@ -994,6 +1062,9 @@ async def main():
             elif config.menu_state == "history_show_folder":
                 from display import draw_history_show_folder
                 draw_history_show_folder(screen)
+            elif config.menu_state == "scraper":
+                from display import draw_scraper_screen
+                draw_scraper_screen(screen)
             elif config.menu_state == "history_scraper_info":
                 from display import draw_history_scraper_info
                 draw_history_scraper_info(screen)

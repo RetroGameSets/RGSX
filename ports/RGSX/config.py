@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.3.0.0"
+app_version = "2.3.0.1"
 
 
 def get_application_root():
@@ -307,6 +307,18 @@ confirm_cancel_selection = 0  # confirmation annulation téléchargement
 # Tracking des jeux téléchargés
 downloaded_games = {}  # Dict {platform_name: {game_name: {"timestamp": "...", "size": "..."}}}
 
+# Scraper de métadonnées
+scraper_image_surface = None  # Surface Pygame contenant l'image scrapée
+scraper_image_url = ""  # URL de l'image actuellement affichée
+scraper_game_name = ""  # Nom du jeu en cours de scraping
+scraper_platform_name = ""  # Nom de la plateforme en cours de scraping
+scraper_loading = False  # Indicateur de chargement en cours
+scraper_error_message = ""  # Message d'erreur du scraper
+scraper_description = ""  # Description du jeu
+scraper_genre = ""  # Genre(s) du jeu
+scraper_release_date = ""  # Date de sortie du jeu
+scraper_game_page_url = ""  # URL de la page du jeu sur TheGamesDB
+
 # CLES API / PREMIUM HOSTS
 API_KEY_1FICHIER = ""
 API_KEY_ALLDEBRID = ""
@@ -328,6 +340,10 @@ current_music_name = None  # Nom de la piste musicale actuelle
 music_popup_start_time = 0  # Timestamp de début du popup musique
 error_message = ""  # Message d'erreur à afficher
 
+# Détection d'appui long sur confirm (menu game)
+confirm_press_start_time = 0  # Timestamp du début de l'appui sur confirm
+confirm_long_press_threshold = 2000  # Durée en ms pour déclencher l'appui long (2 secondes)
+confirm_long_press_triggered = False  # Flag pour éviter de déclencher plusieurs fois
 
 # Tenter la récupération de la famille de police sauvegardée
 try:
