@@ -86,7 +86,7 @@ jobs:
           body: |
             ## 📦 RGSX Release ${{ github.ref_name }}
             
-            ### 📥 Manual Installation
+            ### 📥 Manual Installation 
             
             #### Batocera/Knulli
             1. Download `RGSX_full_latest.zip`
@@ -94,7 +94,7 @@ jobs:
             3. Launch RGSX from the Ports menu
             
             #### Retrobat/Full Installation on Windows
-            1. `RGSX_full_latest.zip`
+            1. Download `RGSX_full_latest.zip`
             2. Extract all folders in your Retrobat\roms folder
             3. Launch RGSX from system "Windows"
             
