@@ -97,7 +97,7 @@ jobs:
             2. Extract in `/userdata/roms/ports/RGSX/`
             3. Launch RGSX from the Ports menu
             
-            #### Full/Windows
+            #### Retrobat/Full Installation on Windows
             1. `RGSX_Full_${{ github.ref_name }}.zip`
             2. Extract in Full/roms (les dossiers `ports/` et `windows/` seront créés automatiquement)
             3. Launch RGSX from system "Windows"
@@ -110,6 +110,5 @@ jobs:
             dist/RGSX_latest.zip
             dist/RGSX_Full_${{ github.ref_name }}.zip
             dist/RGSX_Full_latest.zip
-            dist/RGSX_latest.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
