@@ -97,7 +97,7 @@ GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
 # URLs pour les mises à jour OTA (Over-The-Air)
 # Utilise le fichier RGSX_latest.zip qui pointe toujours vers la dernière version
-OTA_UPDATE_ZIP = f"{GITHUB_RELEASES_URL}/latest/download/RGSX_latest.zip"
+OTA_UPDATE_ZIP = f"{GITHUB_RELEASES_URL}/latest/download/RGSX_update_latest.zip"
 OTA_VERSION_ENDPOINT = "https://retrogamesets.fr/softs/version.json"  # Endpoint pour vérifier la version disponible
 
 # URLs legacy (conservées pour compatibilité)

@@ -495,7 +495,7 @@ async def check_for_updates():
 
             # Créer le dossier UPDATE_FOLDER s'il n'existe pas
             os.makedirs(UPDATE_FOLDER, exist_ok=True)
-            update_zip_path = os.path.join(UPDATE_FOLDER, f"RGSX_v{latest_version}.zip")
+            update_zip_path = os.path.join(UPDATE_FOLDER, f"RGSX_update_v{latest_version}.zip")
             logger.debug(f"Téléchargement de {UPDATE_ZIP} vers {update_zip_path}")
 
             # Télécharger le ZIP

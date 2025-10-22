@@ -27,7 +27,7 @@ jobs:
           echo "Building RGSX package from ports/RGSX/ directory…"
           cd ports/RGSX
           
-          zip -r "../../dist/RGSX_${VERSION}.zip" . \
+          zip -r "../../dist/RGSX_update_latest.zip" . \
             -x "logs/*" \
                "logs/**" \
                "images/*" \
@@ -44,14 +44,12 @@ jobs:
           
           cd ../..
           
-          echo "Creating stable-named copy for latest download link…"
-          cp -f "dist/RGSX_${VERSION}.zip" "dist/RGSX_latest.zip"
           
           echo "✓ RGSX package created successfully"
           
           echo ""
           echo "Building RGSX Full package (includes ports/ and windows/ directories)…"
-          zip -r "dist/RGSX_Full_${VERSION}.zip" ports windows \
+          zip -r "dist/RGSX_full_latest.zip" ports windows \
             -x "ports/RGSX/logs/*" \
                "ports/RGSX/logs/**" \
                "ports/RGSX/images/*" \
@@ -73,8 +71,6 @@ jobs:
                "*.xml" \
                "*.log"
           
-          echo "Creating stable-named copy for Full package…"
-          cp -f "dist/RGSX_Full_${VERSION}.zip" "dist/RGSX_Full_latest.zip"
           
           echo "✓ All packages created successfully"
           ls -lh dist/
@@ -90,25 +86,23 @@ jobs:
           body: |
             ## 📦 RGSX Release ${{ github.ref_name }}
             
-            ### 📥 Installation
+            ### 📥 Manual Installation
             
             #### Batocera/Knulli
-            1. Download `RGSX_${{ github.ref_name }}.zip`
-            2. Extract in `/userdata/roms/ports/RGSX/`
+            1. Download `RGSX_full_latest.zip`
+            2. Extract only PORTS folder in `/userdata/roms/`
             3. Launch RGSX from the Ports menu
             
             #### Retrobat/Full Installation on Windows
-            1. `RGSX_Full_${{ github.ref_name }}.zip`
-            2. Extract in Full/roms (les dossiers `ports/` et `windows/` seront créés automatiquement)
+            1. `RGSX_full_latest.zip`
+            2. Extract all folders in your Retrobat\roms folder
             3. Launch RGSX from system "Windows"
             
             
             ### 📖 Documentation
             []README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
           files: |
-            dist/RGSX_${{ github.ref_name }}.zip
-            dist/RGSX_latest.zip
-            dist/RGSX_Full_${{ github.ref_name }}.zip
-            dist/RGSX_Full_latest.zip
+            dist/RGSX_update_latest.zip
+            dist/RGSX_full_latest.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
