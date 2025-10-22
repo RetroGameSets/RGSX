@@ -50,8 +50,8 @@ jobs:
           echo "✓ RGSX package created successfully"
           
           echo ""
-          echo "Building RGSX Retrobat package (includes ports/ and windows/ directories)…"
-          zip -r "dist/RGSX_Retrobat_${VERSION}.zip" ports windows \
+          echo "Building RGSX Full package (includes ports/ and windows/ directories)…"
+          zip -r "dist/RGSX_Full_${VERSION}.zip" ports windows \
             -x "ports/RGSX/logs/*" \
                "ports/RGSX/logs/**" \
                "ports/RGSX/images/*" \
@@ -73,8 +73,8 @@ jobs:
                "*.xml" \
                "*.log"
           
-          echo "Creating stable-named copy for Retrobat package…"
-          cp -f "dist/RGSX_Retrobat_${VERSION}.zip" "dist/RGSX_Retrobat_latest.zip"
+          echo "Creating stable-named copy for Full package…"
+          cp -f "dist/RGSX_Full_${VERSION}.zip" "dist/RGSX_Full_latest.zip"
           
           echo "✓ All packages created successfully"
           ls -lh dist/
@@ -97,9 +97,9 @@ jobs:
             2. Extract in `/userdata/roms/ports/RGSX/`
             3. Launch RGSX from the Ports menu
             
-            #### Retrobat/Windows
-            1. `RGSX_Retrobat_${{ github.ref_name }}.zip`
-            2. Extract in retrobat/roms (les dossiers `ports/` et `windows/` seront créés automatiquement)
+            #### Full/Windows
+            1. `RGSX_Full_${{ github.ref_name }}.zip`
+            2. Extract in Full/roms (les dossiers `ports/` et `windows/` seront créés automatiquement)
             3. Launch RGSX from system "Windows"
             
             
@@ -108,8 +108,8 @@ jobs:
           files: |
             dist/RGSX_${{ github.ref_name }}.zip
             dist/RGSX_latest.zip
-            dist/RGSX_Retrobat_${{ github.ref_name }}.zip
-            dist/RGSX_Retrobat_latest.zip
+            dist/RGSX_Full_${{ github.ref_name }}.zip
+            dist/RGSX_Full_latest.zip
             dist/RGSX_latest.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
