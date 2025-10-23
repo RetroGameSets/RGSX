@@ -43,7 +43,7 @@ jobs:
                "*.log"
           
           cd ../..
-          
+          cp -f "dist/RGSX_update_latest.zip" "dist/RGSX_latest.zip" 
           
           echo "✓ RGSX package created successfully"
           
