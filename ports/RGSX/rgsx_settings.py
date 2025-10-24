@@ -69,7 +69,8 @@ def load_rgsx_settings():
     },
     "show_unsupported_platforms": False,
     "allow_unknown_extensions": False,
-    "roms_folder": ""
+    "roms_folder": "",
+    "web_service_at_boot": False
     }
     
     try:

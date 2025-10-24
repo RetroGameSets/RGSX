@@ -1,0 +1,103 @@
+#!/bin/bash
+# BATOCERA SERVICE
+# name: RGSX Web Service for Batocera
+# description: Automatic launch Web interface service for RGSX
+# author: RetroGameSets / ninao.xyz
+# depends: python3
+# version: 1.3
+
+SCRIPT="/userdata/roms/ports/RGSX/rgsx_web.py"
+PYTHON="/usr/bin/python3"
+PIDFILE="/var/run/rgsx_web.pid"
+LOGFILE="/userdata/roms/ports/RGSX/LOGS/rgsx_web_service.log"
+SERVICE_NAME="rgsx_web"
+
+# Fonction utilitaire : vérifie si le service est activé dans batocera-settings
+is_enabled() {
+    local enabled_services
+    enabled_services="$(/usr/bin/batocera-settings-get system.services 2>/dev/null)"
+    for s in $enabled_services; do
+        if [ "$s" = "$SERVICE_NAME" ]; then
+            echo "enabled"
+            return
+        fi
+    done
+    echo "disabled"
+}
+
+case "$1" in
+    start)
+        if [ ! -f "$SCRIPT" ]; then
+            echo "[${SERVICE_NAME}] Error: script not found at $SCRIPT"
+            exit 1
+        fi
+        if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+            echo "[${SERVICE_NAME}] Already running (PID $(cat "$PIDFILE"))"
+            exit 0
+        fi
+        echo "[${SERVICE_NAME}] Starting..."
+        mkdir -p "$(dirname "$LOGFILE")"
+        $PYTHON "$SCRIPT" >> "$LOGFILE" 2>&1 &
+        echo $! > "$PIDFILE"
+        echo "[${SERVICE_NAME}] Started (PID $(cat "$PIDFILE"))"
+        ;;
+        
+    stop)
+        if [ -f "$PIDFILE" ]; then
+            echo "[${SERVICE_NAME}] Stopping..."
+            kill $(cat "$PIDFILE") 2>/dev/null && rm -f "$PIDFILE"
+            echo "[${SERVICE_NAME}] Stopped"
+        else
+            pkill -f "$PYTHON $SCRIPT" && echo "[${SERVICE_NAME}] Stopped (no PID file)"
+        fi
+        ;;
+        
+    restart)
+        echo "[${SERVICE_NAME}] Restarting..."
+        "$0" stop
+        sleep 1
+        "$0" start
+        ;;
+        
+    status)
+        ENABLE_STATE=$(is_enabled)
+        if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+            echo "[${SERVICE_NAME}] Running (PID $(cat "$PIDFILE")) - ${ENABLE_STATE} on boot"
+            exit 0
+        elif pgrep -f "$PYTHON $SCRIPT" > /dev/null; then
+            echo "[${SERVICE_NAME}] Running (detected without PID file) - ${ENABLE_STATE} on boot"
+            exit 0
+        else
+            echo "[${SERVICE_NAME}] Not running - ${ENABLE_STATE} on boot"
+            exit 1
+        fi
+        ;;
+        
+    enable)
+        current=$(/usr/bin/batocera-settings-get system.services 2>/dev/null)
+        if echo "$current" | grep -qw "$SERVICE_NAME"; then
+            echo "[${SERVICE_NAME}] Already enabled on boot"
+        else
+            new_value="$current $SERVICE_NAME"
+            /usr/bin/batocera-settings-set system.services "$new_value"
+            echo "[${SERVICE_NAME}] Enabled on boot"
+        fi
+        ;;
+        
+    disable)
+        current=$(/usr/bin/batocera-settings-get system.services 2>/dev/null)
+        if echo "$current" | grep -qw "$SERVICE_NAME"; then
+            new_value=$(echo "$current" | sed "s/\b$SERVICE_NAME\b//g" | xargs)
+            /usr/bin/batocera-settings-set system.services "$new_value"
+            echo "[${SERVICE_NAME}] Disabled on boot"
+        else
+            echo "[${SERVICE_NAME}] Already disabled"
+        fi
+        ;;
+        
+    *)
+        echo "Usage: $0 {start|stop|restart|status|enable|disable}"
+        ;;
+esac
+
+exit 0

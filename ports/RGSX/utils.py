@@ -16,7 +16,7 @@ except Exception:
     pygame = None  # type: ignore
 import glob
 import threading
-from rgsx_settings import load_rgsx_settings, save_rgsx_settings
+from rgsx_settings import load_rgsx_settings, save_rgsx_settings, get_allow_unknown_extensions
 import zipfile
 import time
 import random
@@ -25,6 +25,7 @@ from history import save_history
 from language import _ 
 from datetime import datetime
 import sys
+import tempfile
 
 
 logger = logging.getLogger(__name__)
@@ -85,9 +86,7 @@ def generate_support_zip():
     Returns:
         tuple: (success: bool, message: str, zip_path: str ou None)
     """
-    import zipfile
-    import tempfile
-    from datetime import datetime
+
     
     try:
         # Créer un fichier ZIP temporaire
@@ -161,6 +160,146 @@ DO NOT share this file publicly as it may contain sensitive information.
     except Exception as e:
         logger.error(f"Erreur lors de la génération du fichier de support: {e}")
         return (False, str(e), None)
+
+
+def toggle_web_service_at_boot(enable: bool):
+    """Active ou désactive le service web au démarrage de Batocera.
+    
+    Args:
+        enable: True pour activer, False pour désactiver
+        
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+
+    
+    try:
+        # Vérifier si on est sur un système compatible (Linux avec batocera-services)
+        if config.OPERATING_SYSTEM != "Linux":
+            return (False, "Web service auto-start is only available on Batocera/Linux systems")
+        
+        services_dir = "/userdata/system/services"
+        service_file = os.path.join(services_dir, "rgsx_web")
+        source_file = os.path.join(config.APP_FOLDER, "assets", "progs", "rgsx_web")
+        
+        if enable:
+            # Mode ENABLE
+            logger.debug("Activation du service web au démarrage...")
+            
+            # 1. Créer le dossier services s'il n'existe pas
+            try:
+                os.makedirs(services_dir, exist_ok=True)
+                logger.debug(f"Dossier services vérifié/créé: {services_dir}")
+            except Exception as e:
+                error_msg = f"Failed to create services directory: {str(e)}"
+                logger.error(error_msg)
+                return (False, error_msg)
+            
+            # 2. Copier le fichier rgsx_web
+            try:
+                if not os.path.exists(source_file):
+                    error_msg = f"Source service file not found: {source_file}"
+                    logger.error(error_msg)
+                    return (False, error_msg)
+                
+                shutil.copy2(source_file, service_file)
+                os.chmod(service_file, 0o755)  # Rendre exécutable
+                logger.debug(f"Fichier service copié et rendu exécutable: {service_file}")
+            except Exception as e:
+                error_msg = f"Failed to copy service file: {str(e)}"
+                logger.error(error_msg)
+                return (False, error_msg)
+            
+            # 3. Activer le service avec batocera-services
+            try:
+                result = subprocess.run(
+                    ['batocera-services', 'enable', 'rgsx_web'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    error_msg = f"batocera-services enable failed: {result.stderr}"
+                    logger.error(error_msg)
+                    return (False, error_msg)
+                logger.debug(f"Service activé: {result.stdout}")
+            except FileNotFoundError:
+                error_msg = "batocera-services command not found"
+                logger.error(error_msg)
+                return (False, error_msg)
+            except Exception as e:
+                error_msg = f"Failed to enable service: {str(e)}"
+                logger.error(error_msg)
+                return (False, error_msg)
+            
+            # 4. Démarrer le service immédiatement
+            try:
+                result = subprocess.run(
+                    ['batocera-services', 'start', 'rgsx_web'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    # Le service peut ne pas démarrer si déjà en cours, ce n'est pas grave
+                    logger.warning(f"batocera-services start warning: {result.stderr}")
+                else:
+                    logger.debug(f"Service démarré: {result.stdout}")
+            except Exception as e:
+                logger.warning(f"Failed to start service (non-critical): {str(e)}")
+            
+            success_msg = _("settings_web_service_success_enabled") if _ else "Web service enabled at boot"
+            logger.info(success_msg)
+            
+            # Sauvegarder l'état dans rgsx_settings.json            
+            settings = load_rgsx_settings()
+            settings["web_service_at_boot"] = True
+            save_rgsx_settings(settings)
+            
+            return (True, success_msg)
+            
+        else:
+            # Mode DISABLE
+            logger.debug("Désactivation du service web au démarrage...")
+            
+            # 1. Désactiver le service avec batocera-services
+            try:
+                result = subprocess.run(
+                    ['batocera-services', 'disable', 'rgsx_web'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    error_msg = f"batocera-services disable failed: {result.stderr}"
+                    logger.error(error_msg)
+                    return (False, error_msg)
+                logger.debug(f"Service désactivé: {result.stdout}")
+            except FileNotFoundError:
+                error_msg = "batocera-services command not found"
+                logger.error(error_msg)
+                return (False, error_msg)
+            except Exception as e:
+                error_msg = f"Failed to disable service: {str(e)}"
+                logger.error(error_msg)
+                return (False, error_msg)
+            
+            success_msg = _("settings_web_service_success_disabled") if _ else "✓ Web service disabled at boot"
+            logger.info(success_msg)
+            
+            # Sauvegarder l'état dans rgsx_settings.json
+            settings = load_rgsx_settings()
+            settings["web_service_at_boot"] = False
+            save_rgsx_settings(settings)
+            
+            return (True, success_msg)
+            
+    except Exception as e:
+        error_msg = f"Unexpected error: {str(e)}"
+        logger.exception(error_msg)
+        return (False, error_msg)
+
+
 
 _extensions_cache = None  # type: ignore
 _extensions_json_regenerated = False
@@ -385,7 +524,6 @@ def check_extension_before_download(url, platform, game_name):
             # Autoriser si l'utilisateur a choisi d'autoriser les extensions inconnues
             allow_unknown = False
             try:
-                from rgsx_settings import get_allow_unknown_extensions
                 allow_unknown = get_allow_unknown_extensions()
             except Exception:
                 allow_unknown = False
@@ -1052,7 +1190,6 @@ def extract_zip(zip_path, dest_dir, url):
                     if os.path.isdir(file_path):
                         logger.warning(f"Conflit: dossier existant avec le même nom que le fichier {file_path}, suppression du dossier")
                         try:
-                            import shutil
                             shutil.rmtree(file_path)
                         except Exception as rm_err:
                             logger.error(f"Impossible de supprimer le dossier {file_path}: {rm_err}")
@@ -1889,6 +2026,26 @@ def save_music_config():
         logger.debug(f"Configuration musique sauvegardée: {config.music_enabled}")
     except Exception as e:
         logger.error(f"Erreur lors de la sauvegarde de la configuration musique: {str(e)}")
+
+def check_web_service_status():
+    """Vérifie si le service web est activé au démarrage.
+    
+    Returns:
+        bool: True si activé, False sinon
+    """
+    try:
+        if config.OPERATING_SYSTEM != "Linux":
+            return False
+        
+        # Lire l'état depuis rgsx_settings.json
+       
+        settings = load_rgsx_settings()
+        return settings.get("web_service_at_boot", False)
+        
+    except Exception as e:
+        logger.debug(f"Failed to check web service status: {e}")
+        return False
+
 
 
 def normalize_platform_name(platform):

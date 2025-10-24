@@ -1609,7 +1609,13 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Settings
         elif config.menu_state == "pause_settings_menu":
             sel = getattr(config, 'pause_settings_selection', 0)
+            # Calculer le nombre total d'options selon le système
             total = 4  # music, symlink, api keys, back
+            web_service_index = -1
+            if config.OPERATING_SYSTEM == "Linux":
+                total = 5  # music, symlink, web_service, api keys, back
+                web_service_index = 2
+            
             if is_input_matched(event, "up"):
                 config.pause_settings_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1618,6 +1624,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right"):
                 sel = getattr(config, 'pause_settings_selection', 0)
+                # Option 0: Music toggle
                 if sel == 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     config.music_enabled = not config.music_enabled
                     save_music_config()
@@ -1630,6 +1637,7 @@ def handle_controls(event, sources, joystick, screen):
                         pygame.mixer.music.stop()
                     config.needs_redraw = True
                     logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via settings")
+                # Option 1: Symlink toggle
                 elif sel == 1 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     from rgsx_settings import set_symlink_option, get_symlink_option
                     current_status = get_symlink_option()
@@ -1638,10 +1646,32 @@ def handle_controls(event, sources, joystick, screen):
                     config.popup_timer = 3000 if success else 5000
                     config.needs_redraw = True
                     logger.info(f"Symlink option {'activée' if not current_status else 'désactivée'} via settings")
-                elif sel == 2 and is_input_matched(event, "confirm"):
+                # Option 2: Web Service toggle (seulement si Linux)
+                elif sel == web_service_index and web_service_index >= 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    from utils import toggle_web_service_at_boot, check_web_service_status
+                    current_status = check_web_service_status()
+                    # Afficher un message de chargement
+                    config.popup_message = _("settings_web_service_enabling") if not current_status else _("settings_web_service_disabling")
+                    config.popup_timer = 1000
+                    config.needs_redraw = True
+                    # Exécuter en thread pour ne pas bloquer l'UI
+                    import threading
+                    def toggle_service():
+                        success, message = toggle_web_service_at_boot(not current_status)
+                        config.popup_message = message
+                        config.popup_timer = 5000 if success else 7000
+                        config.needs_redraw = True
+                        if success:
+                            logger.info(f"Service web {'activé' if not current_status else 'désactivé'} au démarrage")
+                        else:
+                            logger.error(f"Erreur toggle service web: {message}")
+                    threading.Thread(target=toggle_service, daemon=True).start()
+                # Option API Keys (index varie selon Linux ou pas)
+                elif sel == (web_service_index + 1 if web_service_index >= 0 else 2) and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_api_keys_status"
                     config.needs_redraw = True
-                elif sel == 3 and is_input_matched(event, "confirm"):
+                # Option Back (dernière option)
+                elif sel == (total - 1) and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True

@@ -2040,6 +2040,7 @@ def draw_pause_games_menu(screen, selected_index):
 
 def draw_pause_settings_menu(screen, selected_index):
     from rgsx_settings import get_symlink_option
+    from utils import check_web_service_status
     # Music
     if config.music_enabled:
         music_name = config.current_music_name or ""
@@ -2057,16 +2058,34 @@ def draw_pause_settings_menu(screen, selected_index):
     if ' : ' in symlink_option:
         base, val = symlink_option.split(' : ',1)
         symlink_option = f"{base} : < {val.strip()} >"
+    
+    # Web Service at boot (only on Linux/Batocera)
+    web_service_txt = ""
+    if config.OPERATING_SYSTEM == "Linux":
+        web_service_enabled = check_web_service_status()
+        web_service_status = _("settings_web_service_enabled") if web_service_enabled else _("settings_web_service_disabled")
+        web_service_txt = f"{_('settings_web_service')} : < {web_service_status} >"
+    
     api_keys_txt = _("menu_api_keys_status") if _ else "API Keys"
     back_txt = _("menu_back") if _ else "Back"
-    options = [music_option, symlink_option, api_keys_txt, back_txt]
+    
+    # Construction de la liste des options
+    options = [music_option, symlink_option]
+    if web_service_txt:  # Ajouter seulement si Linux/Batocera
+        options.append(web_service_txt)
+    options.extend([api_keys_txt, back_txt])
+    
     _draw_submenu_generic(screen, _("menu_settings_category") if _ else "Settings", options, selected_index)
     instruction_keys = [
         "instruction_settings_music",
         "instruction_settings_symlink",
+    ]
+    if web_service_txt:
+        instruction_keys.append("instruction_settings_web_service")
+    instruction_keys.extend([
         "instruction_settings_api_keys",
         "instruction_generic_back",
-    ]
+    ])
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
     if key:
         button_height = int(config.screen_height * 0.045)
@@ -2181,6 +2200,7 @@ def draw_pause_api_keys_status(screen):
     # Positionné un peu plus haut pour aérer
     hint_rect = hint_surf.get_rect(center=(config.screen_width//2, menu_y + menu_height - 30))
     screen.blit(hint_surf, hint_rect)
+
 
 def draw_filter_platforms_menu(screen):
     """Affiche le menu de filtrage des plateformes (afficher/masquer)."""
