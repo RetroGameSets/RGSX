@@ -55,8 +55,8 @@ echo  UPDATE_GAMELIST_SCRIPT : !UPDATE_GAMELIST_SCRIPT! >> "%LOG_FILE%"
 echo Checking python.exe...
 echo [%DATE% %TIME%] Checking python.exe at !PYTHON_EXE_FULL! >> "%LOG_FILE%"
 if not exist "!PYTHON_EXE_FULL!" (
-    echo python.exe not found. Preparing download...
-    echo [%DATE% %TIME%] python.exe not found. Preparing download... >> "%LOG_FILE%"
+    echo python.exe not found in system/tools. Preparing to extract..
+    echo [%DATE% %TIME%] python.exe not found in system/tools. Preparing to extract.. >> "%LOG_FILE%"
     
     :: Créer le dossier Python s'il n'existe pas
     set "TOOLS_FOLDER_FULL=!ROOT_DIR!\system\tools"
@@ -67,29 +67,21 @@ if not exist "!PYTHON_EXE_FULL!" (
         mkdir "!TOOLS_FOLDER_FULL!\Python"
     )
     
-    set ZIP_URL=https://retrogamesets.fr/softs/python.zip
-    set "ZIP_FILE=!TOOLS_FOLDER_FULL!\python.zip"
-    echo ZIP_URL : !ZIP_URL!
-    echo [%DATE% %TIME%] ZIP_URL : !ZIP_URL! >> "%LOG_FILE%"
-    echo ZIP_FILE : !ZIP_FILE!
+    set "ZIP_FILE=%ROOT_DIR%\roms\windows\python.zip"
+    echo Extracting ZIP_FILE : !ZIP_FILE!  in /system/tools/Python
     echo [%DATE% %TIME%] ZIP_FILE : !ZIP_FILE! >> "%LOG_FILE%"
-    
-    echo Downloading python.zip...
-    echo [%DATE% %TIME%] Downloading python.zip from !ZIP_URL!... >> "%LOG_FILE%"
-    curl -L "!ZIP_URL!" -o "!ZIP_FILE!"
-    
+ 
     if exist "!ZIP_FILE!" (
-    echo Download complete. Extracting python.zip...
-    echo [%DATE% %TIME%] Download complete. Extracting python.zip to !TOOLS_FOLDER_FULL!... >> "%LOG_FILE%"
+    echo [%DATE% %TIME%] Extracting python.zip to !TOOLS_FOLDER_FULL!... >> "%LOG_FILE%"
         tar -xf "!ZIP_FILE!" -C "!TOOLS_FOLDER_FULL!\Python" --strip-components=0
     echo Extraction finished.
     echo [%DATE% %TIME%] Extraction finished. >> "%LOG_FILE%"
-        del /q "!ZIP_FILE!"
+        del /s /q "!ZIP_FILE!"
     echo python.zip file deleted.
     echo [%DATE% %TIME%] python.zip file deleted. >> "%LOG_FILE%"
     ) else (
-    echo Error: Failed to download python.zip.
-    echo [%DATE% %TIME%] Error: Failed to download python.zip. >> "%LOG_FILE%"
+    echo Error: Error python.zip not found please download it from github and put in /roms/windows folder.
+    echo [%DATE% %TIME%] Error: Error python.zip not found please download it from github and put in /roms/windows folder >> "%LOG_FILE%"
         goto :error
     )
     
