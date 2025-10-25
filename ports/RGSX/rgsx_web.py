@@ -347,8 +347,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 
                 print(f"\n[DEBUG PROGRESS] history.json chargé avec {len(history)} entrées totales")
                 
-                # Filtrer les entrées avec status "downloading", "Téléchargement", "Connecting", "Try X/Y"
-                in_progress_statuses = ["downloading", "Téléchargement", "Downloading", "Connecting", "Extracting"]
+                # Filtrer les entrées avec status "Downloading", "Téléchargement", "Connecting", "Try X/Y"
+                in_progress_statuses = ["Downloading", "Téléchargement", "Downloading", "Connecting", "Extracting"]
                 
                 downloads = {}
                 for entry in history:
@@ -393,7 +393,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 # Inclure: statuts terminés + en queue + en cours
                 included_statuses = [
                     "Download_OK", "Erreur", "error", "Canceled", "Already_Present",  # Terminés
-                    "queued", "downloading", "Téléchargement", "Downloading", "Connecting", "Extracting",  # En cours
+                    "Queued", "Downloading", "Téléchargement", "Downloading", "Connecting", "Extracting",  # En cours
                 ]
                 # Inclure aussi les statuts "Try X/Y" (tentatives)
                 visible_history = [
@@ -608,15 +608,15 @@ class RGSXHandler(BaseHTTPRequestHandler):
         
         config.download_active = True
         
-        # Mettre à jour l'historique: queued -> downloading
+        # Mettre à jour l'historique: queued -> Downloading
         from history import load_history, save_history
         config.history = load_history()
         for entry in config.history:
-            if entry.get('task_id') == task_id and entry.get('status') == 'queued':
-                entry['status'] = 'downloading'
+            if entry.get('task_id') == task_id and entry.get('status') == 'Queued':
+                entry['status'] = 'Downloading'
                 entry['message'] = get_translation('download_in_progress')
                 save_history(config.history)
-                logger.info(f"📋 Statut mis à jour de 'queued' à 'downloading' pour {game_name} (task_id={task_id})")
+                logger.info(f"📋 Statut mis à jour de 'queued' à 'Downloading' pour {game_name} (task_id={task_id})")
                 break
         
         if is_1fichier:
@@ -779,7 +779,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         'is_zip_non_supported': is_zip_non_supported,
                         'is_1fichier': is_1fichier,
                         'task_id': task_id,
-                        'status': 'queued'
+                        'status': 'Queued'
                     }
                     config.download_queue.append(queue_item)
                     
@@ -788,7 +788,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     queue_history_entry = {
                         'platform': platform,
                         'game_name': game_name,
-                        'status': 'queued',
+                        'status': 'Queued',
                         'url': game_url,
                         'progress': 0,
                         'message': get_translation('download_queued'),
@@ -819,13 +819,13 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     config.download_active = True
                     logger.info(f"🚀 Lancement du premier élément de la queue: {game_name}")
                     
-                    # Ajouter une entrée à l'historique avec status "downloading"
+                    # Ajouter une entrée à l'historique avec status "Downloading"
                     # (pas "queued" car on lance immédiatement)
                     import datetime
                     download_history_entry = {
                         'platform': platform,
                         'game_name': game_name,
-                        'status': 'downloading',
+                        'status': 'Downloading',
                         'url': game_url,
                         'progress': 0,
                         'message': get_translation('download_in_progress'),
@@ -894,7 +894,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     task_id = None
                     
                     for entry in history:
-                        if entry.get('url') == url and entry.get('status') in ['downloading', 'Téléchargement', 'Downloading', 'Connecting']:
+                        if entry.get('url') == url and entry.get('status') in ['Downloading', 'Téléchargement', 'Downloading', 'Connecting']:
                             # Mettre à jour le statut dans l'historique
                             entry['status'] = 'Canceled'
                             entry['progress'] = 0
@@ -2704,7 +2704,7 @@ DO NOT share this file publicly as it may contain sensitive information.
                     queue.forEach((item, idx) => {
                         const gameName = item.game_name || 'Unknown';
                         const platform = item.platform || 'N/A';
-                        const status = item.status || 'queued';
+                        const status = item.status || 'Queued';
                         html += `
                             <div class="info-item" style="display: flex; justify-content: space-between; align-items: center;">
                                 <div style="flex: 1;">
@@ -2814,8 +2814,8 @@ DO NOT share this file publicly as it may contain sensitive information.
                     const isError = status === 'Erreur' || status === 'error';
                     const isCanceled = status === 'Canceled';
                     const isAlreadyPresent = status === 'Already_Present';
-                    const isQueued = status === 'queued';
-                    const isDownloading = status === 'downloading' || status === 'Téléchargement' || status === 'Downloading' || 
+                    const isQueued = status === 'Queued';
+                    const isDownloading = status === 'Downloading' || status === 'Téléchargement' || status === 'Downloading' || 
                                          status === 'Connecting' || status === 'Extracting' || status.startsWith('Try ');
                     const isSuccess = status === 'Download_OK' || status === 'Completed';
                     

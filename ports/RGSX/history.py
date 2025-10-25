@@ -50,12 +50,20 @@ def load_history():
                 logger.warning(f"Format history.json invalide (pas une liste), retour liste vide")
                 return []
             
+            # Filtrer les entrées valides au lieu de tout rejeter
+            valid_entries = []
+            invalid_count = 0
             for entry in history:
-                if not all(key in entry for key in ['platform', 'game_name', 'status']):
-                    logger.warning(f"Entrée d'historique invalide : {entry}")
-                    return []
-            #logger.debug(f"Historique chargé depuis {history_path}, {len(history)} entrées")
-            return history
+                if isinstance(entry, dict) and all(key in entry for key in ['platform', 'game_name', 'status']):
+                    valid_entries.append(entry)
+                else:
+                    invalid_count += 1
+                    logger.warning(f"Entrée d'historique invalide ignorée : {entry}")
+            
+            if invalid_count > 0:
+                logger.info(f"Historique chargé : {len(valid_entries)} valides, {invalid_count} invalides ignorées")
+            #logger.debug(f"Historique chargé depuis {history_path}, {len(valid_entries)} entrées")
+            return valid_entries
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logger.error(f"Erreur lors de la lecture de {history_path} : {e}")
         return []
@@ -106,12 +114,26 @@ def add_to_history(platform, game_name, status, url=None, progress=0, message=No
     return entry
 
 def clear_history():
-    """Vide l'historique."""
+    """Vide l'historique en conservant les téléchargements en cours."""
     history_path = getattr(config, 'HISTORY_PATH')
     try:
+        # Charger l'historique actuel
+        current_history = load_history()
+        
+        # Conserver uniquement les entrées avec statut actif (téléchargement, extraction ou conversion en cours)
+        # Supporter les deux variantes de statut (anglais et français)
+        active_statuses = {"Downloading", "Téléchargement", "downloading", "Extracting", "Converting", "Queued"}
+        preserved_entries = [
+            entry for entry in current_history 
+            if entry.get("status") in active_statuses
+        ]
+        
+        # Sauvegarder l'historique filtré
         with open(history_path, "w", encoding='utf-8') as f:
-            json.dump([], f)
-        logger.info(f"Historique vidé : {history_path}")
+            json.dump(preserved_entries, f, indent=2, ensure_ascii=False)
+        
+        removed_count = len(current_history) - len(preserved_entries)
+        logger.info(f"Historique vidé : {history_path} ({removed_count} entrées supprimées, {len(preserved_entries)} conservées)")
     except Exception as e:
         logger.error(f"Erreur lors du vidage de {history_path} : {e}")
 

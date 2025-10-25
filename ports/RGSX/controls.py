@@ -214,10 +214,10 @@ def _launch_next_queued_download():
     is_1fichier = queue_item['is_1fichier']
     task_id = queue_item['task_id']
     
-    # Mettre à jour le statut dans l'historique: queued -> downloading
+    # Mettre à jour le statut dans l'historique: queued -> Downloading
     for entry in config.history:
-        if entry.get('task_id') == task_id and entry.get('status') == 'queued':
-            entry['status'] = 'downloading'
+        if entry.get('task_id') == task_id and entry.get('status') == 'Queued':
+            entry['status'] = 'Downloading'
             entry['message'] = _("download_in_progress")
             save_history(config.history)
             break
@@ -665,15 +665,15 @@ def handle_controls(event, sources, joystick, screen):
                                     'is_zip_non_supported': pending_download[3],
                                     'is_1fichier': is_1fichier_url(url),
                                     'task_id': task_id,
-                                    'status': 'queued'
+                                    'status': 'Queued'
                                 }
                                 config.download_queue.append(queue_item)
                                 
-                                # Ajouter une entrée à l'historique avec status "queued"
+                                # Ajouter une entrée à l'historique avec status "Queued"
                                 config.history.append({
                                     'platform': platform,
                                     'game_name': game_name,
-                                    'status': 'queued',
+                                    'status': 'Queued',
                                     'url': url,
                                     'progress': 0,
                                     'message': _("download_queued"),
@@ -827,7 +827,7 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "cancel") or is_input_matched(event, "history"):
                 if config.history and config.current_history_item < len(config.history):
                     entry = config.history[config.current_history_item]
-                    if entry.get("status") in ["downloading", "Téléchargement", "Extracting"] and is_input_matched(event, "cancel"):
+                    if entry.get("status") in ["Downloading", "Téléchargement", "Extracting"] and is_input_matched(event, "cancel"):
                         config.menu_state = "confirm_cancel_download"
                         config.confirm_cancel_selection = 0
                         config.needs_redraw = True
@@ -889,7 +889,7 @@ def handle_controls(event, sources, joystick, screen):
                 # 0 = Non, 1 = Oui
                 if config.confirm_clear_selection == 1:  # Oui
                     clear_history()
-                    config.history = []
+                    config.history = load_history()  # Recharger l'historique (conserve les téléchargements en cours)
                     config.current_history_item = 0
                     config.history_scroll_offset = 0
                     config.menu_state = "history"
@@ -1078,7 +1078,7 @@ def handle_controls(event, sources, joystick, screen):
                         url = entry.get("url")
                         if url:
                             # Mettre à jour le statut
-                            entry["status"] = "downloading"
+                            entry["status"] = "Downloading"
                             entry["progress"] = 0
                             entry["message"] = "Téléchargement en cours"
                             save_history(config.history)
@@ -1283,7 +1283,7 @@ def handle_controls(event, sources, joystick, screen):
                     # Mark all in-progress downloads as canceled in history
                     try:
                         for entry in getattr(config, 'history', []) or []:
-                            if entry.get("status") in ["downloading", "Téléchargement", "Extracting"]:
+                            if entry.get("status") in ["Downloading", "Téléchargement", "Extracting"]:
                                 entry["status"] = "Canceled"
                                 entry["progress"] = 0
                                 entry["message"] = _("download_canceled") if _ else "Download canceled"

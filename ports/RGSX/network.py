@@ -338,7 +338,7 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
         return (True, filepath, None)
         
     except Exception as e:
-        error_msg = f"Error downloading with free mode: {str(e)}"
+        error_msg = f"Error Downloading with free mode: {str(e)}"
         _log(error_msg)
         logger.error(error_msg, exc_info=True)
         return (False, None, error_msg)
@@ -679,7 +679,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     
     def download_thread():
         try:
-            # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "downloading"
+            # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "Downloading"
             # pour que l'interface web puisse afficher le téléchargement en cours
             
             # TOUJOURS charger l'historique existant depuis le fichier pour éviter d'écraser les anciennes entrées
@@ -690,8 +690,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             for entry in config.history:
                 if entry.get("url") == url:
                     entry_exists = True
-                    # Réinitialiser le status à "downloading"
-                    entry["status"] = "downloading"
+                    # Réinitialiser le status à "Downloading"
+                    entry["status"] = "Downloading"
                     entry["progress"] = 0
                     entry["downloaded_size"] = 0
                     entry["platform"] = platform
@@ -706,7 +706,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     "platform": platform,
                     "game_name": game_name,
                     "url": url,
-                    "status": "downloading",
+                    "status": "Downloading",
                     "progress": 0,
                     "downloaded_size": 0,
                     "total_size": 0,
@@ -1126,7 +1126,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     try:
                         if isinstance(config.history, list):
                             for entry in config.history:
-                                if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
+                                if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement"]:
                                     entry["status"] = "Extracting"
                                     entry["progress"] = 0
                                     entry["message"] = "Préparation de l'extraction..."
@@ -1212,7 +1212,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         
                         if isinstance(config.history, list):
                             for entry in config.history:
-                                if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
+                                if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement", "Extracting"]:
                                     entry["status"] = "Download_OK" if success else "Erreur"
                                     entry["progress"] = 100 if success else 0
                                     entry["message"] = message
@@ -1252,7 +1252,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         # NOTE: On ne touche PAS au timestamp qui doit rester celui de création
                         if isinstance(config.history, list):
                             for entry in config.history:
-                                if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
+                                if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement"]:
                                     entry["downloaded_size"] = downloaded
                                     entry["total_size"] = total_size
                                     entry["speed"] = speed
@@ -1284,7 +1284,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     logger.debug(f"[DRAIN_QUEUE] Processing final message: success={success}, message={message[:100] if message else 'None'}")
                     if isinstance(config.history, list):
                         for entry in config.history:
-                            if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
+                            if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement", "Extracting"]:
                                 entry["status"] = "Download_OK" if success else "Erreur"
                                 entry["progress"] = 100 if success else 0
                                 entry["message"] = message
@@ -1406,7 +1406,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             link = url.split('&af=')[0]
             logger.debug(f"URL nettoyée: {link}")
             
-            # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "downloading"
+            # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "Downloading"
             # pour que l'interface web puisse afficher le téléchargement en cours
 
             # Charger l'historique existant depuis le fichier
@@ -1418,8 +1418,8 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             for entry in config.history:
                 if entry.get("url") == url:
                     entry_exists = True
-                    # Réinitialiser le status à "downloading"
-                    entry["status"] = "downloading"
+                    # Réinitialiser le status à "Downloading"
+                    entry["status"] = "Downloading"
                     entry["progress"] = 0
                     entry["downloaded_size"] = 0
                     entry["platform"] = platform
@@ -1434,7 +1434,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     "platform": platform,
                     "game_name": game_name,
                     "url": url,
-                    "status": "downloading",
+                    "status": "Downloading",
                     "progress": 0,
                     "downloaded_size": 0,
                     "total_size": 0,
@@ -1857,7 +1857,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                             with free_lock:
                                 if isinstance(config.history, list):
                                     for entry in config.history:
-                                        if "url" in entry and entry["url"] == url and entry["status"] == "downloading":
+                                        if "url" in entry and entry["url"] == url and entry["status"] == "Downloading":
                                             entry["progress"] = int(pct) if pct else 0
                                             entry["downloaded_size"] = downloaded
                                             entry["total_size"] = total
@@ -1928,7 +1928,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         else:
                             logger.error(f"Échec téléchargement gratuit: {error_msg}")
                             result[0] = False
-                            result[1] = f"Error downloading with free mode: {error_msg}"
+                            result[1] = f"Error Downloading with free mode: {error_msg}"
                             return
                     
                     except Exception as e:
@@ -2061,7 +2061,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         with lock:
                             if isinstance(config.history, list):
                                 for entry in config.history:
-                                    if "url" in entry and entry["url"] == url and entry["status"] == "downloading":
+                                    if "url" in entry and entry["url"] == url and entry["status"] == "Downloading":
                                         entry["total_size"] = total_size
                                         config.needs_redraw = True
                                         break
@@ -2099,7 +2099,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         with lock:
                                             if isinstance(config.history, list):
                                                 for entry in config.history:
-                                                    if "url" in entry and entry["url"] == url and entry["status"] == "downloading":
+                                                    if "url" in entry and entry["url"] == url and entry["status"] == "Downloading":
                                                         progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
                                                         progress_percent = max(0, min(100, progress_percent))
                                                         entry["progress"] = progress_percent
@@ -2226,7 +2226,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         success, message = data[1], data[2]
                         if isinstance(config.history, list):
                             for entry in config.history:
-                                if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
+                                if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement", "Extracting"]:
                                     entry["status"] = "Download_OK" if success else "Erreur"
                                     entry["progress"] = 100 if success else 0
                                     entry["message"] = message
@@ -2251,7 +2251,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         
                         if isinstance(config.history, list):
                             for entry in config.history:
-                                if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
+                                if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement"]:
                                     entry["progress"] = progress_percent
                                     entry["status"] = "Téléchargement"
                                     entry["downloaded_size"] = downloaded
@@ -2281,7 +2281,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     logger.debug(f"[1F_DRAIN_QUEUE] Processing final message: success={success}, message={message[:100] if message else 'None'}")
                     if isinstance(config.history, list):
                         for entry in config.history:
-                            if "url" in entry and entry["url"] == url and entry["status"] in ["downloading", "Téléchargement", "Extracting"]:
+                            if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement", "Extracting"]:
                                 entry["status"] = "Download_OK" if success else "Erreur"
                                 entry["progress"] = 100 if success else 0
                                 entry["message"] = message

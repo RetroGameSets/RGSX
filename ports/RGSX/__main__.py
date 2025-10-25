@@ -712,7 +712,7 @@ async def main():
                         config.history.append({
                             "platform": platform_name,
                             "game_name": game_name,
-                            "status": "downloading",
+                            "status": "Downloading",
                             "progress": 0,
                             "url": url,
                             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -822,7 +822,7 @@ async def main():
                                     config.history.append({
                                         "platform": platform_name,
                                         "game_name": game_name,
-                                        "status": "downloading",
+                                        "status": "Downloading",
                                         "progress": 0,
                                         "message": _("download_in_progress") if _ else "Download in progress",
                                         "url": url,
@@ -868,7 +868,7 @@ async def main():
                                     config.history.append({
                                         "platform": platform_name,
                                         "game_name": game_name,
-                                        "status": "downloading",
+                                        "status": "Downloading",
                                         "progress": 0,
                                         "message": _("download_in_progress") if _ else "Download in progress",
                                         "url": url,
@@ -909,7 +909,7 @@ async def main():
                         logger.debug(f"[HISTORY_SEARCH] Searching in {len(config.history)} history entries for url={url[:50]}...")
                         for entry in config.history:
                             #logger.debug(f"[HISTORY_ENTRY] Checking: url_match={entry['url'] == url}, status={entry['status']}, game={entry.get('game_name')}")
-                            if entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
+                            if entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement"]:
                                 #logger.debug(f"[HISTORY_MATCH] Found matching entry for {game_name}, updating status")
                                 entry["status"] = "Download_OK" if success else "Erreur"
                                 entry["progress"] = 100 if success else 0
@@ -941,7 +941,7 @@ async def main():
                         if "http" in message:
                             message = message.split("https://")[0].strip()
                         for entry in config.history:
-                            if entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
+                            if entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement"]:
                                 entry["status"] = "Erreur"
                                 entry["progress"] = 0
                                 entry["message"] = message
@@ -972,7 +972,7 @@ async def main():
                             success, message = data[1], data[2]
                             logger.debug(f"[DOWNLOAD_TASK] Download task done - success={success}, message={message}, task_id={task_id}")
                             for entry in config.history:
-                                if entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
+                                if entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement"]:
                                     entry["status"] = "Download_OK" if success else "Erreur"
                                     entry["progress"] = 100 if success else 0
                                     entry["message"] = message
@@ -1002,7 +1002,7 @@ async def main():
                             downloaded, total_size = data[1], data[2]
                             progress = (downloaded / total_size * 100) if total_size > 0 else 0
                             for entry in config.history:
-                                if entry["url"] == url and entry["status"] in ["downloading", "Téléchargement"]:
+                                if entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement"]:
                                     entry["progress"] = progress
                                     entry["status"] = "Téléchargement"
                                     config.needs_redraw = True

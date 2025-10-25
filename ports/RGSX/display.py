@@ -956,7 +956,7 @@ def draw_history_list(screen):
     # Cherche une entrée en cours de téléchargement pour afficher la vitesse
     speed_str = ""
     for entry in history:
-        if entry.get("status") in ["Téléchargement", "downloading"]:
+        if entry.get("status") in ["Téléchargement", "Downloading"]:
             speed = entry.get("speed", 0.0)
             if speed and speed > 0:
                 speed_str = f" - {speed:.2f} Mo/s"
@@ -1001,7 +1001,7 @@ def draw_history_list(screen):
         current_history_item_inverted = 0
 
     speed = 0.0
-    if history and history[current_history_item_inverted].get("status") in ["Téléchargement", "downloading"]:
+    if history and history[current_history_item_inverted].get("status") in ["Téléchargement", "Downloading"]:
         speed = history[current_history_item_inverted].get("speed", 0.0)
     if speed > 0:
         speed_str = f"{speed:.2f} Mo/s"
@@ -1094,7 +1094,7 @@ def draw_history_list(screen):
         provider_prefix = entry.get("provider_prefix") or (entry.get("provider") + ":" if entry.get("provider") else "")
         
         # Compute status text (optimized version without redundant prefix for errors)
-        if status in ["Téléchargement", "downloading"]:
+        if status in ["Téléchargement", "Downloading"]:
             # Vérifier si un message personnalisé existe (ex: mode gratuit avec attente)
             custom_message = entry.get('message', '')
             # Détecter les messages du mode gratuit (commencent par '[' dans toutes les langues)

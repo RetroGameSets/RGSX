@@ -103,7 +103,7 @@ def ensure_data_present(verbose: bool = False):
     headers = {"User-Agent": "Mozilla/5.0"}
     # Always show progress when we're in the 'missing data' path
     show = True or verbose
-    print("Source data not found, downloading...")
+    print("Source data not found, Downloading...")
     print(f"Downloading data from {url}...")
     try:
         with requests.get(url, stream=True, headers=headers, timeout=60) as r:
@@ -394,7 +394,7 @@ async def _run_download_with_progress(url: str, platform_name: str, game_name: s
         try:
             if isinstance(config.history, list):
                 for e in config.history:
-                    if e.get('url') == url and e.get('status') in ("downloading", "Téléchargement", "Extracting"):
+                    if e.get('url') == url and e.get('status') in ("Downloading", "Téléchargement", "Extracting"):
                         downloaded = int(e.get('downloaded_size') or 0)
                         total = int(e.get('total_size') or 0)
                         speed = e.get('speed')
@@ -646,7 +646,7 @@ def cmd_download(args):
     hist.append({
         "platform": platform.get('platform_name') or platform.get('platform') or args.platform,
         "game_name": title,
-        "status": "downloading",
+        "status": "Downloading",
         "url": url,
         "progress": 0,
         "message": "Téléchargement en cours",

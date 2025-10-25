@@ -987,7 +987,7 @@ def _update_extraction_progress(url, extracted_size, total_size, lock, last_save
         with lock:
             if isinstance(config.history, list):
                 for entry in config.history:
-                    if "status" in entry and entry["status"] in ["Téléchargement", "Extracting", "downloading"]:
+                    if "status" in entry and entry["status"] in ["Téléchargement", "Extracting", "Downloading"]:
                         if "url" in entry and entry["url"] == url:
                             progress_percent = int(extracted_size / total_size * 100) if total_size > 0 else 0
                             progress_percent = max(0, min(100, progress_percent))
@@ -1045,8 +1045,12 @@ def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=No
         before_items: Set de tous les éléments (fichiers+dossiers) avant extraction (pour DOS)
     """
     # Xbox: conversion ISO
-    xbox_dir = os.path.join(config.ROMS_FOLDER, "xbox")
-    if dest_dir == xbox_dir and iso_before is not None:
+    # Gérer les deux cas: symlink activé (xbox/xbox) ou désactivé (xbox)
+    xbox_dir_normal = os.path.join(config.ROMS_FOLDER, "xbox")
+    xbox_dir_symlink = os.path.join(config.ROMS_FOLDER, "xbox", "xbox")
+    is_xbox = (dest_dir == xbox_dir_normal or dest_dir == xbox_dir_symlink)
+    
+    if is_xbox and iso_before is not None:
         iso_after = set()
         for root, dirs, files in os.walk(dest_dir):
             for file in files:
@@ -1754,7 +1758,7 @@ def handle_xbox(dest_dir, iso_files, url=None):
                 # Historique
                 if isinstance(config.history, list):
                     for entry in config.history:
-                        if entry.get("url") == url and entry.get("status") in ["Extracting", "Téléchargement", "downloading"]:
+                        if entry.get("url") == url and entry.get("status") in ["Extracting", "Téléchargement", "Downloading"]:
                             entry["status"] = "Converting"
                             entry["progress"] = 0
                             entry["message"] = "Xbox conversion in progress"
@@ -1787,14 +1791,14 @@ def handle_xbox(dest_dir, iso_files, url=None):
                         if url not in config.download_progress:
                             config.download_progress[url] = {}
                         config.download_progress[url]["status"] = "Error"
-                        config.download_progress[url]["message"] = err_msg
+                        config.download_progress[url]["message"] = {process.stderr}
                         config.download_progress[url]["progress_percent"] = 0
                         config.needs_redraw = True
                         if isinstance(config.history, list):
                             for entry in config.history:
-                                if entry.get("url") == url and entry.get("status") in ("Converting", "Extracting", "Téléchargement", "downloading"):
+                                if entry.get("url") == url and entry.get("status") in ("Converting", "Extracting", "Téléchargement", "Downloading"):
                                     entry["status"] = "Error"
-                                    entry["message"] = err_msg
+                                    entry["message"] = {process.stderr}
                                     save_history(config.history)
                                     break
                 except Exception:
@@ -1838,7 +1842,7 @@ def handle_xbox(dest_dir, iso_files, url=None):
                         config.needs_redraw = True
                         if isinstance(config.history, list):
                             for entry in config.history:
-                                if entry.get("url") == url and entry.get("status") in ("Converting", "Extracting", "Téléchargement", "downloading"):
+                                if entry.get("url") == url and entry.get("status") in ("Converting", "Extracting", "Téléchargement", "Downloading"):
                                     entry["status"] = "Error"
                                     entry["message"] = err_msg
                                     save_history(config.history)
@@ -1846,6 +1850,25 @@ def handle_xbox(dest_dir, iso_files, url=None):
                 except Exception:
                     pass
                 return False, "Échec de la conversion de l'ISO"
+
+        # Conversion terminée avec succès - mettre à jour le statut final
+        try:
+            if url:
+                if url not in config.download_progress:
+                    config.download_progress[url] = {}
+                config.download_progress[url]["status"] = "Download_OK"
+                config.download_progress[url]["progress_percent"] = 100
+                config.needs_redraw = True
+                if isinstance(config.history, list):
+                    for entry in config.history:
+                        if entry.get("url") == url and entry.get("status") == "Converting":
+                            entry["status"] = "Download_OK"
+                            entry["progress"] = 100
+                            entry["message"] = "Xbox conversion completed successfully"
+                            save_history(config.history)
+                            break
+        except Exception as e:
+            logger.debug(f"MAJ statut final conversion ignorée: {e}")
 
         return True, "Conversion Xbox terminée avec succès"
 

@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.3.0.8"
+app_version = "2.3.0.9"
 
 
 def get_application_root():
