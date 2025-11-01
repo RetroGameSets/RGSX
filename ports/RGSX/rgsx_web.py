@@ -175,6 +175,17 @@ logger.info("Chargement initial des données...")
 try:
     load_sources()  # Initialise config.games_count
     logger.info(f"{len(getattr(config, 'platforms', []))} plateformes chargées")
+    
+    # Initialiser filter_platforms_selection depuis les settings (pour filtrer les plateformes)
+    from rgsx_settings import load_rgsx_settings
+    settings = load_rgsx_settings()
+    hidden = set(settings.get("hidden_platforms", [])) if isinstance(settings, dict) else set()
+    
+    if not hasattr(config, 'filter_platforms_selection') or not config.filter_platforms_selection:
+        all_platform_names = sorted([p.get("platform_name", "") for p in config.platforms if p.get("platform_name")])
+        config.filter_platforms_selection = [(name, name in hidden) for name in all_platform_names]
+        logger.info(f"Filter platforms initialisé: {len(hidden)} plateformes cachées sur {len(all_platform_names)}")
+    
     # Force flush
     for handler in logging.root.handlers:
         handler.flush()
@@ -229,14 +240,40 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 platforms = load_sources()
                 # Ajouter le nombre de jeux depuis config.games_count
                 games_count_dict = getattr(config, 'games_count', {})
+                
+                # Filtrer les plateformes cachées selon config.filter_platforms_selection
+                hidden_platforms = set()
+                if hasattr(config, 'filter_platforms_selection') and config.filter_platforms_selection:
+                    hidden_platforms = {name for name, is_hidden in config.filter_platforms_selection if is_hidden}
+                
+                # Ajouter aussi les plateformes sans dossier ROM (si show_unsupported_platforms = False)
+                from rgsx_settings import load_rgsx_settings, get_show_unsupported_platforms
+                settings = load_rgsx_settings()
+                show_unsupported = get_show_unsupported_platforms(settings)
+                
+                if not show_unsupported:
+                    # Masquer les plateformes dont le dossier ROM n'existe pas
+                    for platform in platforms:
+                        platform_name = platform.get('platform_name', '')
+                        folder = platform.get('folder', '')
+                        # Garder BIOS même sans dossier
+                        if platform_name and folder and platform_name not in ["- BIOS by TMCTV -", "- BIOS"]:
+                            expected_dir = os.path.join(config.ROMS_FOLDER, folder)
+                            if not os.path.isdir(expected_dir):
+                                hidden_platforms.add(platform_name)
+                
+                filtered_platforms = []
                 for platform in platforms:
                     platform_name = platform.get('platform_name', '')
-                    platform['games_count'] = games_count_dict.get(platform_name, 0)
+                    # Exclure les plateformes cachées
+                    if platform_name not in hidden_platforms:
+                        platform['games_count'] = games_count_dict.get(platform_name, 0)
+                        filtered_platforms.append(platform)
                 
                 self._send_json({
                     'success': True,
-                    'count': len(platforms),
-                    'platforms': platforms
+                    'count': len(filtered_platforms),
+                    'platforms': filtered_platforms
                 })
             
             # Route: API - Recherche universelle (systèmes + jeux)
@@ -258,12 +295,38 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     platforms = load_sources()
                     games_count_dict = getattr(config, 'games_count', {})
                     
+                    # Filtrer les plateformes cachées selon config.filter_platforms_selection
+                    hidden_platforms = set()
+                    if hasattr(config, 'filter_platforms_selection') and config.filter_platforms_selection:
+                        hidden_platforms = {name for name, is_hidden in config.filter_platforms_selection if is_hidden}
+                    
+                    # Ajouter aussi les plateformes sans dossier ROM (si show_unsupported_platforms = False)
+                    from rgsx_settings import load_rgsx_settings, get_show_unsupported_platforms
+                    settings = load_rgsx_settings()
+                    show_unsupported = get_show_unsupported_platforms(settings)
+                    
+                    if not show_unsupported:
+                        # Masquer les plateformes dont le dossier ROM n'existe pas
+                        for platform in platforms:
+                            platform_name = platform.get('platform_name', '')
+                            folder = platform.get('folder', '')
+                            # Garder BIOS même sans dossier
+                            if platform_name and folder and platform_name not in ["- BIOS by TMCTV -", "- BIOS"]:
+                                expected_dir = os.path.join(config.ROMS_FOLDER, folder)
+                                if not os.path.isdir(expected_dir):
+                                    hidden_platforms.add(platform_name)
+                    
                     matching_platforms = []
                     matching_games = []
                     
                     # Rechercher dans les plateformes et leurs jeux
                     for platform in platforms:
                         platform_name = platform.get('platform_name', '')
+                        
+                        # Exclure les plateformes cachées
+                        if platform_name in hidden_platforms:
+                            continue
+                        
                         platform_name_lower = platform_name.lower()
                         
                         # Vérifier si le système correspond
@@ -2142,7 +2205,7 @@ DO NOT share this file publicly as it may contain sensitive information.
                         platformsMatch.forEach(platform => {
                             const imageUrl = '/api/platform-image/' + encodeURIComponent(platform.platform_name);
                             html += `
-                                <div class="platform-card" onclick="loadGames('${platform.platform_name.replace(/'/g, "\\'")}')">
+                                <div class="platform-card" onclick='loadGames("${platform.platform_name.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}")'>
                                     <img src="${imageUrl}" alt="${platform.platform_name}" onerror="this.src='/favicon.ico'">
                                     <h3>${platform.platform_name}</h3>
                                     <p>${platform.games_count} ${t('web_games')}</p>
@@ -2170,7 +2233,7 @@ DO NOT share this file publicly as it may contain sensitive information.
                         for (const [platformName, games] of Object.entries(gamesByPlatform)) {
                             html += `
                                 <div style="margin-bottom: 15px; background: white; padding: 15px; border-radius: 5px; border: 1px solid #ddd;">
-                                    <h5 style="margin: 0 0 10px 0; color: #007bff; cursor: pointer;" onclick="loadGames('${platformName.replace(/'/g, "\\'")}')">
+                                    <h5 style="margin: 0 0 10px 0; color: #007bff; cursor: pointer;" onclick='loadGames("${platformName.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}")'>
                                         📁 ${platformName} (${games.length})
                                     </h5>
                                     <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -2184,8 +2247,8 @@ DO NOT share this file publicly as it may contain sensitive information.
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
                                             ${game.size ? `<span style="background: #667eea; color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.9em; white-space: nowrap;">${game.size}</span>` : '<span></span>'}
                                             <div class="download-btn-group" style="display: flex; gap: 4px;">
-                                                <button class="download-btn" title="${downloadTitle} (now)" onclick="downloadGame('${platformName.replace(/'/g, "\\'")}', '${game.game_name.replace(/'/g, "\\'")}', null, 'now')" style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">⬇️</button>
-                                                <button class="download-btn" title="${downloadTitle} (queue)" onclick="downloadGame('${platformName.replace(/'/g, "\\'")}', '${game.game_name.replace(/'/g, "\\'")}', null, 'queue')" style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">➕</button>
+                                                <button class="download-btn" title="${downloadTitle} (now)" onclick='downloadGame("${platformName.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}", "${game.game_name.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}", null, "now")' style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">⬇️</button>
+                                                <button class="download-btn" title="${downloadTitle} (queue)" onclick='downloadGame("${platformName.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}", "${game.game_name.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}", null, "queue")' style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">➕</button>
                                             </div>
                                         </div>
                                     </div>
@@ -2323,7 +2386,7 @@ DO NOT share this file publicly as it may contain sensitive information.
                 data.platforms.forEach(p => {
                     let gameCountText = t('web_game_count', '📦', p.games_count || 0);
                     html += `
-                        <div class="platform-card" onclick="loadGames('${p.platform_name.replace(/'/g, "\\\\'")}')">
+                        <div class="platform-card" onclick='loadGames("${p.platform_name.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}")'>
                             <img src="/api/image/${encodeURIComponent(p.platform_name)}" 
                                  alt="${p.platform_name}"
                                  onerror="this.src='/api/image/default'">
@@ -2397,8 +2460,8 @@ DO NOT share this file publicly as it may contain sensitive information.
                             <span class="game-name">${g.name}</span>
                             ${g.size ? `<span class="game-size">${g.size}</span>` : ''}
                             <div class="download-btn-group" style="display: flex; gap: 4px;">
-                                <button class="download-btn" title="${downloadTitle} (now)" onclick="downloadGame('${platform.replace(/'/g, "\\'")}', '${g.name.replace(/'/g, "\\'")}', ${idx}, 'now')">⬇️</button>
-                                <button class="download-btn" title="${downloadTitle} (queue)" onclick="downloadGame('${platform.replace(/'/g, "\\'")}', '${g.name.replace(/'/g, "\\'")}', ${idx}, 'queue')" style="background: #e0e0e0; color: #333;">➕</button>
+                                <button class="download-btn" title="${downloadTitle} (now)" onclick='downloadGame("${platform.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}", "${g.name.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}", ${idx}, "now")'>⬇️</button>
+                                <button class="download-btn" title="${downloadTitle} (queue)" onclick='downloadGame("${platform.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}", "${g.name.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}", ${idx}, "queue")' style="background: #e0e0e0; color: #333;">➕</button>
                             </div>
                         </div>
                     `;
@@ -2567,7 +2630,7 @@ DO NOT share this file publicly as it may contain sensitive information.
                         <div class="info-item">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <strong>📥 ${fileName}${platformInfo}</strong>
-                                <button class="btn-action" onclick="cancelDownload('${url.replace(/'/g, "\\\\'")}', this)" title="${t('web_cancel')}">
+                                <button class="btn-action" onclick='cancelDownload("${url.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}", this)' title="${t('web_cancel')}">
                                     ❌
                                 </button>
                             </div>
@@ -2635,7 +2698,7 @@ DO NOT share this file publicly as it may contain sensitive information.
                                         <div class="info-item">
                                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                                 <strong>📥 ${fileName}${platformInfo}</strong>
-                                                <button class="btn-action" onclick="cancelDownload('${url.replace(/'/g, "\\\\'")}', this)" title="${t('web_cancel')}">
+                                                <button class="btn-action" onclick='cancelDownload("${url.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}", this)' title="${t('web_cancel')}">
                                                     ❌
                                                 </button>
                                             </div>
@@ -2713,7 +2776,7 @@ DO NOT share this file publicly as it may contain sensitive information.
                                         Platform: ${platform} | Status: ${status}
                                     </div>
                                 </div>
-                                <button class="btn-action" onclick="removeFromQueue('${item.task_id.replace(/'/g, "\\\\'")}', this)" title="${t('web_remove')}">
+                                <button class="btn-action" onclick='removeFromQueue("${item.task_id.replace(/["']/g, function(m){return m==="\\"" ? "&quot;" : "&#39;"})}", this)' title="${t('web_remove')}">
                                     ❌
                                 </button>
                             </div>
