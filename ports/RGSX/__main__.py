@@ -541,7 +541,6 @@ async def main():
                         config.needs_redraw = True
                         logger.info("Scraping terminé")
                     
-                    import threading
                     thread = threading.Thread(target=scrape_async, daemon=True)
                     thread.start()
         

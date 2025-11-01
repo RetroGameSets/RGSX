@@ -6,20 +6,29 @@ import re
 import os
 import datetime
 import threading
+import logging
 import config
-from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE
-from config import CONTROLS_CONFIG_PATH
+from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE, CONTROLS_CONFIG_PATH
 from display import draw_validation_transition, show_toast
 from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel
 from utils import (
     load_games, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
     save_music_config, load_api_keys, _get_dest_folder_name,
-    extract_zip, extract_rar, find_file_with_or_without_extension
+    extract_zip, extract_rar, find_file_with_or_without_extension, toggle_web_service_at_boot, check_web_service_status,
+    restart_application, generate_support_zip, load_sources,
+    ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
 )
 from history import load_history, clear_history, add_to_history, save_history
-import logging
 from language import _  # Import de la fonction de traduction
+from rgsx_settings import (
+    get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
+    get_show_unsupported_platforms, set_show_unsupported_platforms,
+    set_allow_unknown_extensions, get_hide_premium_systems, set_hide_premium_systems,
+    get_sources_mode, set_sources_mode, set_symlink_option, get_symlink_option
+)
+from accessibility import save_accessibility_settings
+from scraper import get_game_metadata, download_image_to_surface
 
 logger = logging.getLogger(__name__)
 
@@ -640,12 +649,7 @@ def handle_controls(event, sources, joystick, screen):
                                 load_extensions_json()
                             )
                             zip_ok = bool(pending_download[3])
-                            allow_unknown = False
-                            try:
-                                from rgsx_settings import get_allow_unknown_extensions
-                                allow_unknown = get_allow_unknown_extensions()
-                            except Exception:
-                                allow_unknown = False
+                            allow_unknown = get_allow_unknown_extensions()
                             
                             # Si extension non supportée ET pas en archive connu, afficher avertissement
                             if (not is_supported and not zip_ok) and not allow_unknown:
@@ -724,7 +728,6 @@ def handle_controls(event, sources, joystick, screen):
                     if config.pending_download and len(config.pending_download) == 4:
                         url, platform, game_name, is_zip_non_supported = config.pending_download
                         if is_1fichier_url(url):
-                            from utils import ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
                             ensure_download_provider_keys(False)
                           
                             
@@ -1020,7 +1023,6 @@ def handle_controls(event, sources, joystick, screen):
                         # Lancer la recherche des métadonnées dans un thread séparé
                         
                         def scrape_async():
-                            from scraper import get_game_metadata, download_image_to_surface
                             logger.info(f"Scraping métadonnées pour {game_name} sur {platform}")
                             metadata = get_game_metadata(game_name, platform)
                             
@@ -1209,7 +1211,6 @@ def handle_controls(event, sources, joystick, screen):
                         entry = config.history[config.current_history_item]
                         platform = entry.get("platform", "")
                         
-                        # threading est déjà importé en haut du fichier (ligne 8)
                         
                         # Utiliser le chemin réel trouvé (avec ou sans extension)
                         file_path = getattr(config, 'history_actual_path', None)
@@ -1355,10 +1356,8 @@ def handle_controls(event, sources, joystick, screen):
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
                 elif config.selected_option == 5:  # Restart
-                    from utils import restart_application
                     restart_application(2000)
                 elif config.selected_option == 6:  # Support
-                    from utils import generate_support_zip
                     success, message, zip_path = generate_support_zip()
                     if success:
                         config.support_zip_path = zip_path
@@ -1435,7 +1434,6 @@ def handle_controls(event, sources, joystick, screen):
                     idx = (idx + 1) % len(layouts) if is_input_matched(event, "right") else (idx - 1) % len(layouts)
                     new_cols, new_rows = layouts[idx]
                     try:
-                        from rgsx_settings import set_display_grid
                         set_display_grid(new_cols, new_rows)
                     except Exception as e:
                         logger.error(f"Erreur set_display_grid: {e}")
@@ -1443,7 +1441,6 @@ def handle_controls(event, sources, joystick, screen):
                     config.GRID_ROWS = new_rows
                     # Redémarrage automatique
                     try:
-                        from utils import restart_application
                         config.menu_state = "restart_popup"
                         config.popup_message = _("popup_restarting") if _ else "Restarting..."
                         config.popup_timer = 2000
@@ -1453,7 +1450,6 @@ def handle_controls(event, sources, joystick, screen):
                     config.needs_redraw = True
                 # 1 font size
                 elif sel == 1 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    from accessibility import save_accessibility_settings
                     opts = getattr(config, 'font_scale_options', [0.75,1.0,1.25,1.5,1.75])
                     idx = getattr(config, 'current_font_scale_index', 1)
                     idx = max(0, idx-1) if is_input_matched(event, "left") else min(len(opts)-1, idx+1)
@@ -1473,7 +1469,6 @@ def handle_controls(event, sources, joystick, screen):
                 # 2 font family cycle
                 elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
-                        from rgsx_settings import get_font_family, set_font_family
                         families = getattr(config, 'FONT_FAMILIES', ["pixel"]) or ["pixel"]
                         current = get_font_family()
                         try:
@@ -1508,10 +1503,8 @@ def handle_controls(event, sources, joystick, screen):
                 # 3 unsupported toggle
                 elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
-                        from rgsx_settings import get_show_unsupported_platforms, set_show_unsupported_platforms
                         current = get_show_unsupported_platforms()
                         new_val = set_show_unsupported_platforms(not current)
-                        from utils import load_sources
                         load_sources()
                         config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
                         config.popup_timer = 3000
@@ -1521,7 +1514,6 @@ def handle_controls(event, sources, joystick, screen):
                 # 4 allow unknown extensions
                 elif sel == 4 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
-                        from rgsx_settings import get_allow_unknown_extensions, set_allow_unknown_extensions
                         current = get_allow_unknown_extensions()
                         new_val = set_allow_unknown_extensions(not current)
                         config.popup_message = _("menu_allow_unknown_ext_enabled") if new_val else _("menu_allow_unknown_ext_disabled")
@@ -1532,7 +1524,6 @@ def handle_controls(event, sources, joystick, screen):
                 # 5 hide premium systems
                 elif sel == 5 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     try:
-                        from rgsx_settings import get_hide_premium_systems, set_hide_premium_systems
                         cur = get_hide_premium_systems()
                         new_val = set_hide_premium_systems(not cur)
                         config.popup_message = ("Premium hidden" if new_val else "Premium visible") if _ is None else (_("popup_hide_premium_on") if new_val else _("popup_hide_premium_off"))
@@ -1578,7 +1569,6 @@ def handle_controls(event, sources, joystick, screen):
                     config.needs_redraw = True
                 elif sel == 1 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     try:
-                        from rgsx_settings import get_sources_mode, set_sources_mode
                         current_mode = get_sources_mode()
                         new_mode = set_sources_mode('custom' if current_mode == 'rgsx' else 'rgsx')
                         config.sources_mode = new_mode
@@ -1639,7 +1629,6 @@ def handle_controls(event, sources, joystick, screen):
                     logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via settings")
                 # Option 1: Symlink toggle
                 elif sel == 1 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    from rgsx_settings import set_symlink_option, get_symlink_option
                     current_status = get_symlink_option()
                     success, message = set_symlink_option(not current_status)
                     config.popup_message = message
@@ -1648,14 +1637,13 @@ def handle_controls(event, sources, joystick, screen):
                     logger.info(f"Symlink option {'activée' if not current_status else 'désactivée'} via settings")
                 # Option 2: Web Service toggle (seulement si Linux)
                 elif sel == web_service_index and web_service_index >= 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    from utils import toggle_web_service_at_boot, check_web_service_status
+                    
                     current_status = check_web_service_status()
                     # Afficher un message de chargement
                     config.popup_message = _("settings_web_service_enabling") if not current_status else _("settings_web_service_disabling")
                     config.popup_timer = 1000
                     config.needs_redraw = True
                     # Exécuter en thread pour ne pas bloquer l'UI
-                    import threading
                     def toggle_service():
                         success, message = toggle_web_service_at_boot(not current_status)
                         config.popup_message = message
@@ -1714,7 +1702,6 @@ def handle_controls(event, sources, joystick, screen):
                     idx = (idx - 1) % len(layouts) if is_input_matched(event, "left") else (idx + 1) % len(layouts)
                     new_cols, new_rows = layouts[idx]
                     try:
-                        from rgsx_settings import set_display_grid
                         set_display_grid(new_cols, new_rows)
                     except Exception as e:
                         logger.error(f"Erreur set_display_grid: {e}")
@@ -1723,7 +1710,6 @@ def handle_controls(event, sources, joystick, screen):
                     config.needs_redraw = True
                     # Redémarrage automatique pour appliquer proprement la modification de layout
                     try:
-                        from utils import restart_application
                         # Montrer brièvement l'info puis redémarrer
                         config.menu_state = "restart_popup"
                         config.popup_message = _("popup_restarting")
@@ -1733,7 +1719,6 @@ def handle_controls(event, sources, joystick, screen):
                         logger.error(f"Erreur lors du redémarrage après changement de layout: {e}")
                 # 1: font size adjust
                 elif sel == 1 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    from accessibility import save_accessibility_settings
                     opts = getattr(config, 'font_scale_options', [0.75, 1.0, 1.25, 1.5, 1.75])
                     idx = getattr(config, 'current_font_scale_index', 1)
                     idx = max(0, idx - 1) if is_input_matched(event, "left") else min(len(opts)-1, idx + 1)
@@ -1753,10 +1738,8 @@ def handle_controls(event, sources, joystick, screen):
                 # 2: toggle unsupported
                 elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
-                        from rgsx_settings import get_show_unsupported_platforms, set_show_unsupported_platforms
                         current = get_show_unsupported_platforms()
                         new_val = set_show_unsupported_platforms(not current)
-                        from utils import load_sources
                         load_sources()
                         config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
                         config.popup_timer = 3000
@@ -1766,7 +1749,6 @@ def handle_controls(event, sources, joystick, screen):
                 # 3: toggle allow unknown extensions
                 elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
-                        from rgsx_settings import get_allow_unknown_extensions, set_allow_unknown_extensions
                         current = get_allow_unknown_extensions()
                         new_val = set_allow_unknown_extensions(not current)
                         config.popup_message = _("menu_allow_unknown_ext_enabled") if new_val else _("menu_allow_unknown_ext_disabled")
@@ -1824,7 +1806,6 @@ def handle_controls(event, sources, joystick, screen):
                             config.needs_redraw = True
                             logger.debug("Passage à restart_popup")
                             # Redémarrage automatique
-                            from utils import restart_application
                             restart_application(2000)
                         except Exception as e:
                             logger.error(f"Erreur lors de la suppression du fichier sources.json ou dossiers: {e}")
@@ -1839,7 +1820,6 @@ def handle_controls(event, sources, joystick, screen):
                         config.popup_timer = 2000
                         config.needs_redraw = True
                         logger.debug("Passage à restart_popup")
-                        from utils import restart_application
                         restart_application(2000)
                 else:  # Non
                     config.menu_state = validate_menu_state(config.previous_menu_state)
@@ -1863,8 +1843,6 @@ def handle_controls(event, sources, joystick, screen):
         # Sélecteur de langue
         elif config.menu_state == "language_select":
             # Gestion directe des événements pour le sélecteur de langue
-            from language import get_available_languages, set_language, _
-            
             available_languages = get_available_languages()
             
             if not available_languages:
@@ -1943,8 +1921,6 @@ def handle_controls(event, sources, joystick, screen):
                     config.needs_redraw = True
                 else:
                     btn_idx = config.selected_filter_index - total_items
-                    from rgsx_settings import load_rgsx_settings, save_rgsx_settings
-                    from utils import load_sources
                     settings = load_rgsx_settings()
                     if btn_idx == 0:  # all visible
                         config.filter_platforms_selection = [(n, False) for n, _ in config.filter_platforms_selection]
@@ -2026,7 +2002,6 @@ def handle_controls(event, sources, joystick, screen):
                             
                             # Vérifier d'abord l'extension avant d'ajouter à l'historique
                             if is_1fichier_url(url):
-                                from utils import ensure_download_provider_keys, missing_all_provider_keys
                                 ensure_download_provider_keys(False)
                                 
                                 # Avertissement si pas de clé (utilisation mode gratuit)
@@ -2041,12 +2016,7 @@ def handle_controls(event, sources, joystick, screen):
                                         load_extensions_json()
                                     )
                                     zip_ok = bool(config.pending_download[3])
-                                    allow_unknown = False
-                                    try:
-                                        from rgsx_settings import get_allow_unknown_extensions
-                                        allow_unknown = get_allow_unknown_extensions()
-                                    except Exception:
-                                        allow_unknown = False
+                                    allow_unknown = get_allow_unknown_extensions()
                                     if (not is_supported and not zip_ok) and not allow_unknown:
                                         config.previous_menu_state = config.menu_state
                                         config.menu_state = "extension_warning"
@@ -2077,12 +2047,7 @@ def handle_controls(event, sources, joystick, screen):
                                         extensions_data
                                     )
                                     zip_ok = bool(config.pending_download[3])
-                                    allow_unknown = False
-                                    try:
-                                        from rgsx_settings import get_allow_unknown_extensions
-                                        allow_unknown = get_allow_unknown_extensions()
-                                    except Exception:
-                                        allow_unknown = False
+                                    allow_unknown = get_allow_unknown_extensions()
                                     if (not is_supported and not zip_ok) and not allow_unknown:
                                         config.previous_menu_state = config.menu_state
                                         config.menu_state = "extension_warning"
@@ -2131,7 +2096,6 @@ def handle_controls(event, sources, joystick, screen):
                             
                             # Vérifier d'abord l'extension avant d'ajouter à l'historique
                             if is_1fichier_url(url):
-                                from utils import ensure_download_provider_keys, missing_all_provider_keys
                                 ensure_download_provider_keys(False)
                                 
                                 # Avertissement si pas de clé (utilisation mode gratuit)
@@ -2146,12 +2110,7 @@ def handle_controls(event, sources, joystick, screen):
                                         load_extensions_json()
                                     )
                                     zip_ok = bool(config.pending_download[3])
-                                    allow_unknown = False
-                                    try:
-                                        from rgsx_settings import get_allow_unknown_extensions
-                                        allow_unknown = get_allow_unknown_extensions()
-                                    except Exception:
-                                        allow_unknown = False
+                                    allow_unknown = get_allow_unknown_extensions()
                                     if (not is_supported and not zip_ok) and not allow_unknown:
                                         config.previous_menu_state = config.menu_state
                                         config.menu_state = "extension_warning"
@@ -2182,12 +2141,7 @@ def handle_controls(event, sources, joystick, screen):
                                         extensions_data
                                     )
                                     zip_ok = bool(config.pending_download[3])
-                                    allow_unknown = False
-                                    try:
-                                        from rgsx_settings import get_allow_unknown_extensions
-                                        allow_unknown = get_allow_unknown_extensions()
-                                    except Exception:
-                                        allow_unknown = False
+                                    allow_unknown = get_allow_unknown_extensions()
                                     if (not is_supported and not zip_ok) and not allow_unknown:
                                         config.previous_menu_state = config.menu_state
                                         config.menu_state = "extension_warning"
