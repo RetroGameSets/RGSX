@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.3.1.2.1"
+app_version = "2.3.1.3"
 
 
 def get_application_root():
@@ -98,7 +98,7 @@ GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 # URLs pour les mises à jour OTA (Over-The-Air)
 # Utilise le fichier RGSX_latest.zip qui pointe toujours vers la dernière version
 OTA_UPDATE_ZIP = f"{GITHUB_RELEASES_URL}/latest/download/RGSX_update_latest.zip"
-OTA_VERSION_ENDPOINT = "https://retrogamesets.fr/softs/version.json"  # Endpoint pour vérifier la version disponible
+OTA_VERSION_ENDPOINT = "https://raw.githubusercontent.com/RetroGameSets/RGSX/refs/heads/main/version.json"  # Endpoint pour vérifier la version disponible
 
 # URLs legacy (conservées pour compatibilité)
 OTA_SERVER_URL = "https://retrogamesets.fr/softs/"

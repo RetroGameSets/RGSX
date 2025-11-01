@@ -455,10 +455,15 @@ async def check_for_updates():
 
         response = requests.get(OTA_VERSION_ENDPOINT, timeout=5)
         response.raise_for_status()
-        if response.headers.get("content-type") != "application/json":
+        
+        # Accepter différents content-types (application/json, text/plain, text/html)
+        content_type = response.headers.get("content-type", "")
+        allowed_types = ["application/json", "text/plain", "text/html"]
+        if not any(allowed in content_type for allowed in allowed_types):
             raise ValueError(
-                f"Le fichier version.json n'est pas un JSON valide (type de contenu : {response.headers.get('content-type')})"
+                f"Le fichier version.json n'est pas un JSON valide (type de contenu : {content_type})"
             )
+        
         version_data = response.json()
         latest_version = version_data.get("version")
         logger.debug(f"Version distante : {latest_version}, version locale : {config.app_version}")
