@@ -2348,14 +2348,54 @@ DO NOT share this file publicly as it may contain sensitive information.
         // Helper: Check if game is non-release version
         function isNonReleaseGame(gameName) {
             const name = gameName.toUpperCase();
-            return name.includes('(BETA)') ||
-                   name.includes('(DEMO)') ||
-                   name.includes('(PROTO)') ||
-                   name.includes('(SAMPLE)') ||
-                   name.includes('(KIOSK)') ||
-                   name.includes('(PREVIEW)') ||
-                   name.includes('(TEST)') ||
-                   name.includes('(DEBUG)');
+            // Match parentheses or brackets containing these keywords
+            // Using [^\)] instead of .* to avoid catastrophic backtracking
+            const nonReleasePatterns = [
+                /\([^\)]*BETA[^\)]*\)/,
+                /\([^\)]*DEMO[^\)]*\)/,
+                /\([^\)]*PROTO[^\)]*\)/,
+                /\([^\)]*SAMPLE[^\)]*\)/,
+                /\([^\)]*KIOSK[^\)]*\)/,
+                /\([^\)]*PREVIEW[^\)]*\)/,
+                /\([^\)]*TEST[^\)]*\)/,
+                /\([^\)]*DEBUG[^\)]*\)/,
+                /\([^\)]*ALPHA[^\)]*\)/,
+                /\([^\)]*PRE-RELEASE[^\)]*\)/,
+                /\([^\)]*PRERELEASE[^\)]*\)/,
+                /\([^\)]*UNFINISHED[^\)]*\)/,
+                /\([^\)]*WIP[^\)]*\)/,
+                /\[[^\]]*BETA[^\]]*\]/,
+                /\[[^\]]*DEMO[^\]]*\]/,
+                /\[[^\]]*TEST[^\]]*\]/
+            ];
+            return nonReleasePatterns.some(pattern => pattern.test(name));
+        }
+
+        // Helper: Get base game name (strip regions, versions, etc.)
+        function getBaseGameName(gameName) {
+            let base = gameName;
+
+            // Remove file extensions
+            base = base.replace(/\.(zip|7z|rar|gz|iso)$/i, '');
+
+            // Remove parenthetical content (regions, languages, versions, etc.)
+            base = base.replace(/\([^)]*\)/g, '');
+            base = base.replace(/\[[^\]]*\]/g, '');
+
+            // Normalize whitespace
+            base = base.replace(/\s+/g, ' ').trim();
+
+            return base;
+        }
+
+        // Helper: Get region priority for one-rom-per-game (lower = better)
+        function getRegionPriority(gameName) {
+            const name = gameName.toUpperCase();
+            if (name.includes('(USA)')) return 1;
+            if (name.includes('(CANADA)')) return 2;
+            if (name.includes('(WORLD)')) return 3;
+            if (name.includes('(EUROPE)')) return 4;
+            return 5; // Other regions
         }
 
         // Toggle region filter
@@ -2438,6 +2478,43 @@ DO NOT share this file publicly as it may contain sensitive information.
                 item.style.display = visible ? '' : 'none';
                 if (visible) visibleCount++;
             });
+
+            // Apply one-rom-per-game filter (after other filters)
+            const oneRomPerGame = document.getElementById('one-rom-per-game')?.checked || false;
+            if (oneRomPerGame) {
+                // Group currently visible games by base name
+                const gameGroups = new Map();
+
+                items.forEach(item => {
+                    if (item.style.display !== 'none') {
+                        const name = item.querySelector('.game-name').textContent;
+                        const baseName = getBaseGameName(name);
+
+                        if (!gameGroups.has(baseName)) {
+                            gameGroups.set(baseName, []);
+                        }
+                        gameGroups.get(baseName).push({ item, name });
+                    }
+                });
+
+                // For each group, show only best region
+                let hiddenByDuplicates = 0;
+                gameGroups.forEach((games, baseName) => {
+                    if (games.length > 1) {
+                        // Sort by region priority (lower = better)
+                        games.sort((a, b) => getRegionPriority(a.name) - getRegionPriority(b.name));
+
+                        // Hide all except the best one
+                        games.forEach((game, idx) => {
+                            if (idx > 0) {
+                                game.item.style.display = 'none';
+                                visibleCount--;
+                                hiddenByDuplicates++;
+                            }
+                        });
+                    }
+                });
+            }
 
             // Update clear button
             const clearBtn = document.getElementById('clear-games-search');
@@ -2630,6 +2707,10 @@ DO NOT share this file publicly as it may contain sensitive information.
                             <label class="filter-checkbox">
                                 <input type="checkbox" id="regex-mode" onchange="applyAllFilters()">
                                 <span>Enable Regex Search</span>
+                            </label>
+                            <label class="filter-checkbox">
+                                <input type="checkbox" id="one-rom-per-game" onchange="applyAllFilters()">
+                                <span>One ROM Per Game (USA→Canada→World→Europe)</span>
                             </label>
                         </div>
                     </div>
