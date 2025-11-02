@@ -1711,6 +1711,60 @@ DO NOT share this file publicly as it may contain sensitive information.
             color: white;
             border-color: #667eea;
         }
+
+        .filter-section {
+            margin-top: 12px;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        .filter-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .filter-row:last-child {
+            margin-bottom: 0;
+        }
+        .filter-label {
+            font-weight: bold;
+            margin-right: 4px;
+        }
+        .region-btn {
+            background: #e0e0e0;
+            color: #333;
+            border: 2px solid #999;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85em;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .region-btn:hover {
+            background: #d0d0d0;
+            border-color: #666;
+        }
+        .region-btn.active {
+            background: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+        .filter-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .filter-checkbox input[type="checkbox"] {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+        }
         
         .games-list {
             max-height: 600px;
@@ -2275,29 +2329,144 @@ DO NOT share this file publicly as it may contain sensitive information.
             }, 300); // Attendre 300ms après la dernière frappe
         }
         
-        // Filtrer les jeux
-        function filterGames(searchTerm) {
+        // Filter state
+        let activeRegions = new Set();
+
+        // Helper: Extract region from game name
+        function getGameRegion(gameName) {
+            const name = gameName.toUpperCase();
+            // Common region patterns
+            if (name.includes('(USA)') || name.includes('(US)')) return 'USA';
+            if (name.includes('(EUROPE)') || name.includes('(EU)')) return 'Europe';
+            if (name.includes('(JAPAN)') || name.includes('(JP)') || name.includes('(JPN)')) return 'Japan';
+            if (name.includes('(WORLD)')) return 'World';
+            // Check for other regions
+            if (name.match(/\((AUSTRALIA|ASIA|KOREA|BRAZIL|CHINA|RUSSIA|SCANDINAVIA|SPAIN|FRANCE|GERMANY|ITALY)\)/)) return 'Other';
+            return 'Other';
+        }
+
+        // Helper: Check if game is non-release version
+        function isNonReleaseGame(gameName) {
+            const name = gameName.toUpperCase();
+            return name.includes('(BETA)') ||
+                   name.includes('(DEMO)') ||
+                   name.includes('(PROTO)') ||
+                   name.includes('(SAMPLE)') ||
+                   name.includes('(KIOSK)') ||
+                   name.includes('(PREVIEW)') ||
+                   name.includes('(TEST)') ||
+                   name.includes('(DEBUG)');
+        }
+
+        // Toggle region filter
+        function toggleRegionFilter(region) {
+            if (activeRegions.has(region)) {
+                activeRegions.delete(region);
+            } else {
+                activeRegions.add(region);
+            }
+
+            // Update button states
+            const btn = document.querySelector(`.region-btn[data-region="${region}"]`);
+            if (btn) {
+                btn.classList.toggle('active');
+            }
+
+            applyAllFilters();
+        }
+
+        // Apply all filters
+        function applyAllFilters() {
+            const searchInput = document.getElementById('game-search');
+            const searchTerm = searchInput ? searchInput.value : '';
+            const hideNonRelease = document.getElementById('hide-non-release')?.checked || false;
+            const regexMode = document.getElementById('regex-mode')?.checked || false;
+
             const items = document.querySelectorAll('.game-item');
-            const term = searchTerm.toLowerCase();
             let visibleCount = 0;
-            
-            items.forEach(item => {
-                const name = item.querySelector('.game-name').textContent.toLowerCase();
-                if (name.includes(term)) {
-                    item.style.display = '';
-                    visibleCount++;
-                } else {
-                    item.style.display = 'none';
+            let hiddenByRegion = 0;
+            let hiddenByNonRelease = 0;
+            let hiddenBySearch = 0;
+
+            // Prepare search pattern
+            let searchPattern = null;
+            if (searchTerm && regexMode) {
+                try {
+                    searchPattern = new RegExp(searchTerm, 'i');
+                } catch (e) {
+                    // Invalid regex, fall back to plain text
+                    searchPattern = null;
                 }
+            }
+
+            items.forEach(item => {
+                const name = item.querySelector('.game-name').textContent;
+                let visible = true;
+
+                // Apply search filter
+                if (searchTerm) {
+                    if (regexMode && searchPattern) {
+                        if (!searchPattern.test(name)) {
+                            visible = false;
+                            hiddenBySearch++;
+                        }
+                    } else {
+                        if (!name.toLowerCase().includes(searchTerm.toLowerCase())) {
+                            visible = false;
+                            hiddenBySearch++;
+                        }
+                    }
+                }
+
+                // Apply region filter (only if regions are selected)
+                if (visible && activeRegions.size > 0) {
+                    const gameRegion = getGameRegion(name);
+                    if (!activeRegions.has(gameRegion)) {
+                        visible = false;
+                        hiddenByRegion++;
+                    }
+                }
+
+                // Apply non-release filter
+                if (visible && hideNonRelease) {
+                    if (isNonReleaseGame(name)) {
+                        visible = false;
+                        hiddenByNonRelease++;
+                    }
+                }
+
+                item.style.display = visible ? '' : 'none';
+                if (visible) visibleCount++;
             });
-            
-            // Afficher/masquer le bouton clear
+
+            // Update clear button
             const clearBtn = document.getElementById('clear-games-search');
             if (clearBtn) {
                 clearBtn.style.display = searchTerm ? 'block' : 'none';
             }
-            
+
+            // Update filter status
+            const statusDiv = document.getElementById('filter-status');
+            if (statusDiv) {
+                let statusParts = [`Showing ${visibleCount} of ${items.length} games`];
+                if (activeRegions.size > 0) {
+                    statusParts.push(`Region: ${Array.from(activeRegions).join(', ')}`);
+                }
+                if (hideNonRelease) {
+                    statusParts.push(`Hiding demos/betas/protos`);
+                }
+                if (regexMode && searchTerm) {
+                    statusParts.push(`Regex mode`);
+                }
+                statusDiv.textContent = statusParts.join(' • ');
+            }
+
             return visibleCount;
+        }
+
+        // Legacy function for backwards compatibility
+        function filterGames(searchTerm) {
+            return applyAllFilters();
         }
         
         // Trier les jeux
@@ -2439,10 +2608,30 @@ DO NOT share this file publicly as it may contain sensitive information.
                     <button class="back-btn" onclick="goBackToPlatforms()">← ${backText}</button>
                     <h2>${platform} ${gameCountText}</h2>
                     <div class="search-box">
-                        <input type="text" id="game-search" placeholder="🔍 ${searchPlaceholder}" 
-                               oninput="filterGames(this.value)">
-                        <button class="clear-search" id="clear-games-search" onclick="document.getElementById('game-search').value=''; filterGames('');">✕</button>
+                        <input type="text" id="game-search" placeholder="🔍 ${searchPlaceholder}"
+                               oninput="applyAllFilters()">
+                        <button class="clear-search" id="clear-games-search" onclick="document.getElementById('game-search').value=''; applyAllFilters();">✕</button>
                         <span class="search-icon">🔍</span>
+                    </div>
+                    <div class="filter-section">
+                        <div class="filter-row">
+                            <span class="filter-label">Region:</span>
+                            <button class="region-btn" data-region="USA" onclick="toggleRegionFilter('USA')">🇺🇸 USA</button>
+                            <button class="region-btn" data-region="Europe" onclick="toggleRegionFilter('Europe')">🇪🇺 Europe</button>
+                            <button class="region-btn" data-region="Japan" onclick="toggleRegionFilter('Japan')">🇯🇵 Japan</button>
+                            <button class="region-btn" data-region="World" onclick="toggleRegionFilter('World')">🌍 World</button>
+                            <button class="region-btn" data-region="Other" onclick="toggleRegionFilter('Other')">🌐 Other</button>
+                        </div>
+                        <div class="filter-row">
+                            <label class="filter-checkbox">
+                                <input type="checkbox" id="hide-non-release" onchange="applyAllFilters()">
+                                <span>Hide Demos/Betas/Protos</span>
+                            </label>
+                            <label class="filter-checkbox">
+                                <input type="checkbox" id="regex-mode" onchange="applyAllFilters()">
+                                <span>Enable Regex Search</span>
+                            </label>
+                        </div>
                     </div>
                     <div style="margin-top: 12px; margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
                         <span style="font-weight: bold; align-self: center;">${sortLabel}:</span>
@@ -2451,6 +2640,7 @@ DO NOT share this file publicly as it may contain sensitive information.
                         <button class="sort-btn" data-sort="size_asc" onclick="sortGames('size_asc')" title="${sortSizeAsc}">${sortSizeAsc}</button>
                         <button class="sort-btn" data-sort="size_desc" onclick="sortGames('size_desc')" title="${sortSizeDesc}">${sortSizeDesc}</button>
                     </div>
+                    <div id="filter-status" style="margin-bottom: 8px; font-size: 0.9em; color: #666;"></div>
                     <div class="games-list">`;
                 
                 // Ajouter chaque jeu
