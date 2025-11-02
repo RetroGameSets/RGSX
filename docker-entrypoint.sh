@@ -1,13 +1,11 @@
 #!/bin/bash
 set -e
 
-# Copy RGSX app code to the mounted volume if it doesn't exist yet
-if [ ! -f "/userdata/roms/ports/RGSX/rgsx_web.py" ]; then
-    echo "Initializing RGSX in /userdata/roms/ports/RGSX..."
-    mkdir -p /userdata/roms/ports
-    cp -r /app/RGSX /userdata/roms/ports/
-    echo "RGSX app code initialized!"
-fi
+# Always sync RGSX app code to the mounted volume (for updates)
+echo "Syncing RGSX app code to /userdata/roms/ports/RGSX..."
+mkdir -p /userdata/roms/ports/RGSX
+cp -rf /app/RGSX/* /userdata/roms/ports/RGSX/
+echo "RGSX app code synced!"
 
 # Create Batocera folder structure only if folders don't exist
 [ ! -d "/userdata/saves/ports/rgsx/images" ] && mkdir -p /userdata/saves/ports/rgsx/images
