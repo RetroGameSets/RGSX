@@ -1753,6 +1753,11 @@ DO NOT share this file publicly as it may contain sensitive information.
             color: white;
             border-color: #28a745;
         }
+        .region-btn.excluded {
+            background: #dc3545;
+            color: white;
+            border-color: #dc3545;
+        }
         .filter-checkbox {
             display: flex;
             align-items: center;
@@ -2329,8 +2334,8 @@ DO NOT share this file publicly as it may contain sensitive information.
             }, 300); // Attendre 300ms après la dernière frappe
         }
         
-        // Filter state
-        let activeRegions = new Set();
+        // Filter state: Map of region -> 'include' or 'exclude'
+        let regionFilters = new Map();
 
         // Helper: Extract region from game name
         function getGameRegion(gameName) {
@@ -2371,12 +2376,23 @@ DO NOT share this file publicly as it may contain sensitive information.
             return nonReleasePatterns.some(pattern => pattern.test(name));
         }
 
-        // Helper: Get base game name (strip regions, versions, etc.)
+        // Helper: Get base game name (strip regions, versions, etc. but preserve disc numbers)
         function getBaseGameName(gameName) {
             let base = gameName;
 
             // Remove file extensions
             base = base.replace(/\.(zip|7z|rar|gz|iso)$/i, '');
+
+            // Extract disc/disk number if present (before removing parentheses)
+            let discInfo = '';
+            const discMatch = base.match(/\(Dis[ck]\s*(\d+)\)/i) ||
+                            base.match(/\[Dis[ck]\s*(\d+)\]/i) ||
+                            base.match(/Dis[ck]\s*(\d+)/i) ||
+                            base.match(/\(CD\s*(\d+)\)/i) ||
+                            base.match(/CD\s*(\d+)/i);
+            if (discMatch) {
+                discInfo = ` Disc ${discMatch[1]}`;
+            }
 
             // Remove parenthetical content (regions, languages, versions, etc.)
             base = base.replace(/\([^)]*\)/g, '');
@@ -2384,6 +2400,9 @@ DO NOT share this file publicly as it may contain sensitive information.
 
             // Normalize whitespace
             base = base.replace(/\s+/g, ' ').trim();
+
+            // Re-append disc info
+            base = base + discInfo;
 
             return base;
         }
@@ -2398,18 +2417,31 @@ DO NOT share this file publicly as it may contain sensitive information.
             return 5; // Other regions
         }
 
-        // Toggle region filter
+        // Toggle region filter: none → include (green) → exclude (red) → none
         function toggleRegionFilter(region) {
-            if (activeRegions.has(region)) {
-                activeRegions.delete(region);
-            } else {
-                activeRegions.add(region);
-            }
-
-            // Update button states
             const btn = document.querySelector(`.region-btn[data-region="${region}"]`);
-            if (btn) {
-                btn.classList.toggle('active');
+
+            if (!regionFilters.has(region)) {
+                // None → Include
+                regionFilters.set(region, 'include');
+                if (btn) {
+                    btn.classList.add('active');
+                    btn.classList.remove('excluded');
+                }
+            } else if (regionFilters.get(region) === 'include') {
+                // Include → Exclude
+                regionFilters.set(region, 'exclude');
+                if (btn) {
+                    btn.classList.remove('active');
+                    btn.classList.add('excluded');
+                }
+            } else {
+                // Exclude → None
+                regionFilters.delete(region);
+                if (btn) {
+                    btn.classList.remove('active');
+                    btn.classList.remove('excluded');
+                }
             }
 
             applyAllFilters();
@@ -2458,12 +2490,32 @@ DO NOT share this file publicly as it may contain sensitive information.
                     }
                 }
 
-                // Apply region filter (only if regions are selected)
-                if (visible && activeRegions.size > 0) {
+                // Apply region filters
+                if (visible && regionFilters.size > 0) {
                     const gameRegion = getGameRegion(name);
-                    if (!activeRegions.has(gameRegion)) {
-                        visible = false;
-                        hiddenByRegion++;
+
+                    // Get included and excluded regions
+                    const includedRegions = Array.from(regionFilters.entries())
+                        .filter(([_, mode]) => mode === 'include')
+                        .map(([region, _]) => region);
+                    const excludedRegions = Array.from(regionFilters.entries())
+                        .filter(([_, mode]) => mode === 'exclude')
+                        .map(([region, _]) => region);
+
+                    // If there are include filters, game must match one of them
+                    if (includedRegions.length > 0) {
+                        if (!includedRegions.includes(gameRegion)) {
+                            visible = false;
+                            hiddenByRegion++;
+                        }
+                    }
+
+                    // If there are exclude filters, game must NOT match any of them
+                    if (visible && excludedRegions.length > 0) {
+                        if (excludedRegions.includes(gameRegion)) {
+                            visible = false;
+                            hiddenByRegion++;
+                        }
                     }
                 }
 
@@ -2526,9 +2578,23 @@ DO NOT share this file publicly as it may contain sensitive information.
             const statusDiv = document.getElementById('filter-status');
             if (statusDiv) {
                 let statusParts = [`Showing ${visibleCount} of ${items.length} games`];
-                if (activeRegions.size > 0) {
-                    statusParts.push(`Region: ${Array.from(activeRegions).join(', ')}`);
+
+                if (regionFilters.size > 0) {
+                    const included = Array.from(regionFilters.entries())
+                        .filter(([_, mode]) => mode === 'include')
+                        .map(([region, _]) => region);
+                    const excluded = Array.from(regionFilters.entries())
+                        .filter(([_, mode]) => mode === 'exclude')
+                        .map(([region, _]) => region);
+
+                    if (included.length > 0) {
+                        statusParts.push(`Including: ${included.join(', ')}`);
+                    }
+                    if (excluded.length > 0) {
+                        statusParts.push(`Excluding: ${excluded.join(', ')}`);
+                    }
                 }
+
                 if (hideNonRelease) {
                     statusParts.push(`Hiding demos/betas/protos`);
                 }
