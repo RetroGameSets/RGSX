@@ -1105,6 +1105,16 @@ def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=No
         if not success:
             return False, error_msg
     
+    # ScummVM: organisation en dossiers + fichier .scummvm
+    scummvm_dir = os.path.join(config.ROMS_FOLDER, "scummvm")
+    if dest_dir == scummvm_dir:
+        expected_base = os.path.splitext(os.path.basename(archive_path))[0]
+        # Utiliser before_items si fourni, sinon before_dirs pour rétro-compatibilité
+        items_before = before_items if before_items is not None else before_dirs
+        success, error_msg = handle_scummvm(dest_dir, items_before, extracted_basename=expected_base)
+        if not success:
+            return False, error_msg
+    
     return True, None
 
 def extract_zip(zip_path, dest_dir, url):
@@ -1684,6 +1694,88 @@ def handle_dos(dest_dir, before_items, extracted_basename=None):
 
     except Exception as e:
         error_msg = f"Erreur lors de l'organisation DOS dans {target_path}: {str(e)}"
+        logger.error(error_msg)
+        return False, error_msg
+
+
+def handle_scummvm(dest_dir, before_items, extracted_basename=None):
+    """Gère l'organisation spécifique des jeux ScummVM extraits.
+    
+    - Crée un sous-dossier avec le nom du jeu (sans extension)
+    - Extrait/déplace le contenu du ZIP dans ce dossier
+    - Crée un fichier .scummvm vide avec le même nom
+    
+    Exemple: Freddi_fish_1.zip -> dossier Freddi_fish_1/ + fichier Freddi_fish_1.scummvm
+    
+    Args:
+        dest_dir: Dossier de destination (scummvm)
+        before_items: Set des éléments présents avant extraction
+        extracted_basename: Nom de base du ZIP extrait (sans extension)
+    """
+    logger.debug(f"Traitement spécifique ScummVM dans: {dest_dir}")
+    time.sleep(2)  # Petite latence post-extraction
+    
+    try:
+        # Déterminer les nouveaux éléments extraits
+        after_items = set(os.listdir(dest_dir))
+    except Exception:
+        after_items = set()
+    
+    ignore_names = {"scummvm", "images", "videos", "manuals", "media"}
+    # Filtrer les nouveaux éléments (fichiers ou dossiers)
+    new_items = [item for item in (after_items - before_items) 
+                 if item not in ignore_names and not item.endswith('.scummvm')]
+    
+    if not new_items:
+        logger.warning("Aucun nouveau contenu ScummVM détecté après extraction")
+        return True, None
+    
+    if not extracted_basename:
+        logger.warning("Nom de base du ZIP non fourni pour le traitement ScummVM")
+        return True, None
+    
+    # Nom du dossier et du fichier .scummvm
+    game_folder_name = extracted_basename
+    game_folder_path = os.path.join(dest_dir, game_folder_name)
+    scummvm_file_path = os.path.join(game_folder_path, f"{game_folder_name}.scummvm")
+    
+    try:
+        # Créer le dossier du jeu s'il n'existe pas
+        if os.path.exists(game_folder_path):
+            logger.warning(f"Le dossier {game_folder_path} existe déjà, il sera utilisé")
+        else:
+            os.makedirs(game_folder_path, exist_ok=True)
+            logger.debug(f"Dossier créé: {game_folder_path}")
+        
+        # Déplacer tous les nouveaux éléments dans le dossier du jeu
+        for item in new_items:
+            src_path = os.path.join(dest_dir, item)
+            dst_path = os.path.join(game_folder_path, item)
+            
+            try:
+                if os.path.isdir(src_path):
+                    shutil.move(src_path, dst_path)
+                else:
+                    shutil.move(src_path, dst_path)
+                logger.debug(f"Déplacé: {item} -> {game_folder_name}/{item}")
+            except Exception as e:
+                logger.error(f"Erreur déplacement {item}: {e}")
+                return False, f"Erreur lors du déplacement de {item}: {str(e)}"
+        
+        # Créer le fichier .scummvm vide dans le sous-dossier
+        try:
+            with open(scummvm_file_path, 'w', encoding='utf-8') as f:
+                pass  # Fichier vide
+            logger.info(f"Fichier .scummvm créé: {scummvm_file_path}")
+        except Exception as e:
+            logger.error(f"Erreur création fichier .scummvm: {e}")
+            return False, f"Erreur lors de la création du fichier .scummvm: {str(e)}"
+        
+        logger.info(f"Contenu ScummVM organisé avec succès: dossier {game_folder_name}/ avec fichier {game_folder_name}.scummvm à l'intérieur")
+        return True, None
+        
+    except Exception as e:
+        error_msg = f"Erreur lors de l'organisation ScummVM dans {game_folder_path}: {str(e)}"
         logger.error(error_msg)
         return False, error_msg
 
