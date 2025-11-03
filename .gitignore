@@ -17,3 +17,7 @@ ports/RGSX.bat
 audit_i18n.py
 prune_i18n.py
 Info.txt
+
+# Docker test data
+data/
+

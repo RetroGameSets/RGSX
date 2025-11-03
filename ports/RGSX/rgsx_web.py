@@ -1711,6 +1711,65 @@ DO NOT share this file publicly as it may contain sensitive information.
             color: white;
             border-color: #667eea;
         }
+
+        .filter-section {
+            margin-top: 12px;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        .filter-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .filter-row:last-child {
+            margin-bottom: 0;
+        }
+        .filter-label {
+            font-weight: bold;
+            margin-right: 4px;
+        }
+        .region-btn {
+            background: #e0e0e0;
+            color: #333;
+            border: 2px solid #999;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85em;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .region-btn:hover {
+            background: #d0d0d0;
+            border-color: #666;
+        }
+        .region-btn.active {
+            background: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+        .region-btn.excluded {
+            background: #dc3545;
+            color: white;
+            border-color: #dc3545;
+        }
+        .filter-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .filter-checkbox input[type="checkbox"] {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+        }
         
         .games-list {
             max-height: 600px;
@@ -2275,29 +2334,282 @@ DO NOT share this file publicly as it may contain sensitive information.
             }, 300); // Attendre 300ms après la dernière frappe
         }
         
-        // Filtrer les jeux
-        function filterGames(searchTerm) {
-            const items = document.querySelectorAll('.game-item');
-            const term = searchTerm.toLowerCase();
-            let visibleCount = 0;
-            
-            items.forEach(item => {
-                const name = item.querySelector('.game-name').textContent.toLowerCase();
-                if (name.includes(term)) {
-                    item.style.display = '';
-                    visibleCount++;
-                } else {
-                    item.style.display = 'none';
+        // Filter state: Map of region -> 'include' or 'exclude'
+        let regionFilters = new Map();
+
+        // Helper: Extract region from game name
+        function getGameRegion(gameName) {
+            const name = gameName.toUpperCase();
+            // Common region patterns
+            if (name.includes('(USA)') || name.includes('(US)')) return 'USA';
+            if (name.includes('(EUROPE)') || name.includes('(EU)')) return 'Europe';
+            if (name.includes('(JAPAN)') || name.includes('(JP)') || name.includes('(JPN)')) return 'Japan';
+            if (name.includes('(WORLD)')) return 'World';
+            // Check for other regions
+            if (name.match(/\((AUSTRALIA|ASIA|KOREA|BRAZIL|CHINA|RUSSIA|SCANDINAVIA|SPAIN|FRANCE|GERMANY|ITALY)\)/)) return 'Other';
+            return 'Other';
+        }
+
+        // Helper: Check if game is non-release version
+        function isNonReleaseGame(gameName) {
+            const name = gameName.toUpperCase();
+            // Match parentheses or brackets containing these keywords
+            // Using [^\)] instead of .* to avoid catastrophic backtracking
+            const nonReleasePatterns = [
+                /\([^\)]*BETA[^\)]*\)/,
+                /\([^\)]*DEMO[^\)]*\)/,
+                /\([^\)]*PROTO[^\)]*\)/,
+                /\([^\)]*SAMPLE[^\)]*\)/,
+                /\([^\)]*KIOSK[^\)]*\)/,
+                /\([^\)]*PREVIEW[^\)]*\)/,
+                /\([^\)]*TEST[^\)]*\)/,
+                /\([^\)]*DEBUG[^\)]*\)/,
+                /\([^\)]*ALPHA[^\)]*\)/,
+                /\([^\)]*PRE-RELEASE[^\)]*\)/,
+                /\([^\)]*PRERELEASE[^\)]*\)/,
+                /\([^\)]*UNFINISHED[^\)]*\)/,
+                /\([^\)]*WIP[^\)]*\)/,
+                /\[[^\]]*BETA[^\]]*\]/,
+                /\[[^\]]*DEMO[^\]]*\]/,
+                /\[[^\]]*TEST[^\]]*\]/
+            ];
+            return nonReleasePatterns.some(pattern => pattern.test(name));
+        }
+
+        // Helper: Get base game name (strip regions, versions, etc. but preserve disc numbers)
+        function getBaseGameName(gameName) {
+            let base = gameName;
+
+            // Remove file extensions
+            base = base.replace(/\.(zip|7z|rar|gz|iso)$/i, '');
+
+            // Extract disc/disk number if present (before removing parentheses)
+            let discInfo = '';
+            const discMatch = base.match(/\(Dis[ck]\s*(\d+)\)/i) ||
+                            base.match(/\[Dis[ck]\s*(\d+)\]/i) ||
+                            base.match(/Dis[ck]\s*(\d+)/i) ||
+                            base.match(/\(CD\s*(\d+)\)/i) ||
+                            base.match(/CD\s*(\d+)/i);
+            if (discMatch) {
+                discInfo = ` Disc ${discMatch[1]}`;
+            }
+
+            // Remove parenthetical content (regions, languages, versions, etc.)
+            base = base.replace(/\([^)]*\)/g, '');
+            base = base.replace(/\[[^\]]*\]/g, '');
+
+            // Normalize whitespace
+            base = base.replace(/\s+/g, ' ').trim();
+
+            // Re-append disc info
+            base = base + discInfo;
+
+            return base;
+        }
+
+        // Helper: Get region priority for one-rom-per-game (lower = better)
+        function getRegionPriority(gameName) {
+            const name = gameName.toUpperCase();
+            if (name.includes('(USA)')) return 1;
+            if (name.includes('(CANADA)')) return 2;
+            if (name.includes('(WORLD)')) return 3;
+            if (name.includes('(EUROPE)')) return 4;
+            return 5; // Other regions
+        }
+
+        // Toggle region filter: none → include (green) → exclude (red) → none
+        function toggleRegionFilter(region) {
+            const btn = document.querySelector(`.region-btn[data-region="${region}"]`);
+
+            if (!regionFilters.has(region)) {
+                // None → Include
+                regionFilters.set(region, 'include');
+                if (btn) {
+                    btn.classList.add('active');
+                    btn.classList.remove('excluded');
                 }
+            } else if (regionFilters.get(region) === 'include') {
+                // Include → Exclude
+                regionFilters.set(region, 'exclude');
+                if (btn) {
+                    btn.classList.remove('active');
+                    btn.classList.add('excluded');
+                }
+            } else {
+                // Exclude → None
+                regionFilters.delete(region);
+                if (btn) {
+                    btn.classList.remove('active');
+                    btn.classList.remove('excluded');
+                }
+            }
+
+            applyAllFilters();
+        }
+
+        // Apply all filters
+        function applyAllFilters() {
+            const searchInput = document.getElementById('game-search');
+            const searchTerm = searchInput ? searchInput.value : '';
+            const hideNonRelease = document.getElementById('hide-non-release')?.checked || false;
+            const regexMode = document.getElementById('regex-mode')?.checked || false;
+
+            const items = document.querySelectorAll('.game-item');
+            let visibleCount = 0;
+            let hiddenByRegion = 0;
+            let hiddenByNonRelease = 0;
+            let hiddenBySearch = 0;
+
+            // Prepare search pattern
+            let searchPattern = null;
+            if (searchTerm && regexMode) {
+                try {
+                    searchPattern = new RegExp(searchTerm, 'i');
+                } catch (e) {
+                    // Invalid regex, fall back to plain text
+                    searchPattern = null;
+                }
+            }
+
+            items.forEach(item => {
+                const name = item.querySelector('.game-name').textContent;
+                let visible = true;
+
+                // Apply search filter
+                if (searchTerm) {
+                    if (regexMode && searchPattern) {
+                        if (!searchPattern.test(name)) {
+                            visible = false;
+                            hiddenBySearch++;
+                        }
+                    } else {
+                        if (!name.toLowerCase().includes(searchTerm.toLowerCase())) {
+                            visible = false;
+                            hiddenBySearch++;
+                        }
+                    }
+                }
+
+                // Apply region filters
+                if (visible && regionFilters.size > 0) {
+                    const gameRegion = getGameRegion(name);
+
+                    // Get included and excluded regions
+                    const includedRegions = Array.from(regionFilters.entries())
+                        .filter(([_, mode]) => mode === 'include')
+                        .map(([region, _]) => region);
+                    const excludedRegions = Array.from(regionFilters.entries())
+                        .filter(([_, mode]) => mode === 'exclude')
+                        .map(([region, _]) => region);
+
+                    // If there are include filters, game must match one of them
+                    if (includedRegions.length > 0) {
+                        if (!includedRegions.includes(gameRegion)) {
+                            visible = false;
+                            hiddenByRegion++;
+                        }
+                    }
+
+                    // If there are exclude filters, game must NOT match any of them
+                    if (visible && excludedRegions.length > 0) {
+                        if (excludedRegions.includes(gameRegion)) {
+                            visible = false;
+                            hiddenByRegion++;
+                        }
+                    }
+                }
+
+                // Apply non-release filter
+                if (visible && hideNonRelease) {
+                    if (isNonReleaseGame(name)) {
+                        visible = false;
+                        hiddenByNonRelease++;
+                    }
+                }
+
+                item.style.display = visible ? '' : 'none';
+                if (visible) visibleCount++;
             });
-            
-            // Afficher/masquer le bouton clear
+
+            // Apply one-rom-per-game filter (after other filters)
+            const oneRomPerGame = document.getElementById('one-rom-per-game')?.checked || false;
+            if (oneRomPerGame) {
+                // Group currently visible games by base name
+                const gameGroups = new Map();
+
+                items.forEach(item => {
+                    if (item.style.display !== 'none') {
+                        const name = item.querySelector('.game-name').textContent;
+                        const baseName = getBaseGameName(name);
+
+                        if (!gameGroups.has(baseName)) {
+                            gameGroups.set(baseName, []);
+                        }
+                        gameGroups.get(baseName).push({ item, name });
+                    }
+                });
+
+                // For each group, show only best region
+                let hiddenByDuplicates = 0;
+                gameGroups.forEach((games, baseName) => {
+                    if (games.length > 1) {
+                        // Sort by region priority (lower = better)
+                        games.sort((a, b) => getRegionPriority(a.name) - getRegionPriority(b.name));
+
+                        // Hide all except the best one
+                        games.forEach((game, idx) => {
+                            if (idx > 0) {
+                                game.item.style.display = 'none';
+                                visibleCount--;
+                                hiddenByDuplicates++;
+                            }
+                        });
+                    }
+                });
+            }
+
+            // Update clear button
             const clearBtn = document.getElementById('clear-games-search');
             if (clearBtn) {
                 clearBtn.style.display = searchTerm ? 'block' : 'none';
             }
-            
+
+            // Update filter status
+            const statusDiv = document.getElementById('filter-status');
+            if (statusDiv) {
+                let statusParts = [`Showing ${visibleCount} of ${items.length} games`];
+
+                if (regionFilters.size > 0) {
+                    const included = Array.from(regionFilters.entries())
+                        .filter(([_, mode]) => mode === 'include')
+                        .map(([region, _]) => region);
+                    const excluded = Array.from(regionFilters.entries())
+                        .filter(([_, mode]) => mode === 'exclude')
+                        .map(([region, _]) => region);
+
+                    if (included.length > 0) {
+                        statusParts.push(`Including: ${included.join(', ')}`);
+                    }
+                    if (excluded.length > 0) {
+                        statusParts.push(`Excluding: ${excluded.join(', ')}`);
+                    }
+                }
+
+                if (hideNonRelease) {
+                    statusParts.push(`Hiding demos/betas/protos`);
+                }
+                if (regexMode && searchTerm) {
+                    statusParts.push(`Regex mode`);
+                }
+                statusDiv.textContent = statusParts.join(' • ');
+            }
+
             return visibleCount;
+        }
+
+        // Legacy function for backwards compatibility
+        function filterGames(searchTerm) {
+            return applyAllFilters();
         }
         
         // Trier les jeux
@@ -2439,10 +2751,34 @@ DO NOT share this file publicly as it may contain sensitive information.
                     <button class="back-btn" onclick="goBackToPlatforms()">← ${backText}</button>
                     <h2>${platform} ${gameCountText}</h2>
                     <div class="search-box">
-                        <input type="text" id="game-search" placeholder="🔍 ${searchPlaceholder}" 
-                               oninput="filterGames(this.value)">
-                        <button class="clear-search" id="clear-games-search" onclick="document.getElementById('game-search').value=''; filterGames('');">✕</button>
+                        <input type="text" id="game-search" placeholder="🔍 ${searchPlaceholder}"
+                               oninput="applyAllFilters()">
+                        <button class="clear-search" id="clear-games-search" onclick="document.getElementById('game-search').value=''; applyAllFilters();">✕</button>
                         <span class="search-icon">🔍</span>
+                    </div>
+                    <div class="filter-section">
+                        <div class="filter-row">
+                            <span class="filter-label">Region:</span>
+                            <button class="region-btn" data-region="USA" onclick="toggleRegionFilter('USA')">🇺🇸 USA</button>
+                            <button class="region-btn" data-region="Europe" onclick="toggleRegionFilter('Europe')">🇪🇺 Europe</button>
+                            <button class="region-btn" data-region="Japan" onclick="toggleRegionFilter('Japan')">🇯🇵 Japan</button>
+                            <button class="region-btn" data-region="World" onclick="toggleRegionFilter('World')">🌍 World</button>
+                            <button class="region-btn" data-region="Other" onclick="toggleRegionFilter('Other')">🌐 Other</button>
+                        </div>
+                        <div class="filter-row">
+                            <label class="filter-checkbox">
+                                <input type="checkbox" id="hide-non-release" onchange="applyAllFilters()">
+                                <span>Hide Demos/Betas/Protos</span>
+                            </label>
+                            <label class="filter-checkbox">
+                                <input type="checkbox" id="regex-mode" onchange="applyAllFilters()">
+                                <span>Enable Regex Search</span>
+                            </label>
+                            <label class="filter-checkbox">
+                                <input type="checkbox" id="one-rom-per-game" onchange="applyAllFilters()">
+                                <span>One ROM Per Game (USA→Canada→World→Europe)</span>
+                            </label>
+                        </div>
                     </div>
                     <div style="margin-top: 12px; margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
                         <span style="font-weight: bold; align-self: center;">${sortLabel}:</span>
@@ -2451,6 +2787,7 @@ DO NOT share this file publicly as it may contain sensitive information.
                         <button class="sort-btn" data-sort="size_asc" onclick="sortGames('size_asc')" title="${sortSizeAsc}">${sortSizeAsc}</button>
                         <button class="sort-btn" data-sort="size_desc" onclick="sortGames('size_desc')" title="${sortSizeDesc}">${sortSizeDesc}</button>
                     </div>
+                    <div id="filter-status" style="margin-bottom: 8px; font-size: 0.9em; color: #666;"></div>
                     <div class="games-list">`;
                 
                 // Ajouter chaque jeu
