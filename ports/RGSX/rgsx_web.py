@@ -2891,7 +2891,8 @@ DO NOT share this file publicly as it may contain sensitive information.
                         <div class="filter-row">
                             <span class="filter-label">Region:</span>
                             <button class="region-btn" data-region="USA" onclick="toggleRegionFilter('USA')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1fa-1f1f8.svg" style="width:16px;height:16px" /> USA</button>
-                            <button class="region-btn" data-region="Europe" onclick="toggleRegionFilter('Europe')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1ea-1f1fa.svg" style="width:16px;height:16px" /> Europe</button>                            <button class="region-btn" data-region="Japan" onclick="toggleRegionFilter('Japan')">🇯🇵 Japan</button>
+                            <button class="region-btn" data-region="Europe" onclick="toggleRegionFilter('Europe')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1ea-1f1fa.svg" style="width:16px;height:16px" /> Europe</button>                            
+                            <button class="region-btn" data-region="Japan" onclick="toggleRegionFilter('Japan')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1ef-1f1f5.svg" style="width:16px;height:16px" /> Japan</button>
                             <button class="region-btn" data-region="World" onclick="toggleRegionFilter('World')">🌍 World</button>
                             <button class="region-btn" data-region="Other" onclick="toggleRegionFilter('Other')">🌐 Other</button>
                         </div>
