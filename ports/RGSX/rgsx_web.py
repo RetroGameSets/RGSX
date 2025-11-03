@@ -2336,18 +2336,37 @@ DO NOT share this file publicly as it may contain sensitive information.
         
         // Filter state: Map of region -> 'include' or 'exclude'
         let regionFilters = new Map();
+        
+        // Region priority order for "One ROM Per Game" (customizable)
+        let regionPriorityOrder = JSON.parse(localStorage.getItem('regionPriorityOrder')) || 
+            ['USA', 'Canada', 'World', 'Europe', 'Japan', 'Other'];
 
-        // Helper: Extract region from game name
-        function getGameRegion(gameName) {
+        // Helper: Extract region(s) from game name - returns array of regions
+        function getGameRegions(gameName) {
             const name = gameName.toUpperCase();
-            // Common region patterns
-            if (name.includes('(USA)') || name.includes('(US)')) return 'USA';
-            if (name.includes('(EUROPE)') || name.includes('(EU)')) return 'Europe';
-            if (name.includes('(JAPAN)') || name.includes('(JP)') || name.includes('(JPN)')) return 'Japan';
-            if (name.includes('(WORLD)')) return 'World';
+            const regions = [];
+            
+            // Common region patterns - check all, not just first match
+            // Handle both "(USA)" and "(USA, Europe)" formats
+            if (name.includes('USA') || name.includes('US)')) regions.push('USA');
+            if (name.includes('EUROPE') || name.includes('EU)')) regions.push('Europe');
+            if (name.includes('JAPAN') || name.includes('JP)') || name.includes('JPN)')) regions.push('Japan');
+            if (name.includes('WORLD')) regions.push('World');
+            
             // Check for other regions
-            if (name.match(/\((AUSTRALIA|ASIA|KOREA|BRAZIL|CHINA|RUSSIA|SCANDINAVIA|SPAIN|FRANCE|GERMANY|ITALY)\)/)) return 'Other';
-            return 'Other';
+            if (name.match(/\b(AUSTRALIA|ASIA|KOREA|BRAZIL|CHINA|RUSSIA|SCANDINAVIA|SPAIN|FRANCE|GERMANY|ITALY)\b/)) {
+                if (!regions.includes('Other')) regions.push('Other');
+            }
+            
+            // If no region found, classify as Other
+            if (regions.length === 0) regions.push('Other');
+            
+            // Debug log for multi-region games
+            if (regions.length > 1 && gameName.includes('Game Guru')) {
+                console.log('getGameRegions:', gameName, '->', regions);
+            }
+            
+            return regions;
         }
 
         // Helper: Check if game is non-release version
@@ -2410,11 +2429,112 @@ DO NOT share this file publicly as it may contain sensitive information.
         // Helper: Get region priority for one-rom-per-game (lower = better)
         function getRegionPriority(gameName) {
             const name = gameName.toUpperCase();
-            if (name.includes('(USA)')) return 1;
-            if (name.includes('(CANADA)')) return 2;
-            if (name.includes('(WORLD)')) return 3;
-            if (name.includes('(EUROPE)')) return 4;
-            return 5; // Other regions
+            
+            // Find the first matching region in priority order
+            for (let i = 0; i < regionPriorityOrder.length; i++) {
+                const region = regionPriorityOrder[i].toUpperCase();
+                if (region === 'USA' && name.includes('USA')) return i;
+                if (region === 'CANADA' && name.includes('CANADA')) return i;
+                if (region === 'WORLD' && name.includes('WORLD')) return i;
+                if (region === 'EUROPE' && (name.includes('EUROPE') || name.includes('EU)'))) return i;
+                if (region === 'JAPAN' && (name.includes('JAPAN') || name.includes('JP)') || name.includes('JPN)'))) return i;
+            }
+            
+            return regionPriorityOrder.length; // Other regions (lowest priority)
+        }
+        
+        // Save region priority order to localStorage
+        function saveRegionPriorityOrder() {
+            localStorage.setItem('regionPriorityOrder', JSON.stringify(regionPriorityOrder));
+            updateRegionPriorityDisplay();
+        }
+        
+        // Update the display of current region priority order
+        function updateRegionPriorityDisplay() {
+            const display = document.getElementById('region-priority-display');
+            if (display) {
+                display.textContent = regionPriorityOrder.join(' → ');
+            }
+        }
+        
+        // Move region up in priority (decrease index = higher priority)
+        function moveRegionUp(region) {
+            const idx = regionPriorityOrder.indexOf(region);
+            if (idx > 0) {
+                [regionPriorityOrder[idx], regionPriorityOrder[idx-1]] = 
+                [regionPriorityOrder[idx-1], regionPriorityOrder[idx]];
+                saveRegionPriorityOrder();
+                renderRegionPriorityConfig();
+            }
+        }
+        
+        // Move region down in priority (increase index = lower priority)
+        function moveRegionDown(region) {
+            const idx = regionPriorityOrder.indexOf(region);
+            if (idx >= 0 && idx < regionPriorityOrder.length - 1) {
+                [regionPriorityOrder[idx], regionPriorityOrder[idx+1]] = 
+                [regionPriorityOrder[idx+1], regionPriorityOrder[idx]];
+                saveRegionPriorityOrder();
+                renderRegionPriorityConfig();
+            }
+        }
+        
+        // Reset region priority to default
+        function resetRegionPriority() {
+            regionPriorityOrder = ['USA', 'Canada', 'World', 'Europe', 'Japan', 'Other'];
+            saveRegionPriorityOrder();
+            renderRegionPriorityConfig();
+        }
+        
+        // Render region priority configuration UI
+        function renderRegionPriorityConfig() {
+            const container = document.getElementById('region-priority-config');
+            if (!container) return;
+            
+            let html = '<div style="margin-bottom: 10px;"><strong>Configure Region Priority Order:</strong></div>';
+            html += '<div style="display: flex; flex-direction: column; gap: 6px;">';
+            
+            regionPriorityOrder.forEach((region, idx) => {
+                html += `
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 6px; background: #f5f5f5; border-radius: 4px;">
+                        <span style="font-weight: bold; color: #666; min-width: 25px;">${idx + 1}.</span>
+                        <span style="flex: 1; font-weight: 500;">${region}</span>
+                        <button onclick="moveRegionUp('${region}')" 
+                                style="padding: 4px 8px; border: 1px solid #ccc; background: white; cursor: pointer; border-radius: 3px;"
+                                ${idx === 0 ? 'disabled' : ''}>▲</button>
+                        <button onclick="moveRegionDown('${region}')" 
+                                style="padding: 4px 8px; border: 1px solid #ccc; background: white; cursor: pointer; border-radius: 3px;"
+                                ${idx === regionPriorityOrder.length - 1 ? 'disabled' : ''}>▼</button>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            html += '<div style="margin-top: 10px; display: flex; gap: 8px;">';
+            html += '<button onclick="resetRegionPriority()" style="padding: 6px 12px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset to Default</button>';
+            html += '<button onclick="closeRegionPriorityModal()" style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">Done</button>';
+            html += '</div>';
+            
+            container.innerHTML = html;
+            updateRegionPriorityDisplay();
+        }
+        
+        // Show region priority configuration modal
+        function showRegionPriorityConfig() {
+            const modal = document.getElementById('region-priority-modal');
+            if (modal) {
+                modal.style.display = 'flex';
+                renderRegionPriorityConfig();
+            }
+        }
+        
+        // Close region priority configuration modal
+        function closeRegionPriorityModal() {
+            const modal = document.getElementById('region-priority-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+            applyAllFilters(); // Re-apply filters with new priority
         }
 
         // Toggle region filter: none → include (green) → exclude (red) → none
@@ -2492,7 +2612,7 @@ DO NOT share this file publicly as it may contain sensitive information.
 
                 // Apply region filters
                 if (visible && regionFilters.size > 0) {
-                    const gameRegion = getGameRegion(name);
+                    const gameRegions = getGameRegions(name);
 
                     // Get included and excluded regions
                     const includedRegions = Array.from(regionFilters.entries())
@@ -2502,9 +2622,20 @@ DO NOT share this file publicly as it may contain sensitive information.
                         .filter(([_, mode]) => mode === 'exclude')
                         .map(([region, _]) => region);
 
-                    // If there are include filters, game must match one of them
+                    // Debug log for Game Guru
+                    if (name.includes('Game Guru')) {
+                        console.log('Filtering Game Guru:', {
+                            name,
+                            gameRegions,
+                            includedRegions,
+                            excludedRegions,
+                            willShow: gameRegions.some(region => includedRegions.includes(region))
+                        });
+                    }
+
+                    // If there are include filters, game must match at least one of them
                     if (includedRegions.length > 0) {
-                        if (!includedRegions.includes(gameRegion)) {
+                        if (!gameRegions.some(region => includedRegions.includes(region))) {
                             visible = false;
                             hiddenByRegion++;
                         }
@@ -2512,7 +2643,7 @@ DO NOT share this file publicly as it may contain sensitive information.
 
                     // If there are exclude filters, game must NOT match any of them
                     if (visible && excludedRegions.length > 0) {
-                        if (excludedRegions.includes(gameRegion)) {
+                        if (gameRegions.some(region => excludedRegions.includes(region))) {
                             visible = false;
                             hiddenByRegion++;
                         }
@@ -2759,9 +2890,8 @@ DO NOT share this file publicly as it may contain sensitive information.
                     <div class="filter-section">
                         <div class="filter-row">
                             <span class="filter-label">Region:</span>
-                            <button class="region-btn" data-region="USA" onclick="toggleRegionFilter('USA')">🇺🇸 USA</button>
-                            <button class="region-btn" data-region="Europe" onclick="toggleRegionFilter('Europe')">🇪🇺 Europe</button>
-                            <button class="region-btn" data-region="Japan" onclick="toggleRegionFilter('Japan')">🇯🇵 Japan</button>
+                            <button class="region-btn" data-region="USA" onclick="toggleRegionFilter('USA')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1fa-1f1f8.svg" style="width:16px;height:16px" /> USA</button>
+                            <button class="region-btn" data-region="Europe" onclick="toggleRegionFilter('Europe')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1ea-1f1fa.svg" style="width:16px;height:16px" /> Europe</button>                            <button class="region-btn" data-region="Japan" onclick="toggleRegionFilter('Japan')">🇯🇵 Japan</button>
                             <button class="region-btn" data-region="World" onclick="toggleRegionFilter('World')">🌍 World</button>
                             <button class="region-btn" data-region="Other" onclick="toggleRegionFilter('Other')">🌐 Other</button>
                         </div>
@@ -2776,7 +2906,8 @@ DO NOT share this file publicly as it may contain sensitive information.
                             </label>
                             <label class="filter-checkbox">
                                 <input type="checkbox" id="one-rom-per-game" onchange="applyAllFilters()">
-                                <span>One ROM Per Game (USA→Canada→World→Europe)</span>
+                                <span>One ROM Per Game (<span id="region-priority-display">USA → Canada → World → Europe → Japan → Other</span>)</span>
+                                <button onclick="showRegionPriorityConfig()" style="margin-left: 8px; padding: 2px 8px; font-size: 0.9em; background: #666; color: white; border: none; border-radius: 3px; cursor: pointer;" title="Configure region priority order">⚙️</button>
                             </label>
                         </div>
                     </div>
@@ -3893,11 +4024,24 @@ DO NOT share this file publicly as it may contain sensitive information.
             await loadTranslations();  // Charger les traductions
             applyTranslations();         // Appliquer les traductions à l'interface
             loadPlatforms();            // Charger les plateformes
+            updateRegionPriorityDisplay(); // Update initial display
         }
         
         // Lancer l'initialisation
         init();
     </script>
+    
+    <!-- Region Priority Configuration Modal -->
+    <div id="region-priority-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; justify-content: center; align-items: center;">
+        <div style="background: white; padding: 20px; border-radius: 8px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto;">
+            <h3 style="margin-top: 0;">Region Priority Configuration</h3>
+            <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">
+                Configure the priority order for "One ROM Per Game" filter. 
+                Higher priority regions will be selected first when multiple versions exist.
+            </p>
+            <div id="region-priority-config"></div>
+        </div>
+    </div>
 </body>
 </html>
         '''.replace('{version}', config.app_version)
