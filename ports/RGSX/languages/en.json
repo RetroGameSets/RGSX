@@ -353,4 +353,9 @@
     ,"web_sort_name_desc": "Z-A (Name)"
     ,"web_sort_size_asc": "Size +- (Small first)"
     ,"web_sort_size_desc": "Size -+ (Large first)"
+    ,"web_filter_region": "Region"
+    ,"web_filter_hide_non_release": "Hide Demos/Betas/Protos"
+    ,"web_filter_regex_mode": "Enable Regex Search"
+    ,"web_filter_one_rom_per_game": "One ROM Per Game"
+    ,"web_filter_configure_priority": "Configure region priority order"
 }

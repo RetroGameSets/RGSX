@@ -1,0 +1,241 @@
+/* ===== ACCESSIBILITY & FOCUS MANAGEMENT ===== */
+
+/* Focus visible - show focus for keyboard navigation only */
+:focus {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+}
+
+:focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
+
+/* Skip to main content link (keyboard accessible) */
+.skip-to-main {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: var(--color-primary);
+    color: white;
+    padding: var(--spacing-md) var(--spacing-lg);
+    text-decoration: none;
+    z-index: var(--z-tooltip);
+    border-radius: var(--radius-sm);
+}
+
+.skip-to-main:focus {
+    top: 0;
+}
+
+/* Visually hidden but accessible to screen readers */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* ===== LOADING SKELETONS ===== */
+
+@keyframes shimmer {
+    0% {
+        background-position: -1000px 0;
+    }
+    100% {
+        background-position: 1000px 0;
+    }
+}
+
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--color-bg-secondary) 0%,
+        var(--color-bg-tertiary) 50%,
+        var(--color-bg-secondary) 100%
+    );
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite;
+}
+
+.skeleton-card {
+    background: var(--color-bg-primary);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+    border: 1px solid var(--color-border-light);
+}
+
+.skeleton-card::before {
+    content: '';
+    display: block;
+    width: 100%;
+    height: 200px;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-md);
+    animation: shimmer 2s infinite;
+}
+
+.skeleton-card::after {
+    content: '';
+    display: block;
+    width: 80%;
+    height: 16px;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+    animation: shimmer 2s infinite;
+}
+
+.skeleton-text {
+    height: 1em;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+    margin: var(--spacing-md) 0;
+    animation: shimmer 2s infinite;
+}
+
+.skeleton-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--color-bg-secondary);
+    display: inline-block;
+    animation: shimmer 2s infinite;
+}
+
+/* Grid of skeleton cards */
+.skeleton-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-2xl);
+}
+
+/* ===== BUTTON & LINK ACCESSIBILITY ===== */
+
+button, a[role="button"], input[type="button"], input[type="submit"] {
+    position: relative;
+    transition: all var(--transition-base);
+    border: none;
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
+}
+
+/* Disabled state */
+button:disabled, 
+[role="button"][aria-disabled="true"],
+input[type="button"]:disabled,
+input[type="submit"]:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Ensure buttons have minimum touch target (44x44px WCAG) */
+button, a[role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+
+/* ===== FORM ACCESSIBILITY ===== */
+
+label {
+    display: block;
+    margin-bottom: var(--spacing-sm);
+    font-weight: 500;
+    color: var(--color-text-primary);
+}
+
+input, select, textarea {
+    font-family: inherit;
+    font-size: inherit;
+    padding: var(--spacing-md);
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius-md);
+    transition: border-color var(--transition-base);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    border-color: var(--color-primary);
+    outline: none;
+}
+
+/* Error state for inputs */
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+    border-color: var(--color-danger);
+}
+
+/* ===== MODAL & DIALOG ACCESSIBILITY ===== */
+
+[role="dialog"],
+.modal {
+    z-index: var(--z-modal);
+}
+
+[role="dialog"]::backdrop,
+.modal-backdrop {
+    background-color: var(--color-overlay-bg);
+    z-index: var(--z-modal-backdrop);
+}
+
+/* Ensure modal is positioned and styled appropriately */
+[role="dialog"] {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-primary);
+    padding: var(--spacing-2xl);
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow-xl);
+}
+
+/* ===== HIGH CONTRAST SUPPORT ===== */
+
+@media (prefers-contrast: more) {
+    button,
+    a[role="button"],
+    input[type="button"],
+    input[type="submit"] {
+        border: 3px solid currentColor;
+        font-weight: bold;
+    }
+
+    input,
+    select,
+    textarea {
+        border-width: 3px;
+    }
+
+    :focus-visible {
+        outline-width: 4px;
+    }
+}
+
+/* ===== REDUCED MOTION SUPPORT ===== */
+
+@media (prefers-reduced-motion: reduce) {
+    .skeleton,
+    .skeleton-card::before,
+    .skeleton-card::after,
+    .skeleton-text,
+    .skeleton-avatar {
+        animation: none;
+        background: var(--color-bg-secondary);
+    }
+}

@@ -141,7 +141,7 @@
     "download_queued": "En file d'attente",
     "download_started": "Téléchargement démarré",
     "network_download_already_queued": "Ce téléchargement est déjà en cours",
-    "utils_extracted": "Extracted: {0}",
+    "utils_extracted": "Extrait: {0}",
     "utils_corrupt_zip": "Archive ZIP corrompue: {0}",
     "utils_permission_denied": "Permission refusée lors de l'extraction: {0}",
     "utils_extraction_failed": "Échec de l'extraction: {0}",
@@ -353,4 +353,9 @@
     ,"web_sort_name_desc": "Z-A (Nom)"
     ,"web_sort_size_asc": "Taille +- (Petit d'abord)"
     ,"web_sort_size_desc": "Taille -+ (Grand d'abord)"
+    ,"web_filter_region": "Région"
+    ,"web_filter_hide_non_release": "Masquer Démos/Betas/Protos"
+    ,"web_filter_regex_mode": "Activer recherche Regex"
+    ,"web_filter_one_rom_per_game": "Une ROM par jeu"
+    ,"web_filter_configure_priority": "Configurer l'ordre de priorité des régions"
 }
