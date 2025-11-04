@@ -20,7 +20,7 @@ from utils import (
     ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
 )
 from history import load_history, clear_history, add_to_history, save_history
-from language import _  # Import de la fonction de traduction
+from language import _, get_available_languages, set_language
 from rgsx_settings import (
     get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
     get_show_unsupported_platforms, set_show_unsupported_platforms,
