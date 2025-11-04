@@ -357,5 +357,9 @@
     "web_filter_hide_non_release": "Ocultar Demos/Betas/Protos",
     "web_filter_regex_mode": "Ativar pesquisa Regex",
     "web_filter_one_rom_per_game": "Uma ROM por jogo",
-    "web_filter_configure_priority": "Configurar ordem de prioridade das regiões"
+    "web_filter_configure_priority": "Configurar ordem de prioridade das regiões",
+    "filter_all": "Marcar tudo",
+    "filter_none": "Desmarcar tudo",
+    "filter_apply": "Aplicar filtro",
+    "filter_back": "Voltar"
 }

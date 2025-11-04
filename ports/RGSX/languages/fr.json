@@ -176,186 +176,190 @@
     "api_key_empty_suffix": "vide",
     "menu_hide_premium_systems": "Masquer systèmes Premium",
     "popup_hide_premium_on": "Systèmes Premium masqués",
-    "popup_hide_premium_off": "Systèmes Premium visibles"
-    ,"submenu_display_font_family": "Police"
-    ,"popup_font_family_changed": "Police changée : {0}"
-    ,"instruction_pause_language": "Changer la langue de l'interface"
-    ,"instruction_pause_controls": "Afficher la configuration ou remapper"
-    ,"instruction_pause_display": "Agencer l'affichage, polices et systèmes visibles"
-    ,"instruction_pause_games": "Historique, source de liste ou rafraîchissement"
-    ,"instruction_pause_settings": "Musique, option symlink & statut des clés API"
-    ,"instruction_pause_restart": "Redémarrer RGSX pour recharger la configuration"
-    ,"instruction_pause_support": "Générer un fichier ZIP de diagnostic pour l'assistance"
-    ,"instruction_pause_quit": "Quitter l'application RGSX"
-    ,"instruction_controls_help": "Afficher la référence complète manette & clavier"
-    ,"instruction_controls_remap": "Modifier l'association boutons / touches"
-    ,"instruction_generic_back": "Revenir au menu précédent"
-    ,"instruction_display_layout": "Changer les dimensions de la grille"
-    ,"instruction_display_font_size": "Ajuster la taille du texte pour la lisibilité"
-    ,"instruction_display_font_family": "Basculer entre les polices disponibles"
-    ,"instruction_display_show_unsupported": "Afficher/masquer systèmes absents de es_systems.cfg"
-    ,"instruction_display_unknown_ext": "Avertir ou non pour extensions absentes de es_systems.cfg"
-    ,"instruction_display_hide_premium": "Masquer les systèmes nécessitant un accès premium via API: {providers}"
-    ,"instruction_display_filter_platforms": "Choisir manuellement les systèmes visibles"
-    ,"instruction_games_history": "Lister les téléchargements passés et leur statut"
-    ,"instruction_games_source_mode": "Basculer entre liste RGSX ou source personnalisée"
-    ,"instruction_games_update_cache": "Retélécharger & rafraîchir la liste des jeux"
-    ,"instruction_settings_music": "Activer ou désactiver la lecture musicale"
-    ,"instruction_settings_symlink": "Basculer l'utilisation de symlinks pour l'installation"
-    ,"instruction_settings_api_keys": "Voir les clés API détectées des services premium"
-    ,"instruction_settings_web_service": "Activer/désactiver le démarrage automatique du service web"
-    ,"settings_web_service": "Service Web au démarrage"
-    ,"settings_web_service_enabled": "Activé"
-    ,"settings_web_service_disabled": "Désactivé"
-    ,"settings_web_service_enabling": "Activation du service web..."
-    ,"settings_web_service_disabling": "Désactivation du service web..."
-    ,"settings_web_service_success_enabled": "Service web activé au démarrage"
-    ,"settings_web_service_success_disabled": "Service web désactivé au démarrage"
-    ,"settings_web_service_error": "Erreur : {0}"
-    ,"controls_desc_confirm": "Valider (ex: A/Croix)"
-    ,"controls_desc_cancel": "Annuler/Retour (ex: B/Rond)"
-    ,"controls_desc_up": "UP ↑"
-    ,"controls_desc_down": "DOWN ↓"
-    ,"controls_desc_left": "LEFT ←"
-    ,"controls_desc_right": "RIGHT →"
-    ,"controls_desc_page_up": "Défilement Rapide - (ex: LT/L2)"
-    ,"controls_desc_page_down": "Défilement Rapide + (ex: RT/R2)"
-    ,"controls_desc_history": "Ouvrir l'historique (ex: Y/Triangle)"
-    ,"controls_desc_clear_history": "Téléchargements : Sélection multiple / Historique : Vider (ex: X/Carré)"
-    ,"controls_desc_filter": "Mode Filtre : Ouvrir/Valider (ex: Select)"
-    ,"controls_desc_delete": "Mode Filtre : Supprimer caractère (ex: LB/L1)"
-    ,"controls_desc_space": "Mode Filtre : Ajouter espace (ex: RB/R1)"
-    ,"controls_desc_start": "Ouvrir le menu pause (ex: Start)"
-    ,"controls_mapping_title": "Configuration des contrôles"
-    ,"controls_mapping_instruction": "Maintenez pour confirmer l'association :"
-    ,"controls_mapping_waiting": "En attente d'une touche ou d'un bouton..."
-    ,"controls_mapping_press": "Appuyez sur une touche ou un bouton"
-    ,"status_already_present": "Déjà Présent"
-    ,"footer_joystick": "Joystick : {0}"
-    ,"history_game_options_title": "Options du jeu"
-    ,"history_option_download_folder": "Localiser le fichier"
-    ,"history_option_extract_archive": "Extraire l'archive"
-    ,"history_option_scraper": "Scraper métadonnées"
-    ,"history_option_delete_game": "Supprimer le jeu"
-    ,"history_option_error_info": "Détails de l'erreur"
-    ,"history_option_retry": "Réessayer le téléchargement"
-    ,"history_option_back": "Retour"
-    ,"history_folder_path_label": "Chemin de destination :"
-    ,"history_scraper_not_implemented": "Scraper pas encore implémenté"
-    ,"history_confirm_delete": "Supprimer ce jeu du disque ?"
-    ,"history_file_not_found": "Fichier introuvable"
-    ,"history_extracting": "Extraction en cours..."
-    ,"history_extracted": "Extrait"
-    ,"history_delete_success": "Jeu supprimé avec succès"
-    ,"history_delete_error": "Erreur lors de la suppression du jeu : {0}"
-    ,"history_error_details_title": "Détails de l'erreur"
-    ,"history_no_error_message": "Aucun message d'erreur disponible"
-    ,"web_title": "Interface Web RGSX"
-    ,"web_tab_platforms": "Liste des systèmes"
-    ,"web_tab_downloads": "Téléchargements"
-    ,"web_tab_history": "Historique"
-    ,"web_tab_settings": "Paramètres"
-    ,"web_tab_update": "Mettre à jour la liste"
-    ,"web_tooltip_platforms": "Liste des systèmes"
-    ,"web_tooltip_downloads": "Téléchargements"
-    ,"web_tooltip_history": "Historique"
-    ,"web_tooltip_settings": "Paramètres"
-    ,"web_tooltip_update": "Mettre à jour la liste des jeux"
-    ,"web_search_platform": "Rechercher des systèmes ou jeux..."
-    ,"web_search_game": "Rechercher un jeu..."
-    ,"web_search_results": "résultats pour"
-    ,"web_no_results": "Aucun résultat trouvé"
-    ,"web_platforms": "Systèmes"
-    ,"web_games": "Jeux"
-    ,"web_error_search": "Erreur de recherche"
-    ,"web_back_platforms": "Retour aux plateformes"
-    ,"web_back": "Retour"
-    ,"web_game_count": "{0} ({1} jeux)"
-    ,"web_download": "Télécharger"
-    ,"web_cancel": "Annuler"
-    ,"web_download_canceled": "Téléchargement annulé"
-    ,"web_confirm_cancel": "Voulez-vous vraiment annuler ce téléchargement ?"
-    ,"web_update_title": "Mise à jour de la liste des jeux..."
-    ,"web_update_message": "Nettoyage du cache et rechargement des données..."
-    ,"web_update_wait": "Cela peut prendre 10-30 secondes"
-    ,"web_error": "Erreur"
-    ,"web_error_unknown": "Erreur inconnue"
-    ,"web_error_update": "Erreur lors de la mise à jour de la liste : {0}"
-    ,"web_error_download": "Erreur : {0}"
-    ,"web_history_clear": "Vider l'historique"
-    ,"web_history_cleared": "Historique vidé avec succès !"
-    ,"web_error_clear_history": "Erreur lors du vidage de l'historique : {0}"
-    ,"web_settings_title": "Informations & Paramètres"
-    ,"web_settings_roms_folder": "Dossier ROMs personnalisé"
-    ,"web_settings_roms_placeholder": "Laisser vide pour le dossier par défaut"
-    ,"web_settings_browse": "Parcourir"
-    ,"web_settings_language": "Langue"
-    ,"web_settings_font_scale": "Échelle de police"
-    ,"web_settings_grid": "Grille d'affichage"
-    ,"web_settings_font_family": "Police de caractères"
-    ,"web_settings_music": "Musique"
-    ,"web_settings_symlink": "Mode symlink"
-    ,"web_settings_source_mode": "Source des jeux"
-    ,"web_settings_custom_url": "URL personnalisée"
-    ,"web_settings_custom_url_placeholder": "Laisser vide pour /saves/ports/rgsx/games.zip ou utiliser une URL directe comme https://exemple.com/jeux.zip"
-    ,"web_settings_save": "Enregistrer les paramètres"
-    ,"web_settings_saved": "Paramètres enregistrés avec succès !"
-    ,"web_settings_saved_restart": "Paramètres enregistrés avec succès !\\n\\n⚠️ Certains paramètres nécessitent un redémarrage du serveur :\\n- Dossier ROMs personnalisé\\n- Langue\\n\\nVeuillez redémarrer le serveur web pour appliquer ces changements."
-    ,"web_error_save_settings": "Erreur lors de l'enregistrement : {0}"
-    ,"web_browse_title": "Parcourir les dossiers"
-    ,"web_browse_select_drive": "Sélectionnez un lecteur..."
-    ,"web_browse_drives": "Lecteurs"
-    ,"web_browse_parent": "Parent"
-    ,"web_browse_select": "Sélectionner ce dossier"
-    ,"web_browse_cancel": "Annuler"
-    ,"web_browse_empty": "Aucun sous-dossier trouvé"
-    ,"web_browse_alert_restart": "Important : Vous devez ENREGISTRER les paramètres puis REDÉMARRER le serveur web pour que le dossier ROMs personnalisé soit pris en compte.\\n\\n📝 Étapes :\\n1. Cliquez sur 'Enregistrer les paramètres' ci-dessous\\n2. Arrêtez le serveur web (Ctrl+C dans le terminal)\\n3. Redémarrez le serveur web\\n\\nChemin sélectionné : {0}"
-    ,"web_error_browse": "Erreur lors de la navigation : {0}"
-    ,"web_loading_platforms": "Chargement des plateformes..."
-    ,"web_loading_games": "Chargement des jeux..."
-    ,"web_no_platforms": "Aucune plateforme trouvée"
-    ,"web_no_downloads": "Aucun téléchargement en cours"
-    ,"web_history_empty": "Aucun téléchargement terminé"
-    ,"web_history_platform": "Plateforme"
-    ,"web_history_size": "Taille"
-    ,"web_history_status_completed": "Terminé"
-    ,"web_history_status_error": "Erreur"
-    ,"web_settings_os": "Système d'exploitation"
-    ,"web_settings_platforms_count": "Nombre de plateformes"
-    ,"web_settings_show_unsupported": "Afficher les systèmes non supportés (absents de es_systems.cfg)"
-    ,"web_settings_allow_unknown": "Autoriser les extensions inconnues (ne pas afficher d'avertissement)"
-    ,"web_restart_confirm_title": "Redémarrer l'application ?"
-    ,"web_restart_confirm_message": "Les paramètres ont été enregistrés. Voulez-vous redémarrer l'application maintenant pour appliquer les changements ?"
-    ,"web_restart_yes": "Oui, redémarrer"
-    ,"web_restart_no": "Non, plus tard"
-    ,"web_restart_success": "Redémarrage en cours..."
-    ,"web_restart_error": "Erreur lors du redémarrage : {0}"
-    ,"web_support": "Support"
-    ,"web_support_title": "📦 Fichier de support généré"
-    ,"web_support_message": "Le fichier de support a été créé avec succès !\\n\\n📁 Contenu :\\n• Configuration des contrôles\\n• Historique des téléchargements\\n• Paramètres RGSX\\n• Logs de l'application\\n• Logs du serveur web\\n\\n💬 Pour obtenir de l'aide :\\n1. Rejoignez le Discord RGSX\\n2. Décrivez votre problème\\n3. Partagez ce fichier ZIP\\n\\nLe téléchargement va démarrer..."
-    ,"web_support_generating": "Génération du fichier de support..."
-    ,"web_support_download": "Télécharger le fichier de support"
-    ,"web_support_error": "Erreur lors de la génération du fichier de support : {0}"
-    ,"web_tab_queue": "File d'attente"
-    ,"web_tooltip_queue": "File d'attente des téléchargements"
-    ,"web_queue_active_download": "⏳ Un téléchargement est actuellement en cours"
-    ,"web_queue_no_active": "✓ Aucun téléchargement actif"
-    ,"web_queue_title": "File d'attente des téléchargements"
-    ,"web_queue_empty": "Aucun élément en attente"
-    ,"web_queue_clear": "Vider la file d'attente"
-    ,"web_queue_cleared": "File d'attente vidée avec succès !"
-    ,"web_confirm_remove_queue": "Supprimer cet élément de la file d'attente ?"
-    ,"web_confirm_clear_queue": "Vider toute la file d'attente ?"
-    ,"web_remove": "Supprimer"
-    ,"web_loading": "Chargement..."
-    ,"web_sort": "Trier par"
-    ,"web_sort_name_asc": "A-Z (Nom)"
-    ,"web_sort_name_desc": "Z-A (Nom)"
-    ,"web_sort_size_asc": "Taille +- (Petit d'abord)"
-    ,"web_sort_size_desc": "Taille -+ (Grand d'abord)"
-    ,"web_filter_region": "Région"
-    ,"web_filter_hide_non_release": "Masquer Démos/Betas/Protos"
-    ,"web_filter_regex_mode": "Activer recherche Regex"
-    ,"web_filter_one_rom_per_game": "Une ROM par jeu"
-    ,"web_filter_configure_priority": "Configurer l'ordre de priorité des régions"
+    "popup_hide_premium_off": "Systèmes Premium visibles",
+    "submenu_display_font_family": "Police",
+    "popup_font_family_changed": "Police changée : {0}",
+    "instruction_pause_language": "Changer la langue de l'interface",
+    "instruction_pause_controls": "Afficher la configuration ou remapper",
+    "instruction_pause_display": "Agencer l'affichage, polices et systèmes visibles",
+    "instruction_pause_games": "Historique, source de liste ou rafraîchissement",
+    "instruction_pause_settings": "Musique, option symlink & statut des clés API",
+    "instruction_pause_restart": "Redémarrer RGSX pour recharger la configuration",
+    "instruction_pause_support": "Générer un fichier ZIP de diagnostic pour l'assistance",
+    "instruction_pause_quit": "Quitter l'application RGSX",
+    "instruction_controls_help": "Afficher la référence complète manette & clavier",
+    "instruction_controls_remap": "Modifier l'association boutons / touches",
+    "instruction_generic_back": "Revenir au menu précédent",
+    "instruction_display_layout": "Changer les dimensions de la grille",
+    "instruction_display_font_size": "Ajuster la taille du texte pour la lisibilité",
+    "instruction_display_font_family": "Basculer entre les polices disponibles",
+    "instruction_display_show_unsupported": "Afficher/masquer systèmes absents de es_systems.cfg",
+    "instruction_display_unknown_ext": "Avertir ou non pour extensions absentes de es_systems.cfg",
+    "instruction_display_hide_premium": "Masquer les systèmes nécessitant un accès premium via API: {providers}",
+    "instruction_display_filter_platforms": "Choisir manuellement les systèmes visibles",
+    "instruction_games_history": "Lister les téléchargements passés et leur statut",
+    "instruction_games_source_mode": "Basculer entre liste RGSX ou source personnalisée",
+    "instruction_games_update_cache": "Retélécharger & rafraîchir la liste des jeux",
+    "instruction_settings_music": "Activer ou désactiver la lecture musicale",
+    "instruction_settings_symlink": "Basculer l'utilisation de symlinks pour l'installation",
+    "instruction_settings_api_keys": "Voir les clés API détectées des services premium",
+    "instruction_settings_web_service": "Activer/désactiver le démarrage automatique du service web",
+    "settings_web_service": "Service Web au démarrage",
+    "settings_web_service_enabled": "Activé",
+    "settings_web_service_disabled": "Désactivé",
+    "settings_web_service_enabling": "Activation du service web...",
+    "settings_web_service_disabling": "Désactivation du service web...",
+    "settings_web_service_success_enabled": "Service web activé au démarrage",
+    "settings_web_service_success_disabled": "Service web désactivé au démarrage",
+    "settings_web_service_error": "Erreur : {0}",
+    "controls_desc_confirm": "Valider (ex: A/Croix)",
+    "controls_desc_cancel": "Annuler/Retour (ex: B/Rond)",
+    "controls_desc_up": "UP ↑",
+    "controls_desc_down": "DOWN ↓",
+    "controls_desc_left": "LEFT ←",
+    "controls_desc_right": "RIGHT →",
+    "controls_desc_page_up": "Défilement Rapide - (ex: LT/L2)",
+    "controls_desc_page_down": "Défilement Rapide + (ex: RT/R2)",
+    "controls_desc_history": "Ouvrir l'historique (ex: Y/Triangle)",
+    "controls_desc_clear_history": "Téléchargements : Sélection multiple / Historique : Vider (ex: X/Carré)",
+    "controls_desc_filter": "Mode Filtre : Ouvrir/Valider (ex: Select)",
+    "controls_desc_delete": "Mode Filtre : Supprimer caractère (ex: LB/L1)",
+    "controls_desc_space": "Mode Filtre : Ajouter espace (ex: RB/R1)",
+    "controls_desc_start": "Ouvrir le menu pause (ex: Start)",
+    "controls_mapping_title": "Configuration des contrôles",
+    "controls_mapping_instruction": "Maintenez pour confirmer l'association :",
+    "controls_mapping_waiting": "En attente d'une touche ou d'un bouton...",
+    "controls_mapping_press": "Appuyez sur une touche ou un bouton",
+    "status_already_present": "Déjà Présent",
+    "footer_joystick": "Joystick : {0}",
+    "history_game_options_title": "Options du jeu",
+    "history_option_download_folder": "Localiser le fichier",
+    "history_option_extract_archive": "Extraire l'archive",
+    "history_option_scraper": "Scraper métadonnées",
+    "history_option_delete_game": "Supprimer le jeu",
+    "history_option_error_info": "Détails de l'erreur",
+    "history_option_retry": "Réessayer le téléchargement",
+    "history_option_back": "Retour",
+    "history_folder_path_label": "Chemin de destination :",
+    "history_scraper_not_implemented": "Scraper pas encore implémenté",
+    "history_confirm_delete": "Supprimer ce jeu du disque ?",
+    "history_file_not_found": "Fichier introuvable",
+    "history_extracting": "Extraction en cours...",
+    "history_extracted": "Extrait",
+    "history_delete_success": "Jeu supprimé avec succès",
+    "history_delete_error": "Erreur lors de la suppression du jeu : {0}",
+    "history_error_details_title": "Détails de l'erreur",
+    "history_no_error_message": "Aucun message d'erreur disponible",
+    "web_title": "Interface Web RGSX",
+    "web_tab_platforms": "Liste des systèmes",
+    "web_tab_downloads": "Téléchargements",
+    "web_tab_history": "Historique",
+    "web_tab_settings": "Paramètres",
+    "web_tab_update": "Mettre à jour la liste",
+    "web_tooltip_platforms": "Liste des systèmes",
+    "web_tooltip_downloads": "Téléchargements",
+    "web_tooltip_history": "Historique",
+    "web_tooltip_settings": "Paramètres",
+    "web_tooltip_update": "Mettre à jour la liste des jeux",
+    "web_search_platform": "Rechercher des systèmes ou jeux...",
+    "web_search_game": "Rechercher un jeu...",
+    "web_search_results": "résultats pour",
+    "web_no_results": "Aucun résultat trouvé",
+    "web_platforms": "Systèmes",
+    "web_games": "Jeux",
+    "web_error_search": "Erreur de recherche",
+    "web_back_platforms": "Retour aux plateformes",
+    "web_back": "Retour",
+    "web_game_count": "{0} ({1} jeux)",
+    "web_download": "Télécharger",
+    "web_cancel": "Annuler",
+    "web_download_canceled": "Téléchargement annulé",
+    "web_confirm_cancel": "Voulez-vous vraiment annuler ce téléchargement ?",
+    "web_update_title": "Mise à jour de la liste des jeux...",
+    "web_update_message": "Nettoyage du cache et rechargement des données...",
+    "web_update_wait": "Cela peut prendre 10-30 secondes",
+    "web_error": "Erreur",
+    "web_error_unknown": "Erreur inconnue",
+    "web_error_update": "Erreur lors de la mise à jour de la liste : {0}",
+    "web_error_download": "Erreur : {0}",
+    "web_history_clear": "Vider l'historique",
+    "web_history_cleared": "Historique vidé avec succès !",
+    "web_error_clear_history": "Erreur lors du vidage de l'historique : {0}",
+    "web_settings_title": "Informations & Paramètres",
+    "web_settings_roms_folder": "Dossier ROMs personnalisé",
+    "web_settings_roms_placeholder": "Laisser vide pour le dossier par défaut",
+    "web_settings_browse": "Parcourir",
+    "web_settings_language": "Langue",
+    "web_settings_font_scale": "Échelle de police",
+    "web_settings_grid": "Grille d'affichage",
+    "web_settings_font_family": "Police de caractères",
+    "web_settings_music": "Musique",
+    "web_settings_symlink": "Mode symlink",
+    "web_settings_source_mode": "Source des jeux",
+    "web_settings_custom_url": "URL personnalisée",
+    "web_settings_custom_url_placeholder": "Laisser vide pour /saves/ports/rgsx/games.zip ou utiliser une URL directe comme https://exemple.com/jeux.zip",
+    "web_settings_save": "Enregistrer les paramètres",
+    "web_settings_saved": "Paramètres enregistrés avec succès !",
+    "web_settings_saved_restart": "Paramètres enregistrés avec succès !\\n\\n⚠️ Certains paramètres nécessitent un redémarrage du serveur :\\n- Dossier ROMs personnalisé\\n- Langue\\n\\nVeuillez redémarrer le serveur web pour appliquer ces changements.",
+    "web_error_save_settings": "Erreur lors de l'enregistrement : {0}",
+    "web_browse_title": "Parcourir les dossiers",
+    "web_browse_select_drive": "Sélectionnez un lecteur...",
+    "web_browse_drives": "Lecteurs",
+    "web_browse_parent": "Parent",
+    "web_browse_select": "Sélectionner ce dossier",
+    "web_browse_cancel": "Annuler",
+    "web_browse_empty": "Aucun sous-dossier trouvé",
+    "web_browse_alert_restart": "Important : Vous devez ENREGISTRER les paramètres puis REDÉMARRER le serveur web pour que le dossier ROMs personnalisé soit pris en compte.\\n\\n📝 Étapes :\\n1. Cliquez sur 'Enregistrer les paramètres' ci-dessous\\n2. Arrêtez le serveur web (Ctrl+C dans le terminal)\\n3. Redémarrez le serveur web\\n\\nChemin sélectionné : {0}",
+    "web_error_browse": "Erreur lors de la navigation : {0}",
+    "web_loading_platforms": "Chargement des plateformes...",
+    "web_loading_games": "Chargement des jeux...",
+    "web_no_platforms": "Aucune plateforme trouvée",
+    "web_no_downloads": "Aucun téléchargement en cours",
+    "web_history_empty": "Aucun téléchargement terminé",
+    "web_history_platform": "Plateforme",
+    "web_history_size": "Taille",
+    "web_history_status_completed": "Terminé",
+    "web_history_status_error": "Erreur",
+    "web_settings_os": "Système d'exploitation",
+    "web_settings_platforms_count": "Nombre de plateformes",
+    "web_settings_show_unsupported": "Afficher les systèmes non supportés (absents de es_systems.cfg)",
+    "web_settings_allow_unknown": "Autoriser les extensions inconnues (ne pas afficher d'avertissement)",
+    "web_restart_confirm_title": "Redémarrer l'application ?",
+    "web_restart_confirm_message": "Les paramètres ont été enregistrés. Voulez-vous redémarrer l'application maintenant pour appliquer les changements ?",
+    "web_restart_yes": "Oui, redémarrer",
+    "web_restart_no": "Non, plus tard",
+    "web_restart_success": "Redémarrage en cours...",
+    "web_restart_error": "Erreur lors du redémarrage : {0}",
+    "web_support": "Support",
+    "web_support_title": "📦 Fichier de support généré",
+    "web_support_message": "Le fichier de support a été créé avec succès !\\n\\n📁 Contenu :\\n• Configuration des contrôles\\n• Historique des téléchargements\\n• Paramètres RGSX\\n• Logs de l'application\\n• Logs du serveur web\\n\\n💬 Pour obtenir de l'aide :\\n1. Rejoignez le Discord RGSX\\n2. Décrivez votre problème\\n3. Partagez ce fichier ZIP\\n\\nLe téléchargement va démarrer...",
+    "web_support_generating": "Génération du fichier de support...",
+    "web_support_download": "Télécharger le fichier de support",
+    "web_support_error": "Erreur lors de la génération du fichier de support : {0}",
+    "web_tab_queue": "File d'attente",
+    "web_tooltip_queue": "File d'attente des téléchargements",
+    "web_queue_active_download": "⏳ Un téléchargement est actuellement en cours",
+    "web_queue_no_active": "✓ Aucun téléchargement actif",
+    "web_queue_title": "File d'attente des téléchargements",
+    "web_queue_empty": "Aucun élément en attente",
+    "web_queue_clear": "Vider la file d'attente",
+    "web_queue_cleared": "File d'attente vidée avec succès !",
+    "web_confirm_remove_queue": "Supprimer cet élément de la file d'attente ?",
+    "web_confirm_clear_queue": "Vider toute la file d'attente ?",
+    "web_remove": "Supprimer",
+    "web_loading": "Chargement...",
+    "web_sort": "Trier par",
+    "web_sort_name_asc": "A-Z (Nom)",
+    "web_sort_name_desc": "Z-A (Nom)",
+    "web_sort_size_asc": "Taille +- (Petit d'abord)",
+    "web_sort_size_desc": "Taille -+ (Grand d'abord)",
+    "web_filter_region": "Région",
+    "web_filter_hide_non_release": "Masquer Démos/Betas/Protos",
+    "web_filter_regex_mode": "Activer recherche Regex",
+    "web_filter_one_rom_per_game": "Une ROM par jeu",
+    "web_filter_configure_priority": "Configurer l'ordre de priorité des régions",
+    "filter_all": "Tout cocher",
+    "filter_none": "Tout décocher",
+    "filter_apply": "Appliquer filtre",
+    "filter_back": "Retour"
 }

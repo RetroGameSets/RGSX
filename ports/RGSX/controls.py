@@ -25,7 +25,7 @@ from rgsx_settings import (
     get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
     get_show_unsupported_platforms, set_show_unsupported_platforms,
     set_allow_unknown_extensions, get_hide_premium_systems, set_hide_premium_systems,
-    get_sources_mode, set_sources_mode, set_symlink_option, get_symlink_option
+    get_sources_mode, set_sources_mode, set_symlink_option, get_symlink_option, load_rgsx_settings, save_rgsx_settings
 )
 from accessibility import save_accessibility_settings
 from scraper import get_game_metadata, download_image_to_surface
