@@ -5,10 +5,20 @@ Run RGSX as a web-only service without the Pygame UI. Perfect for homelab/server
 ## Quick Start
 
 ```bash
-# Clone and start
-git clone https://github.com/RetroGameSets/RGSX.git
-cd RGSX
-docker-compose up -d
+# Build the image
+docker build -t rgsx .
+
+# Run with docker
+docker run -d \
+  --name rgsx \
+  -p 5000:5000 \
+  -e PUID=99 \
+  -e PGID=100 \
+  -e RGSX_HEADLESS=1 \
+  -v ./data/saves:/userdata/saves/ports/rgsx \
+  -v ./data/roms:/userdata/roms/ports \
+  -v ./data/logs:/userdata/roms/ports/RGSX/logs \
+  rgsx
 
 # Access the web interface
 open http://localhost:5000
@@ -23,22 +33,47 @@ open http://localhost:5000
 
 ## Configuration
 
+### User Permissions (Important!)
+
+**For SMB mounts (Unraid, Windows shares):**
+
+Don't set PUID/PGID. The container runs as root, and the SMB server maps files to your authenticated user.
+
+```bash
+docker run \
+  -e RGSX_HEADLESS=1 \
+  ...
+```
+
+**For NFS/local storage:**
+
+Set PUID and PGID to match your host user. Files will be owned by that user.
+
+```bash
+docker run \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  -e RGSX_HEADLESS=1 \
+  ...
+```
+
+**Find your user ID:**
+```bash
+id -u  # Your UID
+id -g  # Your GID
+```
+
 ### Change Port
 
-Edit `docker-compose.yml`:
-```yaml
-ports:
-  - "8080:5000"  # Host port : Container port
+```bash
+docker run -p 8080:5000 ...  # Access on port 8080
 ```
 
 ### Custom ROM Location
 
 Map to your existing ROM collection:
-```yaml
-volumes:
-  - ./data/saves:/userdata/saves/ports/rgsx
-  - /your/existing/roms:/userdata/roms  # Change this
-  - ./data/logs:/app/RGSX/logs
+```bash
+docker run -v /your/existing/roms:/userdata/roms/ports ...
 ```
 
 ### API Keys
@@ -46,9 +81,6 @@ volumes:
 Add your download service API keys to `./data/saves/`:
 
 ```bash
-# Start container once to create directories
-docker-compose up -d
-
 # Add your API key (just the key, no extra text)
 echo "YOUR_KEY_HERE" > ./data/saves/1FichierAPI.txt
 
@@ -57,24 +89,25 @@ echo "YOUR_KEY" > ./data/saves/AllDebridAPI.txt
 echo "YOUR_KEY" > ./data/saves/RealDebridAPI.txt
 
 # Restart to apply
-docker-compose restart
+docker restart rgsx
 ```
 
 ## Commands
 
 ```bash
 # Start
-docker-compose up -d
+docker start rgsx
 
 # View logs
-docker-compose logs -f
+docker logs -f rgsx
 
 # Stop
-docker-compose down
+docker stop rgsx
 
 # Update (after git pull)
-docker-compose build --no-cache
-docker-compose up -d
+docker build --no-cache -t rgsx .
+docker stop rgsx && docker rm rgsx
+# Then re-run the docker run command
 ```
 
 ## Directory Structure
@@ -95,20 +128,39 @@ RGSX already has a headless mode (`RGSX_HEADLESS=1`) and the web server (`rgsx_w
 
 ## Troubleshooting
 
-**Port already in use:**
+**Permission denied errors / Can't delete files:**
+
+The container creates files with the UID/GID specified by PUID/PGID environment variables:
+
 ```bash
-# Use different port
-sed -i '' 's/5000:5000/8080:5000/' docker-compose.yml
+# Set correct PUID/PGID for your environment
+docker run -e PUID=1000 -e PGID=1000 ...
 ```
 
-**Permission errors:**
+**Changed PUID/PGID and container won't start:**
+
+When you change PUID/PGID, old files with different ownership will cause rsync to fail. You MUST fix ownership on the storage server:
+
 ```bash
-sudo chown -R $USER:$USER ./data
+# On your NAS/Unraid (via SSH), either:
+
+# Option 1: Delete old files (easiest)
+rm -rf /mnt/user/roms/rgsx/roms/ports/RGSX/*
+
+# Option 2: Change ownership to new PUID/PGID
+chown -R 1000:1000 /mnt/user/roms/rgsx/roms/ports/RGSX/
+```
+
+Then restart the container.
+
+**Port already in use:**
+```bash
+docker run -p 8080:5000 ...  # Use port 8080 instead
 ```
 
 **Container won't start:**
 ```bash
-docker-compose logs
+docker logs rgsx
 ```
 
 ## vs Traditional Install
@@ -116,8 +168,8 @@ docker-compose logs
 | Feature | Docker | Batocera/RetroBat |
 |---------|--------|-------------------|
 | Interface | Web only | Pygame UI + Web |
-| Install | `docker-compose up` | Manual setup |
-| Updates | `docker-compose build` | git pull |
+| Install | `docker run` | Manual setup |
+| Updates | `docker build` | git pull |
 | Access | Any device on network | Device only |
 | Use Case | Server/homelab | Gaming device |
 

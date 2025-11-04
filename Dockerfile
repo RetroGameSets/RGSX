@@ -5,6 +5,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     p7zip-full \
     unrar-free \
     curl \
+    rsync \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Create required directories
