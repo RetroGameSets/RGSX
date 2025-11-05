@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.3.1.6"
+app_version = "2.3.1.7"
 
 
 def get_application_root():
@@ -107,7 +107,7 @@ OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "games.zip")
 #CHEMINS DES EXECUTABLES
 UNRAR_EXE = os.path.join(APP_FOLDER,"assets","progs","unrar.exe")
 XISO_EXE = os.path.join(APP_FOLDER,"assets", "progs", "extract-xiso_win.exe")
-XISO_LINUX = os.path.join(APP_FOLDER,"assets", "progs", "extact_xiso_linux")
+XISO_LINUX = os.path.join(APP_FOLDER,"assets", "progs", "extract-xiso_linux")
 PS3DEC_EXE = os.path.join(APP_FOLDER,"assets", "progs", "ps3dec_win.exe")
 PS3DEC_LINUX = os.path.join(APP_FOLDER,"assets", "progs", "ps3dec_linux")
 SEVEN_Z_LINUX = os.path.join(APP_FOLDER,"assets", "progs", "7zz")
