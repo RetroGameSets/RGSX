@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  rgsx:
+    # Option 1: Build from source
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+
+    # Option 2: Use pre-built image (push to your own registry)
+    # image: your-registry/rgsx:latest
+
+    container_name: rgsx
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    # Optional: Set PUID/PGID for NFS/local storage (not needed for SMB mounts)
+    # environment:
+    #   - PUID=1000
+    #   - PGID=1000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
