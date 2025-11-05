@@ -1788,31 +1788,31 @@ def handle_xbox(dest_dir, iso_files, url=None):
     time.sleep(2)
     if config.OPERATING_SYSTEM == "Windows":
         # Sur Windows; telecharger le fichier exe
-        XDVDFS_EXE = config.XDVDFS_EXE
-        xdvdfs_cmd = [XDVDFS_EXE, "pack"]  # Liste avec 2 éléments
+        XISO_EXE = config.XISO_EXE
+        extract_xiso_cmd = [XISO_EXE, "-r"]  # Liste avec 2 éléments
 
     else:
         # Linux/Batocera : télécharger le fichier xdvdfs  
-        XDVDFS_LINUX = config.XDVDFS_LINUX
+        XISO_LINUX = config.XISO_LINUX
         try:
-            stat_info = os.stat(XDVDFS_LINUX)
+            stat_info = os.stat(XISO_LINUX)
             mode = stat_info.st_mode
-            logger.debug(f"Permissions de {XDVDFS_LINUX}: {oct(mode)}")
+            logger.debug(f"Permissions de {XISO_LINUX}: {oct(mode)}")
             logger.debug(f"Propriétaire: {stat_info.st_uid}, Groupe: {stat_info.st_gid}")
             
             # Vérifier si le fichier est exécutable
-            if not os.access(XDVDFS_LINUX, os.X_OK):
-                logger.error(f"Le fichier {XDVDFS_LINUX} n'est pas exécutable")
+            if not os.access(XISO_LINUX, os.X_OK):
+                logger.error(f"Le fichier {XISO_LINUX} n'est pas exécutable")
                 try:
-                    os.chmod(XDVDFS_LINUX, 0o755)
-                    logger.info(f"Permissions corrigées pour {XDVDFS_LINUX}")
+                    os.chmod(XISO_LINUX, 0o755)
+                    logger.info(f"Permissions corrigées pour {XISO_LINUX}")
                 except Exception as e:
                     logger.error(f"Impossible de modifier les permissions: {str(e)}")
                     return False, "Erreur de permissions sur xdvdfs"
         except Exception as e:
             logger.error(f"Erreur lors de la vérification des permissions: {str(e)}")
     
-        xdvdfs_cmd = [XDVDFS_LINUX, "pack"]  # Liste avec 2 éléments
+        extract_xiso_cmd = [XISO_LINUX, "-r"]  # Liste avec 2 éléments
 
     try:
         # Utiliser uniquement la liste fournie (nouveaux ISO extraits). Fallback scan uniquement si liste vide.
@@ -1862,16 +1862,21 @@ def handle_xbox(dest_dir, iso_files, url=None):
         logger.info(f"Démarrage conversion Xbox: {total} ISO(s)")
         for idx, iso_xbox_source in enumerate(iso_files, start=1):
             logger.debug(f"Traitement de l'ISO Xbox: {iso_xbox_source}")
-            xiso_dest = os.path.splitext(iso_xbox_source)[0] + "_xbox.iso"
-
-            # Construction de la commande avec des arguments distincts
-            cmd = xdvdfs_cmd + [iso_xbox_source, xiso_dest]
-            logger.debug(f"Exécution de la commande: {' '.join(cmd)}")
+            
+            # extract-xiso -r repackage l'ISO en place
+            # Il faut exécuter la commande depuis le dossier contenant l'ISO
+            iso_dir = os.path.dirname(iso_xbox_source)
+            iso_filename = os.path.basename(iso_xbox_source)
+            
+            # Utiliser le nom de fichier relatif et définir le répertoire de travail
+            cmd = extract_xiso_cmd + [iso_filename]
+            logger.debug(f"Exécution de la commande: {' '.join(cmd)} (cwd: {iso_dir})")
             
             process = subprocess.run(
                 cmd,
                 capture_output=True,
-                text=True
+                text=True,
+                cwd=iso_dir
             )
 
             if process.returncode != 0:
@@ -1883,27 +1888,34 @@ def handle_xbox(dest_dir, iso_files, url=None):
                         if url not in config.download_progress:
                             config.download_progress[url] = {}
                         config.download_progress[url]["status"] = "Error"
-                        config.download_progress[url]["message"] = {process.stderr}
+                        config.download_progress[url]["message"] = process.stderr
                         config.download_progress[url]["progress_percent"] = 0
                         config.needs_redraw = True
                         if isinstance(config.history, list):
                             for entry in config.history:
                                 if entry.get("url") == url and entry.get("status") in ("Converting", "Extracting", "Téléchargement", "Downloading"):
                                     entry["status"] = "Error"
-                                    entry["message"] = {process.stderr}
+                                    entry["message"] = process.stderr
                                     save_history(config.history)
                                     break
                 except Exception:
                     pass
                 return False, err_msg
 
-            # Vérifier que l'ISO converti a été créé
-            if os.path.exists(xiso_dest):
-                logger.info(f"ISO converti avec succès: {xiso_dest}")
-                # Remplacer l'ISO original par l'ISO converti
-                os.remove(iso_xbox_source)
-                os.rename(xiso_dest, iso_xbox_source)
-                logger.debug(f"ISO original remplacé par la version convertie")
+            # Vérifier que l'ISO existe toujours (extract-xiso le modifie en place)
+            if os.path.exists(iso_xbox_source):
+                logger.info(f"ISO repackagé avec succès: {iso_xbox_source}")
+                logger.debug(f"ISO converti au format XISO en place")
+                
+                # Supprimer le fichier .old créé par extract-xiso (backup)
+                old_file = iso_xbox_source + ".old"
+                if os.path.exists(old_file):
+                    try:
+                        os.remove(old_file)
+                        logger.debug(f"Fichier backup .old supprimé: {old_file}")
+                    except Exception as e:
+                        logger.warning(f"Impossible de supprimer le fichier .old: {e}")
+                
                 # Mise à jour progression de conversion (coarse-grain)
                 try:
                     percent = int(idx / total * 100) if total > 0 else 100
@@ -1922,7 +1934,7 @@ def handle_xbox(dest_dir, iso_files, url=None):
                 except Exception:
                     pass
             else:
-                err_msg = f"L'ISO converti n'a pas été créé: {xiso_dest}"
+                err_msg = f"L'ISO source a disparu après conversion: {iso_xbox_source}"
                 logger.error(err_msg)
                 try:
                     if url:
