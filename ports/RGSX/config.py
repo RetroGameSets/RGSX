@@ -28,29 +28,164 @@ def get_application_root():
         # Si __file__ n'est pas défini (par exemple, exécution dans un REPL)
         return os.path.abspath(os.getcwd())
 
-    
+
 ### CONSTANTES DES CHEMINS DE BASE
+#
+# This application supports two deployment modes:
+#
+# ===== TRADITIONAL MODE (Batocera/Retrobat) =====
+# No environment variables set. Everything is derived from the app code location.
+#
+# Structure:
+#   /userdata/
+#   ├── roms/
+#   │   ├── ports/RGSX/              ← APP_FOLDER (application code)
+#   │   ├── snes/                    ← ROMs organized by platform
+#   │   └── ...
+#   └── saves/ports/rgsx/            ← SAVE_FOLDER (config & data)
+#       ├── rgsx_settings.json       ← settings file
+#       ├── images/                  ← scraped metadata/covers
+#       ├── games/                   ← temporary download location
+#       ├── history.json             ← download history
+#       └── ...
+#
+# ===== DOCKER MODE =====
+# Enabled by setting RGSX_CONFIG_DIR and/or RGSX_DATA_DIR environment variables.
+# This separates the app code, configuration, and data into different directories
+# that can be mounted as Docker volumes.
+#
+# Environment Variables:
+#   RGSX_APP_DIR (optional): Where app code lives (defaults to /app in Docker)
+#   RGSX_CONFIG_DIR: Where config/settings/metadata live (mount to /config volume)
+#   RGSX_DATA_DIR: Where ROMs and data live (mount to /data volume)
+#
+# Structure:
+#   /app/RGSX/                       ← APP_FOLDER (application code)
+#   /config/                         ← CONFIG_FOLDER / SAVE_FOLDER
+#   ├── rgsx_settings.json           ← settings file
+#   ├── games/                       ← GAME_LISTS_FOLDER (platform game database JSONs)
+#   ├── images/                      ← scraped metadata/covers
+#   ├── logs/                        ← application logs
+#   ├── history.json                 ← download history
+#   └── ...
+#   /data/
+#   └── roms/                        ← ROMS_FOLDER
+#       ├── snes/                    ← ROMs download here, extract, delete zip
+#       ├── nes/
+#       └── ...
+#
+# Single Volume Mode:
+#   If only RGSX_CONFIG_DIR is set (no RGSX_DATA_DIR), both config and data
+#   will use the same directory.
 
-# Chemins de base
-APP_FOLDER = os.path.join(get_application_root(), "RGSX")
-USERDATA_FOLDER = os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER))) # remonte de /userdata/roms/ports/rgsx à /userdata ou \Retrobat
-SAVE_FOLDER = os.path.join(USERDATA_FOLDER, "saves", "ports", "rgsx")
+# Check for Docker mode environment variables
+_docker_app_dir = os.environ.get("RGSX_APP_DIR", "").strip()
+_docker_config_dir = os.environ.get("RGSX_CONFIG_DIR", "").strip()
+_docker_data_dir = os.environ.get("RGSX_DATA_DIR", "").strip()
 
-# ROMS_FOLDER - Charger depuis rgsx_settings.json si défini, sinon valeur par défaut
-_default_roms_folder = os.path.join(USERDATA_FOLDER, "roms")
+# Determine if we're running in Docker mode
+_is_docker_mode = bool(_docker_config_dir or _docker_data_dir)
+
+if _is_docker_mode:
+    # ===== DOCKER MODE =====
+
+    # App code location (can be overridden, defaults to file location)
+    if _docker_app_dir:
+        APP_FOLDER = os.path.join(_docker_app_dir, "RGSX")
+    else:
+        APP_FOLDER = os.path.join(get_application_root(), "RGSX")
+
+    # Config directory: where rgsx_settings.json and metadata live
+    if _docker_config_dir:
+        CONFIG_FOLDER = _docker_config_dir
+        SAVE_FOLDER = _docker_config_dir
+    else:
+        # Fallback: derive from traditional structure
+        USERDATA_FOLDER = os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER)))
+        CONFIG_FOLDER = os.path.join(USERDATA_FOLDER, "saves", "ports", "rgsx")
+        SAVE_FOLDER = CONFIG_FOLDER
+
+    # Data directory: where ROMs live
+    # If not set, fallback to CONFIG_FOLDER (single volume mode)
+    if _docker_data_dir:
+        DATA_FOLDER = _docker_data_dir
+    elif _docker_config_dir:
+        DATA_FOLDER = _docker_config_dir
+    else:
+        USERDATA_FOLDER = os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER)))
+        DATA_FOLDER = USERDATA_FOLDER
+
+    # For backwards compatibility with code that references USERDATA_FOLDER
+    USERDATA_FOLDER = DATA_FOLDER
+
+else:
+    # ===== TRADITIONAL MODE =====
+    # Derive all paths from app location using original logic
+
+    APP_FOLDER = os.path.join(get_application_root(), "RGSX")
+
+    # Go up 3 directories from APP_FOLDER to find USERDATA
+    # Example: /userdata/roms/ports/RGSX -> /userdata
+    USERDATA_FOLDER = os.path.dirname(os.path.dirname(os.path.dirname(APP_FOLDER)))
+
+    # Config and data are both under USERDATA in traditional mode
+    CONFIG_FOLDER = os.path.join(USERDATA_FOLDER, "saves", "ports", "rgsx")
+    SAVE_FOLDER = CONFIG_FOLDER
+    DATA_FOLDER = USERDATA_FOLDER
+
+# ROMS_FOLDER - Can be customized via rgsx_settings.json
+#
+# The "roms_folder" setting in rgsx_settings.json supports three formats:
+#
+#   1. Empty string or not set:
+#      Uses default location:
+#        - Docker mode: /data/roms
+#        - Traditional mode: /userdata/roms
+#
+#   2. Absolute path (e.g., "/my/custom/roms"):
+#      Uses the path exactly as specified (must exist)
+#      Works in both Docker and Traditional modes
+#
+#   3. Relative path (e.g., "my_roms" or "../custom_roms"):
+#      Resolved relative to:
+#        - Docker mode: DATA_FOLDER (e.g., /data/my_roms)
+#        - Traditional mode: USERDATA_FOLDER (e.g., /userdata/my_roms)
+#
+# If the specified path doesn't exist, falls back to default.
+
+# Default ROM location
+_default_roms_folder = os.path.join(DATA_FOLDER if _is_docker_mode else USERDATA_FOLDER, "roms")
+
 try:
-    # Import tardif pour éviter les dépendances circulaires
+    # Try to load custom roms_folder from settings
     _settings_path = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
     if os.path.exists(_settings_path):
         import json
         with open(_settings_path, 'r', encoding='utf-8') as _f:
             _settings = json.load(_f)
             _custom_roms = _settings.get("roms_folder", "").strip()
-            if _custom_roms and os.path.isdir(_custom_roms):
-                ROMS_FOLDER = _custom_roms
+
+            if _custom_roms:
+                # Check if it's an absolute path
+                if os.path.isabs(_custom_roms):
+                    # Absolute path: use as-is if directory exists
+                    if os.path.isdir(_custom_roms):
+                        ROMS_FOLDER = _custom_roms
+                    else:
+                        ROMS_FOLDER = _default_roms_folder
+                else:
+                    # Relative path: resolve relative to DATA_FOLDER (docker) or USERDATA_FOLDER (traditional)
+                    _base = DATA_FOLDER if _is_docker_mode else USERDATA_FOLDER
+                    _resolved = os.path.join(_base, _custom_roms)
+                    if os.path.isdir(_resolved):
+                        ROMS_FOLDER = _resolved
+                    else:
+                        ROMS_FOLDER = _default_roms_folder
             else:
+                # Empty: use default
                 ROMS_FOLDER = _default_roms_folder
     else:
+        # Settings file doesn't exist yet: use default
         ROMS_FOLDER = _default_roms_folder
 except Exception as _e:
     ROMS_FOLDER = _default_roms_folder
@@ -64,7 +199,15 @@ logger = logging.getLogger(__name__)
 download_queue = []  # Liste de dicts: {url, platform, game_name, ...}
 # Indique si un téléchargement est en cours
 download_active = False
-log_dir = os.path.join(APP_FOLDER, "logs")
+
+# Log directory
+# Docker mode: /config/logs (persisted in config volume)
+# Traditional mode: /app/RGSX/logs (current behavior)
+if _is_docker_mode:
+    log_dir = os.path.join(CONFIG_FOLDER, "logs")
+else:
+    log_dir = os.path.join(APP_FOLDER, "logs")
+
 log_file = os.path.join(log_dir, "RGSX.log")
 log_file_web = os.path.join(log_dir, 'rgsx_web.log')
 
@@ -75,9 +218,17 @@ MUSIC_FOLDER = os.path.join(APP_FOLDER, "assets", "music")
 GAMELISTXML = os.path.join(ROMS_FOLDER, "ports","gamelist.xml")
 GAMELISTXML_WINDOWS = os.path.join(ROMS_FOLDER, "windows","gamelist.xml")
 
-# Dans le Dossier de sauvegarde : /saves/ports/rgsx
+# Dans le Dossier de sauvegarde : /saves/ports/rgsx (traditional) or /config (Docker)
 IMAGES_FOLDER = os.path.join(SAVE_FOLDER, "images")
-GAMES_FOLDER = os.path.join(SAVE_FOLDER, "games")
+
+# GAME_LISTS_FOLDER: Platform game database JSON files (extracted from games.zip)
+# Always in SAVE_FOLDER/games for both Docker and Traditional modes
+# These are small JSON files containing available games per platform
+GAME_LISTS_FOLDER = os.path.join(SAVE_FOLDER, "games")
+
+# Legacy alias for backwards compatibility (some code still uses GAMES_FOLDER)
+GAMES_FOLDER = GAME_LISTS_FOLDER
+
 SOURCES_FILE = os.path.join(SAVE_FOLDER, "systems_list.json")
 JSON_EXTENSIONS = os.path.join(SAVE_FOLDER, "rom_extensions.json")
 PRECONF_CONTROLS_PATH = os.path.join(APP_FOLDER, "assets", "controls")

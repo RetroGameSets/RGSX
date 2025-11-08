@@ -5,19 +5,16 @@ Run RGSX as a web-only service without the Pygame UI. Perfect for homelab/server
 ## Quick Start
 
 ```bash
-# Build the image
-docker build -t rgsx .
+# Using docker-compose (recommended)
+docker-compose up -d
 
-# Run with docker
+# Or build and run manually
+docker build -f docker/Dockerfile -t rgsx .
 docker run -d \
   --name rgsx \
   -p 5000:5000 \
-  -e PUID=99 \
-  -e PGID=100 \
-  -e RGSX_HEADLESS=1 \
-  -v ./data/saves:/userdata/saves/ports/rgsx \
-  -v ./data/roms:/userdata/roms/ports \
-  -v ./data/logs:/userdata/roms/ports/RGSX/logs \
+  -v ./config:/config \
+  -v ./data:/data \
   rgsx
 
 # Access the web interface
@@ -28,65 +25,63 @@ open http://localhost:5000
 
 - Runs RGSX web server in headless mode (no Pygame UI)
 - Web interface accessible from any browser
-- ROMs and settings persist in `./data/` volumes
-- Container restarts automatically
+- Config persists in `/config` volume (settings, metadata, history)
+- ROMs download to `/data/roms/{platform}/` and extract there
+- Environment variables pre-configured (no manual setup needed)
+
+## Environment Variables
+
+**Pre-configured in the container (no need to set these):**
+- `RGSX_HEADLESS=1` - Runs in headless mode
+- `RGSX_CONFIG_DIR=/config` - Config location
+- `RGSX_DATA_DIR=/data` - Data location
+
+**Optional (only if needed):**
+- `PUID` - User ID for file ownership (default: root)
+- `PGID` - Group ID for file ownership (default: root)
 
 ## Configuration
+
+### Docker Compose
+
+See `docker-compose.example.yml` for a complete example configuration.
 
 ### User Permissions (Important!)
 
 **For SMB mounts (Unraid, Windows shares):**
-
-Don't set PUID/PGID. The container runs as root, and the SMB server maps files to your authenticated user.
-
-```bash
-docker run \
-  -e RGSX_HEADLESS=1 \
-  ...
-```
+- Don't set PUID/PGID
+- The container runs as root, and the SMB server maps files to your authenticated user
 
 **For NFS/local storage:**
+- Set PUID and PGID to match your host user (files will be owned by that user)
+- Find your user ID: `id -u` and `id -g`
 
-Set PUID and PGID to match your host user. Files will be owned by that user.
+### Volumes
 
-```bash
-docker run \
-  -e PUID=1000 \
-  -e PGID=1000 \
-  -e RGSX_HEADLESS=1 \
-  ...
-```
+Two volumes are used:
 
-**Find your user ID:**
-```bash
-id -u  # Your UID
-id -g  # Your GID
-```
+**`/config`** - Configuration and metadata
+- `rgsx_settings.json` - Settings
+- `games/` - Platform game database files (JSON)
+- `images/` - Game cover art
+- `history.json` - Download history
+- `logs/` - Application logs
+- `*.txt` - API keys
 
-### Change Port
-
-```bash
-docker run -p 8080:5000 ...  # Access on port 8080
-```
-
-### Custom ROM Location
-
-Map to your existing ROM collection:
-```bash
-docker run -v /your/existing/roms:/userdata/roms/ports ...
-```
+**`/data`** - ROM storage
+- `roms/` - ROMs by platform (snes/, nes/, psx/, etc.) - downloads extract here
 
 ### API Keys
 
-Add your download service API keys to `./data/saves/`:
+Add your download service API keys to `./config/`:
 
 ```bash
 # Add your API key (just the key, no extra text)
-echo "YOUR_KEY_HERE" > ./data/saves/1FichierAPI.txt
+echo "YOUR_KEY_HERE" > ./config/1FichierAPI.txt
 
-# Optional: AllDebrid/RealDebrid fallbacks
-echo "YOUR_KEY" > ./data/saves/AllDebridAPI.txt
-echo "YOUR_KEY" > ./data/saves/RealDebridAPI.txt
+# Optional: AllDebrid/RealDebrid
+echo "YOUR_KEY" > ./config/AllDebridAPI.txt
+echo "YOUR_KEY" > ./config/RealDebridAPI.txt
 
 # Restart to apply
 docker restart rgsx
@@ -112,14 +107,29 @@ docker stop rgsx && docker rm rgsx
 
 ## Directory Structure
 
+**On Host:**
 ```
-RGSX/
-├── data/                 # Created on first run
-│   ├── saves/           # Settings, history, API keys
-│   ├── roms/            # Downloaded ROMs
-│   └── logs/            # Application logs
-├── Dockerfile
-└── docker-compose.yml
+./
+├── config/              # Config volume (created on first run)
+│   ├── rgsx_settings.json
+│   ├── games/          # Platform game database (JSON)
+│   ├── images/         # Platform images
+│   ├── logs/           # Application logs
+│   └── *.txt           # API keys (1FichierAPI.txt, etc.)
+└── data/
+    └── roms/           # ROMs by platform
+        ├── snes/
+        ├── n64/
+        └── ...
+```
+
+**In Container:**
+```
+/app/RGSX/              # Application code
+/config/                # Mapped to ./config on host
+└── games/, images/, logs/, etc.
+/data/                  # Mapped to ./data on host
+└── roms/               # ROM downloads go here
 ```
 
 ## How It Works
@@ -137,21 +147,14 @@ The container creates files with the UID/GID specified by PUID/PGID environment 
 docker run -e PUID=1000 -e PGID=1000 ...
 ```
 
-**Changed PUID/PGID and container won't start:**
+**Changed PUID/PGID and permission errors:**
 
-When you change PUID/PGID, old files with different ownership will cause rsync to fail. You MUST fix ownership on the storage server:
+Fix ownership of your volumes:
 
 ```bash
-# On your NAS/Unraid (via SSH), either:
-
-# Option 1: Delete old files (easiest)
-rm -rf /mnt/user/roms/rgsx/roms/ports/RGSX/*
-
-# Option 2: Change ownership to new PUID/PGID
-chown -R 1000:1000 /mnt/user/roms/rgsx/roms/ports/RGSX/
+# Fix ownership to match new PUID/PGID
+sudo chown -R 1000:1000 ./config ./data
 ```
-
-Then restart the container.
 
 **Port already in use:**
 ```bash

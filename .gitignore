@@ -21,3 +21,5 @@ Info.txt
 # Docker test data
 data/
 
+docker-compose.test.yml
+config/
