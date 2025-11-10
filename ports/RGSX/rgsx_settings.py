@@ -53,7 +53,8 @@ def load_rgsx_settings():
         "language": "en",
         "music_enabled": True,
         "accessibility": {
-            "font_scale": 1.0
+            "font_scale": 1.0,
+            "footer_font_scale": 1.5
         },
         "display": {
             "grid": "3x4",

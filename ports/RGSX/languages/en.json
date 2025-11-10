@@ -192,6 +192,7 @@
     "instruction_generic_back": "Return to the previous menu",
     "instruction_display_layout": "Cycle grid dimensions (columns × rows)",
     "instruction_display_font_size": "Adjust text scale for readability",
+    "instruction_display_footer_font_size": "Adjust footer text scale (version & controls display)",
     "instruction_display_font_family": "Switch between available font families",
     "instruction_display_show_unsupported": "Show/hide systems not defined in es_systems.cfg",
     "instruction_display_unknown_ext": "Enable/disable warning for file extensions absent from es_systems.cfg",
@@ -361,5 +362,7 @@
     "filter_all": "Check All",
     "filter_none": "Uncheck All",
     "filter_apply": "Apply Filter",
-    "filter_back": "Back"
+    "filter_back": "Back",
+    "accessibility_footer_font_size": "Footer font size: {0}",
+    "popup_layout_changed_restart": "Layout changed to {0}x{1}. Please restart the app to apply."
 }

@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.3.1.8"
+app_version = "2.3.1.9"
 
 
 def get_application_root():
@@ -30,53 +30,7 @@ def get_application_root():
 
 
 ### CONSTANTES DES CHEMINS DE BASE
-#
-# This application supports two deployment modes:
-#
-# ===== TRADITIONAL MODE (Batocera/Retrobat) =====
-# No environment variables set. Everything is derived from the app code location.
-#
-# Structure:
-#   /userdata/
-#   ├── roms/
-#   │   ├── ports/RGSX/              ← APP_FOLDER (application code)
-#   │   ├── snes/                    ← ROMs organized by platform
-#   │   └── ...
-#   └── saves/ports/rgsx/            ← SAVE_FOLDER (config & data)
-#       ├── rgsx_settings.json       ← settings file
-#       ├── images/                  ← scraped metadata/covers
-#       ├── games/                   ← temporary download location
-#       ├── history.json             ← download history
-#       └── ...
-#
-# ===== DOCKER MODE =====
-# Enabled by setting RGSX_CONFIG_DIR and/or RGSX_DATA_DIR environment variables.
-# This separates the app code, configuration, and data into different directories
-# that can be mounted as Docker volumes.
-#
-# Environment Variables:
-#   RGSX_APP_DIR (optional): Where app code lives (defaults to /app in Docker)
-#   RGSX_CONFIG_DIR: Where config/settings/metadata live (mount to /config volume)
-#   RGSX_DATA_DIR: Where ROMs and data live (mount to /data volume)
-#
-# Structure:
-#   /app/RGSX/                       ← APP_FOLDER (application code)
-#   /config/                         ← CONFIG_FOLDER / SAVE_FOLDER
-#   ├── rgsx_settings.json           ← settings file
-#   ├── games/                       ← GAME_LISTS_FOLDER (platform game database JSONs)
-#   ├── images/                      ← scraped metadata/covers
-#   ├── logs/                        ← application logs
-#   ├── history.json                 ← download history
-#   └── ...
-#   /data/
-#   └── roms/                        ← ROMS_FOLDER
-#       ├── snes/                    ← ROMs download here, extract, delete zip
-#       ├── nes/
-#       └── ...
-#
-# Single Volume Mode:
-#   If only RGSX_CONFIG_DIR is set (no RGSX_DATA_DIR), both config and data
-#   will use the same directory.
+
 
 # Check for Docker mode environment variables
 _docker_app_dir = os.environ.get("RGSX_APP_DIR", "").strip()
@@ -134,24 +88,6 @@ else:
     DATA_FOLDER = USERDATA_FOLDER
 
 # ROMS_FOLDER - Can be customized via rgsx_settings.json
-#
-# The "roms_folder" setting in rgsx_settings.json supports three formats:
-#
-#   1. Empty string or not set:
-#      Uses default location:
-#        - Docker mode: /data/roms
-#        - Traditional mode: /userdata/roms
-#
-#   2. Absolute path (e.g., "/my/custom/roms"):
-#      Uses the path exactly as specified (must exist)
-#      Works in both Docker and Traditional modes
-#
-#   3. Relative path (e.g., "my_roms" or "../custom_roms"):
-#      Resolved relative to:
-#        - Docker mode: DATA_FOLDER (e.g., /data/my_roms)
-#        - Traditional mode: USERDATA_FOLDER (e.g., /userdata/my_roms)
-#
-# If the specified path doesn't exist, falls back to default.
 
 # Default ROM location
 _default_roms_folder = os.path.join(DATA_FOLDER if _is_docker_mode else USERDATA_FOLDER, "roms")
@@ -376,6 +312,7 @@ progress_font = None  # Police pour l'affichage de la progression
 title_font = None  # Police pour les titres
 search_font = None  # Police pour la recherche
 small_font = None  # Police pour les petits textes
+tiny_font = None  # Police pour le footer (contrôles/version)
 FONT_FAMILIES = [
     "pixel",   # police rétro Pixel-UniCode.ttf
     "dejavu"   # police plus standard lisible petites tailles
@@ -422,9 +359,11 @@ visible_games = 15  # Nombre de jeux visibles en même temps par défaut
 
 # Options d'affichage
 accessibility_mode = False  # Mode accessibilité pour les polices agrandies
-accessibility_settings = {"font_scale": 1.0}  # Paramètres d'accessibilité (échelle de police)
+accessibility_settings = {"font_scale": 1.0, "footer_font_scale": 1.0}  # Paramètres d'accessibilité (échelle de police)
 font_scale_options = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0]  # Options disponibles pour l'échelle de police
 current_font_scale_index = 3  # Index pour 1.0
+footer_font_scale_options = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5]  # Options pour l'échelle de police du footer
+current_footer_font_scale_index = 3  # Index pour 1.0
 popup_start_time = 0  # Timestamp de début d'affichage du popup
 last_progress_update = 0  # Timestamp de la dernière mise à jour de progression
 transition_state = "idle"  # État de la transition d'écran
@@ -561,6 +500,31 @@ def init_font():
         except Exception as e2:
             logger.error(f"Erreur fallback dejavu: {e2}")
             font = title_font = search_font = progress_font = small_font = None
+
+
+def init_footer_font():
+    """Initialise uniquement la police du footer (tiny_font) en fonction de l'échelle séparée."""
+    global tiny_font
+    footer_font_scale = accessibility_settings.get("footer_font_scale", 1.0)
+    
+    # Déterminer la famille sélectionnée
+    family_id = FONT_FAMILIES[current_font_family_index] if 0 <= current_font_family_index < len(FONT_FAMILIES) else "pixel"
+    
+    footer_base_size = 20  # Taille de base pour le footer
+    
+    try:
+        if family_id == "pixel":
+            path = os.path.join(APP_FOLDER, "assets", "fonts", "Pixel-UniCode.ttf")
+            tiny_font = pygame.font.Font(path, int(footer_base_size * footer_font_scale))
+        elif family_id == "dejavu":
+            try:
+                tiny_font = pygame.font.SysFont("dejavusans", int(footer_base_size * footer_font_scale))
+            except Exception:
+                tiny_font = pygame.font.SysFont("dejavu sans", int(footer_base_size * footer_font_scale))
+        logger.debug(f"Police footer initialisée (famille={family_id}, scale={footer_font_scale})")
+    except Exception as e:
+        logger.error(f"Erreur chargement police footer: {e}")
+        tiny_font = None
 
 
 def validate_resolution():

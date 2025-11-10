@@ -189,6 +189,7 @@
     "instruction_generic_back": "Tornare al menu precedente",
     "instruction_display_layout": "Scorrere dimensioni griglia (colonne × righe)",
     "instruction_display_font_size": "Regolare dimensione testo per leggibilità",
+    "instruction_display_footer_font_size": "Regola dimensione testo piè di pagina (versione e controlli)",
     "instruction_display_font_family": "Cambiare famiglia di font disponibile",
     "instruction_display_show_unsupported": "Mostrare/nascondere sistemi non definiti in es_systems.cfg",
     "instruction_display_unknown_ext": "Attivare/disattivare avviso per estensioni assenti in es_systems.cfg",
@@ -361,5 +362,7 @@
     "filter_all": "Seleziona tutto",
     "filter_none": "Deseleziona tutto",
     "filter_apply": "Applica filtro",
-    "filter_back": "Indietro"
+    "filter_back": "Indietro",
+    "accessibility_footer_font_size": "Dimensione carattere piè di pagina: {0}",
+    "popup_layout_changed_restart": "Layout cambiato in {0}x{1}. Riavviare l'app per applicare."
 }

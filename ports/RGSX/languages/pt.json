@@ -191,6 +191,7 @@
     "instruction_generic_back": "Voltar ao menu anterior",
     "instruction_display_layout": "Alternar dimensões da grade (colunas × linhas)",
     "instruction_display_font_size": "Ajustar tamanho do texto para legibilidade",
+    "instruction_display_footer_font_size": "Ajustar tamanho do texto do rodapé (versão e controles)",
     "instruction_display_font_family": "Alternar entre famílias de fontes disponíveis",
     "instruction_display_show_unsupported": "Mostrar/ocultar sistemas não definidos em es_systems.cfg",
     "instruction_display_unknown_ext": "Ativar/desativar aviso para extensões ausentes em es_systems.cfg",
@@ -361,5 +362,7 @@
     "filter_all": "Marcar tudo",
     "filter_none": "Desmarcar tudo",
     "filter_apply": "Aplicar filtro",
-    "filter_back": "Voltar"
+    "filter_back": "Voltar",
+    "accessibility_footer_font_size": "Tamanho fonte rodapé: {0}",
+    "popup_layout_changed_restart": "Layout alterado para {0}x{1}. Reinicie o app para aplicar."
 }

@@ -127,6 +127,12 @@ for i, scale in enumerate(config.font_scale_options):
         config.current_font_scale_index = i
         break
 
+# Charger le footer_font_scale
+for i, scale in enumerate(config.footer_font_scale_options):
+    if scale == config.accessibility_settings.get("footer_font_scale", 1.0):
+        config.current_footer_font_scale_index = i
+        break
+
 # Chargement et initialisation de la langue
 from language import initialize_language
 initialize_language()
@@ -160,6 +166,7 @@ pygame.display.set_caption("RGSX")
 
 # Initialisation des polices via config
 config.init_font()
+config.init_footer_font()
 
 # Mise à jour de la résolution dans config
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()

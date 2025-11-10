@@ -1415,7 +1415,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Display
         elif config.menu_state == "pause_display_menu":
             sel = getattr(config, 'pause_display_selection', 0)
-            total = 8  # layout, font size, font family, unsupported, unknown, hide premium, filter, back
+            total = 9  # layout, font size, footer font size, font family, unsupported, unknown, hide premium, filter, back
             if is_input_matched(event, "up"):
                 config.pause_display_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1439,14 +1439,12 @@ def handle_controls(event, sources, joystick, screen):
                         logger.error(f"Erreur set_display_grid: {e}")
                     config.GRID_COLS = new_cols
                     config.GRID_ROWS = new_rows
-                    # Redémarrage automatique
+                    # Afficher popup au lieu de redémarrer
                     try:
-                        config.menu_state = "restart_popup"
-                        config.popup_message = _("popup_restarting") if _ else "Restarting..."
-                        config.popup_timer = 2000
-                        restart_application(2000)
+                        restart_msg = _("popup_layout_changed_restart").format(new_cols, new_rows) if _ else f"Layout changed to {new_cols}x{new_rows}. Please restart the app to apply changes."
+                        show_toast(restart_msg, duration=3000)
                     except Exception as e:
-                        logger.error(f"Erreur restart après layout: {e}")
+                        logger.error(f"Erreur toast après layout: {e}")
                     config.needs_redraw = True
                 # 1 font size
                 elif sel == 1 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
@@ -1466,8 +1464,28 @@ def handle_controls(event, sources, joystick, screen):
                         except Exception as e:
                             logger.error(f"Erreur init polices: {e}")
                         config.needs_redraw = True
-                # 2 font family cycle
-                elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # 2 footer font size
+                elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    opts = getattr(config, 'footer_font_scale_options', [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0])
+                    idx = getattr(config, 'current_footer_font_scale_index', 3)
+                    idx = max(0, idx-1) if is_input_matched(event, "left") else min(len(opts)-1, idx+1)
+                    if idx != getattr(config, 'current_footer_font_scale_index', 3):
+                        config.current_footer_font_scale_index = idx
+                        scale = opts[idx]
+                        config.accessibility_settings["footer_font_scale"] = scale
+                        try:
+                            save_accessibility_settings(config.accessibility_settings)
+                        except Exception as e:
+                            logger.error(f"Erreur sauvegarde footer font scale: {e}")
+                        try:
+                            init_footer_font_func = getattr(config, 'init_footer_font', None)
+                            if callable(init_footer_font_func):
+                                init_footer_font_func()
+                        except Exception as e:
+                            logger.error(f"Erreur init footer font: {e}")
+                        config.needs_redraw = True
+                # 3 font family cycle
+                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         families = getattr(config, 'FONT_FAMILIES', ["pixel"]) or ["pixel"]
                         current = get_font_family()
@@ -1500,8 +1518,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur changement font family: {e}")
-                # 3 unsupported toggle
-                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # 4 unsupported toggle
+                elif sel == 4 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         current = get_show_unsupported_platforms()
                         new_val = set_show_unsupported_platforms(not current)
@@ -1511,8 +1529,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle unsupported: {e}")
-                # 4 allow unknown extensions
-                elif sel == 4 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # 5 allow unknown extensions
+                elif sel == 5 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         current = get_allow_unknown_extensions()
                         new_val = set_allow_unknown_extensions(not current)
@@ -1521,8 +1539,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
-                # 5 hide premium systems
-                elif sel == 5 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                # 6 hide premium systems
+                elif sel == 6 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     try:
                         cur = get_hide_premium_systems()
                         new_val = set_hide_premium_systems(not cur)
@@ -1531,15 +1549,15 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle hide_premium_systems: {e}")
-                # 6 filter platforms
-                elif sel == 6 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
+                # 7 filter platforms
+                elif sel == 7 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
                     config.filter_return_to = "pause_display_menu"
                     config.menu_state = "filter_platforms"
                     config.selected_filter_index = 0
                     config.filter_platforms_scroll_offset = 0
                     config.needs_redraw = True
-                # 7 back
-                elif sel == 7 and (is_input_matched(event, "confirm")):
+                # 8 back
+                elif sel == 8 and (is_input_matched(event, "confirm")):
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True

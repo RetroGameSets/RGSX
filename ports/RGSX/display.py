@@ -90,7 +90,34 @@ def get_help_icon_surface(action_name: str, size: int):
 def _render_icons_line(actions, text, target_col_width, font, text_color, icon_size=28, icon_gap=8, icon_text_gap=12):
     """Compose une ligne avec une rangée d'icônes (actions) et un texte à droite.
     Renvoie un pygame.Surface prêt à être blité, limité à target_col_width.
+    Si aucun joystick n'est détecté, affiche les touches clavier entre [ ] au lieu des icônes.
     """
+    # Si aucun joystick détecté, afficher les touches clavier entre crochets au lieu des icônes
+    if not getattr(config, 'joystick', True):
+        # Mode clavier : afficher [Touche] : Description
+        action_labels = []
+        for a in actions:
+            label = get_control_display(a, a.upper())
+            action_labels.append(f"[{label}]")
+        
+        # Combiner les labels avec le texte
+        full_text = " ".join(action_labels) + " : " + text
+        
+        try:
+            lines = wrap_text(full_text, font, target_col_width)
+        except Exception:
+            lines = [full_text]
+        line_surfs = [font.render(l, True, text_color) for l in lines]
+        width = max((s.get_width() for s in line_surfs), default=1)
+        height = sum(s.get_height() for s in line_surfs) + max(0, (len(line_surfs) - 1)) * 4
+        surf = pygame.Surface((width, height), pygame.SRCALPHA)
+        y = 0
+        for s in line_surfs:
+            surf.blit(s, (0, y))
+            y += s.get_height() + 4
+        return surf
+    
+    # Mode joystick : afficher les icônes normalement
     # Charger icônes (ignorer celles manquantes)
     icon_surfs = []
     for a in actions:
@@ -643,7 +670,10 @@ def draw_platform_grid(screen):
     if total_pages > 1:
         page_indicator_text = _("platform_page").format(config.current_page + 1, total_pages)
         page_indicator = config.small_font.render(page_indicator_text, True, THEME_COLORS["text"])
-        page_rect = page_indicator.get_rect(center=(config.screen_width // 2, config.screen_height - margin_bottom // 2))
+        # Positionner au-dessus du footer (réserver ~80px pour le footer)
+        footer_reserved_height = 80
+        page_y = config.screen_height - footer_reserved_height - page_indicator.get_height() - 10
+        page_rect = page_indicator.get_rect(center=(config.screen_width // 2, page_y))
         screen.blit(page_indicator, page_rect)
 
     # Calculer une seule fois la pulsation pour les éléments sélectionnés
@@ -1494,6 +1524,9 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
         control_parts = []
         
         start_button = get_control_display('start', 'START')
+        # Si aucun joystick, afficher la touche entre crochets
+        if not getattr(config, 'joystick', True):
+            start_button = f"[{start_button}]"
         start_text = i18n("controls_action_start")
         control_parts.append(f"RGSX v{config.app_version} - {start_button} : {start_text}")
         
@@ -1540,6 +1573,15 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
     max_width = config.screen_width - 40
     icon_surfs = []
     
+    # Calculer la taille des icônes en fonction du footer_font_scale
+    footer_scale = config.accessibility_settings.get("footer_font_scale", 1.0)
+    base_icon_size = 20
+    scaled_icon_size = int(base_icon_size * footer_scale)
+    base_icon_gap = 6
+    scaled_icon_gap = int(base_icon_gap * footer_scale)
+    base_icon_text_gap = 10
+    scaled_icon_text_gap = int(base_icon_text_gap * footer_scale)
+    
     for line_data in icon_lines:
         if isinstance(line_data, tuple) and len(line_data) >= 2:
             if line_data[0] == "icons_combined":
@@ -1550,7 +1592,7 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
                 for action_tuple in all_controls:
                     _, actions, label = action_tuple
                     try:
-                        surf = _render_icons_line(actions, label, max_width - x_pos - 10, config.font, THEME_COLORS["text"], icon_size=20, icon_gap=6, icon_text_gap=10)
+                        surf = _render_icons_line(actions, label, max_width - x_pos - 10, config.tiny_font, THEME_COLORS["text"], icon_size=scaled_icon_size, icon_gap=scaled_icon_gap, icon_text_gap=scaled_icon_text_gap)
                         if x_pos + surf.get_width() > max_width - 10:
                             break  # Pas assez de place
                         combined_surf.blit(surf, (x_pos, (50 - surf.get_height()) // 2))
@@ -1565,14 +1607,14 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
             elif line_data[0] == "icons" and len(line_data) == 3:
                 _, actions, label = line_data
                 try:
-                    surf = _render_icons_line(actions, label, max_width, config.font, THEME_COLORS["text"], icon_size=20, icon_gap=6, icon_text_gap=10)
+                    surf = _render_icons_line(actions, label, max_width, config.tiny_font, THEME_COLORS["text"], icon_size=scaled_icon_size, icon_gap=scaled_icon_gap, icon_text_gap=scaled_icon_text_gap)
                     icon_surfs.append(surf)
                 except Exception:
-                    text_surface = config.font.render(f"{label}", True, THEME_COLORS["text"])
+                    text_surface = config.tiny_font.render(f"{label}", True, THEME_COLORS["text"])
                     icon_surfs.append(text_surface)
         else:
             # Texte simple (pour la ligne platform)
-            text_surface = config.font.render(line_data, True, THEME_COLORS["text"])
+            text_surface = config.tiny_font.render(line_data, True, THEME_COLORS["text"])
             icon_surfs.append(text_surface)
     
     # Calculer hauteur totale
@@ -1954,6 +1996,11 @@ def draw_pause_display_menu(screen, selected_index):
     cur_idx = getattr(config, 'current_font_scale_index', 1)
     font_value = f"{opts[cur_idx]}x"
     font_txt = f"{_('submenu_display_font_size') if _ else 'Font Size'}: < {font_value} >"
+    # Footer font size
+    footer_opts = getattr(config, 'footer_font_scale_options', [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0])
+    footer_cur_idx = getattr(config, 'current_footer_font_scale_index', 3)
+    footer_font_value = f"{footer_opts[footer_cur_idx]}x"
+    footer_font_txt = f"{_('accessibility_footer_font_size').split(':')[0] if _ else 'Footer Font Size'}: < {footer_font_value} >"
     # Font family
     current_family = get_font_family()
     # Nom user-friendly
@@ -1985,11 +2032,12 @@ def draw_pause_display_menu(screen, selected_index):
     hide_premium_txt = f"{hide_premium_label}: < {status_hide_premium} >"
     filter_txt = _("submenu_display_filter_platforms") if _ else "Filter Platforms"
     back_txt = _("menu_back") if _ else "Back"
-    options = [layout_txt, font_txt, font_family_txt, unsupported_txt, unknown_txt, hide_premium_txt, filter_txt, back_txt]
+    options = [layout_txt, font_txt, footer_font_txt, font_family_txt, unsupported_txt, unknown_txt, hide_premium_txt, filter_txt, back_txt]
     _draw_submenu_generic(screen, _("menu_display"), options, selected_index)
     instruction_keys = [
         "instruction_display_layout",
         "instruction_display_font_size",
+        "instruction_display_footer_font_size",
         "instruction_display_font_family",
         "instruction_display_show_unsupported",
         "instruction_display_unknown_ext",

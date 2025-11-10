@@ -192,6 +192,7 @@
     "instruction_generic_back": "Revenir au menu précédent",
     "instruction_display_layout": "Changer les dimensions de la grille",
     "instruction_display_font_size": "Ajuster la taille du texte pour la lisibilité",
+    "instruction_display_footer_font_size": "Ajuster la taille du texte du pied de page (version et contrôles)",
     "instruction_display_font_family": "Basculer entre les polices disponibles",
     "instruction_display_show_unsupported": "Afficher/masquer systèmes absents de es_systems.cfg",
     "instruction_display_unknown_ext": "Avertir ou non pour extensions absentes de es_systems.cfg",
@@ -361,5 +362,7 @@
     "filter_all": "Tout cocher",
     "filter_none": "Tout décocher",
     "filter_apply": "Appliquer filtre",
-    "filter_back": "Retour"
+    "filter_back": "Retour",
+    "accessibility_footer_font_size": "Taille police pied de page : {0}",
+    "popup_layout_changed_restart": "Disposition changée en {0}x{1}. Veuillez redémarrer l'app pour appliquer."
 }

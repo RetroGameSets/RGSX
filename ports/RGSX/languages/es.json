@@ -192,6 +192,7 @@
     "instruction_generic_back": "Volver al menú anterior",
     "instruction_display_layout": "Alternar dimensiones de la cuadrícula (columnas × filas)",
     "instruction_display_font_size": "Ajustar tamaño del texto para mejor legibilidad",
+    "instruction_display_footer_font_size": "Ajustar el tamaño del texto del pie de página (versión y controles)",
     "instruction_display_font_family": "Cambiar entre familias de fuentes disponibles",
     "instruction_display_show_unsupported": "Mostrar/ocultar sistemas no definidos en es_systems.cfg",
     "instruction_display_unknown_ext": "Activar/desactivar aviso para extensiones no presentes en es_systems.cfg",
@@ -361,5 +362,7 @@
     "filter_all": "Marcar todo",
     "filter_none": "Desmarcar todo",
     "filter_apply": "Aplicar filtro",
-    "filter_back": "Volver"
+    "filter_back": "Volver",
+    "accessibility_footer_font_size": "Tamaño fuente pie de página: {0}",
+    "popup_layout_changed_restart": "Diseño cambiado a {0}x{1}. Reinicie la app para aplicar."
 }

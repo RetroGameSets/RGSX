@@ -212,7 +212,7 @@ def get_game_metadata(game_name, platform_name):
         # Vérifier si des résultats ont été trouvés
         if "data" not in data or "games" not in data["data"] or not data["data"]["games"]:
             logger.warning(f"Aucun résultat trouvé pour '{clean_name}'")
-            return {"error": "Aucun résultat trouvé"}
+            return {"error": f"No result found for '{clean_name}'"}
         
         # Prendre le premier résultat (meilleure correspondance)
         games = data["data"]["games"]

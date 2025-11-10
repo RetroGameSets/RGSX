@@ -190,6 +190,7 @@
     "instruction_generic_back": "Zum vorherigen Menü zurückkehren",
     "instruction_display_layout": "Rasterabmessungen (Spalten × Zeilen) durchschalten",
     "instruction_display_font_size": "Schriftgröße für bessere Lesbarkeit anpassen",
+    "instruction_display_footer_font_size": "Fußzeilen-Textgröße anpassen (Version & Steuerelemente)",
     "instruction_display_font_family": "Zwischen verfügbaren Schriftarten wechseln",
     "instruction_display_show_unsupported": "Nicht in es_systems.cfg definierte Systeme anzeigen/ausblenden",
     "instruction_display_unknown_ext": "Warnung für in es_systems.cfg fehlende Dateiendungen an-/abschalten",
@@ -361,5 +362,7 @@
     "filter_all": "Alles auswählen",
     "filter_none": "Alles abwählen",
     "filter_apply": "Filter anwenden",
-    "filter_back": "Zurück"
+    "filter_back": "Zurück",
+    "accessibility_footer_font_size": "Fußzeilen-Schriftgröße: {0}",
+    "popup_layout_changed_restart": "Layout geändert auf {0}x{1}. Bitte starten Sie die App neu."
 }
