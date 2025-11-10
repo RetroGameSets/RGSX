@@ -1,241 +1,234 @@
 # 🎮 Retro Game Sets Xtra (RGSX)
 
-## SUPPORT / HELP: https://discord.gg/Vph9jwg3VV
-## LISEZ-MOI / INSTRUCTIONS EN FRANCAIS : https://github.com/RetroGameSets/RGSX/blob/main/README_FR.md
+**[Discord Support](https://discord.gg/Vph9jwg3VV)** • **[Installation](#-installation)** • **[French Documentation](https://github.com/RetroGameSets/RGSX/blob/main/README_FR.md)**
 
-RGSX is a Python application using Pygame for its graphical interface, created by and for the RetroGameSets community. It is completely free.
-
-The application currently supports multiple download sources such as myrient and 1fichier (with optional unlocking / fallback via AllDebrid and Real-Debrid). Sources can be updated frequently.
-
-## INSTALLATION : https://github.com/RetroGameSets/RGSX#-installation
-
-## ✨ Features
-
-- **Game downloads**: Supports ZIP files and handles unsupported raw archives automatically based on allowed extensions defined in EmulationStation's `es_systems.cfg` (and custom `es_systems_*.cfg` on Batocera). RGSX reads the per‑system allowed extensions and extracts archives automatically if the target system does not support zipped files.
-  - Most downloads require no account or authentication.
-  - Systems tagged with `(1fichier)` in their name require a valid API key (1Fichier, AllDebrid or Real-Debrid) for premium links.
-
----
-> ## IMPORTANT (1Fichier / AllDebrid / Real-Debrid)
-> To download from 1Fichier links you may use one of: your 1Fichier API key, an AllDebrid API key (automatic fallback), or a Real-Debrid API key (fallback if others missing / limited).
->
-> Where to paste your API key (file must contain ONLY the key):
-> - `/saves/ports/rgsx/1FichierAPI.txt` (1Fichier API key)
-> - `/saves/ports/rgsx/AllDebridAPI.txt` (AllDebrid API key – optional fallback)
-> - `/saves/ports/rgsx/RealDebridAPI.txt` (Real-Debrid API key – optional fallback)
->
-> Do NOT create these files manually. Launch RGSX once: it will auto‑create the empty files if they are missing. Then open the relevant file and paste your key.
----
-
-**🧰 Command Line (CLI) Usage**
-
-RGSX also provides a headless command‑line interface to list platforms/games and download ROMs:
-
-- French CLI guide: https://github.com/RetroGameSets/RGSX/blob/main/README_CLI.md
-- English CLI guide: https://github.com/RetroGameSets/RGSX/blob/main/README_CLI_EN.md
-
-- **Download history**: View all current and past downloads.
-- **Multi‑selection downloads**: Mark several games using the key mapped to Clear History (default X) to prepare a batch, then Confirm to launch sequential downloads.
-- **Control customization**: Remap keyboard / controller buttons; many popular pads are auto‑configured on first launch.
-- **Platform grid layouts**: Switch between 3x3, 3x4, 4x3, 4x4.
-- **Hide unsupported systems**: Automatically hides systems whose ROM folder is missing (toggle in Display menu).
-- **Change font & size**: Accessibility & readability adjustments directly in the menu.
-- **Search / filter mode**: Quickly filter games by name; includes on‑screen virtual keyboard for controllers.
-- **Multi‑language interface**: Switch language any time in the menu.
-- **Adaptive interface**: Scales cleanly from 800x600 up to 1080p (higher resolutions untested but should work).
-- **Auto update & restart**: The application restarts itself after applying an update.
-- **System & extension discovery**: On first run, RGSX parses `es_systems.cfg` (Batocera / RetroBat) and generates `/saves/ports/rgsx/rom_extensions.json` plus the supported systems list.
-
----
-
-## 🖥️ Requirements
-
-### Operating System
-- Batocera / Knulli or RetroBat
-
-### Hardware
-- PC, Raspberry Pi, handheld console...
-- Controller (recommended) or keyboard
-- Active internet connection
-
-### Disk Space
-- ~100 MB for the application (additional space for downloaded games)
+A free, user-friendly ROM downloader for Batocera, Knulli, and RetroBat with multi-source support.
 
 ---
 
 ## 🚀 Installation
 
-### Automatic Method (Batocera / Knulli)
+### Quick Install (Batocera / Knulli)
 
-On the target system:
-- On Batocera PC: open an xTERM (F1 > Applications > xTERM), or
-- From another machine: connect via SSH (root / linux) using PuTTY, PowerShell, etc.
+**SSH or Terminal access required:**
+```bash
+curl -L bit.ly/rgsx-install | sh
+```
 
-Run:
-`curl -L bit.ly/rgsx-install | sh`
+After installation:
+1. Update game lists: `Menu > Game Settings > Update game list`
+2. Find RGSX under **PORTS** or **Homebrew and ports**
 
-Wait for the script to finish (log file and on‑screen output). Then update the game list via:
-`Menu > Game Settings > Update game list`
+### Manual Install (All Systems)
+1. **Download**: [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
+2. **Extract**:
+   - **Batocera/Knulli**: Extract `ports` folder to `/roms/`
+   - **RetroBat**: Extract both `ports` and `windows` folders to `/roms/`
+3. **Refresh**: `Menu > Game Settings > Update game list`
 
-You will find RGSX under the "PORTS" or "Homebrew and ports" system. Physical paths created: `/roms/ports/RGSX` (and `/roms/windows/RGSX` on RetroBat environments as needed).
+### Manual Update (if automatic update failed)
+Download latest release : [RGSX_update_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
 
-### Manual Method (RetroBat / Batocera)
-
-1. Download ZIP: https://github.com/RetroGameSets/RGSX/archive/refs/heads/main.zip
-2. Extract into your ROMS folder:
-   - Batocera: only extract the `ports` folder contents
-   - RetroBat: extract both `ports` and `windows`
-3. Ensure you now have: `/roms/ports/RGSX` and (RetroBat) `/roms/windows/RGSX`
-4. Update the game list: `Menu > Game Settings > Update game list`
-
----
-
-## 🏁 First Launch
-
-- RGSX appears in the "WINDOWS" system on RetroBat, and in "PORTS" / "Homebrew and ports" on Batocera/Knulli.
-- On first launch, if your controller matches a predefined profile in `/roms/ports/RGSX/assets/controls`, mapping is auto‑imported.
-- The app then downloads required data (system images, game lists, etc.).
-- If controls act strangely or are corrupt, delete `/saves/ports/rgsx/controls.json` and restart (it will be regenerated).
-
-INFO (RetroBat only): On the first run, Python (~50 MB) is downloaded into `/system/tools/python`. The screen may appear frozen on the loading splash for several seconds—this is normal. Installation output is logged in `/roms/ports/RGSX-INSTALL.log` (share this if you need support).
+**Installed paths:**
+- `/roms/ports/RGSX` (all systems)
+- `/roms/windows/RGSX` (RetroBat only)
 
 ---
 
-## 🕹️ Usage
+## 🎮 Usage
 
-### Menu Navigation
+### First Launch
 
-- Use D‑Pad / Arrow keys to move between platforms, games, and options.
-- Press the Start key (default: `P` or controller Start) for the pause menu with all configuration options.
-- From the pause menu you can regenerate cached system/game/image lists to pull latest updates.
+- Auto-downloads system images and game lists
+- Auto-configures controls if your controller is recognized
+- **Controls broken?** Delete `/saves/ports/rgsx/controls.json` and restart
 
-### Display Menu
+**Keyboard Mode**: When no controller is detected, controls display as `[Key]` instead of icons.
 
-- Layout: switch platform grid (3x3, 3x4, 4x3, 4x4)
-- Font size: adjust text scale (accessibility)
-- Show unsupported systems: toggle systems whose ROM directory is missing
-- Filter systems: persistently include/exclude systems by name
+### Pause Menu Structure
+
+**Controls**
+- View Controls Help
+- Remap Controls
+
+**Display**
+- Layout (3×3, 3×4, 4×3, 4×4)
+- Font Size (general UI)
+- Footer Font Size (controls/version text)
+- Font Family (pixel fonts)
+- Hide Unknown Extension Warning
+
+**Games**
+- Download History
+- Source Mode (RGSX / Custom)
+- Update Game Cache
+- Show Unsupported Platforms
+- Hide Premium Systems
+- Filter Platforms
+
+**Settings**
+- Background Music Toggle
+- Symlink Options (Batocera)
+- Web Service (Batocera)
+- API Keys Management
+- Language Selection
+
+---
+
+## ✨ Features
+
+- 🎯 **Smart System Detection** – Auto-discovers supported systems from `es_systems.cfg`
+- 📦 **Intelligent Archive Handling** – Auto-extracts archives when systems don't support ZIP files
+- 🔑 **Premium Unlocking** – 1Fichier API + AllDebrid/Real-Debrid fallback for unlimited downloads
+- 🎨 **Fully Customizable** – Layout (3×3 to 4×4), fonts, font sizes (UI + footer), languages (EN/FR/DE/ES/IT/PT)
+- 🎮 **Controller-First Design** – Auto-mapping for popular controllers + custom remapping support
+- 🔍 **Advanced Filtering** – Search by name, hide/show unsupported systems, filter platforms
+- 📊 **Download Management** – Queue system, history tracking, progress notifications
+- 🌐 **Custom Sources** – Use your own game repository URLs
+- ♿ **Accessibility** – Separate font scaling for UI and footer, keyboard-only mode support
+
+> ### 🔑 API Keys Setup
+> For unlimited 1Fichier downloads, add your API key(s) to `/saves/ports/rgsx/`:
+> - `1FichierAPI.txt` – 1Fichier API key (recommended)
+> - `AllDebridAPI.txt` – AllDebrid fallback (optional)
+> - `RealDebridAPI.txt` – Real-Debrid fallback (optional)
+> 
+> **Each file must contain ONLY the key, no extra text.**
 
 ### Downloading Games
 
-1. Select a platform then a game
-2. Press the Confirm key (default: Enter / A) to start downloading
-3. (Optional) Press the Clear History key (default: X) on multiple games to toggle multi‑selection ([X] marker), then Confirm to launch a sequential batch
-4. Track progress in the HISTORY menu
+1. Browse platforms → Select game
+2. **Direct Download**: Press `Confirm`
+3. **Queue Download**: Press `X` (West button)
+4. Track progress in **History** menu or via popup notifications
 
-### Control Customization
+### Custom Game Sources
 
-- Open pause menu → Reconfigure controls
-- Hold each desired key/button for ~3 seconds when prompted
-- Button labels adapt to your pad (A/B/X/Y, LB/RB/LT/RT, etc.)
-- Delete `/saves/ports/rgsx/controls.json` if mapping breaks; restart to regenerate
+Switch to custom sources via **Pause Menu > Games > Source Mode**.
 
-### History
-
-- Access from pause menu or press the History key (default: H)
-- Select an entry to re‑download (e.g. after an error or cancellation)
-- CLEAR button empties the list only (does not delete installed games)
-- BACK cancels an active download
-
-### Logs
-
-Logs are stored at: `/roms/ports/RGSX/logs/RGSX.log` (provide this for troubleshooting).
-
----
-
-## 🔄 Changelog
-See Discord or GitHub commits for the latest changes.
-
----
-
-## 🌐 Custom Game Sources
-Switch the game source in the pause menu (Game Source: RGSX / Custom).
-
-Custom mode expects an HTTP/HTTPS ZIP URL pointing to a sources archive mirroring the default structure. Configure in:
-`{rgsx_settings path}` → key: `sources.custom_url`
-
-Behavior:
-- If custom mode is selected and URL is empty/invalid → empty list + popup (no fallback)
-- Fix the URL then choose "Update games list" (restart if prompted)
-
-Example `rgsx_settings.json` snippet:
+Configure in `/saves/ports/rgsx/rgsx_settings.json`:
 ```json
-"sources": {
-  "mode": "custom",
-  "custom_url": "https://example.com/my-sources.zip"
+{
+  "sources": {
+    "mode": "custom",
+    "custom_url": "https://example.com/my-sources.zip"
+  }
 }
 ```
-Switch back to RGSX mode any time via the pause menu.
+**Note**: If custom mode activated but Invalid/empty URL = using /saves/ports/rgsx/games.zip . You need to update games cache on RGSX menu after fixing URL.
 
 ---
 
-## 📁 Project Structure
-```
-/roms/windows/RGSX
-│
-├── RGSX Retrobat.bat          # Windows/RetroBat launcher (not needed on Batocera/Knulli)
+## 🌐 Web Interface (Batocera/Knulli Only)
 
-/roms/ports/
-├── RGSX-INSTALL.log           # Install log (first scripted install)
-└── RGSX/
-    ├── __main__.py            # Main entry point
-    ├── controls.py            # Input handling & menu navigation events
-    ├── controls_mapper.py     # Interactive control remapping & auto button naming
-    ├── display.py             # Pygame rendering layer
-    ├── config.py              # Global paths / parameters
-    ├── rgsx_settings.py       # Unified settings manager
-    ├── network.py             # Download logic (multi-provider, fallback)
-    ├── history.py             # Download history store & UI logic
-    ├── language.py            # Localization manager
-    ├── accessibility.py       # Accessibility options (fonts, layout)
-    ├── utils.py               # Helper utilities (text wrapping, truncation, etc.)
-    ├── update_gamelist.py     # Game list updater (Batocera/Knulli)
-    ├── update_gamelist_windows.py # RetroBat gamelist auto-update on launch
-    ├── assets/                # Fonts, binaries, music, predefined control maps
-    ├── languages/             # Translation files
-    └── logs/
-        └── RGSX.log           # Runtime log
+RGSX includes a web interface that launched automatically when using RGSX for remote browsing and downloading games from any device on your network.
 
-/saves/ports/RGSX/
-├── systems_list.json          # Discovered systems / folders / images
-├── games/                     # Platform game link repositories
-├── images/                    # Downloaded platform images
-├── rgsx_settings.json         # Unified config (settings, language, music, symlinks, sources)
-├── controls.json              # Generated control mapping
-├── history.json               # Download history database
-├── rom_extensions.json        # Allowed ROM extensions cache from es_systems.cfg
-├── 1FichierAPI.txt            # 1Fichier API key (empty until you paste key)
-├── AllDebridAPI.txt           # AllDebrid API key (optional fallback)
-└── RealDebridAPI.txt          # Real-Debrid API key (optional fallback)
+### Accessing the Web Interface
+
+1. **Find your Batocera IP address**:
+   - Check Batocera menu: `Network Settings`
+   - Or from terminal: `ip addr show`
+
+2. **Open in browser**: `http://[BATOCERA_IP]:5000` or `http://BATOCERA:5000`
+   - Example: `http://192.168.1.100:5000`
+
+3. **Available from any device**: Phone, tablet, PC on the same network
+
+### Web Interface Features
+
+- 📱 **Mobile-Friendly** – Responsive design works on all screen sizes
+- 🔍 **Browse All Systems** – View all platforms and games
+- ⬇️ **Remote Downloads** – Queue downloads directly to your Batocera
+- 📊 **Real-Time Status** – See active downloads and history
+- 🎮 **Same Game Lists** – Uses identical sources as the main app
+
+
+### Enable/Disable Web Service at Boot, without the need to launch RGSX
+
+**Method 1: From RGSX Menu**
+1. Open **Pause Menu** (Start/ALTGr)
+2. Navigate to **Settings > Web Service**
+3. Toggle **Enable at Boot**
+4. Restart your device
+
+**Method 2: Manual Configuration**
+
+Edit `/saves/ports/rgsx/rgsx_settings.json`:
+```json
+{
+  "web_service": {
+    "enabled_at_boot": true
+  }
+}
 ```
+**Port Configuration**: The web service runs on port `5000` by default. Ensure this port is not blocked by firewall rules.
+
+---
+
+## 📁 File Structure
+
+```
+/roms/ports/RGSX/
+├── __main__.py                # Entry point
+├── controls.py                # Input handling
+├── display.py                 # Rendering engine
+├── network.py                 # Download manager
+├── rgsx_settings.py           # Settings manager
+├── assets/controls/           # Controller profiles
+├── languages/                 # Translations (EN/FR/DE/ES/IT/PT)
+└── logs/RGSX.log             # Runtime logs
+
+/roms/windows/RGSX/
+└── RGSX Retrobat.bat         # RetroBat launcher
+
+/saves/ports/rgsx/
+├── rgsx_settings.json        # User preferences
+├── controls.json             # Control mapping
+├── history.json              # Download history
+├── rom_extensions.json       # Supported extensions cache
+├── systems_list.json         # Detected systems
+├── games/                    # Game databases (per platform)
+├── images/                   # Platform images
+├── 1FichierAPI.txt          # 1Fichier API key
+├── AllDebridAPI.txt         # AllDebrid API key
+└── RealDebridAPI.txt        # Real-Debrid API key
+```
+
+---
+
+## 🛠️ Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Controls not working | Delete `/saves/ports/rgsx/controls.json` + restart |
+| Games not showing | Pause Menu > Games > Update Game Cache |
+| Download stuck | Check API keys in `/saves/ports/rgsx/` |
+| App crashes | Check `/roms/ports/RGSX/logs/RGSX.log` |
+| Layout change not applied | Restart RGSX after changing layout |
+
+**Need help?** Share logs from `/roms/ports/RGSX/logs/` on [Discord](https://discord.gg/Vph9jwg3VV).
 
 ---
 
 ## 🤝 Contributing
 
-### Report a Bug
-1. Review `/roms/ports/RGSX/logs/RGSX.log`.
-2. Open a GitHub issue with a clear description + relevant log excerpt OR share it on Discord.
-
-### Propose a Feature
-- Open an issue (or discuss on Discord first) describing the feature and its integration.
-
-### Contribute Code
-1. Fork the repository & create a feature branch:
-```bash
-git checkout -b feature/your-feature-name
-```
-2. Test on Batocera / RetroBat.
-3. Open a Pull Request with a detailed summary.
-
----
-
-## ⚠️ Known Issues
-- (None currently listed)
+- **Bug Reports**: Open GitHub issue with logs or post on Discord
+- **Feature Requests**: Discuss on Discord first, then open issue
+- **Code Contributions**: 
+  ```bash
+  git checkout -b feature/your-feature
+  # Test on Batocera/RetroBat
+  # Submit Pull Request
+  ```
 
 ---
 
 ## 📝 License
-This project is free software. You are free to use, modify, and distribute it under the terms of the included license.
 
-Developed with ❤️ for retro gaming enthusiasts.
+Free and open-source software. Use, modify, and distribute freely.
+
+## Thanks to all contributors, and followers of this app
+
+[![Stargazers over time](https://starchart.cc/RetroGameSets/RGSX.svg?variant=adaptive)](https://starchart.cc/RetroGameSets/RGSX)
+
+**Developed with ❤️ for the retro gaming community.**

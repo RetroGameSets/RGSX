@@ -1415,7 +1415,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Display
         elif config.menu_state == "pause_display_menu":
             sel = getattr(config, 'pause_display_selection', 0)
-            total = 9  # layout, font size, footer font size, font family, unsupported, unknown, hide premium, filter, back
+            total = 6  # layout, font size, footer font size, font family, unknown, back
             if is_input_matched(event, "up"):
                 config.pause_display_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1518,19 +1518,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur changement font family: {e}")
-                # 4 unsupported toggle
+                # 4 allow unknown extensions
                 elif sel == 4 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
-                    try:
-                        current = get_show_unsupported_platforms()
-                        new_val = set_show_unsupported_platforms(not current)
-                        load_sources()
-                        config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
-                        config.popup_timer = 3000
-                        config.needs_redraw = True
-                    except Exception as e:
-                        logger.error(f"Erreur toggle unsupported: {e}")
-                # 5 allow unknown extensions
-                elif sel == 5 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         current = get_allow_unknown_extensions()
                         new_val = set_allow_unknown_extensions(not current)
@@ -1539,25 +1528,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
-                # 6 hide premium systems
-                elif sel == 6 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    try:
-                        cur = get_hide_premium_systems()
-                        new_val = set_hide_premium_systems(not cur)
-                        config.popup_message = ("Premium hidden" if new_val else "Premium visible") if _ is None else (_("popup_hide_premium_on") if new_val else _("popup_hide_premium_off"))
-                        config.popup_timer = 2500
-                        config.needs_redraw = True
-                    except Exception as e:
-                        logger.error(f"Erreur toggle hide_premium_systems: {e}")
-                # 7 filter platforms
-                elif sel == 7 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
-                    config.filter_return_to = "pause_display_menu"
-                    config.menu_state = "filter_platforms"
-                    config.selected_filter_index = 0
-                    config.filter_platforms_scroll_offset = 0
-                    config.needs_redraw = True
-                # 8 back
-                elif sel == 8 and (is_input_matched(event, "confirm")):
+                # 5 back
+                elif sel == 5 and (is_input_matched(event, "confirm")):
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
@@ -1569,7 +1541,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Games
         elif config.menu_state == "pause_games_menu":
             sel = getattr(config, 'pause_games_selection', 0)
-            total = 4  # history, source, redownload, back
+            total = 7  # history, source, redownload, unsupported, hide premium, filter, back
             if is_input_matched(event, "up"):
                 config.pause_games_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1605,7 +1577,35 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "reload_games_data"
                     config.redownload_confirm_selection = 0
                     config.needs_redraw = True
-                elif sel == 3 and is_input_matched(event, "confirm"):  # back
+                # 3 unsupported toggle
+                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                    try:
+                        current = get_show_unsupported_platforms()
+                        new_val = set_show_unsupported_platforms(not current)
+                        load_sources()
+                        config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
+                        config.popup_timer = 3000
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle unsupported: {e}")
+                # 4 hide premium systems
+                elif sel == 4 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    try:
+                        cur = get_hide_premium_systems()
+                        new_val = set_hide_premium_systems(not cur)
+                        config.popup_message = ("Premium hidden" if new_val else "Premium visible") if _ is None else (_("popup_hide_premium_on") if new_val else _("popup_hide_premium_off"))
+                        config.popup_timer = 2500
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle hide_premium_systems: {e}")
+                # 5 filter platforms
+                elif sel == 5 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
+                    config.filter_return_to = "pause_games_menu"
+                    config.menu_state = "filter_platforms"
+                    config.selected_filter_index = 0
+                    config.filter_platforms_scroll_offset = 0
+                    config.needs_redraw = True
+                elif sel == 6 and is_input_matched(event, "confirm"):  # back
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True

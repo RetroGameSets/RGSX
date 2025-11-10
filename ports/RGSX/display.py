@@ -1978,9 +1978,7 @@ def draw_pause_controls_menu(screen, selected_index):
 
 def draw_pause_display_menu(screen, selected_index):
     from rgsx_settings import (
-        get_show_unsupported_platforms,
         get_allow_unknown_extensions,
-        get_hide_premium_systems,
         get_font_family
     )
     # Layout label
@@ -2011,38 +2009,21 @@ def draw_pause_display_menu(screen, selected_index):
     fam_label = family_map.get(current_family, current_family)
     font_family_txt = f"{_('submenu_display_font_family') if _ else 'Font'}: < {fam_label} >"
 
-    unsupported = get_show_unsupported_platforms()
-    status_unsupported = _('status_on') if unsupported else _('status_off')
-    # Construire label sans statut pour insérer les chevrons proprement
-    raw_unsupported_label = _('submenu_display_show_unsupported') if _ else 'Show unsupported systems: {status}'
-    # Retirer éventuel placeholder et ponctuation finale
-    if '{status}' in raw_unsupported_label:
-        raw_unsupported_label = raw_unsupported_label.split('{status}')[0].rstrip(' :')
-    unsupported_txt = f"{raw_unsupported_label}: < {status_unsupported} >"
     allow_unknown = get_allow_unknown_extensions()
     status_unknown = _('status_on') if allow_unknown else _('status_off')
     raw_unknown_label = _('submenu_display_allow_unknown_ext') if _ else 'Hide unknown ext warn: {status}'
     if '{status}' in raw_unknown_label:
         raw_unknown_label = raw_unknown_label.split('{status}')[0].rstrip(' :')
     unknown_txt = f"{raw_unknown_label}: < {status_unknown} >"
-    # Hide premium systems
-    hide_premium = get_hide_premium_systems()
-    status_hide_premium = _('status_on') if hide_premium else _('status_off')
-    hide_premium_label = _('menu_hide_premium_systems') if _ else 'Hide Premium systems'
-    hide_premium_txt = f"{hide_premium_label}: < {status_hide_premium} >"
-    filter_txt = _("submenu_display_filter_platforms") if _ else "Filter Platforms"
     back_txt = _("menu_back") if _ else "Back"
-    options = [layout_txt, font_txt, footer_font_txt, font_family_txt, unsupported_txt, unknown_txt, hide_premium_txt, filter_txt, back_txt]
+    options = [layout_txt, font_txt, footer_font_txt, font_family_txt, unknown_txt, back_txt]
     _draw_submenu_generic(screen, _("menu_display"), options, selected_index)
     instruction_keys = [
         "instruction_display_layout",
         "instruction_display_font_size",
         "instruction_display_footer_font_size",
         "instruction_display_font_family",
-        "instruction_display_show_unsupported",
         "instruction_display_unknown_ext",
-        "instruction_display_hide_premium",
-        "instruction_display_filter_platforms",
         "instruction_generic_back",
     ]
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
@@ -2059,19 +2040,40 @@ def draw_pause_display_menu(screen, selected_index):
         draw_menu_instruction(screen, _(key), last_button_bottom)
 
 def draw_pause_games_menu(screen, selected_index):
-    from rgsx_settings import get_sources_mode
+    from rgsx_settings import get_sources_mode, get_show_unsupported_platforms, get_hide_premium_systems
     mode = get_sources_mode()
     source_label = _("games_source_rgsx") if mode == "rgsx" else _("games_source_custom")
     source_txt = f"{_('menu_games_source_prefix')}: < {source_label} >"
     update_txt = _("menu_redownload_cache")
     history_txt = _("menu_history") if _ else "History"
+    
+    # Show unsupported systems
+    unsupported = get_show_unsupported_platforms()
+    status_unsupported = _('status_on') if unsupported else _('status_off')
+    raw_unsupported_label = _('submenu_display_show_unsupported') if _ else 'Show unsupported systems: {status}'
+    if '{status}' in raw_unsupported_label:
+        raw_unsupported_label = raw_unsupported_label.split('{status}')[0].rstrip(' :')
+    unsupported_txt = f"{raw_unsupported_label}: < {status_unsupported} >"
+    
+    # Hide premium systems
+    hide_premium = get_hide_premium_systems()
+    status_hide_premium = _('status_on') if hide_premium else _('status_off')
+    hide_premium_label = _('menu_hide_premium_systems') if _ else 'Hide Premium systems'
+    hide_premium_txt = f"{hide_premium_label}: < {status_hide_premium} >"
+    
+    # Filter platforms
+    filter_txt = _("submenu_display_filter_platforms") if _ else "Filter Platforms"
+    
     back_txt = _("menu_back") if _ else "Back"
-    options = [history_txt, source_txt, update_txt, back_txt]
+    options = [history_txt, source_txt, update_txt, unsupported_txt, hide_premium_txt, filter_txt, back_txt]
     _draw_submenu_generic(screen, _("menu_games") if _ else "Games", options, selected_index)
     instruction_keys = [
         "instruction_games_history",
         "instruction_games_source_mode",
         "instruction_games_update_cache",
+        "instruction_display_show_unsupported",
+        "instruction_display_hide_premium",
+        "instruction_display_filter_platforms",
         "instruction_generic_back",
     ]
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
@@ -2084,7 +2086,31 @@ def draw_pause_games_menu(screen, selected_index):
         title_rect_height = title_surface.get_height()
         start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10
         last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
-        draw_menu_instruction(screen, _(key), last_button_bottom)
+        text = _(key)
+        if key == "instruction_display_hide_premium":
+            # Inject dynamic list of premium providers from config.PREMIUM_HOST_MARKERS
+            try:
+                from config import PREMIUM_HOST_MARKERS
+                # Clean, preserve order, remove duplicates (case-insensitive)
+                seen = set()
+                providers_clean = []
+                for p in PREMIUM_HOST_MARKERS:
+                    p_lower = p.lower()
+                    if p_lower not in seen:
+                        seen.add(p_lower)
+                        providers_clean.append(p)
+                providers_str = ", ".join(providers_clean)
+                if not providers_str:
+                    providers_str = "1fichier, etc."
+                if "{providers}" in text:
+                    text = text.format(providers=providers_str)
+                else:
+                    # fallback si placeholder absent
+                    text = f"{text} ({providers_str})"
+                    
+            except Exception:
+                pass
+        draw_menu_instruction(screen, text, last_button_bottom)
 
 def draw_pause_settings_menu(screen, selected_index):
     from rgsx_settings import get_symlink_option
@@ -2369,22 +2395,22 @@ def draw_controls_help(screen, previous_state):
     # Contenu des catégories (avec icônes si disponibles)
     control_categories = {
         _("controls_category_navigation"): [
-            ("icons", ["up", "down", "left", "right"], f"{get_control_display('up', '↑')} {get_control_display('down', '↓')} {get_control_display('left', '←')} {get_control_display('right', '→')} : {_('controls_navigation')}"),
-            ("icons", ["page_up", "page_down"], f"{get_control_display('page_up', 'LB')} {get_control_display('page_down', 'RB')} : {_('controls_pages')}"),
+            ("icons", ["up", "down", "left", "right"], _('controls_navigation')),
+            ("icons", ["page_up", "page_down"], _('controls_pages')),
         ],
         _("controls_category_main_actions"): [
-            ("icons", ["confirm"], f"{get_control_display('confirm', 'A')} : {_('controls_confirm_select')}"),
-            ("icons", ["cancel"], f"{get_control_display('cancel', 'B')} : {_('controls_cancel_back')}"),
-            ("icons", ["start"], f"{get_control_display('start', 'Start')} : {_('controls_action_start')}"),
+            ("icons", ["confirm"], _('controls_confirm_select')),
+            ("icons", ["cancel"], _('controls_cancel_back')),
+            ("icons", ["start"], _('controls_action_start')),
         ],
         _("controls_category_downloads"): [
-            ("icons", ["history"], f"{get_control_display('history', 'Y')} : {_('controls_action_history')}"),
-            ("icons", ["clear_history"], f"{get_control_display('clear_history', 'X')} : {_('controls_action_clear_history')}"),
+            ("icons", ["history"], _('controls_action_history')),
+            ("icons", ["clear_history"], _('controls_action_clear_history')),
         ],
         _("controls_category_search"): [
-            ("icons", ["filter"], f"{get_control_display('filter', 'Select')} : {_('controls_filter_search')}"),
-            ("icons", ["delete"], f"{get_control_display('delete', 'Suppr')} : {_('controls_action_delete')}"),
-            ("icons", ["space"], f"{get_control_display('space', 'Espace')} : {_('controls_action_space')}"),
+            ("icons", ["filter"], _('controls_filter_search')),
+            ("icons", ["delete"], _('controls_action_delete')),
+            ("icons", ["space"], _('controls_action_space')),
         ],
     }
 
