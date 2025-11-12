@@ -625,7 +625,8 @@ def request_cancel(task_id: str) -> bool:
     return False
 
 def cancel_all_downloads():
-    """Cancel all active downloads and attempt to stop threads quickly."""
+    """Cancel all active downloads and queued downloads, and attempt to stop threads quickly."""
+    # Annuler tous les téléchargements actifs via cancel_events
     for tid, ev in list(cancel_events.items()):
         try:
             ev.set()
@@ -638,6 +639,22 @@ def cancel_all_downloads():
                 th.join(timeout=0.2)
         except Exception:
             pass
+    
+    # Vider la file d'attente des téléchargements
+    config.download_queue.clear()
+    config.download_active = False
+    
+    # Mettre à jour l'historique pour annuler les téléchargements en statut "Queued"
+    try:
+        history = load_history()
+        for entry in history:
+            if entry.get("status") == "Queued":
+                entry["status"] = "Canceled"
+                entry["message"] = _("download_canceled")
+                logger.info(f"Téléchargement en attente annulé : {entry.get('game_name', '?')}")
+        save_history(history)
+    except Exception as e:
+        logger.error(f"Erreur lors de l'annulation des téléchargements en attente : {e}")
 
 
 
@@ -1055,14 +1072,14 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             last_update_time = time.time()
             last_downloaded = 0
             update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
-            download_cancelled = False
+            download_canceled = False
             with open(dest_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=chunk_size):
                     if cancel_ev is not None and cancel_ev.is_set():
                         logger.debug(f"Annulation détectée, arrêt du téléchargement pour task_id={task_id}")
                         result[0] = False
                         result[1] = _("download_canceled") if _ else "Download canceled"
-                        download_cancelled = True
+                        download_canceled = True
                         try:
                             f.close()
                         except Exception:
@@ -1097,7 +1114,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 logger.debug(f"Mise à jour finale de progression: {downloaded}/{total_size} octets")
 
             # Si annulé, ne pas continuer avec extraction
-            if download_cancelled:
+            if download_canceled:
                 return
             
             os.chmod(dest_path, 0o644)
@@ -2077,7 +2094,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         last_update_time = time.time()
                         last_downloaded = 0
                         update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
-                        download_cancelled = False
+                        download_canceled = False
                         logger.debug(f"Ouverture fichier: {dest_path}")
                         with open(dest_path, 'wb') as f:
                             for chunk in response.iter_content(chunk_size=chunk_size):
@@ -2085,7 +2102,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                     logger.debug(f"Annulation détectée, arrêt du téléchargement 1fichier pour task_id={task_id}")
                                     result[0] = False
                                     result[1] = _("download_canceled") if _ else "Download canceled"
-                                    download_cancelled = True
+                                    download_canceled = True
                                     try:
                                         f.close()
                                     except Exception:
@@ -2121,7 +2138,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         progress_queues[task_id].put((task_id, downloaded, total_size, speed))
 
                     # Si annulé, ne pas continuer avec extraction
-                    if download_cancelled:
+                    if download_canceled:
                         return
                     
                     # Déterminer si extraction est nécessaire

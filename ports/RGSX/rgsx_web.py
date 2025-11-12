@@ -20,7 +20,7 @@ import mimetypes
 from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 import config
-from history import load_history
+from history import load_history, save_history
 from utils import load_sources, load_games, extract_data
 from network import download_rom, download_from_1fichier
 from pathlib import Path
@@ -1363,6 +1363,16 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 try:
                     cleared_count = len(config.download_queue)
                     config.download_queue.clear()
+                    
+                    # Mettre à jour l'historique pour annuler les téléchargements en statut "Queued"
+                    history = load_history()
+                    for entry in history:
+                        if entry.get("status") == "Queued":
+                            entry["status"] = "Canceled"
+                            entry["message"] = get_translation('download_canceled')
+                            logger.info(f"Téléchargement en attente annulé : {entry.get('game_name', '?')}")
+                    save_history(history)
+                    
                     logger.info(f"📋 Queue vidée ({cleared_count} éléments supprimés)")
                     self._send_json({
                         'success': True,
@@ -1394,6 +1404,16 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             removed_item = config.download_queue.pop(idx)
                             logger.info(f"📋 {removed_item['game_name']} supprimé de la queue")
                             found = True
+                            
+                            # Mettre à jour l'historique pour cet élément
+                            history = load_history()
+                            for entry in history:
+                                if entry.get('task_id') == task_id and entry.get('status') == 'Queued':
+                                    entry['status'] = 'Canceled'
+                                    entry['message'] = get_translation('download_canceled')
+                                    logger.info(f"Téléchargement en attente annulé dans l'historique : {entry.get('game_name', '?')}")
+                                    break
+                            save_history(history)
                             break
                     
                     if found:

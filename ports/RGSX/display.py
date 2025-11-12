@@ -201,6 +201,8 @@ THEME_COLORS = {
     "text_selected": (0, 255, 0),  # utilise le même vert que fond_lignes
     # Erreur
     "error_text": (255, 0, 0),  # rouge
+    # Succès
+    "success_text": (0, 255, 0),  # vert
     # Avertissement
     "warning_text": (255, 100, 0),  # orange
     # Titres 
@@ -1169,13 +1171,16 @@ def draw_history_list(screen):
             status_text = str(status or "")
 
         # Determine color dedicated to status (independent from selection for better readability)
-        if status == "Erreur":
+        if status == "Erreur" or status == "Error":
             status_color = THEME_COLORS.get("error_text", (255, 0, 0))
         elif status == "Canceled":
             status_color = THEME_COLORS.get("warning_text", (255, 100, 0))
-        elif status == "Download_OK":
+        elif status == "Download_OK" or status == "Completed":
             # Use green OK color
-            status_color = THEME_COLORS.get("fond_lignes", (0, 255, 0))
+            status_color = THEME_COLORS.get("success_text", (0, 255, 0))
+        elif status in ("Downloading", "Téléchargement", "downloading", "Extracting", "Converting", "Queued", "Connecting"):
+            # En cours - couleur bleue/cyan pour différencier des autres
+            status_color = THEME_COLORS.get("text_selected", (100, 180, 255))
         else:
             status_color = THEME_COLORS.get("text", (255, 255, 255))
 
@@ -2579,16 +2584,18 @@ def draw_confirm_dialog(screen):
     active_downloads = 0
     try:
         active_downloads = len(getattr(config, 'download_tasks', {}) or {})
+        queued_downloads = len(getattr(config, 'download_queue', []) or [])
+        total_downloads = active_downloads + queued_downloads
     except Exception:
-        active_downloads = 0
-    if active_downloads > 0:
+        total_downloads = 0
+    if total_downloads > 0:
         # Try translated key if it exists; otherwise fallback to generic message
         try:
             warn_tpl = _("confirm_exit_with_downloads")  # optional key
             # If untranslated key returns the same string, still format
-            message = warn_tpl.format(active_downloads)
+            message = warn_tpl.format(total_downloads)
         except Exception:
-            message = f"Attention: {active_downloads} téléchargement(s) en cours. Quitter quand même ?"
+            message = f"Attention: {total_downloads} téléchargement(s) en cours. Quitter quand même ?"
     else:
         message = _("confirm_exit")
     wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
