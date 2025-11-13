@@ -238,11 +238,12 @@ except Exception as e:
 
 # Initialisation du mixer Pygame (déférée/évitable si musique désactivée)
 if getattr(config, 'music_enabled', True):
-    pygame.mixer.pre_init(44100, -16, 2, 4096)
     try:
+        pygame.mixer.pre_init(44100, -16, 2, 4096)
         pygame.mixer.init()
-    except Exception as e:
-        logger.warning(f"Échec init mixer: {e}")
+    except (NotImplementedError, AttributeError, Exception) as e:
+        logger.warning(f"Mixer non disponible ou échec init: {e}")
+        config.music_enabled = False  # Désactiver la musique si mixer non disponible
 
 # Dossier musique Batocera
 music_folder = os.path.join(config.APP_FOLDER, "assets", "music")
@@ -1368,7 +1369,11 @@ async def main():
         clock.tick(60)
         await asyncio.sleep(0.01)
 
-    pygame.mixer.music.stop()
+    try:
+        if pygame.mixer.get_init() is not None:
+            pygame.mixer.music.stop()
+    except (AttributeError, NotImplementedError):
+        pass
     # Cancel any ongoing downloads to prevent lingering background threads
     try:
         cancel_all_downloads()

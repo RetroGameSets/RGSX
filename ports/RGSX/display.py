@@ -2119,7 +2119,7 @@ def draw_pause_games_menu(screen, selected_index):
 
 def draw_pause_settings_menu(screen, selected_index):
     from rgsx_settings import get_symlink_option
-    from utils import check_web_service_status
+    from utils import check_web_service_status, check_custom_dns_status
     # Music
     if config.music_enabled:
         music_name = config.current_music_name or ""
@@ -2140,10 +2140,16 @@ def draw_pause_settings_menu(screen, selected_index):
     
     # Web Service at boot (only on Linux/Batocera)
     web_service_txt = ""
+    custom_dns_txt = ""
     if config.OPERATING_SYSTEM == "Linux":
         web_service_enabled = check_web_service_status()
         web_service_status = _("settings_web_service_enabled") if web_service_enabled else _("settings_web_service_disabled")
         web_service_txt = f"{_('settings_web_service')} : < {web_service_status} >"
+        
+        # Custom DNS at boot
+        custom_dns_enabled = check_custom_dns_status()
+        custom_dns_status = _("settings_custom_dns_enabled") if custom_dns_enabled else _("settings_custom_dns_disabled")
+        custom_dns_txt = f"{_('settings_custom_dns')} : < {custom_dns_status} >"
     
     api_keys_txt = _("menu_api_keys_status") if _ else "API Keys"
     back_txt = _("menu_back") if _ else "Back"
@@ -2152,6 +2158,8 @@ def draw_pause_settings_menu(screen, selected_index):
     options = [music_option, symlink_option]
     if web_service_txt:  # Ajouter seulement si Linux/Batocera
         options.append(web_service_txt)
+    if custom_dns_txt:  # Ajouter seulement si Linux/Batocera
+        options.append(custom_dns_txt)
     options.extend([api_keys_txt, back_txt])
     
     _draw_submenu_generic(screen, _("menu_settings_category") if _ else "Settings", options, selected_index)
@@ -2161,6 +2169,8 @@ def draw_pause_settings_menu(screen, selected_index):
     ]
     if web_service_txt:
         instruction_keys.append("instruction_settings_web_service")
+    if custom_dns_txt:
+        instruction_keys.append("instruction_settings_custom_dns")
     instruction_keys.extend([
         "instruction_settings_api_keys",
         "instruction_generic_back",

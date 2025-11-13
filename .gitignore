@@ -17,9 +17,9 @@ ports/RGSX.bat
 audit_i18n.py
 prune_i18n.py
 Info.txt
+pygame/
 
 # Docker test data
 data/
-
 docker-compose.test.yml
 config/

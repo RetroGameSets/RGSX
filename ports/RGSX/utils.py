@@ -34,6 +34,14 @@ logger = logging.getLogger(__name__)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("requests").setLevel(logging.WARNING)
 
+# Helper pour vérifier si pygame.mixer est disponible
+def is_mixer_available():
+    """Vérifie si pygame.mixer est disponible et initialisé."""
+    try:
+        return pygame is not None and hasattr(pygame, 'mixer') and pygame.mixer.get_init() is not None
+    except (AttributeError, NotImplementedError):
+        return False
+
 # Liste globale pour stocker les systèmes avec une erreur 404
 unavailable_systems = []
 
@@ -65,7 +73,8 @@ def restart_application(delay_ms: int = 2000):
         if int(delay_ms) <= 0:
             try:
                 try:
-                    pygame.mixer.music.stop()
+                    if is_mixer_available():
+                        pygame.mixer.music.stop()
                 except Exception:
                     pass
                 try:
@@ -298,6 +307,176 @@ def toggle_web_service_at_boot(enable: bool):
         error_msg = f"Unexpected error: {str(e)}"
         logger.exception(error_msg)
         return (False, error_msg)
+
+
+def toggle_custom_dns_at_boot(enable: bool):
+    """Active ou désactive le service custom DNS au démarrage de Batocera.
+    
+    Args:
+        enable: True pour activer, False pour désactiver
+        
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        # Vérifier si on est sur un système compatible (Linux avec batocera-services)
+        if config.OPERATING_SYSTEM != "Linux":
+            return (False, "Custom DNS service is only available on Batocera/Linux systems")
+        
+        services_dir = "/userdata/system/services"
+        service_file = os.path.join(services_dir, "custom_dns")
+        source_file = os.path.join(config.APP_FOLDER, "assets", "progs", "custom_dns")
+        
+        if enable:
+            # Mode ENABLE
+            logger.debug("Activation du service custom DNS au démarrage...")
+            
+            # 1. Créer le dossier services s'il n'existe pas
+            try:
+                os.makedirs(services_dir, exist_ok=True)
+                logger.debug(f"Dossier services vérifié/créé: {services_dir}")
+            except Exception as e:
+                error_msg = f"Failed to create services directory: {str(e)}"
+                logger.error(error_msg)
+                return (False, error_msg)
+            
+            # 2. Copier le fichier custom_dns
+            try:
+                if not os.path.exists(source_file):
+                    error_msg = f"Source service file not found: {source_file}"
+                    logger.error(error_msg)
+                    return (False, error_msg)
+                
+                shutil.copy2(source_file, service_file)
+                os.chmod(service_file, 0o755)  # Rendre exécutable
+                logger.debug(f"Fichier service copié et rendu exécutable: {service_file}")
+            except Exception as e:
+                error_msg = f"Failed to copy service file: {str(e)}"
+                logger.error(error_msg)
+                return (False, error_msg)
+            
+            # 3. Activer le service avec batocera-services
+            try:
+                result = subprocess.run(
+                    ['batocera-services', 'enable', 'custom_dns'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    error_msg = f"batocera-services enable failed: {result.stderr}"
+                    logger.error(error_msg)
+                    return (False, error_msg)
+                logger.debug(f"Service activé: {result.stdout}")
+            except FileNotFoundError:
+                error_msg = "batocera-services command not found"
+                logger.error(error_msg)
+                return (False, error_msg)
+            except Exception as e:
+                error_msg = f"Failed to enable service: {str(e)}"
+                logger.error(error_msg)
+                return (False, error_msg)
+            
+            # 4. Démarrer le service immédiatement
+            try:
+                result = subprocess.run(
+                    ['batocera-services', 'start', 'custom_dns'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    # Le service peut ne pas démarrer si déjà en cours, ce n'est pas grave
+                    logger.warning(f"batocera-services start warning: {result.stderr}")
+                else:
+                    logger.debug(f"Service démarré: {result.stdout}")
+            except Exception as e:
+                logger.warning(f"Failed to start service (non-critical): {str(e)}")
+            
+            success_msg = _("settings_custom_dns_success_enabled") if _ else "Custom DNS enabled at boot"
+            logger.info(success_msg)
+            
+            # Sauvegarder l'état dans rgsx_settings.json
+            settings = load_rgsx_settings()
+            settings["custom_dns_at_boot"] = True
+            save_rgsx_settings(settings)
+            
+            return (True, success_msg)
+            
+        else:
+            # Mode DISABLE
+            logger.debug("Désactivation du service custom DNS au démarrage...")
+            
+            # 1. Désactiver le service avec batocera-services
+            try:
+                result = subprocess.run(
+                    ['batocera-services', 'disable', 'custom_dns'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    error_msg = f"batocera-services disable failed: {result.stderr}"
+                    logger.error(error_msg)
+                    return (False, error_msg)
+                logger.debug(f"Service désactivé: {result.stdout}")
+            except FileNotFoundError:
+                error_msg = "batocera-services command not found"
+                logger.error(error_msg)
+                return (False, error_msg)
+            except Exception as e:
+                error_msg = f"Failed to disable service: {str(e)}"
+                logger.error(error_msg)
+                return (False, error_msg)
+            
+            # 2. Arrêter le service immédiatement
+            try:
+                result = subprocess.run(
+                    ['batocera-services', 'stop', 'custom_dns'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    logger.warning(f"batocera-services stop warning: {result.stderr}")
+                else:
+                    logger.debug(f"Service arrêté: {result.stdout}")
+            except Exception as e:
+                logger.warning(f"Failed to stop service (non-critical): {str(e)}")
+            
+            success_msg = _("settings_custom_dns_success_disabled") if _ else "✓ Custom DNS disabled at boot"
+            logger.info(success_msg)
+            
+            # Sauvegarder l'état dans rgsx_settings.json
+            settings = load_rgsx_settings()
+            settings["custom_dns_at_boot"] = False
+            save_rgsx_settings(settings)
+            
+            return (True, success_msg)
+            
+    except Exception as e:
+        error_msg = f"Unexpected error: {str(e)}"
+        logger.exception(error_msg)
+        return (False, error_msg)
+
+
+def check_custom_dns_status():
+    """Vérifie si le service custom DNS est activé au démarrage.
+    
+    Returns:
+        bool: True si activé, False sinon
+    """
+    try:
+        if config.OPERATING_SYSTEM != "Linux":
+            return False
+        
+        # Lire l'état depuis rgsx_settings.json
+        settings = load_rgsx_settings()
+        return settings.get("custom_dns_at_boot", False)
+        
+    except Exception as e:
+        logger.debug(f"Failed to check custom DNS status: {e}")
+        return False
 
 
 
@@ -1983,8 +2162,9 @@ def handle_xbox(dest_dir, iso_files, url=None):
 
 
 def play_random_music(music_files, music_folder, current_music=None):
-    if not getattr(config, "music_enabled", True):
-        pygame.mixer.music.stop()
+    if not getattr(config, "music_enabled", True) or not is_mixer_available():
+        if is_mixer_available():
+            pygame.mixer.music.stop()
         return current_music
     if music_files:
         # Éviter de rejouer la même musique consécutivement
@@ -1997,11 +2177,12 @@ def play_random_music(music_files, music_folder, current_music=None):
         
         def load_and_play_music():
             try:
-                pygame.mixer.music.load(music_path)
-                pygame.mixer.music.set_volume(0.5)
-                pygame.mixer.music.play(loops=0)  # Jouer une seule fois
-                pygame.mixer.music.set_endevent(pygame.USEREVENT + 1)  # Événement de fin
-                set_music_popup(music_file)  # Afficher le nom de la musique dans la popup
+                if is_mixer_available():
+                    pygame.mixer.music.load(music_path)
+                    pygame.mixer.music.set_volume(0.5)
+                    pygame.mixer.music.play(loops=0)  # Jouer une seule fois
+                    pygame.mixer.music.set_endevent(pygame.USEREVENT + 1)  # Événement de fin
+                    set_music_popup(music_file)  # Afficher le nom de la musique dans la popup
             except Exception as e:
                 logger.error(f"Erreur lors du chargement de la musique {music_path}: {str(e)}")
         

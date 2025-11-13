@@ -15,7 +15,9 @@ from utils import (
     load_games, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
     save_music_config, load_api_keys, _get_dest_folder_name,
-    extract_zip, extract_rar, find_file_with_or_without_extension, toggle_web_service_at_boot, check_web_service_status,
+    extract_zip, extract_rar, find_file_with_or_without_extension, 
+    toggle_web_service_at_boot, check_web_service_status,
+    toggle_custom_dns_at_boot, check_custom_dns_status,
     restart_application, generate_support_zip, load_sources,
     ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
 )
@@ -593,31 +595,31 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                 elif is_input_matched(event, "page_up"):
                     config.current_game = max(0, config.current_game - config.visible_games)
-                    config.repeat_action = None
-                    config.repeat_key = None
-                    config.repeat_start_time = 0
-                    config.repeat_last_action = current_time
+                    update_key_state("page_up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
                     config.needs_redraw = True
                 elif is_input_matched(event, "left"):
                     config.current_game = max(0, config.current_game - config.visible_games)
-                    config.repeat_action = None
-                    config.repeat_key = None
-                    config.repeat_start_time = 0
-                    config.repeat_last_action = current_time
+                    update_key_state("left", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
                     config.needs_redraw = True
                 elif is_input_matched(event, "page_down"):
                     config.current_game = min(len(games) - 1, config.current_game + config.visible_games)
-                    config.repeat_action = None
-                    config.repeat_key = None
-                    config.repeat_start_time = 0
-                    config.repeat_last_action = current_time
+                    update_key_state("page_down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
                     config.needs_redraw = True
                 elif is_input_matched(event, "right"):
                     config.current_game = min(len(games) - 1, config.current_game + config.visible_games)
-                    config.repeat_action = None
-                    config.repeat_key = None
-                    config.repeat_start_time = 0
-                    config.repeat_last_action = current_time
+                    update_key_state("right", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
                     config.needs_redraw = True                    
                 elif is_input_matched(event, "filter"):
                     config.search_mode = True
@@ -1620,9 +1622,11 @@ def handle_controls(event, sources, joystick, screen):
             # Calculer le nombre total d'options selon le système
             total = 4  # music, symlink, api keys, back
             web_service_index = -1
+            custom_dns_index = -1
             if config.OPERATING_SYSTEM == "Linux":
-                total = 5  # music, symlink, web_service, api keys, back
+                total = 6  # music, symlink, web_service, custom_dns, api keys, back
                 web_service_index = 2
+                custom_dns_index = 3
             
             if is_input_matched(event, "up"):
                 config.pause_settings_selection = (sel - 1) % total
@@ -1642,7 +1646,11 @@ def handle_controls(event, sources, joystick, screen):
                         if music_files and music_folder:
                             config.current_music = play_random_music(music_files, music_folder, getattr(config, "current_music", None))
                     else:
-                        pygame.mixer.music.stop()
+                        try:
+                            if pygame.mixer.get_init() is not None:
+                                pygame.mixer.music.stop()
+                        except (AttributeError, NotImplementedError):
+                            pass
                     config.needs_redraw = True
                     logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via settings")
                 # Option 1: Symlink toggle
@@ -1655,7 +1663,6 @@ def handle_controls(event, sources, joystick, screen):
                     logger.info(f"Symlink option {'activée' if not current_status else 'désactivée'} via settings")
                 # Option 2: Web Service toggle (seulement si Linux)
                 elif sel == web_service_index and web_service_index >= 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    
                     current_status = check_web_service_status()
                     # Afficher un message de chargement
                     config.popup_message = _("settings_web_service_enabling") if not current_status else _("settings_web_service_disabling")
@@ -1672,8 +1679,26 @@ def handle_controls(event, sources, joystick, screen):
                         else:
                             logger.error(f"Erreur toggle service web: {message}")
                     threading.Thread(target=toggle_service, daemon=True).start()
+                # Option 3: Custom DNS toggle (seulement si Linux)
+                elif sel == custom_dns_index and custom_dns_index >= 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    current_status = check_custom_dns_status()
+                    # Afficher un message de chargement
+                    config.popup_message = _("settings_custom_dns_enabling") if not current_status else _("settings_custom_dns_disabling")
+                    config.popup_timer = 1000
+                    config.needs_redraw = True
+                    # Exécuter en thread pour ne pas bloquer l'UI
+                    def toggle_dns():
+                        success, message = toggle_custom_dns_at_boot(not current_status)
+                        config.popup_message = message
+                        config.popup_timer = 5000 if success else 7000
+                        config.needs_redraw = True
+                        if success:
+                            logger.info(f"Service custom DNS {'activé' if not current_status else 'désactivé'} au démarrage")
+                        else:
+                            logger.error(f"Erreur toggle service custom DNS: {message}")
+                    threading.Thread(target=toggle_dns, daemon=True).start()
                 # Option API Keys (index varie selon Linux ou pas)
-                elif sel == (web_service_index + 1 if web_service_index >= 0 else 2) and is_input_matched(event, "confirm"):
+                elif sel == (custom_dns_index + 1 if custom_dns_index >= 0 else 2) and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_api_keys_status"
                     config.needs_redraw = True
                 # Option Back (dernière option)
@@ -2000,7 +2025,7 @@ def handle_controls(event, sources, joystick, screen):
     # Gestion des relâchements de touches
     if event.type == pygame.KEYUP:
         # Vérifier quelle touche a été relâchée
-        for action_name in ["up", "down", "left", "right", "confirm", "cancel"]:
+        for action_name in ["up", "down", "left", "right", "page_up", "page_down", "confirm", "cancel"]:
             if config.controls_config.get(action_name, {}).get("type") == "key" and \
                config.controls_config.get(action_name, {}).get("key") == event.key:
                 update_key_state(action_name, False)
@@ -2094,7 +2119,7 @@ def handle_controls(event, sources, joystick, screen):
     
     elif event.type == pygame.JOYBUTTONUP:
         # Vérifier quel bouton a été relâché
-        for action_name in ["up", "down", "left", "right", "confirm", "cancel"]:
+        for action_name in ["up", "down", "left", "right", "page_up", "page_down", "confirm", "cancel"]:
             if config.controls_config.get(action_name, {}).get("type") == "button" and \
                config.controls_config.get(action_name, {}).get("button") == event.button:
                 update_key_state(action_name, False)
@@ -2188,14 +2213,14 @@ def handle_controls(event, sources, joystick, screen):
     
     elif event.type == pygame.JOYAXISMOTION and abs(event.value) < 0.5:
         # Vérifier quel axe a été relâché
-        for action_name in ["up", "down", "left", "right"]:
+        for action_name in ["up", "down", "left", "right", "page_up", "page_down"]:
             if config.controls_config.get(action_name, {}).get("type") == "axis" and \
                config.controls_config.get(action_name, {}).get("axis") == event.axis:
                 update_key_state(action_name, False)
     
     elif event.type == pygame.JOYHATMOTION and event.value == (0, 0):
         # Vérifier quel hat a été relâché
-        for action_name in ["up", "down", "left", "right"]:
+        for action_name in ["up", "down", "left", "right", "page_up", "page_down"]:
             if config.controls_config.get(action_name, {}).get("type") == "hat":
                 update_key_state(action_name, False)
 
