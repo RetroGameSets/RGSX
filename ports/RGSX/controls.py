@@ -15,19 +15,17 @@ from utils import (
     load_games, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
     save_music_config, load_api_keys, _get_dest_folder_name,
-    extract_zip, extract_rar, find_file_with_or_without_extension, 
-    toggle_web_service_at_boot, check_web_service_status,
-    toggle_custom_dns_at_boot, check_custom_dns_status,
+    extract_zip, extract_rar, find_file_with_or_without_extension, toggle_web_service_at_boot, check_web_service_status,
     restart_application, generate_support_zip, load_sources,
     ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
 )
 from history import load_history, clear_history, add_to_history, save_history
-from language import _, get_available_languages, set_language
+from language import _  # Import de la fonction de traduction
 from rgsx_settings import (
     get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
     get_show_unsupported_platforms, set_show_unsupported_platforms,
     set_allow_unknown_extensions, get_hide_premium_systems, set_hide_premium_systems,
-    get_sources_mode, set_sources_mode, set_symlink_option, get_symlink_option, load_rgsx_settings, save_rgsx_settings
+    get_sources_mode, set_sources_mode, set_symlink_option, get_symlink_option
 )
 from accessibility import save_accessibility_settings
 from scraper import get_game_metadata, download_image_to_surface
@@ -191,27 +189,35 @@ def is_input_matched(event, action_name):
     mapping = config.controls_config[action_name]
     input_type = mapping["type"]
     
-    # Vérifier d'abord le mapping configuré
-    matched = False
     if input_type == "key" and event.type == pygame.KEYDOWN:
-        matched = event.key == mapping.get("key")
+        return event.key == mapping.get("key")
     elif input_type == "button" and event.type == pygame.JOYBUTTONDOWN:
-        matched = event.button == mapping.get("button")
+        return event.button == mapping.get("button")
     elif input_type == "axis" and event.type == pygame.JOYAXISMOTION:
         axis = mapping.get("axis")
         direction = mapping.get("direction")
-        matched = event.axis == axis and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == direction
+        threshold = 0.5
+        # Pour les triggers Xbox (axes 4 et 5), la position de repos est -1.0
+        # Il faut inverser la détection : direction -1 = trigger appuyé (vers +1.0)
+        if axis in [4, 5]:
+            # Triggers Xbox: repos à -1.0, appuyé vers +1.0
+            # On inverse la direction configurée
+            if direction == -1:
+                # Direction -1 configurée = détecter quand trigger appuyé (valeur positive)
+                return event.axis == axis and event.value > threshold
+            else:
+                # Direction +1 configurée = détecter aussi quand trigger appuyé
+                return event.axis == axis and event.value > threshold
+        else:
+            # Autres axes: logique normale
+            return event.axis == axis and abs(event.value) > threshold and (1 if event.value > 0 else -1) == direction
     elif input_type == "hat" and event.type == pygame.JOYHATMOTION:
         hat_value = mapping.get("value")
         if isinstance(hat_value, list):
             hat_value = tuple(hat_value)
-        matched = event.value == hat_value
+        return event.value == hat_value
     elif input_type == "mouse" and event.type == pygame.MOUSEBUTTONDOWN:
-        matched = event.button == mapping.get("button")
-    
-    # Si déjà matché, retourner True
-    if matched:
-        return True
+        return event.button == mapping.get("button")
     
     # Fallback clavier pour dépannage (fonctionne toujours même avec manette configurée)
     if event.type == pygame.KEYDOWN:
@@ -1445,7 +1451,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Display
         elif config.menu_state == "pause_display_menu":
             sel = getattr(config, 'pause_display_selection', 0)
-            total = 6  # layout, font size, footer font size, font family, unknown, back
+            total = 8  # layout, font size, font family, unsupported, unknown, hide premium, filter, back
             if is_input_matched(event, "up"):
                 config.pause_display_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1469,12 +1475,14 @@ def handle_controls(event, sources, joystick, screen):
                         logger.error(f"Erreur set_display_grid: {e}")
                     config.GRID_COLS = new_cols
                     config.GRID_ROWS = new_rows
-                    # Afficher popup au lieu de redémarrer
+                    # Redémarrage automatique
                     try:
-                        restart_msg = _("popup_layout_changed_restart").format(new_cols, new_rows) if _ else f"Layout changed to {new_cols}x{new_rows}. Please restart the app to apply changes."
-                        show_toast(restart_msg, duration=3000)
+                        config.menu_state = "restart_popup"
+                        config.popup_message = _("popup_restarting") if _ else "Restarting..."
+                        config.popup_timer = 2000
+                        restart_application(2000)
                     except Exception as e:
-                        logger.error(f"Erreur toast après layout: {e}")
+                        logger.error(f"Erreur restart après layout: {e}")
                     config.needs_redraw = True
                 # 1 font size
                 elif sel == 1 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
@@ -1494,28 +1502,8 @@ def handle_controls(event, sources, joystick, screen):
                         except Exception as e:
                             logger.error(f"Erreur init polices: {e}")
                         config.needs_redraw = True
-                # 2 footer font size
-                elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    opts = getattr(config, 'footer_font_scale_options', [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0])
-                    idx = getattr(config, 'current_footer_font_scale_index', 3)
-                    idx = max(0, idx-1) if is_input_matched(event, "left") else min(len(opts)-1, idx+1)
-                    if idx != getattr(config, 'current_footer_font_scale_index', 3):
-                        config.current_footer_font_scale_index = idx
-                        scale = opts[idx]
-                        config.accessibility_settings["footer_font_scale"] = scale
-                        try:
-                            save_accessibility_settings(config.accessibility_settings)
-                        except Exception as e:
-                            logger.error(f"Erreur sauvegarde footer font scale: {e}")
-                        try:
-                            init_footer_font_func = getattr(config, 'init_footer_font', None)
-                            if callable(init_footer_font_func):
-                                init_footer_font_func()
-                        except Exception as e:
-                            logger.error(f"Erreur init footer font: {e}")
-                        config.needs_redraw = True
-                # 3 font family cycle
-                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # 2 font family cycle
+                elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         families = getattr(config, 'FONT_FAMILIES', ["pixel"]) or ["pixel"]
                         current = get_font_family()
@@ -1548,6 +1536,17 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur changement font family: {e}")
+                # 3 unsupported toggle
+                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                    try:
+                        current = get_show_unsupported_platforms()
+                        new_val = set_show_unsupported_platforms(not current)
+                        load_sources()
+                        config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
+                        config.popup_timer = 3000
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle unsupported: {e}")
                 # 4 allow unknown extensions
                 elif sel == 4 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
@@ -1558,8 +1557,25 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
-                # 5 back
-                elif sel == 5 and (is_input_matched(event, "confirm")):
+                # 5 hide premium systems
+                elif sel == 5 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    try:
+                        cur = get_hide_premium_systems()
+                        new_val = set_hide_premium_systems(not cur)
+                        config.popup_message = ("Premium hidden" if new_val else "Premium visible") if _ is None else (_("popup_hide_premium_on") if new_val else _("popup_hide_premium_off"))
+                        config.popup_timer = 2500
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle hide_premium_systems: {e}")
+                # 6 filter platforms
+                elif sel == 6 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
+                    config.filter_return_to = "pause_display_menu"
+                    config.menu_state = "filter_platforms"
+                    config.selected_filter_index = 0
+                    config.filter_platforms_scroll_offset = 0
+                    config.needs_redraw = True
+                # 7 back
+                elif sel == 7 and (is_input_matched(event, "confirm")):
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
@@ -1571,7 +1587,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Games
         elif config.menu_state == "pause_games_menu":
             sel = getattr(config, 'pause_games_selection', 0)
-            total = 7  # history, source, redownload, unsupported, hide premium, filter, back
+            total = 4  # history, source, redownload, back
             if is_input_matched(event, "up"):
                 config.pause_games_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1607,35 +1623,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "reload_games_data"
                     config.redownload_confirm_selection = 0
                     config.needs_redraw = True
-                # 3 unsupported toggle
-                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
-                    try:
-                        current = get_show_unsupported_platforms()
-                        new_val = set_show_unsupported_platforms(not current)
-                        load_sources()
-                        config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
-                        config.popup_timer = 3000
-                        config.needs_redraw = True
-                    except Exception as e:
-                        logger.error(f"Erreur toggle unsupported: {e}")
-                # 4 hide premium systems
-                elif sel == 4 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    try:
-                        cur = get_hide_premium_systems()
-                        new_val = set_hide_premium_systems(not cur)
-                        config.popup_message = ("Premium hidden" if new_val else "Premium visible") if _ is None else (_("popup_hide_premium_on") if new_val else _("popup_hide_premium_off"))
-                        config.popup_timer = 2500
-                        config.needs_redraw = True
-                    except Exception as e:
-                        logger.error(f"Erreur toggle hide_premium_systems: {e}")
-                # 5 filter platforms
-                elif sel == 5 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
-                    config.filter_return_to = "pause_games_menu"
-                    config.menu_state = "filter_platforms"
-                    config.selected_filter_index = 0
-                    config.filter_platforms_scroll_offset = 0
-                    config.needs_redraw = True
-                elif sel == 6 and is_input_matched(event, "confirm"):  # back
+                elif sel == 3 and is_input_matched(event, "confirm"):  # back
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
@@ -1650,11 +1638,9 @@ def handle_controls(event, sources, joystick, screen):
             # Calculer le nombre total d'options selon le système
             total = 4  # music, symlink, api keys, back
             web_service_index = -1
-            custom_dns_index = -1
             if config.OPERATING_SYSTEM == "Linux":
-                total = 6  # music, symlink, web_service, custom_dns, api keys, back
+                total = 5  # music, symlink, web_service, api keys, back
                 web_service_index = 2
-                custom_dns_index = 3
             
             if is_input_matched(event, "up"):
                 config.pause_settings_selection = (sel - 1) % total
@@ -1674,11 +1660,7 @@ def handle_controls(event, sources, joystick, screen):
                         if music_files and music_folder:
                             config.current_music = play_random_music(music_files, music_folder, getattr(config, "current_music", None))
                     else:
-                        try:
-                            if pygame.mixer.get_init() is not None:
-                                pygame.mixer.music.stop()
-                        except (AttributeError, NotImplementedError):
-                            pass
+                        pygame.mixer.music.stop()
                     config.needs_redraw = True
                     logger.info(f"Musique {'activée' if config.music_enabled else 'désactivée'} via settings")
                 # Option 1: Symlink toggle
@@ -1691,6 +1673,7 @@ def handle_controls(event, sources, joystick, screen):
                     logger.info(f"Symlink option {'activée' if not current_status else 'désactivée'} via settings")
                 # Option 2: Web Service toggle (seulement si Linux)
                 elif sel == web_service_index and web_service_index >= 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    
                     current_status = check_web_service_status()
                     # Afficher un message de chargement
                     config.popup_message = _("settings_web_service_enabling") if not current_status else _("settings_web_service_disabling")
@@ -1707,26 +1690,8 @@ def handle_controls(event, sources, joystick, screen):
                         else:
                             logger.error(f"Erreur toggle service web: {message}")
                     threading.Thread(target=toggle_service, daemon=True).start()
-                # Option 3: Custom DNS toggle (seulement si Linux)
-                elif sel == custom_dns_index and custom_dns_index >= 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    current_status = check_custom_dns_status()
-                    # Afficher un message de chargement
-                    config.popup_message = _("settings_custom_dns_enabling") if not current_status else _("settings_custom_dns_disabling")
-                    config.popup_timer = 1000
-                    config.needs_redraw = True
-                    # Exécuter en thread pour ne pas bloquer l'UI
-                    def toggle_dns():
-                        success, message = toggle_custom_dns_at_boot(not current_status)
-                        config.popup_message = message
-                        config.popup_timer = 5000 if success else 7000
-                        config.needs_redraw = True
-                        if success:
-                            logger.info(f"Service custom DNS {'activé' if not current_status else 'désactivé'} au démarrage")
-                        else:
-                            logger.error(f"Erreur toggle service custom DNS: {message}")
-                    threading.Thread(target=toggle_dns, daemon=True).start()
                 # Option API Keys (index varie selon Linux ou pas)
-                elif sel == (custom_dns_index + 1 if custom_dns_index >= 0 else 2) and is_input_matched(event, "confirm"):
+                elif sel == (web_service_index + 1 if web_service_index >= 0 else 2) and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_api_keys_status"
                     config.needs_redraw = True
                 # Option Back (dernière option)
@@ -2052,7 +2017,8 @@ def handle_controls(event, sources, joystick, screen):
 
     # Gestion des relâchements de touches
     if event.type == pygame.KEYUP:
-        # Mapping des touches fallback (pour le dépannage clavier)
+        # Vérifier quelle touche a été relâchée
+        # Définir le mapping clavier (même que dans is_input_matched)
         keyboard_fallback = {
             "up": pygame.K_UP,
             "down": pygame.K_DOWN,
@@ -2060,28 +2026,24 @@ def handle_controls(event, sources, joystick, screen):
             "right": pygame.K_RIGHT,
             "confirm": pygame.K_RETURN,
             "cancel": pygame.K_ESCAPE,
-            "start": pygame.K_RALT,  # AltGr
-            "filter": pygame.K_f,
-            "history": pygame.K_h,
-            "clear_history": pygame.K_DELETE,
-            "delete": pygame.K_d,
-            "space": pygame.K_SPACE,
             "page_up": pygame.K_PAGEUP,
             "page_down": pygame.K_PAGEDOWN,
         }
         
-        # Vérifier quelle touche a été relâchée
         for action_name in ["up", "down", "left", "right", "page_up", "page_down", "confirm", "cancel"]:
-            # Vérifier le mapping configuré OU le fallback clavier
-            is_mapped_key = (config.controls_config.get(action_name, {}).get("type") == "key" and \
-                            config.controls_config.get(action_name, {}).get("key") == event.key)
-            is_fallback_key = (action_name in keyboard_fallback and keyboard_fallback[action_name] == event.key)
-            
-            if is_mapped_key or is_fallback_key:
+            # Vérifier d'abord le keyboard_fallback
+            if action_name in keyboard_fallback and keyboard_fallback[action_name] == event.key:
+                update_key_state(action_name, False)
+            # Sinon vérifier la config normale
+            elif config.controls_config.get(action_name, {}).get("type") == "key" and \
+               config.controls_config.get(action_name, {}).get("key") == event.key:
                 update_key_state(action_name, False)
                 
-                # Gestion spéciale pour confirm dans le menu game
-                if action_name == "confirm" and config.menu_state == "game":
+            # Gestion spéciale pour confirm dans le menu game (ne dépend pas du key_state)
+            if action_name == "confirm" and config.menu_state == "game" and \
+               ((action_name in keyboard_fallback and keyboard_fallback[action_name] == event.key) or \
+                (config.controls_config.get(action_name, {}).get("type") == "key" and \
+                 config.controls_config.get(action_name, {}).get("key") == event.key)):
                     press_duration = current_time - config.confirm_press_start_time
                     # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
                     if press_duration < config.confirm_long_press_threshold and not config.confirm_long_press_triggered:
@@ -2172,9 +2134,11 @@ def handle_controls(event, sources, joystick, screen):
         for action_name in ["up", "down", "left", "right", "page_up", "page_down", "confirm", "cancel"]:
             if config.controls_config.get(action_name, {}).get("type") == "button" and \
                config.controls_config.get(action_name, {}).get("button") == event.button:
-                update_key_state(action_name, False)
+                # Vérifier que cette action était bien activée par un bouton gamepad
+                if action_name in key_states and key_states[action_name].get("event_type") == pygame.JOYBUTTONDOWN:
+                    update_key_state(action_name, False)
                 
-                # Gestion spéciale pour confirm dans le menu game
+                # Gestion spéciale pour confirm dans le menu game (ne dépend pas du key_state)
                 if action_name == "confirm" and config.menu_state == "game":
                     press_duration = current_time - config.confirm_press_start_time
                     # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
@@ -2261,18 +2225,31 @@ def handle_controls(event, sources, joystick, screen):
                     config.confirm_press_start_time = 0
                     config.confirm_long_press_triggered = False
     
-    elif event.type == pygame.JOYAXISMOTION and abs(event.value) < 0.5:
-        # Vérifier quel axe a été relâché
-        for action_name in ["up", "down", "left", "right", "page_up", "page_down"]:
-            if config.controls_config.get(action_name, {}).get("type") == "axis" and \
-               config.controls_config.get(action_name, {}).get("axis") == event.axis:
-                update_key_state(action_name, False)
+    elif event.type == pygame.JOYAXISMOTION:
+        # Détection de relâchement d'axe
+        # Pour les triggers Xbox (axes 4 et 5), relâché = retour à -1.0
+        # Pour les autres axes, relâché = proche de 0
+        is_released = False
+        if event.axis in [4, 5]:  # Triggers Xbox
+            is_released = event.value < 0.5  # Relâché si < 0.5 (pas appuyé)
+        else:  # Autres axes
+            is_released = abs(event.value) < 0.5
+        
+        if is_released:
+            for action_name in ["up", "down", "left", "right", "page_up", "page_down"]:
+                if config.controls_config.get(action_name, {}).get("type") == "axis" and \
+                   config.controls_config.get(action_name, {}).get("axis") == event.axis:
+                    # Vérifier que cette action était bien activée par cet axe
+                    if action_name in key_states and key_states[action_name].get("event_type") == pygame.JOYAXISMOTION:
+                        update_key_state(action_name, False)
     
     elif event.type == pygame.JOYHATMOTION and event.value == (0, 0):
         # Vérifier quel hat a été relâché
         for action_name in ["up", "down", "left", "right", "page_up", "page_down"]:
             if config.controls_config.get(action_name, {}).get("type") == "hat":
-                update_key_state(action_name, False)
+                # Vérifier que cette action était bien activée par un hat
+                if action_name in key_states and key_states[action_name].get("event_type") == pygame.JOYHATMOTION:
+                    update_key_state(action_name, False)
 
     return action
 
@@ -2284,11 +2261,9 @@ def update_key_state(action, pressed, event_type=None, event_value=None):
     if pressed:
         # La touche vient d'être pressée
         if action not in key_states:
-            # Ajouter un délai initial pour éviter les doubles actions sur appui court
-            initial_debounce = REPEAT_ACTION_DEBOUNCE
             key_states[action] = {
                 "pressed": True,
-                "first_press_time": current_time + initial_debounce,  # Ajouter un délai initial
+                "first_press_time": current_time,
                 "last_repeat_time": current_time,
                 "event_type": event_type,
                 "event_value": event_value

@@ -1,268 +1,236 @@
 # 🎮 Retro Game Sets Xtra (RGSX)
 
-## SUPPORT / HELP : https://discord.gg/Vph9jwg3VV
+**[Support / Aide Discord](https://discord.gg/Vph9jwg3VV)** • **[Installation](#-installation)** • **[Documentation anglaise](https://github.com/RetroGameSets/RGSX/blob/main/README.md)**
 
-RGSX est une application développée en Python basée sur Pygame pour la partie graphique pour la communauté par RetroGameSets. Elle est entièrement gratuite.
+Un téléchargeur de ROMs gratuit et facile à utiliser pour Batocera, Knulli et RetroBat avec support multi-sources.
 
-L'application prend en charge plusieurs sources comme myrient, 1fichier (avec support de débridage via AllDebrid en option). Ces sources pourront être mises à jour fréquemment.
+<p align="center">
+  <img width="69%" alt="menu plateformes" src="https://github.com/user-attachments/assets/4464b57b-06a8-45e9-a411-cc12b421545a" />
+  <img width="30%" alt="aide contrôles" src="https://github.com/user-attachments/assets/38cac7e6-14f2-4e83-91da-0679669822ee" />
+</p>
+<p align="center">
+  <img width="49%" alt="interface web" src="https://github.com/user-attachments/assets/71f8bd39-5901-45a9-82b2-91426b3c31a7" />
+  <img width="49%" alt="menu API" src="https://github.com/user-attachments/assets/5bae018d-b7d9-4a95-9f1b-77db751ff24f" />
+</p>
 
-## INSTALLATION : https://github.com/RetroGameSets/RGSX/blob/main/README_FR.md#-installation
-
-## ✨ Fonctionnalités
-
-- **Téléchargement de jeux** : Prise en charge des fichiers ZIP et gestion des extensions non supportées à partir du fichier `es_systems.cfg` d'EmulationStation (et des `es_systems_*.cfg` personnalisés sur Batocera). RGSX lit les extensions autorisées par système depuis ces configurations et extrait automatiquement les archives si le système ne les supporte pas.
-  - Les téléchargements ne nécessitent aucune authentification ni compte pour la plupart.
-  - Les systèmes notés `(1fichier)` dans le nom ne seront accessibles que si vous renseignez votre clé API (1Fichier,AllDebrid, Real-Debrid)
----
-> ## IMPORTANT (1Fichier / AllDebrid / Real-Debdrid)
-> Pour télécharger depuis des liens 1Fichier, vous pouvez utiliser soit votre clé API 1Fichier, soit votre clé API AllDebrid (fallback automatique si 1Fichier est absent).
->
-> Où coller votre clé API (le fichier doit contenir uniquement la clé) :
-> - `/saves/ports/rgsx/1FichierAPI.txt` (clé API 1Fichier)
-> - `/saves/ports/rgsx/AllDebridAPI.txt` (clé API AllDebrid)
-> - `/saves/ports/rgsx/RealDebridAPI.txt` (clé API Real-Debrid)
->
-> Ne créez PAS ces fichiers manuellement. Lancez une première fois l'application RGSX : elle créera automatiquement les fichiers vides s’ils sont absents. Ensuite, ouvrez le fichier correspondant et collez votre clé.
----
-
-**🧰 Utilisation en ligne de commande (CLI)**
-
-RGSX propose aussi une interface en ligne de commande (sans interface graphique) pour lister les plateformes/jeux et télécharger des ROMs :
-
-- Guide FR: voir `https://github.com/RetroGameSets/RGSX/blob/main/README_CLI.md`
-
-- **Historique des téléchargements** : Consultez la liste de tous les téléchargements actuels et anciens.
-
-- **Téléchargements multi-sélection** : Marquez plusieurs jeux dans la liste avec la touche associée à Vider Historique (par défaut X) pour préparer un lot. Appuyez ensuite sur Confirmer pour lancer les téléchargements en séquence.
-
-- **Personnalisation des contrôles** : Remappez les touches du clavier ou de la manette à votre convenance, par defaut certaines manettes sont automatiquement configurées
-
-- **Grille des plateformes** : Possibilité de modifier la disposition de la grille des plateformes (3x3, 3x4, 4x3, 4x4)
-
-- **Afficher/Masquer plateformes non supportées** : masquage automatique des systèmes dont le dossier ROM est absent selon `es_systems.cfg`, avec un interrupteur dans le menu Affichage.
-
-- **Changement de police et de taille** : Si vous trouvez les écritures trop petites/trop grosses, pas assez lisibles, vous pouvez le changer dans le menu.
-
-- **Mode recherche / Filtre** : Filtrez les jeux par nom pour une navigation rapide avec clavier virtuel sur manette.
-
-- **Support multilingue** : Interface disponible en plusieurs langues. Vous pourrez choisir la langue dans le menu.
-
-- **Interface adaptative** : L'interface s'adapte à toutes résolutions de 800x600 à 4K (non testé au-delà de 1920x1080).
-
-- **Mise à jour automatique** : l'application se relance automatiquement après une mise à jour.
-
-- **Systèmes et Extensions des fichiers** : à la première utilisation, RGSX lit `es_systems.cfg` (RetroBat/Batocera) et génère `/saves/ports/rgsx/rom_extensions.json` avec les extensions autorisées par système. Ainsi que la liste des plateformes prises en charge par le système.
-
----
-
-## 🖥️ Prérequis
-
-### Système d'exploitation
-- Batocera / Knulli ou Retrobat
-
-### Matériel
-- PC, Raspberry, console portable...
-- Manette (optionnelle, mais recommandée pour une expérience optimale) ou Clavier.
-- Connexion internet active
-
-### Espace disque
-- 100 Mo pour l'application.
 
 ---
 
 ## 🚀 Installation
 
-### Méthode Automatique : BATOCERA / KNULLI
+### Installation rapide (Batocera / Knulli)
 
-- Sur un PC lancer un terminal XTERM depuis le menu F1>Applications
-- Depuis un autre équipement sur le réseau avec application Putty ou autre logiciel prenant en charge le SSH (connectez vous à l'IP user=root pass=linux)
+**Accès SSH ou Terminal requis :**
+```bash
+curl -L bit.ly/rgsx-install | sh
+```
 
-**Entrez la commande :**
-**`curl -L bit.ly/rgsx-install | sh`**
-  
-Patientez et regardez le retour à l'écran ou sur la commande.
+Après l'installation :
+1. Mettez à jour les listes de jeux : `Menu > Paramètres des jeux > Mettre à jour la liste des jeux`
+2. Trouvez RGSX dans **PORTS** ou **Jeux amateurs et portages**
 
-Vous trouverez RGSX dans le système "PORTS" ou "Jeux Amateurs et portages" (et physiquement dans `/roms/ports/RGSX` et `/roms/windows/rgsx` pour Retrobat.
+### Installation manuelle (Tous systèmes)
+1. **Télécharger** : [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
+2. **Extraire** :
+   - **Batocera/Knulli** : extraire le dossier `ports` dans `/roms/`
+   - **RetroBat** : extraire les dossiers `ports` et `windows` dans `/roms/`
+3. **Rafraîchir** : `Menu > Paramètres des jeux > Mettre à jour la liste des jeux`
 
-Mettez à jour la liste des jeux via : `Menu > Paramètres de jeux > Mettre à jour la liste des jeux` si l'application n'apparaît pas !
+### Mise à jour manuelle (si la mise à jour automatique a échoué)
+Téléchargez la dernière version : [RGSX_update_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
 
----
-
-### Méthode manuelle (Retrobat / Batocera)
-
-- Téléchargez le contenu du dépôt en zip : https://github.com/RetroGameSets/RGSX/archive/refs/heads/main.zip
-- Extraire le fichier zip dans le dossier ROMS de votre installation (pour Batocera, seulement le dossier PORTS, pour Retrobat : PORTS et WINDOWS)
-- Vous aurez donc les dossiers `/roms/ports/RGSX` et `/roms/windows/rgsx`
-- Mettez à jour la liste des jeux via : `Menu > Paramètres de jeux > Mettre à jour la liste des jeux` si l'application n'apparaît pas !
-
----
-
-## 🏁 Premier démarrage
-
-- Vous trouverez RGSX dans le système "WINDOWS" sur Retrobat et dans "PORTS" ou "Jeux Amateurs et portages" 
-- Au premier lancement, l'application importera automatiquement la configuration des contrôles depuis des fichiers pré-configurés dans /roms/ports/RGSX/assets/controls si votre manette est reconnue
-- L'application téléchargera toutes les données nécessaires automatiquement ensuite (images des systèmes, liste des jeux, etc.)
-
-INFO : pour retrobat au premier lancement, l'application téléchargera Python dans le dossier /system/tools/python qui est nécessaire pour faire fonctionner l'application. Le fichier fait environ 50 Mo et va assez vite à télécharger mais il n'y a aucun retour visuel à l'écran, qui va rester figé sur le chargement de RGSX pendant quelques secondes. Vous trouvez le log d'installation dans `/roms/ports/RGSX-INSTALL.log` à fournir en cas de problème.
+**Chemins d'installation :**
+- `/roms/ports/RGSX` (tous systèmes)
+- `/roms/windows/RGSX` (RetroBat uniquement)
 
 ---
 
-## 🕹️ Utilisation
+## 🎮 Utilisation
 
-### Navigation dans les menus
+### Premier lancement
 
-- Utilisez les touches directionnelles (D-Pad, flèches du clavier) pour naviguer entre les plateformes, jeux et options.
-- Appuyez sur la touche configurée comme start (par défaut, **P** ou bouton Start sur la manette) pour ouvrir le menu pause. Depuis ce menu, accédez à toute la configuration de l'application.
-- Vous pouvez aussi, depuis le menu, régénérer le cache de la liste des systèmes/jeux/images pour être sûr d'avoir les dernières mises à jour.
+- Téléchargement automatique des images systèmes et des listes de jeux
+- Configuration automatique des contrôles si votre manette est reconnue
+- **Contrôles cassés ?** Supprimez `/saves/ports/rgsx/controls.json` puis relancez
 
----
+**Mode clavier** : lorsqu'aucune manette n'est détectée, les contrôles s'affichent sous forme de `[Touche]` au lieu d'icônes.
 
-#### Menu Affichage
+### Structure du menu pause
 
-- Disposition: basculez la grille des plateformes entre 3x3, 3x4, 4x3, 4x4.
-- Taille de police: ajustez l’échelle du texte (accessibilité).
-- Afficher plateformes non supportées: afficher/masquer les systèmes dont le dossier ROM est absent.
-- Filtrer les systèmes: afficher/masquer rapidement des plateformes par nom (persistant).
+**Contrôles**
+- Voir l'aide des contrôles
+- Remapper les contrôles
 
----
+**Affichage**
+- Disposition (3×3, 3×4, 4×3, 4×4)
+- Taille de police (UI générale)
+- Taille de police du footer (texte des contrôles/version)
+- Famille de police (polices pixel)
+- Masquer l'avertissement d'extension inconnue
 
-### Téléchargement
+**Jeux**
+- Historique des téléchargements
++- Mode des sources (RGSX / Personnalisé)
+- Mettre à jour le cache des jeux
+- Afficher les plateformes non supportées
+- Masquer les systèmes premium
+- Filtrer les plateformes
 
-- Sélectionnez une plateforme, puis un jeu.
-- Appuyez sur la touche configurée confirm (par défaut, **Entrée** ou bouton **A**) pour lancer le téléchargement.
-- Option : appuyez sur la touche Vider Historique (par défaut **X**) sur plusieurs jeux pour activer/désactiver leur sélection (marqueur [X]). Puis validez pour lancer un lot de téléchargements.
-- Suivez la progression dans le menu `HISTORIQUE`.
-
----
-
-### Personnalisation des contrôles
-
-- Dans le menu pause, sélectionnez **Reconfigurer controles**.
-- Suivez les instructions à l'écran pour mapper chaque action en maintenant la touche ou le bouton pendant 3 secondes.
-- Les noms des boutons s'affichent automatiquement selon votre manette (A, B, X, Y, LB, RB, LT, RT, etc.).
-- La configuration est compatible avec toutes les manettes supportées par EmulationStation.
-- En cas de problème de contrôles ou configuration corrompue, supprimez le fichier : `/saves/ports/rgsx/controls.json` s'il existe puis redémarrez l'application (il sera recréé automatiquement).
-
----
-
-### Historique
-
-- Accédez à l'historique des téléchargements via le menu pause ou en appuyant sur la touche historique (par défaut, **H**).
-- Sélectionnez un jeu pour le retélécharger si nécessaire en cas d'erreur ou annulation.
-- Videz tout l'historique via le bouton **EFFACER** dans le menu historique. Les jeux ne sont pas effacés seulement la liste.
-- Annulez un téléchargement avec le bouton **RETOUR**
+**Paramètres**
+- Musique de fond (on/off)
+- Options de symlink (Batocera)
+- Service web (Batocera)
+- Gestion des clés API
+- Sélection de la langue
 
 ---
 
-### Logs
+## ✨ Fonctionnalités
 
-Les logs sont enregistrés dans `/roms/ports/RGSX/logs/RGSX.log` sur batocera et sur Retrobat pour diagnostiquer les problèmes et seront à partager pour tout support.
+- 🎯 **Détection intelligente des systèmes** – Découverte automatique des systèmes supportés depuis `es_systems.cfg`
+- 📦 **Gestion intelligente des archives** – Extraction automatique quand un système ne supporte pas les fichiers ZIP
+- 🔑 **Débloquage premium** – API 1Fichier + fallback AllDebrid/Real-Debrid pour des téléchargements illimités
+- 🎨 **Entièrement personnalisable** – Disposition (3×3 à 4×4), polices, tailles de police (UI + footer), langues (EN/FR/DE/ES/IT/PT)
+- 🎮 **Pensé manette d'abord** – Auto-mapping pour les manettes populaires + remapping personnalisé
+- 🔍 **Filtrage avancé** – Recherche par nom, affichage/masquage des systèmes non supportés, filtre de plateformes
+- 📊 **Gestion des téléchargements** – File d'attente, historique, notifications de progression
+- 🌐 **Sources personnalisées** – Utilisez vos propres URLs de dépôt de jeux
+- ♿ **Accessibilité** – Échelles de police séparées pour l'UI et le footer, support du mode clavier seul
 
----
+> ### 🔑 Configuration des clés API
+> Pour des téléchargements 1Fichier illimités, ajoutez vos clés API dans `/saves/ports/rgsx/` :
+> - `1FichierAPI.txt` – Clé API 1Fichier (recommandé)
+> - `AllDebridAPI.txt` – Fallback AllDebrid (optionnel)
+> - `RealDebridAPI.txt` – Fallback Real-Debrid (optionnel)
+> 
+> **Chaque fichier ne doit contenir QUE la clé, sans texte supplémentaire.**
 
-## 🔄 Journal des modifications
-Toutes les infos sur discord ou sur les commit github.
+### Télécharger des jeux
 
----
+1. Parcourez les plateformes → sélectionnez un jeu
+2. **Téléchargement direct** : appuyez sur `Confirmer`
+3. **Ajout à la file d'attente** : appuyez sur `X` (bouton Ouest)
+4. Suivez la progression dans le menu **Historique** ou via les popups de notification
 
-## 🌐 Sources de jeux personnalisées
-Vous pouvez changer la source dans le menu pause (Source des jeux : RGSX / Personnalisée).
+### Sources de jeux personnalisées
 
-Le mode personnalisé attend une URL ZIP (HTTP/HTTPS) pointant vers une archive des sources avec la même structure que celle par défaut. À configurer dans :
-`{chemin rgsx_settings}` → clé : `sources.custom_url`
+Basculez vers les sources personnalisées via **Menu pause > Jeux > Mode des sources**.
 
-Comportement :
-- Si mode personnalisé sélectionné et URL vide/invalide → liste vide + popup (aucun fallback)
-- Corrigez l’URL puis utilisez "Mettre à jour la liste des jeux" et redémarrez si nécessaire
-
-Exemple dans rgsx_settings.json :
+Configurez dans `/saves/ports/rgsx/rgsx_settings.json` :
 ```json
-"sources": {
-  "mode": "custom",
-  "custom_url": "https://exemple.com/mes-sources.zip"
+{
+  "sources": {
+    "mode": "custom",
+    "custom_url": "https://example.com/my-sources.zip"
+  }
 }
 ```
-Revenez au mode RGSX à tout moment via le menu pause.
+**Note** : si le mode personnalisé est activé mais que l'URL est invalide/vide = utilisation de `/saves/ports/rgsx/games.zip`. Vous devez mettre à jour le cache des jeux dans le menu RGSX après avoir corrigé l'URL.
 
 ---
 
-## 📁 Structure du projet
+## 🌐 Interface web (Batocera/Knulli uniquement)
+
+RGSX inclut une interface web qui se lance automatiquement avec RGSX pour parcourir et télécharger des jeux à distance depuis n'importe quel appareil de votre réseau.
+
+### Accéder à l'interface web
+
+1. **Trouvez l'adresse IP de votre Batocera** :
+   - Dans le menu Batocera : `Paramètres réseau`
+   - Ou depuis un terminal : `ip addr show`
+
+2. **Ouvrez dans un navigateur** : `http://[IP_BATO]:5000` ou `http://BATOCERA:5000`
+   - Exemple : `http://192.168.1.100:5000`
+
+3. **Accessible depuis n'importe quel appareil** : téléphone, tablette, PC sur le même réseau
+
+### Fonctionnalités de l'interface web
+
+- 📱 **Compatible mobile** – Design responsive qui fonctionne sur tous les écrans
+- 🔍 **Parcourir tous les systèmes** – Voir toutes les plateformes et les jeux
+- ⬇️ **Téléchargements à distance** – Ajouter des téléchargements directement sur votre Batocera
+- 📊 **Statut en temps réel** – Voir les téléchargements actifs et l'historique
+- 🎮 **Même liste de jeux** – Utilise les mêmes sources que l'application principale
+
+
+### Activer/Désactiver le service web au démarrage, sans lancer RGSX
+
+**Depuis le menu RGSX**
+1. Ouvrez le **menu pause** (Start/ALTGr)
+2. Allez dans **Paramètres > Service web**
+3. Basculez sur **Activer au démarrage**
+4. Redémarrez votre appareil
+
+
+**Configuration du port** : le service web utilise le port `5000` par défaut. Assurez-vous qu'il n'est pas bloqué par un pare-feu.
+
+---
+
+## 📁 Structure des fichiers
+
 ```
-/roms/windows/RGSX
-│
-├── RGSX Retrobat.bat    # Raccourci pour lancer l'application RGSX pour retrobat uniquement, non nécessaire pour batocera/knulli
+/roms/ports/RGSX/
+├── __main__.py                # Point d'entrée
+├── controls.py                # Gestion des entrées
+├── display.py                 # Moteur de rendu
+├── network.py                 # Gestionnaire de téléchargements
+├── rgsx_settings.py           # Gestionnaire de paramètres
+├── assets/controls/           # Profils de manettes
+├── languages/                 # Traductions (EN/FR/DE/ES/IT/PT)
+└── logs/RGSX.log             # Logs d'exécution
 
-/roms/ports/
-├── RGSX-INSTALL.log         # LOG d'installation uniquement
-└── RGSX/
-│   └──── __main__.py          # Point d'entrée principal de l'application.
-│   ├──── controls.py          # Gestion des événements de navigation dans les menus.
-│   ├──── controls_mapper.py   # Configuration des contrôles
-│   ├──── display.py           # Rendu des interfaces graphiques avec Pygame.
-│   ├──── config.py            # Configuration globale (chemins, paramètres, etc.).
-│   ├──── rgsx_settings.py     # Gestion unifiée des paramètres de l'application.
-│   ├──── network.py           # Gestion des téléchargements de jeux.
-│   ├──── history.py           # Gestion de l'historique des téléchargements.
-│   ├──── language.py          # Gestion du support multilingue.
-│   ├──── accessibility.py     # Gestion des paramètres d'accessibilité.
-│   ├──── utils.py             # Fonctions utilitaires (wrap du texte, troncage etc.).
-│   ├──── update_gamelist.py   # Mise à jour de la liste des jeux (Batocera/Knulli).
-│   └──── update_gamelist_windows.py  # MAJ gamelist retrobat au lancement.
-└────logs/
-│   └──── RGSX.log         # Fichier de logs.
-└── assets/              # Ressources de l'application (polices, exécutables, musique).
-    └──── controls/        # Fichiers de configuration des contrôles pré-définis
-    └──── languages/       # Fichiers de traduction
+/roms/windows/RGSX/
+└── RGSX Retrobat.bat         # Lanceur RetroBat
 
-
-/saves/ports/RGSX/
-│
-├── systems_list.json    # Liste des systèmes / dossiers / images.
-├── games/               # Liens des jeux / plateformes
-├── images/              # Images des plateformes.
-├── rgsx_settings.json   # Fichier de configuration des paramètres.
-├── controls.json        # Fichier de mappage des contrôles manuel
-├── history.json         # Base de données de l'historique de téléchargements
-├── rom_extensions.json  # Généré depuis es_systems.cfg : extensions autorisées
-├── 1FichierAPI.txt      # Clé API 1fichier
-└── AllDebridAPI.txt     # Clé API AllDebrid
+/saves/ports/rgsx/
+├── rgsx_settings.json        # Préférences utilisateur
+├── controls.json             # Mappage des contrôles
+├── history.json              # Historique des téléchargements
+├── rom_extensions.json       # Cache des extensions supportées
+├── systems_list.json         # Systèmes détectés
+├── games/                    # Bases de données de jeux (par plateforme)
+├── images/                   # Images des plateformes
+├── 1FichierAPI.txt          # Clé API 1Fichier
+├── AllDebridAPI.txt         # Clé API AllDebrid
+└── RealDebridAPI.txt        # Clé API Real-Debrid
 ```
+
+---
+
+## 🛠️ Dépannage
+
+| Problème | Solution |
+|----------|----------|
+| Contrôles qui ne répondent plus | Supprimer `/saves/ports/rgsx/controls.json` + redémarrer |
+| Jeux non affichés | Menu pause > Jeux > Mettre à jour le cache des jeux |
+| Téléchargement bloqué | Vérifier les clés API dans `/saves/ports/rgsx/` |
+| Crash de l'application | Vérifier `/roms/ports/RGSX/logs/RGSX.log` |
+| Changement de layout non pris en compte | Redémarrer RGSX après modification du layout |
+
+**Besoin d'aide ?** Partagez les logs depuis `/roms/ports/RGSX/logs/` sur [Discord](https://discord.gg/Vph9jwg3VV).
 
 ---
 
 ## 🤝 Contribution
 
-### Signaler un bug
-
-1. Consultez les logs dans `/roms/ports/RGSX/logs/RGSX.log`.
-2. Envoyez un message sur le discord avec le log complet et une description du problème.
-- Lien Discord : https://discord.gg/Vph9jwg3VV
-
-### Proposer une fonctionnalité
-
-- Discutez de votre idée sur le discord pour obtenir des retours. 
-- Soumettez une issue avec une description claire de la fonctionnalité proposée.
-- Expliquez comment elle s'intègre dans l'application.
-
-### Contribuer au code
-
-1. Forkez le dépôt et créez une branche pour votre fonctionnalité ou correction :
-```bash
-git checkout -b feature/nom-de-votre-fonctionnalité
-```
-2. Testez vos modifications sur Batocera.
-3. Soumettez une pull request avec une description détaillée.
-
----
-
-## ⚠️ Problèmes connus
-
-- (Aucun listé actuellement)
+- **Rapports de bugs** : ouvrez une issue GitHub avec les logs ou postez sur Discord
+- **Demandes de fonctionnalités** : discutez d'abord sur Discord, puis ouvrez une issue
+- **Contributions de code** : 
+  ```bash
+  git checkout -b feature/your-feature
+  # Testez sur Batocera/RetroBat
+  # Soumettez une Pull Request
+  ```
 
 ---
 
 ## 📝 Licence
 
-Ce projet est libre. Vous êtes libre de l'utiliser, le modifier et le distribuer selon les termes de cette licence.
+Logiciel libre et open-source. Utilisation, modification et distribution autorisées librement.
 
-Développé avec ❤️ pour les amateurs de jeux rétro.
+## Merci à tous les contributeurs et aux personnes qui suivent l'application
+
+[![Stargazers over time](https://starchart.cc/RetroGameSets/RGSX.svg?variant=adaptive)](https://starchart.cc/RetroGameSets/RGSX)
+
+**Développé avec ❤️ pour la communauté du retrogaming.**
+
