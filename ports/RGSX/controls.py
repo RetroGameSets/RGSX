@@ -191,21 +191,49 @@ def is_input_matched(event, action_name):
     mapping = config.controls_config[action_name]
     input_type = mapping["type"]
     
+    # Vérifier d'abord le mapping configuré
+    matched = False
     if input_type == "key" and event.type == pygame.KEYDOWN:
-        return event.key == mapping.get("key")
+        matched = event.key == mapping.get("key")
     elif input_type == "button" and event.type == pygame.JOYBUTTONDOWN:
-        return event.button == mapping.get("button")
+        matched = event.button == mapping.get("button")
     elif input_type == "axis" and event.type == pygame.JOYAXISMOTION:
         axis = mapping.get("axis")
         direction = mapping.get("direction")
-        return event.axis == axis and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == direction
+        matched = event.axis == axis and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == direction
     elif input_type == "hat" and event.type == pygame.JOYHATMOTION:
         hat_value = mapping.get("value")
         if isinstance(hat_value, list):
             hat_value = tuple(hat_value)
-        return event.value == hat_value
+        matched = event.value == hat_value
     elif input_type == "mouse" and event.type == pygame.MOUSEBUTTONDOWN:
-        return event.button == mapping.get("button")
+        matched = event.button == mapping.get("button")
+    
+    # Si déjà matché, retourner True
+    if matched:
+        return True
+    
+    # Fallback clavier pour dépannage (fonctionne toujours même avec manette configurée)
+    if event.type == pygame.KEYDOWN:
+        keyboard_fallback = {
+            "up": pygame.K_UP,
+            "down": pygame.K_DOWN,
+            "left": pygame.K_LEFT,
+            "right": pygame.K_RIGHT,
+            "confirm": pygame.K_RETURN,
+            "cancel": pygame.K_ESCAPE,
+            "start": pygame.K_RALT,
+            "filter": pygame.K_f,
+            "history": pygame.K_h,
+            "clear_history": pygame.K_DELETE,
+            "delete": pygame.K_d,
+            "space": pygame.K_SPACE,
+            "page_up": pygame.K_PAGEUP,
+            "page_down": pygame.K_PAGEDOWN,
+        }
+        if action_name in keyboard_fallback:
+            return event.key == keyboard_fallback[action_name]
+    
     return False
 
 def _launch_next_queued_download():

@@ -145,22 +145,13 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 
 ### Enable/Disable Web Service at Boot, without the need to launch RGSX
 
-**Method 1: From RGSX Menu**
+**From RGSX Menu**
 1. Open **Pause Menu** (Start/ALTGr)
 2. Navigate to **Settings > Web Service**
 3. Toggle **Enable at Boot**
 4. Restart your device
 
-**Method 2: Manual Configuration**
 
-Edit `/saves/ports/rgsx/rgsx_settings.json`:
-```json
-{
-  "web_service": {
-    "enabled_at_boot": true
-  }
-}
-```
 **Port Configuration**: The web service runs on port `5000` by default. Ensure this port is not blocked by firewall rules.
 
 ---
