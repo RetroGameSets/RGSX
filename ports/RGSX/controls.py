@@ -2052,10 +2052,32 @@ def handle_controls(event, sources, joystick, screen):
 
     # Gestion des relâchements de touches
     if event.type == pygame.KEYUP:
+        # Mapping des touches fallback (pour le dépannage clavier)
+        keyboard_fallback = {
+            "up": pygame.K_UP,
+            "down": pygame.K_DOWN,
+            "left": pygame.K_LEFT,
+            "right": pygame.K_RIGHT,
+            "confirm": pygame.K_RETURN,
+            "cancel": pygame.K_ESCAPE,
+            "start": pygame.K_RALT,  # AltGr
+            "filter": pygame.K_f,
+            "history": pygame.K_h,
+            "clear_history": pygame.K_DELETE,
+            "delete": pygame.K_d,
+            "space": pygame.K_SPACE,
+            "page_up": pygame.K_PAGEUP,
+            "page_down": pygame.K_PAGEDOWN,
+        }
+        
         # Vérifier quelle touche a été relâchée
         for action_name in ["up", "down", "left", "right", "page_up", "page_down", "confirm", "cancel"]:
-            if config.controls_config.get(action_name, {}).get("type") == "key" and \
-               config.controls_config.get(action_name, {}).get("key") == event.key:
+            # Vérifier le mapping configuré OU le fallback clavier
+            is_mapped_key = (config.controls_config.get(action_name, {}).get("type") == "key" and \
+                            config.controls_config.get(action_name, {}).get("key") == event.key)
+            is_fallback_key = (action_name in keyboard_fallback and keyboard_fallback[action_name] == event.key)
+            
+            if is_mapped_key or is_fallback_key:
                 update_key_state(action_name, False)
                 
                 # Gestion spéciale pour confirm dans le menu game
