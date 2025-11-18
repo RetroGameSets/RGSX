@@ -2014,12 +2014,14 @@ def draw_pause_display_menu(screen, selected_index):
     fam_label = family_map.get(current_family, current_family)
     font_family_txt = f"{_('submenu_display_font_family') if _ else 'Font'}: < {fam_label} >"
 
+    # Allow unknown extensions
     allow_unknown = get_allow_unknown_extensions()
     status_unknown = _('status_on') if allow_unknown else _('status_off')
     raw_unknown_label = _('submenu_display_allow_unknown_ext') if _ else 'Hide unknown ext warn: {status}'
     if '{status}' in raw_unknown_label:
         raw_unknown_label = raw_unknown_label.split('{status}')[0].rstrip(' :')
     unknown_txt = f"{raw_unknown_label}: < {status_unknown} >"
+
     back_txt = _("menu_back") if _ else "Back"
     options = [layout_txt, font_txt, footer_font_txt, font_family_txt, unknown_txt, back_txt]
     _draw_submenu_generic(screen, _("menu_display"), options, selected_index)
@@ -2319,11 +2321,32 @@ def draw_filter_platforms_menu(screen):
     pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
     screen.blit(title_surface, title_rect)
 
-    # Zone liste
+    # Boutons d'action en haut (avant la liste)
+    btn_width = 220
+    btn_height = int(config.screen_height * 0.0463)
+    spacing = 30
+    buttons_y = title_rect_inflated.bottom + 20
+    center_x = config.screen_width // 2
+    actions = [
+        ("filter_all", 0),
+        ("filter_none", 1),
+        ("filter_apply", 2),
+        ("filter_back", 3)
+    ]
+    total_items = len(config.filter_platforms_selection)
+    action_buttons = len(actions)
+    
+    for idx, (key, btn_idx) in enumerate(actions):
+        btn_x = center_x - (len(actions) * (btn_width + spacing) - spacing) // 2 + idx * (btn_width + spacing)
+        is_selected = (config.selected_filter_index == btn_idx)
+        label = _(key)
+        draw_stylized_button(screen, label, btn_x, buttons_y, btn_width, btn_height, selected=is_selected)
+
+    # Zone liste (après les boutons)
     list_width = int(config.screen_width * 0.7)
-    list_height = int(config.screen_height * 0.6)
+    list_height = int(config.screen_height * 0.5)
     list_x = (config.screen_width - list_width) // 2
-    list_y = title_rect_inflated.bottom + 20
+    list_y = buttons_y + btn_height + 20
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (list_x, list_y, list_width, list_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (list_x, list_y, list_width, list_height), 2, border_radius=12)
 
@@ -2340,12 +2363,13 @@ def draw_filter_platforms_menu(screen):
     elif config.selected_filter_index >= config.filter_platforms_scroll_offset + visible_items:
         config.filter_platforms_scroll_offset = config.selected_filter_index - visible_items + 1
 
-    # Dessiner items
+    # Dessiner items (les indices de la liste commencent à action_buttons)
     for i in range(config.filter_platforms_scroll_offset, min(config.filter_platforms_scroll_offset + visible_items, total_items)):
         name, is_hidden = config.filter_platforms_selection[i]
         idx_on_screen = i - config.filter_platforms_scroll_offset
         y_center = list_y + 10 + idx_on_screen * line_height + line_height // 2
-        selected = (i == config.selected_filter_index)
+        # Les éléments de la liste ont des indices à partir de action_buttons
+        selected = (config.selected_filter_index == action_buttons + i)
         checkbox = "[ ]" if is_hidden else "[X]"  # inversé: coché signifie visible
         # Correction: on veut [X] si visible => is_hidden False
         checkbox = "[X]" if not is_hidden else "[ ]"
@@ -2365,37 +2389,12 @@ def draw_filter_platforms_menu(screen):
         scroll_y = int((config.filter_platforms_scroll_offset / max(1, total_items - visible_items)) * (list_height - 20 - scroll_height))
         pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], (list_x + list_width - 25, list_y + 10 + scroll_y, 10, scroll_height), border_radius=4)
 
-    # Boutons d'action
-    btn_width = 220
-    btn_height = int(config.screen_height * 0.0463)
-    spacing = 30
-    buttons_y = list_y + list_height + 20
-    center_x = config.screen_width // 2
-    actions = [
-        ("filter_all", -2),
-        ("filter_none", -3),
-        ("filter_apply", -4),
-        ("filter_back", -5)
-    ]
-    # Indice spécial sélection boutons quand selected_filter_index >= total_items
-    extra_index_base = total_items
-    # Ajuster selected_filter_index max pour inclure boutons
-    extended_max = total_items + len(actions) - 1
-    if config.selected_filter_index > extended_max:
-        config.selected_filter_index = extended_max
-
-    for idx, (key, offset) in enumerate(actions):
-        btn_x = center_x - (len(actions) * (btn_width + spacing) - spacing) // 2 + idx * (btn_width + spacing)
-        is_selected = (config.selected_filter_index == total_items + idx)
-        label = _(key)
-        draw_stylized_button(screen, label, btn_x, buttons_y, btn_width, btn_height, selected=is_selected)
-
     # Infos bas
     hidden_count = sum(1 for _, h in config.filter_platforms_selection if h)
     visible_count = total_items - hidden_count
     info_text = _("filter_platforms_info").format(visible_count, hidden_count, total_items)
     info_surface = config.small_font.render(info_text, True, THEME_COLORS["text"])
-    info_rect = info_surface.get_rect(center=(config.screen_width // 2, buttons_y + btn_height + 30))
+    info_rect = info_surface.get_rect(center=(config.screen_width // 2, list_y + list_height + 20))
     screen.blit(info_surface, info_rect)
 
     if config.filter_platforms_dirty:

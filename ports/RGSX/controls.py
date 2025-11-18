@@ -20,12 +20,12 @@ from utils import (
     ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
 )
 from history import load_history, clear_history, add_to_history, save_history
-from language import _  # Import de la fonction de traduction
+from language import _, get_available_languages, set_language  
 from rgsx_settings import (
     get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
     get_show_unsupported_platforms, set_show_unsupported_platforms,
     set_allow_unknown_extensions, get_hide_premium_systems, set_hide_premium_systems,
-    get_sources_mode, set_sources_mode, set_symlink_option, get_symlink_option
+    get_sources_mode, set_sources_mode, set_symlink_option, get_symlink_option, load_rgsx_settings, save_rgsx_settings
 )
 from accessibility import save_accessibility_settings
 from scraper import get_game_metadata, download_image_to_surface
@@ -1451,7 +1451,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Display
         elif config.menu_state == "pause_display_menu":
             sel = getattr(config, 'pause_display_selection', 0)
-            total = 8  # layout, font size, font family, unsupported, unknown, hide premium, filter, back
+            total = 6  # layout, font size, footer font size, font family, allow unknown extensions, back
             if is_input_matched(event, "up"):
                 config.pause_display_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1459,7 +1459,6 @@ def handle_controls(event, sources, joystick, screen):
                 config.pause_display_selection = (sel + 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm"):
-                sel = getattr(config, 'pause_display_selection', 0)
                 # 0 layout cycle
                 if sel == 0 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
                     layouts = [(3,3),(3,4),(4,3),(4,4)]
@@ -1475,14 +1474,12 @@ def handle_controls(event, sources, joystick, screen):
                         logger.error(f"Erreur set_display_grid: {e}")
                     config.GRID_COLS = new_cols
                     config.GRID_ROWS = new_rows
-                    # Redémarrage automatique
+                    # Afficher un popup indiquant que le changement sera effectif après redémarrage
                     try:
-                        config.menu_state = "restart_popup"
-                        config.popup_message = _("popup_restarting") if _ else "Restarting..."
-                        config.popup_timer = 2000
-                        restart_application(2000)
+                        config.popup_message = _("popup_layout_changed_restart_required") if _ else "Layout changed. Restart required to apply."
+                        config.popup_timer = 3000
                     except Exception as e:
-                        logger.error(f"Erreur restart après layout: {e}")
+                        logger.error(f"Erreur popup layout: {e}")
                     config.needs_redraw = True
                 # 1 font size
                 elif sel == 1 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
@@ -1502,8 +1499,21 @@ def handle_controls(event, sources, joystick, screen):
                         except Exception as e:
                             logger.error(f"Erreur init polices: {e}")
                         config.needs_redraw = True
-                # 2 font family cycle
-                elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # 2 footer font size
+                elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    from accessibility import update_footer_font_scale
+                    footer_opts = getattr(config, 'footer_font_scale_options', [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0])
+                    idx = getattr(config, 'current_footer_font_scale_index', 3)
+                    idx = max(0, idx-1) if is_input_matched(event, "left") else min(len(footer_opts)-1, idx+1)
+                    if idx != getattr(config, 'current_footer_font_scale_index', 3):
+                        config.current_footer_font_scale_index = idx
+                        try:
+                            update_footer_font_scale()
+                        except Exception as e:
+                            logger.error(f"Erreur update footer font scale: {e}")
+                        config.needs_redraw = True
+                # 3 font family cycle
+                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         families = getattr(config, 'FONT_FAMILIES', ["pixel"]) or ["pixel"]
                         current = get_font_family()
@@ -1536,17 +1546,6 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur changement font family: {e}")
-                # 3 unsupported toggle
-                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
-                    try:
-                        current = get_show_unsupported_platforms()
-                        new_val = set_show_unsupported_platforms(not current)
-                        load_sources()
-                        config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
-                        config.popup_timer = 3000
-                        config.needs_redraw = True
-                    except Exception as e:
-                        logger.error(f"Erreur toggle unsupported: {e}")
                 # 4 allow unknown extensions
                 elif sel == 4 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
@@ -1557,25 +1556,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
-                # 5 hide premium systems
-                elif sel == 5 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    try:
-                        cur = get_hide_premium_systems()
-                        new_val = set_hide_premium_systems(not cur)
-                        config.popup_message = ("Premium hidden" if new_val else "Premium visible") if _ is None else (_("popup_hide_premium_on") if new_val else _("popup_hide_premium_off"))
-                        config.popup_timer = 2500
-                        config.needs_redraw = True
-                    except Exception as e:
-                        logger.error(f"Erreur toggle hide_premium_systems: {e}")
-                # 6 filter platforms
-                elif sel == 6 and (is_input_matched(event, "confirm") or is_input_matched(event, "right")):
-                    config.filter_return_to = "pause_display_menu"
-                    config.menu_state = "filter_platforms"
-                    config.selected_filter_index = 0
-                    config.filter_platforms_scroll_offset = 0
-                    config.needs_redraw = True
-                # 7 back
-                elif sel == 7 and (is_input_matched(event, "confirm")):
+                # 5 back
+                elif sel == 5 and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
@@ -1587,7 +1569,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Games
         elif config.menu_state == "pause_games_menu":
             sel = getattr(config, 'pause_games_selection', 0)
-            total = 4  # history, source, redownload, back
+            total = 7  # history, source, redownload, unsupported, hide premium, filter, back
             if is_input_matched(event, "up"):
                 config.pause_games_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1595,7 +1577,6 @@ def handle_controls(event, sources, joystick, screen):
                 config.pause_games_selection = (sel + 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right"):
-                sel = getattr(config, 'pause_games_selection', 0)
                 if sel == 0 and is_input_matched(event, "confirm"):  # history
                     config.history = load_history()
                     config.current_history_item = 0
@@ -1623,7 +1604,32 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "reload_games_data"
                     config.redownload_confirm_selection = 0
                     config.needs_redraw = True
-                elif sel == 3 and is_input_matched(event, "confirm"):  # back
+                elif sel == 3 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # unsupported toggle
+                    try:
+                        current = get_show_unsupported_platforms()
+                        new_val = set_show_unsupported_platforms(not current)
+                        load_sources()
+                        config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
+                        config.popup_timer = 3000
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle unsupported: {e}")
+                elif sel == 4 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # hide premium
+                    try:
+                        cur = get_hide_premium_systems()
+                        new_val = set_hide_premium_systems(not cur)
+                        config.popup_message = ("Premium hidden" if new_val else "Premium visible") if _ is None else (_("popup_hide_premium_on") if new_val else _("popup_hide_premium_off"))
+                        config.popup_timer = 2500
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle hide_premium_systems: {e}")
+                elif sel == 5 and is_input_matched(event, "confirm"):  # filter platforms
+                    config.filter_return_to = "pause_games_menu"
+                    config.menu_state = "filter_platforms"
+                    config.selected_filter_index = 0
+                    config.filter_platforms_scroll_offset = 0
+                    config.needs_redraw = True
+                elif sel == 6 and is_input_matched(event, "confirm"):  # back
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
@@ -1649,7 +1655,6 @@ def handle_controls(event, sources, joystick, screen):
                 config.pause_settings_selection = (sel + 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right"):
-                sel = getattr(config, 'pause_settings_selection', 0)
                 # Option 0: Music toggle
                 if sel == 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     config.music_enabled = not config.music_enabled
@@ -1727,7 +1732,6 @@ def handle_controls(event, sources, joystick, screen):
                 config.display_menu_selection = (sel + 1) % 5
                 config.needs_redraw = True
             elif is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm"):
-                sel = getattr(config, 'display_menu_selection', 0)
                 # 0: layout change
                 if sel == 0 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
                     layouts = [(3,3),(3,4),(4,3),(4,4)]
@@ -1919,44 +1923,53 @@ def handle_controls(event, sources, joystick, screen):
         elif config.menu_state == "filter_platforms":
             total_items = len(config.filter_platforms_selection)
             action_buttons = 4
-            extended_max = total_items + action_buttons - 1
+            # Indices: 0-3 = boutons, 4+ = liste des systèmes
+            extended_max = action_buttons + total_items - 1
             if is_input_matched(event, "up"):
                 if config.selected_filter_index > 0:
                     config.selected_filter_index -= 1
                     config.needs_redraw = True
                 else:
-                    # Wrap vers les boutons (premier bouton) depuis le haut
-                    if total_items > 0:
-                        config.selected_filter_index = total_items
-                        config.needs_redraw = True
+                    # Wrap vers le bas (dernière ligne de la liste)
+                    config.selected_filter_index = extended_max
+                    config.needs_redraw = True
+                # Activer la répétition automatique
+                update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                event.value)
             elif is_input_matched(event, "down"):
                 if config.selected_filter_index < extended_max:
                     config.selected_filter_index += 1
                     config.needs_redraw = True
                 else:
-                    # Wrap retour en haut de la liste
+                    # Wrap retour en haut (premier bouton)
                     config.selected_filter_index = 0
                     config.needs_redraw = True
+                # Activer la répétition automatique
+                update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                event.value)
             elif is_input_matched(event, "left"):
-                if config.selected_filter_index >= total_items:
-                    if config.selected_filter_index > total_items:
+                # Navigation gauche/droite uniquement pour les boutons (indices 0-3)
+                if config.selected_filter_index < action_buttons:
+                    if config.selected_filter_index > 0:
                         config.selected_filter_index -= 1
                         config.needs_redraw = True
-                # sinon ignorer
+                # sinon ignorer (dans la liste)
             elif is_input_matched(event, "right"):
-                if config.selected_filter_index >= total_items:
-                    if config.selected_filter_index < extended_max:
+                # Navigation gauche/droite uniquement pour les boutons (indices 0-3)
+                if config.selected_filter_index < action_buttons:
+                    if config.selected_filter_index < action_buttons - 1:
                         config.selected_filter_index += 1
                         config.needs_redraw = True
-                # sinon ignorer
+                # sinon ignorer (dans la liste)
             elif is_input_matched(event, "confirm"):
-                if config.selected_filter_index < total_items:
-                    name, hidden = config.filter_platforms_selection[config.selected_filter_index]
-                    config.filter_platforms_selection[config.selected_filter_index] = (name, not hidden)
-                    config.filter_platforms_dirty = True
-                    config.needs_redraw = True
-                else:
-                    btn_idx = config.selected_filter_index - total_items
+                # Indices 0-3 = boutons, 4+ = liste
+                if config.selected_filter_index < action_buttons:
+                    # Action sur un bouton
+                    btn_idx = config.selected_filter_index
                     settings = load_rgsx_settings()
                     if btn_idx == 0:  # all visible
                         config.filter_platforms_selection = [(n, False) for n, _ in config.filter_platforms_selection]
@@ -2002,6 +2015,14 @@ def handle_controls(event, sources, joystick, screen):
                             config.selected_option = 5
                         config.filter_return_to = None
                     config.needs_redraw = True
+                else:
+                    # Action sur un élément de la liste (indices >= action_buttons)
+                    list_index = config.selected_filter_index - action_buttons
+                    if list_index < total_items:
+                        name, hidden = config.filter_platforms_selection[list_index]
+                        config.filter_platforms_selection[list_index] = (name, not hidden)
+                        config.filter_platforms_dirty = True
+                        config.needs_redraw = True
             elif is_input_matched(event, "cancel"):
                 target = getattr(config, 'filter_return_to', 'pause_menu')
                 config.menu_state = target
