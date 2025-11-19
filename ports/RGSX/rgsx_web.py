@@ -1469,6 +1469,47 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         'error': str(e)
                     }, status=500)
             
+            # Route: Sauvegarder seulement les filtres (sauvegarde rapide)
+            elif path == '/api/save_filters':
+                try:
+                    from rgsx_settings import load_rgsx_settings, save_rgsx_settings
+                    
+                    # Charger les settings actuels
+                    current_settings = load_rgsx_settings()
+                    
+                    # Mettre à jour seulement les filtres
+                    if 'game_filters' not in current_settings:
+                        current_settings['game_filters'] = {}
+                    
+                    current_settings['game_filters']['region_filters'] = data.get('region_filters', {})
+                    current_settings['game_filters']['hide_non_release'] = data.get('hide_non_release', False)
+                    current_settings['game_filters']['one_rom_per_game'] = data.get('one_rom_per_game', False)
+                    current_settings['game_filters']['regex_mode'] = data.get('regex_mode', False)
+                    current_settings['game_filters']['region_priority'] = data.get('region_priority', ['USA', 'Canada', 'World', 'Europe', 'Japan', 'Other'])
+                    
+                    # Sauvegarder
+                    save_rgsx_settings(current_settings)
+                    
+                    # Mettre à jour config.game_filter_obj
+                    if hasattr(config, 'game_filter_obj'):
+                        config.game_filter_obj.region_filters = data.get('region_filters', {})
+                        config.game_filter_obj.hide_non_release = data.get('hide_non_release', False)
+                        config.game_filter_obj.one_rom_per_game = data.get('one_rom_per_game', False)
+                        config.game_filter_obj.regex_mode = data.get('regex_mode', False)
+                        config.game_filter_obj.region_priority = data.get('region_priority', ['USA', 'Canada', 'World', 'Europe', 'Japan', 'Other'])
+                    
+                    self._send_json({
+                        'success': True,
+                        'message': 'Filtres sauvegardés'
+                    })
+                    
+                except Exception as e:
+                    logger.error(f"Erreur lors de la sauvegarde des filtres: {e}")
+                    self._send_json({
+                        'success': False,
+                        'error': str(e)
+                    }, status=500)
+            
             # Route: Vider l'historique
             elif path == '/api/clear-history':
                 try:

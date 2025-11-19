@@ -22,7 +22,7 @@ from display import (
     init_display, draw_loading_screen, draw_error_screen, draw_platform_grid,
     draw_progress_screen, draw_controls, draw_virtual_keyboard,
     draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list,
-        draw_display_menu,
+        draw_display_menu, draw_filter_menu_choice, draw_filter_advanced, draw_filter_priority_config,
     draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog,
     draw_confirm_dialog, draw_reload_games_data_dialog, draw_popup, draw_gradient,
     draw_toast, show_toast, THEME_COLORS
@@ -420,6 +420,21 @@ async def main():
     global current_music, music_files, music_folder, joystick
     logger.debug("Début main")
     
+    # Charger les filtres de jeux sauvegardés
+    try:
+        from game_filters import GameFilters
+        from rgsx_settings import load_game_filters
+        config.game_filter_obj = GameFilters()
+        filter_dict = load_game_filters()
+        if filter_dict:
+            config.game_filter_obj.load_from_dict(filter_dict)
+            if config.game_filter_obj.is_active():
+                config.filter_active = True
+                logger.info("Filtres de jeux chargés et actifs")
+    except Exception as e:
+        logger.error(f"Erreur lors du chargement des filtres: {e}")
+        config.game_filter_obj = None
+    
     # Démarrer le serveur web en arrière-plan
     start_web_server()
     
@@ -672,6 +687,10 @@ async def main():
                 "history_error_details",
                 "history_confirm_delete",
                 "history_extract_archive",
+                # Menus filtrage avancé
+                "filter_menu_choice",
+                "filter_advanced",
+                "filter_priority_config",
             }
             if config.menu_state in SIMPLE_HANDLE_STATES:
                 action = handle_controls(event, sources, joystick, screen)
@@ -1070,6 +1089,12 @@ async def main():
             elif config.menu_state == "filter_platforms":
                 from display import draw_filter_platforms_menu
                 draw_filter_platforms_menu(screen)
+            elif config.menu_state == "filter_menu_choice":
+                draw_filter_menu_choice(screen)
+            elif config.menu_state == "filter_advanced":
+                draw_filter_advanced(screen)
+            elif config.menu_state == "filter_priority_config":
+                draw_filter_priority_config(screen)
             elif config.menu_state == "controls_help":
                 draw_controls_help(screen, config.previous_menu_state)
             elif config.menu_state == "history":

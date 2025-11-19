@@ -339,3 +339,26 @@ def get_language(settings=None):
     if settings is None:
         settings = load_rgsx_settings()
     return settings.get("language", "en")
+
+
+def load_game_filters():
+    """Charge les filtres de jeux depuis rgsx_settings.json."""
+    try:
+        settings = load_rgsx_settings()
+        return settings.get("game_filters", {})
+    except Exception as e:
+        logger.error(f"Error loading game filters: {str(e)}")
+        return {}
+
+
+def save_game_filters(filters_dict):
+    """Sauvegarde les filtres de jeux dans rgsx_settings.json."""
+    try:
+        settings = load_rgsx_settings()
+        settings["game_filters"] = filters_dict
+        save_rgsx_settings(settings)
+        logger.debug(f"Game filters saved: {filters_dict}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving game filters: {str(e)}")
+        return False

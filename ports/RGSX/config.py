@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.3.2.6"
+app_version = "2.3.2.7"
 
 
 def get_application_root():
@@ -379,6 +379,11 @@ filtered_games = []  # Liste des jeux filtrés par recherche ou filtre
 search_mode = False  # Indicateur si le mode recherche est actif
 search_query = ""  # Chaîne de recherche saisie par l'utilisateur
 filter_active = False  # Indicateur si un filtre est appliqué
+
+# Variables pour le filtrage avancé
+selected_filter_choice = 0  # Index dans le menu de choix de filtrage (recherche / avancé)
+selected_filter_option = 0  # Index dans le menu de filtrage avancé
+game_filter_obj = None  # Objet GameFilters pour le filtrage avancé
 
 # Gestion des états du menu
 needs_redraw = False  # Indicateur si l'écran doit être redessiné

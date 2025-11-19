@@ -309,6 +309,9 @@
         
         // Restaurer l'état depuis l'URL au chargement
         window.addEventListener('DOMContentLoaded', function() {
+            // Load saved filters first
+            loadSavedFilters();
+            
             const path = window.location.pathname;
             
             if (path.startsWith('/platform/')) {
@@ -478,9 +481,130 @@
         // Filter state: Map of region -> 'include' or 'exclude'
         let regionFilters = new Map();
         
+        // Checkbox filter states (stored globally to restore after page changes)
+        let savedHideNonRelease = false;
+        let savedOneRomPerGame = false;
+        let savedRegexMode = false;
+        
         // Region priority order for "One ROM Per Game" (customizable)
         let regionPriorityOrder = JSON.parse(localStorage.getItem('regionPriorityOrder')) || 
-            ['USA', 'Canada', 'World', 'Europe', 'Japan', 'Other'];
+            ['USA', 'Canada', 'Europe', 'France', 'Germany', 'Japan', 'Korea', 'World', 'Other'];
+        
+        // Save filters to backend
+        async function saveFiltersToBackend() {
+            try {
+                const regionFiltersObj = {};
+                regionFilters.forEach((mode, region) => {
+                    regionFiltersObj[region] = mode;
+                });
+                
+                // Update saved states from checkboxes if they exist
+                if (document.getElementById('hide-non-release')) {
+                    savedHideNonRelease = document.getElementById('hide-non-release').checked;
+                }
+                if (document.getElementById('one-rom-per-game')) {
+                    savedOneRomPerGame = document.getElementById('one-rom-per-game').checked;
+                }
+                if (document.getElementById('regex-mode')) {
+                    savedRegexMode = document.getElementById('regex-mode').checked;
+                }
+                
+                const response = await fetch('/api/save_filters', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        region_filters: regionFiltersObj,
+                        hide_non_release: savedHideNonRelease,
+                        one_rom_per_game: savedOneRomPerGame,
+                        regex_mode: savedRegexMode,
+                        region_priority: regionPriorityOrder
+                    })
+                });
+                
+                const data = await response.json();
+                if (!data.success) {
+                    console.warn('Failed to save filters:', data.error);
+                }
+            } catch (error) {
+                console.warn('Failed to save filters:', error);
+            }
+        }
+
+        // Load saved filters from settings
+        async function loadSavedFilters() {
+            try {
+                const response = await fetch('/api/settings');
+                const data = await response.json();
+                
+                if (data.success && data.settings.game_filters) {
+                    const filters = data.settings.game_filters;
+                    
+                    // Load region filters
+                    if (filters.region_filters) {
+                        regionFilters.clear();
+                        Object.entries(filters.region_filters).forEach(([region, mode]) => {
+                            regionFilters.set(region, mode);
+                        });
+                    }
+                    
+                    // Load region priority
+                    if (filters.region_priority) {
+                        regionPriorityOrder = filters.region_priority;
+                        localStorage.setItem('regionPriorityOrder', JSON.stringify(regionPriorityOrder));
+                    }
+                    
+                    // Save checkbox states to global variables
+                    savedHideNonRelease = filters.hide_non_release || false;
+                    savedOneRomPerGame = filters.one_rom_per_game || false;
+                    savedRegexMode = filters.regex_mode || false;
+                    
+                    // Load checkboxes when they exist (in games view)
+                    if (document.getElementById('hide-non-release')) {
+                        document.getElementById('hide-non-release').checked = savedHideNonRelease;
+                    }
+                    if (document.getElementById('one-rom-per-game')) {
+                        document.getElementById('one-rom-per-game').checked = savedOneRomPerGame;
+                    }
+                    if (document.getElementById('regex-mode')) {
+                        document.getElementById('regex-mode').checked = savedRegexMode;
+                    }
+                }
+            } catch (error) {
+                console.warn('Failed to load saved filters:', error);
+            }
+        }
+        
+        // Restore filter button states in the UI
+        function restoreFilterStates() {
+            // Restore region button states
+            regionFilters.forEach((mode, region) => {
+                const btn = document.querySelector(`.region-btn[data-region="${region}"]`);
+                if (btn) {
+                    if (mode === 'include') {
+                        btn.classList.add('active');
+                        btn.classList.remove('excluded');
+                    } else if (mode === 'exclude') {
+                        btn.classList.remove('active');
+                        btn.classList.add('excluded');
+                    }
+                }
+            });
+            
+            // Restore checkbox states
+            if (document.getElementById('hide-non-release')) {
+                document.getElementById('hide-non-release').checked = savedHideNonRelease;
+            }
+            if (document.getElementById('one-rom-per-game')) {
+                document.getElementById('one-rom-per-game').checked = savedOneRomPerGame;
+            }
+            if (document.getElementById('regex-mode')) {
+                document.getElementById('regex-mode').checked = savedRegexMode;
+            }
+            
+            // Apply filters to display the games correctly
+            applyAllFilters();
+        }
+
 
         // Helper: Extract region(s) from game name - returns array of regions
         function getGameRegions(gameName) {
@@ -490,12 +614,16 @@
             // Common region patterns - check all, not just first match
             // Handle both "(USA)" and "(USA, Europe)" formats
             if (name.includes('USA') || name.includes('US)')) regions.push('USA');
+            if (name.includes('CANADA')) regions.push('Canada');
             if (name.includes('EUROPE') || name.includes('EU)')) regions.push('Europe');
+            if (name.includes('FRANCE') || name.includes('FR)')) regions.push('France');
+            if (name.includes('GERMANY') || name.includes('DE)')) regions.push('Germany');
             if (name.includes('JAPAN') || name.includes('JP)') || name.includes('JPN)')) regions.push('Japan');
+            if (name.includes('KOREA') || name.includes('KR)')) regions.push('Korea');
             if (name.includes('WORLD')) regions.push('World');
             
-            // Check for other regions
-            if (name.match(/\b(AUSTRALIA|ASIA|KOREA|BRAZIL|CHINA|RUSSIA|SCANDINAVIA|SPAIN|FRANCE|GERMANY|ITALY)\b/)) {
+            // Check for other regions (excluding the ones above)
+            if (name.match(/\b(AUSTRALIA|ASIA|BRAZIL|CHINA|RUSSIA|SCANDINAVIA|SPAIN|ITALY)\b/)) {
                 if (!regions.includes('Other')) regions.push('Other');
             }
             
@@ -578,7 +706,10 @@
                 if (region === 'CANADA' && name.includes('CANADA')) return i;
                 if (region === 'WORLD' && name.includes('WORLD')) return i;
                 if (region === 'EUROPE' && (name.includes('EUROPE') || name.includes('EU)'))) return i;
+                if (region === 'FRANCE' && (name.includes('FRANCE') || name.includes('FR)'))) return i;
+                if (region === 'GERMANY' && (name.includes('GERMANY') || name.includes('DE)'))) return i;
                 if (region === 'JAPAN' && (name.includes('JAPAN') || name.includes('JP)') || name.includes('JPN)'))) return i;
+                if (region === 'KOREA' && (name.includes('KOREA') || name.includes('KR)'))) return i;
             }
             
             return regionPriorityOrder.length; // Other regions (lowest priority)
@@ -606,6 +737,7 @@
                 [regionPriorityOrder[idx-1], regionPriorityOrder[idx]];
                 saveRegionPriorityOrder();
                 renderRegionPriorityConfig();
+                saveFiltersToBackend();
             }
         }
         
@@ -617,14 +749,16 @@
                 [regionPriorityOrder[idx+1], regionPriorityOrder[idx]];
                 saveRegionPriorityOrder();
                 renderRegionPriorityConfig();
+                saveFiltersToBackend();
             }
         }
         
         // Reset region priority to default
         function resetRegionPriority() {
-            regionPriorityOrder = ['USA', 'Canada', 'World', 'Europe', 'Japan', 'Other'];
+            regionPriorityOrder = ['USA', 'Canada', 'Europe', 'France', 'Germany', 'Japan', 'Korea', 'World', 'Other'];
             saveRegionPriorityOrder();
             renderRegionPriorityConfig();
+            saveFiltersToBackend();
         }
         
         // Render region priority configuration UI
@@ -641,11 +775,11 @@
                         <span style="font-weight: bold; color: #666; min-width: 25px;">${idx + 1}.</span>
                         <span style="flex: 1; font-weight: 500;">${region}</span>
                         <button onclick="moveRegionUp('${region}')" 
-                                style="padding: 4px 8px; border: 1px solid #ccc; background: white; cursor: pointer; border-radius: 3px;"
-                                ${idx === 0 ? 'disabled' : ''}>▲</button>
+                                style="padding: 4px 8px; border: 1px solid #ccc; background: white; cursor: pointer; border-radius: 3px; font-size: 14px;"
+                                ${idx === 0 ? 'disabled' : ''}>🔼</button>
                         <button onclick="moveRegionDown('${region}')" 
-                                style="padding: 4px 8px; border: 1px solid #ccc; background: white; cursor: pointer; border-radius: 3px;"
-                                ${idx === regionPriorityOrder.length - 1 ? 'disabled' : ''}>▼</button>
+                                style="padding: 4px 8px; border: 1px solid #ccc; background: white; cursor: pointer; border-radius: 3px; font-size: 14px;"
+                                ${idx === regionPriorityOrder.length - 1 ? 'disabled' : ''}>🔽</button>
                     </div>
                 `;
             });
@@ -706,14 +840,15 @@
             }
 
             applyAllFilters();
+            saveFiltersToBackend();
         }
 
         // Apply all filters
         function applyAllFilters() {
             const searchInput = document.getElementById('game-search');
             const searchTerm = searchInput ? searchInput.value : '';
-            const hideNonRelease = document.getElementById('hide-non-release')?.checked || false;
-            const regexMode = document.getElementById('regex-mode')?.checked || false;
+            const hideNonRelease = document.getElementById('hide-non-release')?.checked || savedHideNonRelease;
+            const regexMode = document.getElementById('regex-mode')?.checked || savedRegexMode;
 
             const items = document.querySelectorAll('.game-item');
             let visibleCount = 0;
@@ -804,7 +939,7 @@
             });
 
             // Apply one-rom-per-game filter (after other filters)
-            const oneRomPerGame = document.getElementById('one-rom-per-game')?.checked || false;
+            const oneRomPerGame = document.getElementById('one-rom-per-game')?.checked || savedOneRomPerGame;
             if (oneRomPerGame) {
                 // Group currently visible games by base name
                 const gameGroups = new Map();
@@ -1032,22 +1167,26 @@
                         <div class="filter-row">
                             <span class="filter-label">${t('web_filter_region')}:</span>
                             <button class="region-btn" data-region="USA" onclick="toggleRegionFilter('USA')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1fa-1f1f8.svg" style="width:16px;height:16px" /> USA</button>
-                            <button class="region-btn" data-region="Europe" onclick="toggleRegionFilter('Europe')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1ea-1f1fa.svg" style="width:16px;height:16px" /> Europe</button>                            
+                            <button class="region-btn" data-region="Canada" onclick="toggleRegionFilter('Canada')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1e8-1f1e6.svg" style="width:16px;height:16px" /> Canada</button>
+                            <button class="region-btn" data-region="Europe" onclick="toggleRegionFilter('Europe')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1ea-1f1fa.svg" style="width:16px;height:16px" /> Europe</button>
+                            <button class="region-btn" data-region="France" onclick="toggleRegionFilter('France')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1eb-1f1f7.svg" style="width:16px;height:16px" /> France</button>
+                            <button class="region-btn" data-region="Germany" onclick="toggleRegionFilter('Germany')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1e9-1f1ea.svg" style="width:16px;height:16px" /> Germany</button>
                             <button class="region-btn" data-region="Japan" onclick="toggleRegionFilter('Japan')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1ef-1f1f5.svg" style="width:16px;height:16px" /> Japan</button>
+                            <button class="region-btn" data-region="Korea" onclick="toggleRegionFilter('Korea')"><img src="https://images.emojiterra.com/google/noto-emoji/unicode-16.0/color/svg/1f1f0-1f1f7.svg" style="width:16px;height:16px" /> Korea</button>
                             <button class="region-btn" data-region="World" onclick="toggleRegionFilter('World')">🌍 World</button>
                             <button class="region-btn" data-region="Other" onclick="toggleRegionFilter('Other')">🌐 Other</button>
                         </div>
                         <div class="filter-row">
                             <label class="filter-checkbox">
-                                <input type="checkbox" id="hide-non-release" onchange="applyAllFilters()">
+                                <input type="checkbox" id="hide-non-release" onchange="applyAllFilters(); saveFiltersToBackend();">
                                 <span>${t('web_filter_hide_non_release')}</span>
                             </label>
                             <label class="filter-checkbox">
-                                <input type="checkbox" id="regex-mode" onchange="applyAllFilters()">
+                                <input type="checkbox" id="regex-mode" onchange="applyAllFilters(); saveFiltersToBackend();">
                                 <span>${t('web_filter_regex_mode')}</span>
                             </label>
                             <label class="filter-checkbox">
-                                <input type="checkbox" id="one-rom-per-game" onchange="applyAllFilters()">
+                                <input type="checkbox" id="one-rom-per-game" onchange="applyAllFilters(); saveFiltersToBackend();">
                                 <span>${t('web_filter_one_rom_per_game')} (<span id="region-priority-display">USA → Canada → World → Europe → Japan → Other</span>)</span>
                                 <button onclick="showRegionPriorityConfig()" style="margin-left: 8px; padding: 2px 8px; font-size: 0.9em; background: #666; color: white; border: none; border-radius: 3px; cursor: pointer;" title="${t('web_filter_configure_priority')}">⚙️</button>
                             </label>
@@ -1081,6 +1220,9 @@
                     </div>
                 `;
                 container.innerHTML = html;
+                
+                // Restore filter states from loaded settings
+                restoreFilterStates();
                 
                 // Appliquer le tri par défaut (A-Z)
                 sortGames(currentGameSort);
@@ -1902,6 +2044,12 @@
             }
             
             try {
+                // Collect region filters
+                const regionFiltersObj = {};
+                regionFilters.forEach((mode, region) => {
+                    regionFiltersObj[region] = mode;
+                });
+                
                 const settings = {
                     language: document.getElementById('setting-language').value,
                     music_enabled: document.getElementById('setting-music').checked,
@@ -1921,7 +2069,14 @@
                     },
                     show_unsupported_platforms: document.getElementById('setting-show-unsupported').checked,
                     allow_unknown_extensions: document.getElementById('setting-allow-unknown').checked,
-                    roms_folder: document.getElementById('setting-roms-folder').value.trim()
+                    roms_folder: document.getElementById('setting-roms-folder').value.trim(),
+                    game_filters: {
+                        region_filters: regionFiltersObj,
+                        hide_non_release: document.getElementById('hide-non-release')?.checked || savedHideNonRelease,
+                        one_rom_per_game: document.getElementById('one-rom-per-game')?.checked || savedOneRomPerGame,
+                        regex_mode: document.getElementById('regex-mode')?.checked || savedRegexMode,
+                        region_priority: regionPriority
+                    }
                 };
                 
                 const response = await fetch('/api/settings', {

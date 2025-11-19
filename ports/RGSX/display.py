@@ -193,7 +193,9 @@ THEME_COLORS = {
     "background_bottom": (60, 80, 100), # noir vers bleu foncé
     # Fond des cadres
     "button_idle": (50, 50, 70, 150),  # Bleu sombre métal
-    # Fond des boutons sélectionnés dans les popups ou menu
+    # Fond des boutons sélectionnés
+    "button_selected": (70, 70, 100, 200),  # Bleu plus clair
+    # Fond des boutons hover dans les popups ou menu
     "button_hover": (255, 0, 255, 220),  # Rose
     # Générique
     "text": (255, 255, 255),  # blanc
@@ -209,6 +211,10 @@ THEME_COLORS = {
     "title_text": (200, 200, 200), # gris clair
     # Bordures
     "border": (150, 150, 150),  # Bordures grises subtiles
+    "border_selected": (0, 255, 0),  # Bordure verte pour sélection
+    # Couleurs pour filtres
+    "green": (0, 255, 0),  # vert
+    "red": (255, 0, 0),  # rouge
 }
 
 # Général, résolution, overlay
@@ -847,13 +853,19 @@ def draw_game_list(screen):
         pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
         screen.blit(title_surface, title_rect)
     elif config.filter_active:
-        filter_text = _("game_filter").format(config.search_query)
-        title_surface = config.font.render(filter_text, True, THEME_COLORS["fond_lignes"])
+        # Display filter active indicator with count
+        if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
+            total_games = len(config.games)
+            filtered_count = len(games)
+            filter_text = _("filter_games_shown").format(filtered_count, total_games)
+        else:
+            filter_text = _("game_filter").format(config.search_query)
+        title_surface = config.font.render(filter_text, True, THEME_COLORS["green"])
         title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
         title_rect_inflated = title_rect.inflate(60, 30)
         title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
         pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)
-        pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
+        pygame.draw.rect(screen, THEME_COLORS["border_selected"], title_rect_inflated, 3, border_radius=12)
         screen.blit(title_surface, title_rect)
     else:
         title_text = _("game_count").format(platform_name, game_count)
@@ -3346,3 +3358,301 @@ def draw_scraper_screen(screen):
             url_surface = config.small_font.render(url_text, True, THEME_COLORS["title_text"])
             url_rect = url_surface.get_rect(center=(config.screen_width // 2, rect_y + rect_height - 20))
             screen.blit(url_surface, url_rect)
+
+
+def draw_filter_menu_choice(screen):
+    """Affiche le menu de choix entre recherche par nom et filtrage avancé"""
+    screen.blit(OVERLAY, (0, 0))
+    
+    # Titre
+    title = _("filter_menu_title")
+    title_surface = config.title_font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, 60))
+    screen.blit(title_surface, title_rect)
+    
+    # Options
+    options = [
+        _("filter_search_by_name"),
+        _("filter_advanced")
+    ]
+    
+    # Calculer positions
+    menu_y = 150
+    button_height = 60
+    button_spacing = 20
+    button_width = 600
+    
+    for i, option in enumerate(options):
+        y = menu_y + i * (button_height + button_spacing)
+        x = (config.screen_width - button_width) // 2
+        
+        # Couleur selon sélection
+        if i == config.selected_filter_choice:
+            color = THEME_COLORS["button_selected"]
+            border_color = THEME_COLORS["border_selected"]
+        else:
+            color = THEME_COLORS["button_idle"]
+            border_color = THEME_COLORS["border"]
+        
+        # Dessiner bouton
+        pygame.draw.rect(screen, color, (x, y, button_width, button_height), border_radius=12)
+        pygame.draw.rect(screen, border_color, (x, y, button_width, button_height), 3, border_radius=12)
+        
+        # Texte
+        text_surface = config.font.render(option, True, THEME_COLORS["text"])
+        text_rect = text_surface.get_rect(center=(config.screen_width // 2, y + button_height // 2))
+        screen.blit(text_surface, text_rect)
+
+
+def draw_filter_advanced(screen):
+    """Affiche l'écran de filtrage avancé"""
+    from game_filters import GameFilters
+    
+    screen.blit(OVERLAY, (0, 0))
+    
+    # Titre
+    title = _("filter_advanced_title")
+    title_surface = config.title_font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, 40))
+    screen.blit(title_surface, title_rect)
+    
+    # Initialiser le filtre si nécessaire
+    if not hasattr(config, 'game_filter_obj'):
+        config.game_filter_obj = GameFilters()
+        # Charger depuis settings
+        from rgsx_settings import load_game_filters
+        filter_dict = load_game_filters()
+        if filter_dict:
+            config.game_filter_obj.load_from_dict(filter_dict)
+    
+    # Zones d'affichage
+    start_y = 100
+    line_height = 50
+    current_y = start_y
+    
+    # Liste des options
+    options = []
+    
+    # Section Régions
+    region_title = _("filter_region_title")
+    options.append(('header', region_title))
+    
+    for region in GameFilters.REGIONS:
+        region_key = f"filter_region_{region.lower()}"
+        region_label = _(region_key)
+        filter_state = config.game_filter_obj.region_filters.get(region, 'include')  # Par défaut: include
+        
+        if filter_state == 'exclude':
+            status = f"[X] {_('filter_region_exclude')}"
+            color = THEME_COLORS["red"]
+        else:  # 'include'
+            status = f"[V] {_('filter_region_include')}"
+            color = THEME_COLORS["green"]
+        
+        options.append(('region', region, f"{region_label}: {status}", color))
+    
+    # Section Autres options
+    options.append(('separator', ''))
+    options.append(('header', _("filter_other_options")))
+    
+    hide_text = _("filter_hide_non_release")
+    hide_status = "[X]" if config.game_filter_obj.hide_non_release else "[ ]"
+    options.append(('toggle', 'hide_non_release', f"{hide_text}: {hide_status}"))
+    
+    one_rom_text = _("filter_one_rom_per_game")
+    one_rom_status = "[X]" if config.game_filter_obj.one_rom_per_game else "[ ]"
+    # Afficher les 3 premières régions de priorité
+    priority_preview = " → ".join(config.game_filter_obj.region_priority[:3]) + "..."
+    options.append(('toggle', 'one_rom_per_game', f"{one_rom_text}: {one_rom_status}"))
+    options.append(('button_inline', 'priority_config', f"{_('filter_priority_order')}: {priority_preview}"))
+    
+    # Boutons d'action (seront affichés séparément en bas)
+    buttons = [
+        ('apply', _("filter_apply_filters")),
+        ('reset', _("filter_reset_filters")),
+        ('back', _("filter_back"))
+    ]
+    
+    # Afficher les options (sans les boutons)
+    if not hasattr(config, 'selected_filter_option'):
+        config.selected_filter_option = 0
+    
+    # S'assurer que l'index est valide (options + 3 boutons)
+    total_items = len(options) + len(buttons)
+    if config.selected_filter_option >= total_items:
+        config.selected_filter_option = total_items - 1
+    
+    for i, option in enumerate(options):
+        option_type = option[0]
+        
+        if option_type == 'header':
+            # En-tête de section
+            text_surface = config.font.render(option[1], True, THEME_COLORS["title_text"])
+            screen.blit(text_surface, (100, current_y))
+            current_y += line_height
+        
+        elif option_type == 'separator':
+            current_y += 10
+        
+        elif option_type in ['region', 'toggle', 'button_inline']:
+            # Option sélectionnable
+            x = 120
+            width = config.screen_width - 240
+            height = 45
+            
+            # Couleur selon sélection
+            if i == config.selected_filter_option:
+                bg_color = THEME_COLORS["button_selected"]
+                border_color = THEME_COLORS["border_selected"]
+            else:
+                bg_color = THEME_COLORS["button_idle"]
+                border_color = THEME_COLORS["border"]
+            
+            # Dessiner fond
+            pygame.draw.rect(screen, bg_color, (x, current_y, width, height), border_radius=8)
+            pygame.draw.rect(screen, border_color, (x, current_y, width, height), 2, border_radius=8)
+            
+            # Texte
+            if option_type == 'region':
+                text = option[2]
+                text_color = option[3]
+            else:
+                text = option[2]
+                text_color = THEME_COLORS["text"]
+            
+            text_surface = config.font.render(text, True, text_color)
+            text_rect = text_surface.get_rect(left=x + 20, centery=current_y + height // 2)
+            screen.blit(text_surface, text_rect)
+            
+            current_y += height + 10
+    
+    # Afficher les 3 boutons côte à côte en bas
+    # Calculer la position pour éviter la barre de contrôles (hauteur estimée ~60-80px)
+    control_bar_estimated_height = 80
+    button_width = 200
+    button_height = 50
+    button_spacing = 20
+    total_buttons_width = button_width * 3 + button_spacing * 2
+    button_start_x = (config.screen_width - total_buttons_width) // 2
+    button_y = config.screen_height - control_bar_estimated_height - button_height - 20
+    
+    for i, (button_id, button_text) in enumerate(buttons):
+        button_index = len(options) + i
+        button_x = button_start_x + i * (button_width + button_spacing)
+        
+        # Couleur selon sélection
+        if button_index == config.selected_filter_option:
+            bg_color = THEME_COLORS["button_selected"]
+            border_color = THEME_COLORS["border_selected"]
+        else:
+            bg_color = THEME_COLORS["button_idle"]
+            border_color = THEME_COLORS["border"]
+        
+        # Dessiner bouton
+        pygame.draw.rect(screen, bg_color, (button_x, button_y, button_width, button_height), border_radius=8)
+        pygame.draw.rect(screen, border_color, (button_x, button_y, button_width, button_height), 2, border_radius=8)
+        
+        # Texte centré
+        text_surface = config.font.render(button_text, True, THEME_COLORS["text"])
+        text_rect = text_surface.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
+        screen.blit(text_surface, text_rect)
+    
+    # Info filtre actif (au-dessus des boutons)
+    if config.game_filter_obj.is_active():
+        info_text = _("filter_active")
+        info_surface = config.small_font.render(info_text, True, THEME_COLORS["green"])
+        info_rect = info_surface.get_rect(center=(config.screen_width // 2, button_y - 30))
+        screen.blit(info_surface, info_rect)
+
+
+def draw_filter_priority_config(screen):
+    """Affiche l'écran de configuration de la priorité des régions pour One ROM per game"""
+    from game_filters import GameFilters
+    
+    screen.blit(OVERLAY, (0, 0))
+    
+    # Titre
+    title = _("filter_priority_title")
+    title_surface = config.title_font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, 40))
+    screen.blit(title_surface, title_rect)
+    
+    # Description
+    desc = _("filter_priority_desc")
+    desc_surface = config.small_font.render(desc, True, THEME_COLORS["title_text"])
+    desc_rect = desc_surface.get_rect(center=(config.screen_width // 2, 85))
+    screen.blit(desc_surface, desc_rect)
+    
+    # Initialiser le filtre si nécessaire
+    if not hasattr(config, 'game_filter_obj'):
+        from game_filters import GameFilters
+        from rgsx_settings import load_game_filters
+        config.game_filter_obj = GameFilters()
+        filter_dict = load_game_filters()
+        if filter_dict:
+            config.game_filter_obj.load_from_dict(filter_dict)
+    
+    # Liste des régions avec leur priorité
+    start_y = 130
+    line_height = 60
+    
+    if not hasattr(config, 'selected_priority_index'):
+        config.selected_priority_index = 0
+    
+    priority_list = config.game_filter_obj.region_priority.copy()
+    
+    # Afficher chaque région avec sa position
+    for i, region in enumerate(priority_list):
+        y = start_y + i * line_height
+        x = 120
+        width = config.screen_width - 240
+        height = 50
+        
+        # Couleur selon sélection
+        if i == config.selected_priority_index:
+            bg_color = THEME_COLORS["button_selected"]
+            border_color = THEME_COLORS["border_selected"]
+        else:
+            bg_color = THEME_COLORS["button_idle"]
+            border_color = THEME_COLORS["border"]
+        
+        # Dessiner fond
+        pygame.draw.rect(screen, bg_color, (x, y, width, height), border_radius=8)
+        pygame.draw.rect(screen, border_color, (x, y, width, height), 2, border_radius=8)
+        
+        # Numéro de priorité
+        priority_text = f"#{i+1}"
+        priority_surface = config.font.render(priority_text, True, THEME_COLORS["text"])
+        screen.blit(priority_surface, (x + 15, y + (height - priority_surface.get_height()) // 2))
+        
+        # Nom de la région (traduit si possible)
+        region_key = f"filter_region_{region.lower()}"
+        region_label = _(region_key)
+        region_surface = config.font.render(region_label, True, THEME_COLORS["text"])
+        screen.blit(region_surface, (x + 80, y + (height - region_surface.get_height()) // 2))
+        
+        # Flèches pour réorganiser (si sélectionné)
+        if i == config.selected_priority_index:
+            arrows_text = "← →"
+            arrows_surface = config.font.render(arrows_text, True, THEME_COLORS["green"])
+            screen.blit(arrows_surface, (x + width - 50, y + (height - arrows_surface.get_height()) // 2))
+    
+    # Boutons en bas
+    control_bar_estimated_height = 80
+    button_width = 300
+    button_height = 50
+    button_x = (config.screen_width - button_width) // 2
+    button_y = config.screen_height - control_bar_estimated_height - button_height - 20
+    
+    # Bouton Back
+    is_button_selected = config.selected_priority_index >= len(priority_list)
+    bg_color = THEME_COLORS["button_selected"] if is_button_selected else THEME_COLORS["button_idle"]
+    border_color = THEME_COLORS["border_selected"] if is_button_selected else THEME_COLORS["border"]
+    
+    pygame.draw.rect(screen, bg_color, (button_x, button_y, button_width, button_height), border_radius=8)
+    pygame.draw.rect(screen, border_color, (button_x, button_y, button_width, button_height), 2, border_radius=8)
+    
+    back_text = _("filter_back")
+    text_surface = config.font.render(back_text, True, THEME_COLORS["text"])
+    text_rect = text_surface.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
+    screen.blit(text_surface, text_rect)

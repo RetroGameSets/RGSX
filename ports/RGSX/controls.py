@@ -58,7 +58,12 @@ VALID_STATES = [
     "scraper",                  # écran du scraper avec métadonnées
     "history_error_details",    # détails de l'erreur
     "history_confirm_delete",   # confirmation suppression jeu
-    "history_extract_archive"   # extraction d'archive
+    "history_extract_archive",  # extraction d'archive
+    # Nouveaux menus filtrage avancé
+    "filter_menu_choice",       # menu de choix entre recherche et filtrage avancé
+    "filter_search",            # recherche par nom (existant, mais renommé)
+    "filter_advanced",          # filtrage avancé par région, etc.
+    "filter_priority_config",   # configuration priorité régions pour one-rom-per-game
 ]
 
 def validate_menu_state(state):
@@ -476,8 +481,15 @@ def handle_controls(event, sources, joystick, screen):
                 if config.platforms:
                     config.current_platform = config.selected_platform
                     config.games = load_games(config.platforms[config.current_platform])
-                    config.filtered_games = config.games
-                    config.filter_active = False
+                    
+                    # Apply saved filters automatically if any
+                    if config.game_filter_obj and config.game_filter_obj.is_active():
+                        config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                        config.filter_active = True
+                    else:
+                        config.filtered_games = config.games
+                        config.filter_active = False
+                    
                     config.current_game = 0
                     config.scroll_offset = 0
                     draw_validation_transition(screen, config.current_platform)
@@ -656,14 +668,12 @@ def handle_controls(event, sources, joystick, screen):
                                     event.value)
                     config.needs_redraw = True                    
                 elif is_input_matched(event, "filter"):
-                    config.search_mode = True
-                    config.search_query = ""
-                    config.filtered_games = config.games
-                    config.current_game = 0
-                    config.scroll_offset = 0
-                    config.selected_key = (0, 0)
+                    # Afficher le menu de choix entre recherche et filtrage avancé
+                    config.menu_state = "filter_menu_choice"
+                    config.selected_filter_choice = 0
+                    config.previous_menu_state = "game"
                     config.needs_redraw = True
-                    logger.debug("Entrée en mode recherche") 
+                    logger.debug("Ouverture du menu de filtrage") 
                 elif is_input_matched(event, "history"):
                     config.menu_state = "history"
                     config.needs_redraw = True
@@ -1918,6 +1928,238 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "pause_menu"
                 config.needs_redraw = True
                 logger.debug("Annulation de la sélection de langue, retour au menu pause")
+
+        # Menu de choix filtrage
+        elif config.menu_state == "filter_menu_choice":
+            if is_input_matched(event, "up"):
+                config.selected_filter_choice = (config.selected_filter_choice - 1) % 2
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                config.selected_filter_choice = (config.selected_filter_choice + 1) % 2
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                if config.selected_filter_choice == 0:
+                    # Recherche par nom (mode existant)
+                    config.search_mode = True
+                    config.search_query = ""
+                    config.filtered_games = config.games
+                    config.current_game = 0
+                    config.scroll_offset = 0
+                    config.selected_key = (0, 0)
+                    config.menu_state = "game"
+                    config.needs_redraw = True
+                    logger.debug("Entrée en mode recherche par nom")
+                else:
+                    # Filtrage avancé
+                    from game_filters import GameFilters
+                    from rgsx_settings import load_game_filters
+                    
+                    # Initialiser le filtre
+                    if not hasattr(config, 'game_filter_obj'):
+                        config.game_filter_obj = GameFilters()
+                        filter_dict = load_game_filters()
+                        if filter_dict:
+                            config.game_filter_obj.load_from_dict(filter_dict)
+                    
+                    config.menu_state = "filter_advanced"
+                    config.selected_filter_option = 0
+                    config.needs_redraw = True
+                    logger.debug("Entrée en filtrage avancé")
+            elif is_input_matched(event, "cancel"):
+                config.menu_state = "game"
+                config.needs_redraw = True
+                logger.debug("Retour à la liste des jeux")
+
+        # Filtrage avancé
+        elif config.menu_state == "filter_advanced":
+            from game_filters import GameFilters
+            from rgsx_settings import save_game_filters
+            
+            # Initialiser le filtre si nécessaire
+            if not hasattr(config, 'game_filter_obj'):
+                config.game_filter_obj = GameFilters()
+                from rgsx_settings import load_game_filters
+                filter_dict = load_game_filters()
+                if filter_dict:
+                    config.game_filter_obj.load_from_dict(filter_dict)
+            
+            # Construire la liste des options (comme dans draw_filter_advanced)
+            options = []
+            options.append(('header', 'region_title'))
+            for region in GameFilters.REGIONS:
+                options.append(('region', region))
+            options.append(('separator', ''))
+            options.append(('header', 'other_options'))
+            options.append(('toggle', 'hide_non_release'))
+            options.append(('toggle', 'one_rom_per_game'))
+            options.append(('button_inline', 'priority_config'))
+            
+            # Boutons séparés (3 boutons au total)
+            buttons = [
+                ('button', 'apply'),
+                ('button', 'reset'),
+                ('button', 'back')
+            ]
+            
+            # Total d'éléments sélectionnables
+            total_items = len(options) + len(buttons)
+            
+            if is_input_matched(event, "up"):
+                # Chercher l'option sélectionnable précédente
+                config.selected_filter_option = (config.selected_filter_option - 1) % total_items
+                while config.selected_filter_option < len(options) and options[config.selected_filter_option][0] in ['header', 'separator']:
+                    config.selected_filter_option = (config.selected_filter_option - 1) % total_items
+                config.needs_redraw = True
+                update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                event.value)
+            elif is_input_matched(event, "down"):
+                # Chercher l'option sélectionnable suivante
+                config.selected_filter_option = (config.selected_filter_option + 1) % total_items
+                while config.selected_filter_option < len(options) and options[config.selected_filter_option][0] in ['header', 'separator']:
+                    config.selected_filter_option = (config.selected_filter_option + 1) % total_items
+                config.needs_redraw = True
+                update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                event.value)
+            elif is_input_matched(event, "left") or is_input_matched(event, "right"):
+                # Navigation gauche/droite uniquement pour les boutons en bas
+                if config.selected_filter_option >= len(options):
+                    button_index = config.selected_filter_option - len(options)
+                    if is_input_matched(event, "left"):
+                        button_index = (button_index - 1) % len(buttons)
+                    else:
+                        button_index = (button_index + 1) % len(buttons)
+                    config.selected_filter_option = len(options) + button_index
+                    config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                # Déterminer si c'est une option ou un bouton
+                if config.selected_filter_option < len(options):
+                    option_type, *option_data = options[config.selected_filter_option]
+                else:
+                    # C'est un bouton
+                    button_index = config.selected_filter_option - len(options)
+                    option_type, *option_data = buttons[button_index]
+                
+                if option_type == 'region':
+                    # Basculer filtre région: include ↔ exclude (include par défaut)
+                    region = option_data[0]
+                    current_state = config.game_filter_obj.region_filters.get(region, 'include')
+                    if current_state == 'include':
+                        config.game_filter_obj.region_filters[region] = 'exclude'
+                    else:
+                        config.game_filter_obj.region_filters[region] = 'include'
+                    config.needs_redraw = True
+                    logger.debug(f"Filtre région {region} modifié: {config.game_filter_obj.region_filters[region]}")
+                
+                elif option_type == 'toggle':
+                    toggle_name = option_data[0]
+                    if toggle_name == 'hide_non_release':
+                        config.game_filter_obj.hide_non_release = not config.game_filter_obj.hide_non_release
+                    elif toggle_name == 'one_rom_per_game':
+                        config.game_filter_obj.one_rom_per_game = not config.game_filter_obj.one_rom_per_game
+                    config.needs_redraw = True
+                    logger.debug(f"Toggle {toggle_name} modifié")
+                
+                elif option_type == 'button_inline':
+                    button_name = option_data[0]
+                    if button_name == 'priority_config':
+                        # Ouvrir le menu de configuration de priorité
+                        config.menu_state = "filter_priority_config"
+                        config.selected_priority_index = 0
+                        config.needs_redraw = True
+                        logger.debug("Ouverture configuration priorité régions")
+                
+                elif option_type == 'button':
+                    button_name = option_data[0]
+                    if button_name == 'apply':
+                        # Appliquer les filtres
+                        save_game_filters(config.game_filter_obj.to_dict())
+                        
+                        # Appliquer aux jeux actuels
+                        if config.game_filter_obj.is_active():
+                            config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                            config.filter_active = True
+                        else:
+                            config.filtered_games = config.games
+                            config.filter_active = False
+                        
+                        config.current_game = 0
+                        config.scroll_offset = 0
+                        config.menu_state = "game"
+                        config.needs_redraw = True
+                        logger.debug("Filtres appliqués")
+                    
+                    elif button_name == 'reset':
+                        # Réinitialiser les filtres
+                        config.game_filter_obj.reset()
+                        save_game_filters(config.game_filter_obj.to_dict())
+                        config.filtered_games = config.games
+                        config.filter_active = False
+                        config.needs_redraw = True
+                        logger.debug("Filtres réinitialisés")
+                    
+                    elif button_name == 'back':
+                        # Retour sans appliquer
+                        config.menu_state = "game"
+                        config.needs_redraw = True
+                        logger.debug("Retour sans appliquer les filtres")
+            
+            elif is_input_matched(event, "cancel"):
+                config.menu_state = "game"
+                config.needs_redraw = True
+                logger.debug("Annulation du filtrage avancé")
+
+        # Configuration priorité régions
+        elif config.menu_state == "filter_priority_config":
+            from game_filters import GameFilters
+            from rgsx_settings import save_game_filters
+            
+            if not hasattr(config, 'game_filter_obj'):
+                config.game_filter_obj = GameFilters()
+            
+            priority_list = config.game_filter_obj.region_priority
+            total_items = len(priority_list) + 1  # +1 pour le bouton Back
+            
+            if not hasattr(config, 'selected_priority_index'):
+                config.selected_priority_index = 0
+            
+            if is_input_matched(event, "up"):
+                config.selected_priority_index = (config.selected_priority_index - 1) % total_items
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                config.selected_priority_index = (config.selected_priority_index + 1) % total_items
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                if config.selected_priority_index >= len(priority_list):
+                    # Bouton Back : retour au menu filtrage avancé
+                    save_game_filters(config.game_filter_obj.to_dict())
+                    config.menu_state = "filter_advanced"
+                    config.needs_redraw = True
+                    logger.debug("Retour au filtrage avancé")
+            elif is_input_matched(event, "left") and config.selected_priority_index < len(priority_list):
+                # Monter la région dans la priorité
+                idx = config.selected_priority_index
+                if idx > 0:
+                    priority_list[idx], priority_list[idx-1] = priority_list[idx-1], priority_list[idx]
+                    config.selected_priority_index = idx - 1
+                    config.needs_redraw = True
+                    logger.debug(f"Priorité modifiée: {priority_list}")
+            elif is_input_matched(event, "right") and config.selected_priority_index < len(priority_list):
+                # Descendre la région dans la priorité
+                idx = config.selected_priority_index
+                if idx < len(priority_list) - 1:
+                    priority_list[idx], priority_list[idx+1] = priority_list[idx+1], priority_list[idx]
+                    config.selected_priority_index = idx + 1
+                    config.needs_redraw = True
+                    logger.debug(f"Priorité modifiée: {priority_list}")
+            elif is_input_matched(event, "cancel"):
+                # Retour sans sauvegarder
+                config.menu_state = "filter_advanced"
+                config.needs_redraw = True
+                logger.debug("Annulation configuration priorité")
 
     # Menu filtre plateformes
         elif config.menu_state == "filter_platforms":
