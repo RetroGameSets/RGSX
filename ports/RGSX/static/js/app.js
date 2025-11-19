@@ -135,6 +135,34 @@
             return text;
         }
         
+        // Fonction pour obtenir les unités de taille selon la langue
+        function getSizeUnits() {
+            // Détecter la langue depuis les traductions chargées ou le navigateur
+            const lang = translations['_language'] || navigator.language.substring(0, 2);
+            // Français utilise o, Ko, Mo, Go, To
+            // Autres langues utilisent B, KB, MB, GB, TB
+            return lang === 'fr' ? ['o', 'Ko', 'Mo', 'Go', 'To', 'Po'] : ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+        }
+        
+        // Fonction pour obtenir l'unité de vitesse selon la langue
+        function getSpeedUnit() {
+            const lang = translations['_language'] || navigator.language.substring(0, 2);
+            return lang === 'fr' ? 'Mo/s' : 'MB/s';
+        }
+        
+        // Fonction pour formater une taille en octets
+        function formatSize(bytes) {
+            if (!bytes || bytes === 0) return 'N/A';
+            const units = getSizeUnits();
+            let size = bytes;
+            let unitIndex = 0;
+            while (size >= 1024 && unitIndex < units.length - 1) {
+                size /= 1024;
+                unitIndex++;
+            }
+            return `${size.toFixed(1)} ${units[unitIndex]}`;
+        }
+        
         // Appliquer les traductions à tous les éléments marqués
         function applyTranslations() {
             // Mettre à jour le titre de la page
@@ -1102,8 +1130,8 @@
                     
                     // Afficher un toast de succès (pas de redirection de page)
                     const toastMsg = mode === 'queue' 
-                        ? `📋 "${gameName}" ajouté à la queue`
-                        : `⬇️ Téléchargement de "${gameName}" lancé`;
+                        ? `📋 "${gameName}" ${t('web_added_to_queue')}`
+                        : `⬇️ ${t('web_downloading')}: "${gameName}"`;
                     showToast(toastMsg, 'success', 3000);
                     
                 } else {
@@ -1198,7 +1226,7 @@
                     const speed = info.speed || 0;
                     
                     // Utiliser game_name si disponible, sinon extraire de l'URL
-                    let fileName = info.game_name || 'Téléchargement';
+                    let fileName = info.game_name || t('web_downloading');
                     if (!info.game_name) {
                         try {
                             fileName = decodeURIComponent(url.split('/').pop());
@@ -1224,11 +1252,11 @@
                                 </div>
                                 <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.9em;">
                                     <span>${status} - ${percent.toFixed(1)}%</span>
-                                    <span>${speed > 0 ? speed.toFixed(2) + ' Mo/s' : ''}</span>
+                                    <span>${speed > 0 ? speed.toFixed(2) + ' ' + getSpeedUnit() : ''}</span>
                                 </div>
-                                ${total > 0 ? `<div style="font-size: 0.85em; color: #666;">${(downloaded / 1024 / 1024).toFixed(1)} Mo / ${(total / 1024 / 1024).toFixed(1)} Mo</div>` : ''}
+                                ${total > 0 ? `<div style="font-size: 0.85em; color: #666;">${formatSize(downloaded)} / ${formatSize(total)}</div>` : ''}
                                 <div style="margin-top: 3px; font-size: 0.85em; color: #666;">
-                                    📅 Démarré: ${info.timestamp || 'N/A'}
+                                    📅 ${t('web_started')}: ${info.timestamp || 'N/A'}
                                 </div>
                             </div>
                         </div>
@@ -1264,10 +1292,10 @@
                                     const percent = info.progress_percent || 0;
                                     const downloaded = info.downloaded_size || 0;
                                     const total = info.total_size || 0;
-                                    const status = info.status || 'En cours';
+                                    const status = info.status || t('web_in_progress');
                                     const speed = info.speed || 0;
                                     
-                                    let fileName = info.game_name || 'Téléchargement';
+                                    let fileName = info.game_name || t('web_downloading');
                                     if (!info.game_name) {
                                         try {
                                             fileName = decodeURIComponent(url.split('/').pop());
@@ -1292,11 +1320,11 @@
                                                 </div>
                                                 <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.9em;">
                                                     <span>${status} - ${percent.toFixed(1)}%</span>
-                                                    <span>${speed > 0 ? speed.toFixed(2) + ' Mo/s' : ''}</span>
+                                                    <span>${speed > 0 ? speed.toFixed(2) + ' ' + getSpeedUnit() : ''}</span>
                                                 </div>
-                                                ${total > 0 ? `<div style="font-size: 0.85em; color: #666;">${(downloaded / 1024 / 1024).toFixed(1)} Mo / ${(total / 1024 / 1024).toFixed(1)} Mo</div>` : ''}
+                                                ${total > 0 ? `<div style="font-size: 0.85em; color: #666;">${formatSize(downloaded)} / ${formatSize(total)}</div>` : ''}
                                                 <div style="margin-top: 3px; font-size: 0.85em; color: #666;">
-                                                    📅 Démarré: ${info.timestamp || 'N/A'}
+                                                    📅 ${t('web_started')}: ${info.timestamp || 'N/A'}
                                                 </div>
                                             </div>
                                         </div>
@@ -1446,13 +1474,13 @@
                     // Si ce téléchargement n'était pas tracké et il est maintenant complété/erreur/etc
                     if (!trackedDownloads[gameKey]) {
                         if (status === 'Download_OK' || status === 'Completed') {
-                            showToast(`✅ "${entry.game_name}" téléchargé avec succès!`, 'success', 4000);
+                            showToast(`✅ "${entry.game_name}" ${t('web_download_success')}`, 'success', 4000);
                             trackedDownloads[gameKey] = 'completed';
                         } else if (status === 'Erreur' || status === 'error') {
-                            showToast(`❌ Erreur lors du téléchargement de "${entry.game_name}"`, 'error', 5000);
+                            showToast(`❌ ${t('web_download_error_for')} "${entry.game_name}"`, 'error', 5000);
                             trackedDownloads[gameKey] = 'error';
                         } else if (status === 'Already_Present') {
-                            showToast(`ℹ️ "${entry.game_name}" était déjà présent`, 'info', 3000);
+                            showToast(`ℹ️ "${entry.game_name}" ${t('web_already_present')}`, 'info', 3000);
                             trackedDownloads[gameKey] = 'already_present';
                         } else if (status === 'Canceled') {
                             // Ne pas afficher de toast pour les téléchargements annulés
@@ -1510,8 +1538,8 @@
                     const isCanceled = status === 'Canceled';
                     const isAlreadyPresent = status === 'Already_Present';
                     const isQueued = status === 'Queued';
-                    const isDownloading = status === 'Downloading' || status === 'Téléchargement' || status === 'Downloading' || 
-                                         status === 'Connecting' || status === 'Extracting' || status.startsWith('Try ');
+                    const isDownloading = status === 'Downloading' || status === 'Connecting' || 
+                                         status === 'Extracting' || status.startsWith('Try ');
                     const isSuccess = status === 'Download_OK' || status === 'Completed';
                     
                     // Déterminer l'icône et la couleur
@@ -1541,7 +1569,7 @@
                         statusText = statusDownloading;
                     }
                     
-                    const totalMo = h.total_size ? (h.total_size / 1024 / 1024).toFixed(1) : 'N/A';
+                    const sizeFormatted = h.total_size ? formatSize(h.total_size) : 'N/A';
                     const platform = h.platform || 'N/A';
                     const timestamp = h.timestamp || 'N/A';
                     
@@ -1559,7 +1587,7 @@
                                         📦 ${platformLabel}: ${platform}
                                     </div>
                                     <div style="margin-top: 3px; font-size: 0.85em; color: #666;">
-                                        💾 ${sizeLabel}: ${totalMo} Mo
+                                        💾 ${sizeLabel}: ${sizeFormatted}
                                     </div>
                                     <div style="margin-top: 3px; font-size: 0.85em; color: #666;">
                                         📅 Date: ${timestamp}
@@ -1744,12 +1772,12 @@
                     <h3 style="margin-top: 30px; margin-bottom: 15px;">RGSX Configuration ⚙️</h3>
                     
                     <div style="margin-bottom: 20px; background: #f0f8ff; padding: 15px; border-radius: 8px; border: 2px solid #007bff;">
-                        <label style="display: block; font-weight: bold; margin-bottom: 10px; font-size: 1.1em;">📁 ${t('web_settings_roms_folder')}</label>
+                        <label style="display: block; margin-bottom: 10px; font-size: 1.1em;">📁 ${t('web_settings_roms_folder')}</label>
                         <div style="display: flex; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;">
                             <input type="text" id="setting-roms-folder" value="${settings.roms_folder || ''}" 
                                    data-translate-placeholder="web_settings_roms_placeholder"
                                    placeholder="${t('web_settings_roms_placeholder')}"
-                                   style="flex: 1; min-width: 200px; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 16px;">
+                                   style="flex: 1; min-width: 200px;">
                             <button onclick="browseRomsFolder()" 
                                     style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
                                 📂 ${t('web_settings_browse')}
@@ -1764,8 +1792,8 @@
                     
                     <div style="background: #f9f9f9; padding: 20px; border-radius: 8px;">
                         <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: bold; margin-bottom: 5px;">🌍 ${t('web_settings_language')}</label>
-                            <select id="setting-language" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 16px;">
+                            <label>🌍 ${t('web_settings_language')}</label>
+                            <select id="setting-language">
                                 <option value="en" ${settings.language === 'en' ? 'selected' : ''}>English</option>
                                 <option value="fr" ${settings.language === 'fr' ? 'selected' : ''}>Français</option>
                                 <option value="es" ${settings.language === 'es' ? 'selected' : ''}>Español</option>
@@ -1776,23 +1804,22 @@
                         </div>
                         
                         <div style="margin-bottom: 20px;">
-                            <label style="display: flex; align-items: center; cursor: pointer;">
-                                <input type="checkbox" id="setting-music" ${settings.music_enabled ? 'checked' : ''} 
-                                       style="width: 20px; height: 20px; margin-right: 10px;">
-                                <span style="font-weight: bold;">🎵 ${t('web_settings_music')}</span>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="setting-music" ${settings.music_enabled ? 'checked' : ''}>
+                                <span>🎵 ${t('web_settings_music')}</span>
                             </label>
                         </div>
                         
                         <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: bold; margin-bottom: 5px;">🔤 ${t('web_settings_font_scale')} (${settings.accessibility?.font_scale || 1.0})</label>
+                            <label>🔤 ${t('web_settings_font_scale')} (${settings.accessibility?.font_scale || 1.0})</label>
                             <input type="range" id="setting-font-scale" min="0.5" max="2.0" step="0.1" 
                                    value="${settings.accessibility?.font_scale || 1.0}"
                                    style="width: 100%;">
                         </div>
                         
                         <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: bold; margin-bottom: 5px;">📐 ${t('web_settings_grid')}</label>
-                            <select id="setting-grid" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 16px;">
+                            <label>📐 ${t('web_settings_grid')}</label>
+                            <select id="setting-grid">
                                 <option value="3x3" ${settings.display?.grid === '3x3' ? 'selected' : ''}>3x3</option>
                                 <option value="3x4" ${settings.display?.grid === '3x4' ? 'selected' : ''}>3x4</option>
                                 <option value="4x3" ${settings.display?.grid === '4x3' ? 'selected' : ''}>4x3</option>
@@ -1801,54 +1828,50 @@
                         </div>
                         
                         <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: bold; margin-bottom: 5px;">🖋️ ${t('web_settings_font_family')}</label>
-                            <select id="setting-font-family" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 16px;">
+                            <label>🖋️ ${t('web_settings_font_family')}</label>
+                            <select id="setting-font-family">
                                 <option value="pixel" ${settings.display?.font_family === 'pixel' ? 'selected' : ''}>Pixel</option>
                                 <option value="dejavu" ${settings.display?.font_family === 'dejavu' ? 'selected' : ''}>DejaVu</option>
                             </select>
                         </div>
                         
                         <div style="margin-bottom: 20px;">
-                            <label style="display: flex; align-items: center; cursor: pointer;">
-                                <input type="checkbox" id="setting-symlink" ${settings.symlink?.enabled ? 'checked' : ''} 
-                                       style="width: 20px; height: 20px; margin-right: 10px;">
-                                <span style="font-weight: bold;">🔗 ${t('web_settings_symlink')}</span>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="setting-symlink" ${settings.symlink?.enabled ? 'checked' : ''}>
+                                <span>🔗 ${t('web_settings_symlink')}</span>
                             </label>
                         </div>
                         
                         <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: bold; margin-bottom: 5px;">📦 ${t('web_settings_source_mode')}</label>
-                            <select id="setting-sources-mode" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 16px;">
+                            <label>📦 ${t('web_settings_source_mode')}</label>
+                            <select id="setting-sources-mode">
                                 <option value="rgsx" ${settings.sources?.mode === 'rgsx' ? 'selected' : ''}>RGSX (default)</option>
                                 <option value="custom" ${settings.sources?.mode === 'custom' ? 'selected' : ''}>Custom</option>
                             </select>
                         </div>
                         
                         <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: bold; margin-bottom: 5px;">🔗 ${t('web_settings_custom_url')}</label>
+                            <label>🔗 ${t('web_settings_custom_url')}</label>
                             <input type="text" id="setting-custom-url" value="${settings.sources?.custom_url || ''}" 
                                    data-translate-placeholder="web_settings_custom_url_placeholder"
-                                   placeholder="${t('web_settings_custom_url_placeholder')}"
-                                   style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 16px;">
+                                   placeholder="${t('web_settings_custom_url_placeholder')}">
                         </div>
                         
                         <div style="margin-bottom: 20px;">
-                            <label style="display: flex; align-items: center; cursor: pointer;">
-                                <input type="checkbox" id="setting-show-unsupported" ${settings.show_unsupported_platforms ? 'checked' : ''} 
-                                       style="width: 20px; height: 20px; margin-right: 10px;">
-                                <span style="font-weight: bold;">👀 ${showUnsupportedLabel}</span>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="setting-show-unsupported" ${settings.show_unsupported_platforms ? 'checked' : ''}>
+                                <span>👀 ${showUnsupportedLabel}</span>
                             </label>
                         </div>
                         
                         <div style="margin-bottom: 20px;">
-                            <label style="display: flex; align-items: center; cursor: pointer;">
-                                <input type="checkbox" id="setting-allow-unknown" ${settings.allow_unknown_extensions ? 'checked' : ''} 
-                                       style="width: 20px; height: 20px; margin-right: 10px;">
-                                <span style="font-weight: bold;">⚠️ ${allowUnknownLabel}</span>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="setting-allow-unknown" ${settings.allow_unknown_extensions ? 'checked' : ''}>
+                                <span>⚠️ ${allowUnknownLabel}</span>
                             </label>
                         </div>
                         
-                        <button onclick="saveSettings()" style="width: 100%; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; padding: 15px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 10px;">
+                        <button id="save-settings-btn" style="width: 100%; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; padding: 15px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 10px;">
                             💾 ${t('web_settings_save')}
                         </button>
                     </div>
@@ -1860,13 +1883,24 @@
                     label.textContent = `🔤 ${t('web_settings_font_scale')} (${e.target.value})`;
                 });
                 
+                // Attacher l'événement de sauvegarde au bouton
+                document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
+                
             } catch (error) {
                 container.innerHTML = `<p style="color:red;">${t('web_error')}: ${error.message}</p>`;
             }
         }
         
         // Sauvegarder les settings
-        async function saveSettings() {
+        async function saveSettings(event) {
+            // Désactiver le bouton pendant la sauvegarde
+            const saveButton = event?.target;
+            const originalText = saveButton?.textContent;
+            if (saveButton) {
+                saveButton.disabled = true;
+                saveButton.textContent = '⏳ Saving...';
+            }
+            
             try {
                 const settings = {
                     language: document.getElementById('setting-language').value,
@@ -1899,13 +1933,23 @@
                 const data = await response.json();
                 
                 if (data.success) {
+                    // Réactiver le bouton
+                    if (saveButton) {
+                        saveButton.disabled = false;
+                        saveButton.textContent = originalText;
+                    }
                     // Afficher le dialogue de confirmation de redémarrage
                     showRestartDialog();
                 } else {
                     throw new Error(data.error || t('web_error_unknown'));
                 }
             } catch (error) {
-                alert('❌ ' + t('web_error_save_settings', error.message));
+                // Réactiver le bouton en cas d'erreur
+                if (saveButton) {
+                    saveButton.disabled = false;
+                    saveButton.textContent = originalText;
+                }
+                alert('❌ ' + t('web_error_save_settings') + ': ' + error.message);
             }
         }
         

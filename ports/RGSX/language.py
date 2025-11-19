@@ -67,6 +67,28 @@ def load_language(lang_code=None):
             return load_language(DEFAULT_LANGUAGE)
         return False
 
+def get_size_units():
+    """Retourne les unités de taille adaptées à la langue courante.
+    
+    Français utilise l'octet (o, Ko, Mo, Go, To, Po)
+    Autres langues utilisent byte (B, KB, MB, GB, TB, PB)
+    """
+    if current_language == "fr":
+        return ['o', 'Ko', 'Mo', 'Go', 'To', 'Po']
+    else:
+        return ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+
+def get_speed_unit():
+    """Retourne l'unité de vitesse adaptée à la langue courante.
+    
+    Français utilise Mo/s
+    Autres langues utilisent MB/s
+    """
+    if current_language == "fr":
+        return "Mo/s"
+    else:
+        return "MB/s"
+
 def get_text(key, default=None):
     """Récupère la traduction correspondant à la clé en garantissant une chaîne.
 

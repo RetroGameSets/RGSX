@@ -401,6 +401,55 @@ header p { opacity: 0.9; font-size: 1.1em; }
     }
 }
 
+/* Amélioration de la lisibilité des settings */
+#settings-content label {
+    display: block;
+    color: #000;
+    font-weight: bold;
+    margin-bottom: 5px;
+    font-size: 1em;
+}
+
+#settings-content select,
+#settings-content input[type="text"] {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #ccc;
+    border-radius: 5px;
+    font-size: 16px;
+    background-color: #f8f8f8;
+    color: #000;
+    transition: border-color 0.3s;
+}
+
+#settings-content select:focus,
+#settings-content input[type="text"]:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+#settings-content input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    margin-right: 10px;
+}
+
+#settings-content label.checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+#settings-content label.checkbox-label span {
+    font-weight: bold;
+    color: #000;
+}
+
+#settings-content button {
+    margin-top: 20px;
+}
+
 @media (max-width: 480px) {
     header h1 {
         font-size: 1.5em;

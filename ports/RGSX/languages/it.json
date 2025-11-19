@@ -372,5 +372,12 @@
     "filter_apply": "Applica filtro",
     "filter_back": "Indietro",
     "accessibility_footer_font_size": "Dimensione carattere piè di pagina: {0}",
-    "popup_layout_changed_restart": "Layout cambiato in {0}x{1}. Riavviare l'app per applicare."
+    "popup_layout_changed_restart": "Layout cambiato a {0}x{1}. Riavvia l'app per applicare.",
+    "web_started": "Avviato",
+    "web_downloading": "Download",
+    "web_in_progress": "In corso",
+    "web_added_to_queue": "aggiunto alla coda",
+    "web_download_success": "scaricato con successo!",
+    "web_download_error_for": "Errore durante il download di",
+    "web_already_present": "era già presente"
 }

@@ -460,8 +460,13 @@ class RGSXHandler(BaseHTTPRequestHandler):
     
     def _send_html(self, html, status=200, etag=None, last_modified=None):
         """Envoie une réponse HTML"""
-        self._set_headers('text/html; charset=utf-8', status, etag=etag, last_modified=last_modified)
-        self.wfile.write(html.encode('utf-8'))
+        try:
+            self._set_headers('text/html; charset=utf-8', status, etag=etag, last_modified=last_modified)
+            self.wfile.write(html.encode('utf-8'))
+        except (ConnectionAbortedError, BrokenPipeError) as e:
+            # La connexion a été fermée par le client, ce n'est pas une erreur critique
+            logger.debug(f"Connexion fermée par le client pendant l'envoi HTML: {e}")
+            pass
 
     def _send_not_found(self):
         """Répond avec un 404 générique."""
@@ -703,10 +708,13 @@ class RGSXHandler(BaseHTTPRequestHandler):
             
             # Route: API - Traductions
             elif path == '/api/translations':
+                # Ajouter le code de langue dans les traductions pour que JS puisse l'utiliser
+                translations_with_lang = TRANSLATIONS.copy()
+                translations_with_lang['_language'] = get_language()
                 self._send_json({
                     'success': True,
                     'language': get_language(),
-                    'translations': TRANSLATIONS
+                    'translations': translations_with_lang
                 })
             
             # Route: API - Liste des jeux d'une plateforme

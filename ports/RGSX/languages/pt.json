@@ -371,6 +371,13 @@
     "filter_none": "Desmarcar tudo",
     "filter_apply": "Aplicar filtro",
     "filter_back": "Voltar",
-    "accessibility_footer_font_size": "Tamanho fonte rodapé: {0}",
-    "popup_layout_changed_restart": "Layout alterado para {0}x{1}. Reinicie o app para aplicar."
+    "accessibility_footer_font_size": "Tamanho da fonte do rodapé: {0}",
+    "popup_layout_changed_restart": "Layout alterado para {0}x{1}. Reinicie o app para aplicar.",
+    "web_started": "Iniciado",
+    "web_downloading": "Download",
+    "web_in_progress": "Em andamento",
+    "web_added_to_queue": "adicionado à fila",
+    "web_download_success": "baixado com sucesso!",
+    "web_download_error_for": "Erro ao baixar",
+    "web_already_present": "já estava presente"
 }

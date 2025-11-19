@@ -8,7 +8,7 @@ from utils import truncate_text_middle, wrap_text, load_system_image, truncate_t
 import logging
 import math
 from history import load_history, is_game_downloaded  
-from language import _  
+from language import _, get_size_units, get_speed_unit  
 
 logger = logging.getLogger(__name__)
 
@@ -956,15 +956,16 @@ def draw_game_scrollbar(screen, scroll_offset, total_items, visible_items, x, y,
     pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], (x, scrollbar_y, 15, scrollbar_height), border_radius=4)
 
 def format_size(size):
-    """Convertit une taille en octets en format lisible."""
+    """Convertit une taille en octets en format lisible avec unités adaptées à la langue."""
     if not isinstance(size, (int, float)) or size == 0:
         return "N/A"
     
-    for unit in ['o', 'Ko', 'Mo', 'Go', 'To']:
+    units = get_size_units()
+    for unit in units[:-1]:  # Tous sauf le dernier (Po/PB)
         if size < 1024.0:
             return f"{size:.1f} {unit}"
         size /= 1024.0
-    return f"{size:.1f} Po"
+    return f"{size:.1f} {units[-1]}"  # Dernier niveau (Po/PB)
 
 
 def draw_history_list(screen):
@@ -991,7 +992,7 @@ def draw_history_list(screen):
         if entry.get("status") in ["Téléchargement", "Downloading"]:
             speed = entry.get("speed", 0.0)
             if speed and speed > 0:
-                speed_str = f" - {speed:.2f} Mo/s"
+                speed_str = f" - {speed:.2f} {get_speed_unit()}"
             break
 
     screen.blit(OVERLAY, (0, 0))
@@ -1036,7 +1037,7 @@ def draw_history_list(screen):
     if history and history[current_history_item_inverted].get("status") in ["Téléchargement", "Downloading"]:
         speed = history[current_history_item_inverted].get("speed", 0.0)
     if speed > 0:
-        speed_str = f"{speed:.2f} Mo/s"
+        speed_str = f"{speed:.2f} {get_speed_unit()}"
         title_text = _("history_title").format(history_count) + f" {speed_str}"
     else:
         title_text = _("history_title").format(history_count)

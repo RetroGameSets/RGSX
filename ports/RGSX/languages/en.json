@@ -372,5 +372,12 @@
     "filter_apply": "Apply Filter",
     "filter_back": "Back",
     "accessibility_footer_font_size": "Footer font size: {0}",
-    "popup_layout_changed_restart": "Layout changed to {0}x{1}. Please restart the app to apply."
+    "popup_layout_changed_restart": "Layout changed to {0}x{1}. Please restart the app to apply.",
+    "web_started": "Started",
+    "web_downloading": "Download",
+    "web_in_progress": "In progress",
+    "web_added_to_queue": "added to queue",
+    "web_download_success": "downloaded successfully!",
+    "web_download_error_for": "Error downloading",
+    "web_already_present": "was already present"
 }
