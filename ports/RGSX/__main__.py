@@ -687,6 +687,7 @@ async def main():
                 "history_error_details",
                 "history_confirm_delete",
                 "history_extract_archive",
+                "text_file_viewer",  # Visualiseur de fichiers texte
                 # Menus filtrage avancé
                 "filter_menu_choice",
                 "filter_advanced",
@@ -1115,6 +1116,9 @@ async def main():
             elif config.menu_state == "history_error_details":
                 from display import draw_history_error_details
                 draw_history_error_details(screen)
+            elif config.menu_state == "text_file_viewer":
+                from display import draw_text_file_viewer
+                draw_text_file_viewer(screen)
             elif config.menu_state == "history_confirm_delete":
                 from display import draw_history_confirm_delete
                 draw_history_confirm_delete(screen)

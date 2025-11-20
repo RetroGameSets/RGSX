@@ -244,6 +244,7 @@
     "history_game_options_title": "Game Options",
     "history_option_download_folder": "Locate file",
     "history_option_extract_archive": "Extract archive",
+    "history_option_open_file": "Open file",
     "history_option_scraper": "Scrape metadata",
     "history_option_delete_game": "Delete game",
     "history_option_error_info": "Error details",

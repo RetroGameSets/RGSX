@@ -59,6 +59,7 @@ VALID_STATES = [
     "history_error_details",    # détails de l'erreur
     "history_confirm_delete",   # confirmation suppression jeu
     "history_extract_archive",  # extraction d'archive
+    "text_file_viewer",         # visualiseur de fichiers texte
     # Nouveaux menus filtrage avancé
     "filter_menu_choice",       # menu de choix entre recherche et filtrage avancé
     "filter_search",            # recherche par nom (existant, mais renommé)
@@ -1008,6 +1009,8 @@ def handle_controls(event, sources, joystick, screen):
                         ext = os.path.splitext(actual_filename)[1].lower()
                         if ext in ['.zip', '.rar']:
                             options.append("extract_archive")
+                        elif ext == '.txt':
+                            options.append("open_file")
                 elif status in ["Erreur", "Error", "Canceled"]:
                     options.append("error_info")
                     options.append("retry")
@@ -1049,6 +1052,30 @@ def handle_controls(event, sources, joystick, screen):
                         config.menu_state = "history_show_folder"
                         config.needs_redraw = True
                         logger.debug(f"Affichage du dossier de téléchargement pour {game_name}")
+                        
+                    elif selected_option == "open_file":
+                        # Ouvrir le fichier texte
+                        if actual_path and os.path.exists(actual_path):
+                            try:
+                                with open(actual_path, 'r', encoding='utf-8', errors='replace') as f:
+                                    content = f.read()
+                                config.text_file_content = content
+                                config.text_file_name = actual_filename
+                                config.text_file_scroll_offset = 0
+                                config.previous_menu_state = "history_game_options"
+                                config.menu_state = "text_file_viewer"
+                                config.needs_redraw = True
+                                logger.debug(f"Ouverture du fichier texte: {actual_filename}")
+                            except Exception as e:
+                                logger.error(f"Erreur lors de l'ouverture du fichier texte: {e}")
+                                config.menu_state = "error"
+                                config.error_message = f"Erreur lors de l'ouverture du fichier: {str(e)}"
+                                config.needs_redraw = True
+                        else:
+                            logger.error(f"Fichier texte introuvable: {actual_path}")
+                            config.menu_state = "error"
+                            config.error_message = "Fichier introuvable"
+                            config.needs_redraw = True
                         
                     elif selected_option == "extract_archive":
                         # L'option n'apparaît que si le fichier existe, pas besoin de re-vérifier
@@ -1201,6 +1228,128 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
 
         # Affichage détails erreur
+        # Visualiseur de fichiers texte
+        elif config.menu_state == "text_file_viewer":
+            content = getattr(config, 'text_file_content', '')
+            if content:
+                lines = content.split('\n')
+                line_height = config.small_font.get_height() + 2
+                
+                # Calculer le nombre de lignes visibles (approximation)
+                controls_y = config.screen_height - int(config.screen_height * 0.037)
+                margin = 40
+                header_height = 60
+                content_area_height = controls_y - 2 * margin - 10 - header_height - 20
+                visible_lines = int(content_area_height / line_height)
+                
+                scroll_offset = getattr(config, 'text_file_scroll_offset', 0)
+                max_scroll = max(0, len(lines) - visible_lines)
+                
+                if is_input_matched(event, "up"):
+                    config.text_file_scroll_offset = max(0, scroll_offset - 1)
+                    update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
+                    config.needs_redraw = True
+                elif is_input_matched(event, "down"):
+                    config.text_file_scroll_offset = min(max_scroll, scroll_offset + 1)
+                    update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
+                    config.needs_redraw = True
+                elif is_input_matched(event, "page_up"):
+                    config.text_file_scroll_offset = max(0, scroll_offset - visible_lines)
+                    update_key_state("page_up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
+                    config.needs_redraw = True
+                elif is_input_matched(event, "page_down"):
+                    config.text_file_scroll_offset = min(max_scroll, scroll_offset + visible_lines)
+                    update_key_state("page_down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
+                    config.needs_redraw = True
+                elif is_input_matched(event, "cancel") or is_input_matched(event, "confirm"):
+                    config.menu_state = validate_menu_state(config.previous_menu_state)
+                    config.needs_redraw = True
+            else:
+                # Si pas de contenu, retourner au menu précédent
+                if is_input_matched(event, "cancel") or is_input_matched(event, "confirm"):
+                    config.menu_state = validate_menu_state(config.previous_menu_state)
+                    config.needs_redraw = True
+
+        # Visualiseur de fichiers texte
+        elif config.menu_state == "text_file_viewer":
+            content = getattr(config, 'text_file_content', '')
+            if content:
+                from utils import wrap_text
+                
+                # Calculer les dimensions
+                controls_y = config.screen_height - int(config.screen_height * 0.037)
+                margin = 40
+                header_height = 60
+                rect_width = config.screen_width - 2 * margin
+                content_area_height = controls_y - 2 * margin - 10 - header_height - 20
+                max_width = rect_width - 60
+                
+                # Diviser le contenu en lignes et appliquer le word wrap
+                original_lines = content.split('\n')
+                wrapped_lines = []
+                
+                for original_line in original_lines:
+                    if original_line.strip():  # Si la ligne n'est pas vide
+                        wrapped = wrap_text(original_line, config.small_font, max_width)
+                        wrapped_lines.extend(wrapped)
+                    else:  # Ligne vide
+                        wrapped_lines.append('')
+                
+                line_height = config.small_font.get_height() + 2
+                visible_lines = int(content_area_height / line_height)
+                
+                scroll_offset = getattr(config, 'text_file_scroll_offset', 0)
+                max_scroll = max(0, len(wrapped_lines) - visible_lines)
+                
+                if is_input_matched(event, "up"):
+                    config.text_file_scroll_offset = max(0, scroll_offset - 1)
+                    update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
+                    config.needs_redraw = True
+                elif is_input_matched(event, "down"):
+                    config.text_file_scroll_offset = min(max_scroll, scroll_offset + 1)
+                    update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
+                    config.needs_redraw = True
+                elif is_input_matched(event, "page_up"):
+                    config.text_file_scroll_offset = max(0, scroll_offset - visible_lines)
+                    update_key_state("page_up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
+                    config.needs_redraw = True
+                elif is_input_matched(event, "page_down"):
+                    config.text_file_scroll_offset = min(max_scroll, scroll_offset + visible_lines)
+                    update_key_state("page_down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
+                    config.needs_redraw = True
+                elif is_input_matched(event, "cancel") or is_input_matched(event, "confirm"):
+                    config.menu_state = validate_menu_state(config.previous_menu_state)
+                    config.needs_redraw = True
+            else:
+                # Si pas de contenu, retourner au menu précédent
+                if is_input_matched(event, "cancel") or is_input_matched(event, "confirm"):
+                    config.menu_state = validate_menu_state(config.previous_menu_state)
+                    config.needs_redraw = True
+
         elif config.menu_state == "history_error_details":
             if is_input_matched(event, "confirm") or is_input_matched(event, "cancel"):
                 config.menu_state = validate_menu_state(config.previous_menu_state)
