@@ -257,7 +257,18 @@ def draw_stylized_button(screen, text, x, y, width, height, selected=False):
         pygame.draw.rect(glow_surface, THEME_COLORS["fond_lignes"] + (50,), (5, 5, width, height), border_radius=12)
         screen.blit(glow_surface, (x - 5, y - 5))
     screen.blit(button_surface, (x, y))
+    
+    # Vérifier si le texte dépasse la largeur disponible
     text_surface = config.font.render(text, True, THEME_COLORS["text"])
+    available_width = width - 20  # Marge de 10px de chaque côté
+    
+    if text_surface.get_width() > available_width:
+        # Tronquer le texte avec "..."
+        truncated_text = text
+        while text_surface.get_width() > available_width and len(truncated_text) > 0:
+            truncated_text = truncated_text[:-1]
+            text_surface = config.font.render(truncated_text + "...", True, THEME_COLORS["text"])
+    
     text_rect = text_surface.get_rect(center=(x + width // 2, y + height // 2))
     screen.blit(text_surface, text_rect)
 
@@ -1682,11 +1693,23 @@ def draw_language_menu(screen):
     vpad = max(8, min(14, int(title_surface.get_height() * 0.4)))
     title_bg_rect = title_rect.inflate(hpad, vpad)
 
-    # Dimensions responsives des boutons
-    # Largeur bornée entre 260 et 380px (~40% de la largeur écran)
-    button_width = max(260, min(380, int(config.screen_width * 0.4)))
-    # Hauteur réduite et responsive (env. 5.5% de la hauteur écran), bornée 28..56
-    button_height = max(28, min(56, int(config.screen_height * 0.055)))
+    # Calculer hauteur dynamique basée sur la taille de police
+    sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    
+    # Calculer largeur maximale nécessaire pour les noms de langues
+    max_text_width = 0
+    for lang_code in available_languages:
+        lang_name = get_language_name(lang_code)
+        text_surface = config.font.render(lang_name, True, THEME_COLORS["text"])
+        if text_surface.get_width() > max_text_width:
+            max_text_width = text_surface.get_width()
+    
+    # Largeur bornée entre valeur calculée et limites raisonnables
+    button_width = max(260, min(500, max_text_width + 60))
+    # Hauteur réduite et responsive (env. 5.5% de la hauteur écran), bornée mais aussi fonction de la police
+    # Augmenter le padding pour grandes polices
+    button_height = max(28, min(70, max(int(config.screen_height * 0.055), font_height + 20)))
     # Espacement vertical proportionnel et borné
     button_spacing = max(8, int(button_height * 0.35))
 
@@ -1737,8 +1760,17 @@ def draw_language_menu(screen):
         pygame.draw.rect(screen, button_color, (button_x, button_y, button_width, button_height), border_radius=10)
         pygame.draw.rect(screen, THEME_COLORS["border"], (button_x, button_y, button_width, button_height), 2, border_radius=10)
 
-        # Texte du bouton
+        # Texte avec gestion du dépassement
         text_surface = config.font.render(lang_name, True, THEME_COLORS["text"])
+        available_width = button_width - 20  # Marge de 10px de chaque côté
+        
+        if text_surface.get_width() > available_width:
+            # Tronquer le texte avec "..."
+            truncated_text = lang_name
+            while text_surface.get_width() > available_width and len(truncated_text) > 0:
+                truncated_text = truncated_text[:-1]
+                text_surface = config.font.render(truncated_text + "...", True, THEME_COLORS["text"])
+        
         text_rect = text_surface.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
         screen.blit(text_surface, text_rect)
     
@@ -1864,8 +1896,20 @@ def draw_pause_menu(screen, selected_option):
         _("menu_support"),                                  # 6 -> support
         _("menu_quit")                                      # 7 -> quit
     ]
-    menu_width = int(config.screen_width * 0.6)
-    button_height = int(config.screen_height * 0.048)
+    # Calculer hauteur dynamique basée sur la taille de police
+    sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    button_height = max(int(config.screen_height * 0.048), font_height + 20)
+    
+    # Calculer largeur maximale nécessaire pour le texte
+    max_text_width = 0
+    for option in options:
+        text_surface = config.font.render(option, True, THEME_COLORS["text"])
+        if text_surface.get_width() > max_text_width:
+            max_text_width = text_surface.get_width()
+    
+    # Largeur du menu basée sur le texte le plus long + marges
+    menu_width = min(int(config.screen_width * 0.8), max(int(config.screen_width * 0.5), max_text_width + 80))
     margin_top_bottom = 24
     menu_height = len(options) * (button_height + 12) + 2 * margin_top_bottom
     menu_x = (config.screen_width - menu_width) // 2
@@ -1910,8 +1954,23 @@ def draw_pause_menu(screen, selected_option):
 def _draw_submenu_generic(screen, title, options, selected_index):
     """Helper générique pour dessiner un sous-menu hiérarchique."""
     screen.blit(OVERLAY, (0, 0))
-    menu_width = int(config.screen_width * 0.72)
-    button_height = int(config.screen_height * 0.045)
+    
+    # Calculer hauteur dynamique basée sur la taille de police
+    sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    button_height = max(int(config.screen_height * 0.045), font_height + 18)
+    
+    # Calculer largeur maximale nécessaire pour le texte (titre + options)
+    max_text_width = 0
+    title_surface = config.font.render(title, True, THEME_COLORS["text"])
+    max_text_width = title_surface.get_width()
+    for option in options:
+        text_surface = config.font.render(option, True, THEME_COLORS["text"])
+        if text_surface.get_width() > max_text_width:
+            max_text_width = text_surface.get_width()
+    
+    # Largeur du menu basée sur le texte le plus long + marges
+    menu_width = min(int(config.screen_width * 0.85), max(int(config.screen_width * 0.55), max_text_width + 80))
     margin_top_bottom = 26
     menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom  # +1 pour le titre
     menu_x = (config.screen_width - menu_width) // 2
@@ -2623,7 +2682,10 @@ def draw_confirm_dialog(screen):
     wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
     line_height = config.font.get_height() + 5
     text_height = len(wrapped_message) * line_height
-    button_height = int(config.screen_height * 0.0463)
+    # Adapter hauteur bouton en fonction de la taille de police
+    sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    button_height = max(int(config.screen_height * 0.0463), font_height + 15)
     margin_top_bottom = 20
     rect_height = text_height + button_height + 2 * margin_top_bottom
     max_text_width = max([config.font.size(line)[0] for line in wrapped_message], default=300)
@@ -2656,7 +2718,10 @@ def draw_reload_games_data_dialog(screen):
     wrapped_message = wrap_text(message, config.small_font, config.screen_width - 80)
     line_height = config.small_font.get_height() + 5
     text_height = len(wrapped_message) * line_height
-    button_height = int(config.screen_height * 0.0463)
+    # Adapter hauteur bouton en fonction de la taille de police
+    sample_text = config.small_font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    button_height = max(int(config.screen_height * 0.0463), font_height + 15)
     margin_top_bottom = 20
     rect_height = text_height + button_height + 2 * margin_top_bottom
     max_text_width = max([config.small_font.size(line)[0] for line in wrapped_message], default=300)
@@ -3376,11 +3441,24 @@ def draw_filter_menu_choice(screen):
         _("filter_advanced")
     ]
     
+    # Calculer hauteur dynamique basée sur la taille de police
+    sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    button_height = max(60, font_height + 30)
+    
+    # Calculer largeur maximale nécessaire pour le texte
+    max_text_width = 0
+    for option in options:
+        text_surface = config.font.render(option, True, THEME_COLORS["text"])
+        if text_surface.get_width() > max_text_width:
+            max_text_width = text_surface.get_width()
+    
+    # Largeur du bouton basée sur le texte le plus long + marges
+    button_width = max(400, max_text_width + 80)
+    
     # Calculer positions
     menu_y = 150
-    button_height = 60
     button_spacing = 20
-    button_width = 600
     
     for i, option in enumerate(options):
         y = menu_y + i * (button_height + button_spacing)
@@ -3398,8 +3476,17 @@ def draw_filter_menu_choice(screen):
         pygame.draw.rect(screen, color, (x, y, button_width, button_height), border_radius=12)
         pygame.draw.rect(screen, border_color, (x, y, button_width, button_height), 3, border_radius=12)
         
-        # Texte
+        # Texte avec gestion du dépassement
         text_surface = config.font.render(option, True, THEME_COLORS["text"])
+        available_width = button_width - 40  # Marge de 20px de chaque côté
+        
+        if text_surface.get_width() > available_width:
+            # Tronquer le texte avec "..."
+            truncated_text = option
+            while text_surface.get_width() > available_width and len(truncated_text) > 0:
+                truncated_text = truncated_text[:-1]
+                text_surface = config.font.render(truncated_text + "...", True, THEME_COLORS["text"])
+        
         text_rect = text_surface.get_rect(center=(config.screen_width // 2, y + button_height // 2))
         screen.blit(text_surface, text_rect)
 
@@ -3410,12 +3497,6 @@ def draw_filter_advanced(screen):
     
     screen.blit(OVERLAY, (0, 0))
     
-    # Titre
-    title = _("filter_advanced_title")
-    title_surface = config.title_font.render(title, True, THEME_COLORS["text"])
-    title_rect = title_surface.get_rect(center=(config.screen_width // 2, 40))
-    screen.blit(title_surface, title_rect)
-    
     # Initialiser le filtre si nécessaire
     if not hasattr(config, 'game_filter_obj'):
         config.game_filter_obj = GameFilters()
@@ -3425,18 +3506,15 @@ def draw_filter_advanced(screen):
         if filter_dict:
             config.game_filter_obj.load_from_dict(filter_dict)
     
-    # Zones d'affichage
-    start_y = 100
-    line_height = 50
-    current_y = start_y
-    
-    # Liste des options
+    # Liste des options (sans les régions pour l'instant)
     options = []
     
-    # Section Régions
+    # Section Régions (titre seulement)
     region_title = _("filter_region_title")
     options.append(('header', region_title))
     
+    # On va afficher les régions en grille 3x3, donc on ajoute des placeholders
+    regions_list = []
     for region in GameFilters.REGIONS:
         region_key = f"filter_region_{region.lower()}"
         region_label = _(region_key)
@@ -3449,7 +3527,10 @@ def draw_filter_advanced(screen):
             status = f"[V] {_('filter_region_include')}"
             color = THEME_COLORS["green"]
         
-        options.append(('region', region, f"{region_label}: {status}", color))
+        regions_list.append(('region', region, f"{region_label}: {status}", color))
+    
+    # Ajouter les régions comme une seule entrée "grid" dans options
+    options.append(('region_grid', regions_list))
     
     # Section Autres options
     options.append(('separator', ''))
@@ -3477,31 +3558,152 @@ def draw_filter_advanced(screen):
     if not hasattr(config, 'selected_filter_option'):
         config.selected_filter_option = 0
     
-    # S'assurer que l'index est valide (options + 3 boutons)
-    total_items = len(options) + len(buttons)
+    # Calculer le nombre total d'items sélectionnables (régions individuelles + autres options + boutons)
+    total_items = len(regions_list) + len([opt for opt in options if opt[0] in ['toggle', 'button_inline']]) + len(buttons)
     if config.selected_filter_option >= total_items:
         config.selected_filter_option = total_items - 1
     
-    for i, option in enumerate(options):
+    # Calculer d'abord la hauteur totale nécessaire
+    # Adapter la hauteur en fonction de la taille de police
+    sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    line_height = max(50, font_height + 30)
+    item_height = max(45, font_height + 20)
+    item_spacing_y = 10
+    items_per_row = 3
+    
+    # Titre
+    title_height = 60
+    
+    # Hauteur du header régions
+    header_height = line_height
+    
+    # Hauteur de la grille de régions
+    num_rows = (len(regions_list) + items_per_row - 1) // items_per_row
+    grid_height = num_rows * (item_height + item_spacing_y)
+    
+    # Hauteur du séparateur
+    separator_height = 10
+    
+    # Hauteur du header autres options
+    header2_height = line_height
+    
+    # Hauteur des autres options (3 options)
+    num_other_options = len([opt for opt in options if opt[0] in ['toggle', 'button_inline']])
+    other_options_height = num_other_options * (item_height + 10)
+    
+    # Hauteur des boutons
+    # Adapter en fonction de la taille de police
+    sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    button_height = max(50, font_height + 20)
+    buttons_top_margin = 30
+    
+    # Hauteur totale du contenu
+    total_content_height = (title_height + header_height + grid_height + separator_height + 
+                           header2_height + other_options_height + buttons_top_margin + button_height)
+    
+    # Calculer position de départ pour centrer verticalement
+    control_bar_estimated_height = 80
+    available_height = config.screen_height - control_bar_estimated_height
+    start_y = (available_height - total_content_height) // 2
+    if start_y < 20:
+        start_y = 20  # Marge minimale du haut
+    
+    current_y = start_y
+    
+    # Titre
+    title = _("filter_advanced_title")
+    title_surface = config.title_font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, current_y + 20))
+    screen.blit(title_surface, title_rect)
+    current_y += title_height
+    
+    region_index_start = 0  # Les régions commencent à l'index 0
+    
+    for option in options:
         option_type = option[0]
         
         if option_type == 'header':
             # En-tête de section
             text_surface = config.font.render(option[1], True, THEME_COLORS["title_text"])
-            screen.blit(text_surface, (100, current_y))
+            text_rect = text_surface.get_rect(center=(config.screen_width // 2, current_y + 20))
+            screen.blit(text_surface, text_rect)
             current_y += line_height
         
         elif option_type == 'separator':
-            current_y += 10
+            current_y += separator_height
         
-        elif option_type in ['region', 'toggle', 'button_inline']:
-            # Option sélectionnable
-            x = 120
-            width = config.screen_width - 240
-            height = 45
+        elif option_type == 'region_grid':
+            # Afficher les régions en grille 3 par ligne
+            regions_data = option[1]
+            item_spacing_x = 20
+            
+            # Calculer la largeur maximale nécessaire pour les boutons de régions
+            max_region_width = 0
+            for region_data in regions_data:
+                text = region_data[2]
+                text_surface = config.font.render(text, True, THEME_COLORS["text"])
+                text_width = text_surface.get_width() + 30  # Padding de 30px
+                if text_width > max_region_width:
+                    max_region_width = text_width
+            
+            # Largeur minimale de 200px
+            item_width = max(max_region_width, 200)
+            
+            # Calculer la largeur totale de la grille
+            total_grid_width = items_per_row * item_width + (items_per_row - 1) * item_spacing_x
+            grid_start_x = (config.screen_width - total_grid_width) // 2
+            
+            for idx, region_data in enumerate(regions_data):
+                row = idx // items_per_row
+                col = idx % items_per_row
+                
+                x = grid_start_x + col * (item_width + item_spacing_x)
+                y = current_y + row * (item_height + item_spacing_y)
+                
+                # Index global de cette région
+                global_idx = region_index_start + idx
+                
+                # Couleur selon sélection
+                if global_idx == config.selected_filter_option:
+                    bg_color = THEME_COLORS["button_selected"]
+                    border_color = THEME_COLORS["border_selected"]
+                else:
+                    bg_color = THEME_COLORS["button_idle"]
+                    border_color = THEME_COLORS["border"]
+                
+                # Dessiner fond
+                pygame.draw.rect(screen, bg_color, (x, y, item_width, item_height), border_radius=8)
+                pygame.draw.rect(screen, border_color, (x, y, item_width, item_height), 2, border_radius=8)
+                
+                # Texte centré
+                text = region_data[2]
+                text_color = region_data[3]
+                
+                text_surface = config.font.render(text, True, text_color)
+                text_rect = text_surface.get_rect(center=(x + item_width // 2, y + item_height // 2))
+                screen.blit(text_surface, text_rect)
+            
+            # Calculer la hauteur occupée par la grille
+            current_y += num_rows * (item_height + item_spacing_y) + 10
+        
+        elif option_type in ['toggle', 'button_inline']:
+            # Option sélectionnable - largeur adaptée au texte
+            text = option[2]
+            text_surface = config.font.render(text, True, THEME_COLORS["text"])
+            text_width = text_surface.get_width()
+            
+            # Largeur avec padding
+            width = text_width + 40
+            x = (config.screen_width - width) // 2  # Centrer
+            height = item_height
+            
+            # Index global de cette option (après les régions)
+            global_idx = len(regions_list) + len([opt for opt in options[:options.index(option)] if opt[0] in ['toggle', 'button_inline']])
             
             # Couleur selon sélection
-            if i == config.selected_filter_option:
+            if global_idx == config.selected_filter_option:
                 bg_color = THEME_COLORS["button_selected"]
                 border_color = THEME_COLORS["border_selected"]
             else:
@@ -3512,33 +3714,35 @@ def draw_filter_advanced(screen):
             pygame.draw.rect(screen, bg_color, (x, current_y, width, height), border_radius=8)
             pygame.draw.rect(screen, border_color, (x, current_y, width, height), 2, border_radius=8)
             
-            # Texte
-            if option_type == 'region':
-                text = option[2]
-                text_color = option[3]
-            else:
-                text = option[2]
-                text_color = THEME_COLORS["text"]
-            
-            text_surface = config.font.render(text, True, text_color)
-            text_rect = text_surface.get_rect(left=x + 20, centery=current_y + height // 2)
+            # Texte centré
+            text_color = THEME_COLORS["text"]
+            text_rect = text_surface.get_rect(center=(x + width // 2, current_y + height // 2))
             screen.blit(text_surface, text_rect)
             
             current_y += height + 10
     
     # Afficher les 3 boutons côte à côte en bas
-    # Calculer la position pour éviter la barre de contrôles (hauteur estimée ~60-80px)
-    control_bar_estimated_height = 80
-    button_width = 200
-    button_height = 50
+    current_y += buttons_top_margin
+    button_y = current_y
     button_spacing = 20
-    total_buttons_width = button_width * 3 + button_spacing * 2
-    button_start_x = (config.screen_width - total_buttons_width) // 2
-    button_y = config.screen_height - control_bar_estimated_height - button_height - 20
     
+    # Calculer la largeur de chaque bouton en fonction du texte
+    button_widths = []
+    for button_id, button_text in buttons:
+        text_surface = config.font.render(button_text, True, THEME_COLORS["text"])
+        button_widths.append(text_surface.get_width() + 40)  # Padding de 40px
+    
+    # Largeur totale des boutons
+    total_buttons_width = sum(button_widths) + button_spacing * (len(buttons) - 1)
+    button_start_x = (config.screen_width - total_buttons_width) // 2
+    
+    # Calculer l'index de début des boutons (après toutes les régions et autres options)
+    button_index_start = len(regions_list) + num_other_options
+    
+    current_button_x = button_start_x
     for i, (button_id, button_text) in enumerate(buttons):
-        button_index = len(options) + i
-        button_x = button_start_x + i * (button_width + button_spacing)
+        button_index = button_index_start + i
+        button_width = button_widths[i]
         
         # Couleur selon sélection
         if button_index == config.selected_filter_option:
@@ -3549,19 +3753,21 @@ def draw_filter_advanced(screen):
             border_color = THEME_COLORS["border"]
         
         # Dessiner bouton
-        pygame.draw.rect(screen, bg_color, (button_x, button_y, button_width, button_height), border_radius=8)
-        pygame.draw.rect(screen, border_color, (button_x, button_y, button_width, button_height), 2, border_radius=8)
+        pygame.draw.rect(screen, bg_color, (current_button_x, button_y, button_width, button_height), border_radius=8)
+        pygame.draw.rect(screen, border_color, (current_button_x, button_y, button_width, button_height), 2, border_radius=8)
         
         # Texte centré
         text_surface = config.font.render(button_text, True, THEME_COLORS["text"])
-        text_rect = text_surface.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
+        text_rect = text_surface.get_rect(center=(current_button_x + button_width // 2, button_y + button_height // 2))
         screen.blit(text_surface, text_rect)
+        
+        current_button_x += button_width + button_spacing
     
     # Info filtre actif (au-dessus des boutons)
     if config.game_filter_obj.is_active():
         info_text = _("filter_active")
         info_surface = config.small_font.render(info_text, True, THEME_COLORS["green"])
-        info_rect = info_surface.get_rect(center=(config.screen_width // 2, button_y - 30))
+        info_rect = info_surface.get_rect(center=(config.screen_width // 2, button_y - 20))
         screen.blit(info_surface, info_rect)
 
 

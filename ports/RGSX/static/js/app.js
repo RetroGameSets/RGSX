@@ -2075,7 +2075,7 @@
                         hide_non_release: document.getElementById('hide-non-release')?.checked || savedHideNonRelease,
                         one_rom_per_game: document.getElementById('one-rom-per-game')?.checked || savedOneRomPerGame,
                         regex_mode: document.getElementById('regex-mode')?.checked || savedRegexMode,
-                        region_priority: regionPriority
+                        region_priority: regionPriorityOrder
                     }
                 };
                 
@@ -2175,7 +2175,7 @@
         }
         
         // Générer un fichier ZIP de support
-        async function generateSupportZip() {
+        async function generateSupportZip(event) {
             try {
                 // Afficher un message de chargement
                 const loadingMsg = t('web_support_generating');
