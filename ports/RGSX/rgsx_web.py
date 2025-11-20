@@ -246,11 +246,11 @@ def get_translation(key, default=None):
     return key
 
 # Fonction pour normaliser les tailles de fichier
-def normalize_size(size_str):
+def normalize_size(size_str, lang='en'):
     """
     Normalise une taille de fichier dans différents formats (Ko, KiB, Mo, MiB, Go, GiB)
-    en un format uniforme (Mo ou Go).
-    Exemples: "150 Mo" -> "150 Mo", "1.5 Go" -> "1.5 Go", "500 Ko" -> "0.5 Mo", "2 GiB" -> "2.15 Go"
+    en un format uniforme selon la langue (MB/GB pour anglais, Mo/Go pour français).
+    Exemples: "150 Mo" -> "150 MB" (en), "1.5 Go" -> "1.5 GB" (en), "500 Ko" -> "0.5 MB"
     """
     if not size_str:
         return None
@@ -282,16 +282,24 @@ def normalize_size(size_str):
         elif unit in ['gio', 'gib']:
             value = value * 1024  # GiB en Mo
         
-        # Afficher en Go si > 1024 Mo, sinon en Mo
-        if value >= 1024:
-            return f"{value / 1024:.2f} Go".rstrip('0').rstrip('.')
+        # Déterminer les unités selon la langue
+        if lang == 'fr':
+            mb_unit = 'Mo'
+            gb_unit = 'Go'
         else:
-            # Arrondir à 1 décimale pour Mo
+            mb_unit = 'MB'
+            gb_unit = 'GB'
+        
+        # Afficher en GB/Go si > 1024 Mo, sinon en MB/Mo
+        if value >= 1024:
+            return f"{value / 1024:.2f} {gb_unit}".replace('.00 ', ' ').rstrip('0').rstrip('.')
+        else:
+            # Arrondir à 1 décimale pour MB/Mo
             rounded = round(value, 1)
             if rounded == int(rounded):
-                return f"{int(rounded)} Mo"
+                return f"{int(rounded)} {mb_unit}"
             else:
-                return f"{rounded} Mo".rstrip('0').rstrip('.')
+                return f"{rounded} {mb_unit}".rstrip('0').rstrip('.')
     except (ValueError, TypeError):
         return size_str  # Retourner original si conversion échoue
 
@@ -472,6 +480,20 @@ class RGSXHandler(BaseHTTPRequestHandler):
         """Répond avec un 404 générique."""
         self._set_headers('text/plain; charset=utf-8', status=404)
         self.wfile.write(b'Not found')
+    
+    def _get_language_from_cookies(self):
+        """Récupère la langue depuis les cookies ou retourne 'en' par défaut"""
+        cookie_header = self.headers.get('Cookie', '')
+        if cookie_header:
+            # Parser les cookies
+            cookies = {}
+            for cookie in cookie_header.split(';'):
+                cookie = cookie.strip()
+                if '=' in cookie:
+                    key, value = cookie.split('=', 1)
+                    cookies[key] = value
+            return cookies.get('language', 'en')
+        return 'en'
 
     def _asset_version(self, relative_path: str) -> str:
         """Retourne un identifiant de version basé sur la date de modification du fichier statique."""
@@ -681,7 +703,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                                         'game_name': game_name,
                                         'platform': platform_name,
                                         'url': game[1] if len(game) > 1 and isinstance(game, (list, tuple)) else None,
-                                        'size': normalize_size(game[2] if len(game) > 2 and isinstance(game, (list, tuple)) else None)
+                                        'size': normalize_size(game[2] if len(game) > 2 and isinstance(game, (list, tuple)) else None, self._get_language_from_cookies())
                                     })
                         except Exception as e:
                             logger.debug(f"Erreur lors de la recherche dans {platform_name}: {e}")
@@ -722,12 +744,15 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 platform_name = path.split('/api/games/')[-1]
                 platform_name = urllib.parse.unquote(platform_name)
                 
+                # Récupérer la langue depuis les cookies ou utiliser 'en' par défaut
+                lang = self._get_language_from_cookies()
+                
                 games, _, games_last_modified = get_cached_games(platform_name)
                 games_formatted = [
                     {
                         'name': g[0],
                         'url': g[1] if len(g) > 1 else None,
-                        'size': normalize_size(g[2] if len(g) > 2 else None)
+                        'size': normalize_size(g[2] if len(g) > 2 else None, lang)
                     }
                     for g in games
                 ]

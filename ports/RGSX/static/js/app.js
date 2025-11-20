@@ -1083,13 +1083,24 @@
                 const getSizeInMo = (sizeElem) => {
                     if (!sizeElem) return 0;
                     const text = sizeElem.textContent;
-                    // Les tailles sont maintenant normalisées: "100 Mo" ou "2.5 Go"
-                    const match = text.match(/([0-9.]+)\\s*(Mo|Go)/i);
+                    // Support des formats: "100 Mo", "2.5 Go" (français) et "100 MB", "2.5 GB" (anglais)
+                    // Plus Ko/KB, o/B, To/TB
+                    const match = text.match(/([0-9.]+)\s*(o|B|Ko|KB|Mo|MB|Go|GB|To|TB)/i);
                     if (!match) return 0;
                     let size = parseFloat(match[1]);
-                    // Convertir Go en Mo pour comparaison
-                    if (match[2].toUpperCase() === 'GO') {
-                        size *= 1024;
+                    const unit = match[2].toUpperCase();
+                    
+                    // Convertir tout en Mo
+                    if (unit === 'O' || unit === 'B') {
+                        size /= (1024 * 1024); // octets/bytes vers Mo
+                    } else if (unit === 'KO' || unit === 'KB') {
+                        size /= 1024; // Ko vers Mo
+                    } else if (unit === 'MO' || unit === 'MB') {
+                        // Déjà en Mo
+                    } else if (unit === 'GO' || unit === 'GB') {
+                        size *= 1024; // Go vers Mo
+                    } else if (unit === 'TO' || unit === 'TB') {
+                        size *= 1024 * 1024; // To vers Mo
                     }
                     return size;
                 };
