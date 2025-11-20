@@ -109,6 +109,53 @@
             document.head.appendChild(style);
         }
         
+        // Modal pour afficher les messages support avec formatage
+        function showSupportModal(title, message) {
+            // Remplacer les \n littéraux par de vrais retours à la ligne
+            message = message.replace(/\\n/g, '\n');
+            
+            // Créer la modal
+            const modal = document.createElement('div');
+            modal.className = 'support-modal';
+            
+            const modalContent = document.createElement('div');
+            modalContent.className = 'support-modal-content';
+            
+            // Titre
+            const titleElement = document.createElement('h2');
+            titleElement.textContent = title;
+            
+            // Message avec retours à la ligne préservés
+            const messageElement = document.createElement('div');
+            messageElement.className = 'support-modal-message';
+            messageElement.textContent = message;
+            
+            // Bouton OK
+            const okButton = document.createElement('button');
+            okButton.textContent = 'OK';
+            okButton.onclick = () => {
+                modal.style.animation = 'fadeOut 0.2s ease-in';
+                setTimeout(() => modal.remove(), 200);
+            };
+            
+            // Assembler la modal
+            modalContent.appendChild(titleElement);
+            modalContent.appendChild(messageElement);
+            modalContent.appendChild(okButton);
+            modal.appendChild(modalContent);
+            
+            // Ajouter au DOM
+            document.body.appendChild(modal);
+            
+            // Fermer en cliquant sur le fond
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    modal.style.animation = 'fadeOut 0.2s ease-in';
+                    setTimeout(() => modal.remove(), 200);
+                }
+            };
+        }
+        
         // Charger les traductions au démarrage
         async function loadTranslations() {
             try {
@@ -2218,8 +2265,8 @@
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
                 
-                // Afficher le message d'instructions
-                alert(t('web_support_title') + '\\n\\n' + t('web_support_message'));
+                // Afficher le message d'instructions dans une modal
+                showSupportModal(t('web_support_title'), t('web_support_message'));
                 
                 // Restaurer le bouton
                 if (originalButton) {

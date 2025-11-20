@@ -341,7 +341,7 @@
     "web_restart_error": "Erreur lors du redémarrage : {0}",
     "web_support": "Support",
     "web_support_title": "📦 Fichier de support généré",
-    "web_support_message": "Le fichier de support a été créé avec succès !\\n\\n📁 Contenu :\\n• Configuration des contrôles\\n• Historique des téléchargements\\n• Paramètres RGSX\\n• Logs de l'application\\n• Logs du serveur web\\n\\n💬 Pour obtenir de l'aide :\\n1. Rejoignez le Discord RGSX\\n2. Décrivez votre problème\\n3. Partagez ce fichier ZIP\\n\\nLe téléchargement va démarrer...",
+    "web_support_message": "Le fichier de support a été créé avec succès !\n\n📁 Contenu :\n• Configuration des contrôles\n• Historique des téléchargements\n• Paramètres RGSX\n• Logs de l'application\n• Logs du serveur web\n\n💬 Pour obtenir de l'aide :\n1. Rejoignez le Discord RGSX\n2. Décrivez votre problème\n3. Partagez ce fichier ZIP\n\nLe téléchargement va démarrer...",
     "web_support_generating": "Génération du fichier de support...",
     "web_support_download": "Télécharger le fichier de support",
     "web_support_error": "Erreur lors de la génération du fichier de support : {0}",

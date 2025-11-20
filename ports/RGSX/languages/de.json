@@ -339,7 +339,7 @@
     "web_restart_error": "Fehler beim Neustart: {0}",
     "web_support": "Support",
     "web_support_title": "📦 Support-Datei erstellt",
-    "web_support_message": "Support-Datei erfolgreich erstellt!\\n\\n📁 Inhalt:\\n• Steuerungskonfiguration\\n• Download-Verlauf\\n• RGSX-Einstellungen\\n• Anwendungsprotokolle\\n• Webserver-Protokolle\\n\\n💬 Um Hilfe zu erhalten:\\n1. Trete dem RGSX Discord bei\\n2. Beschreibe dein Problem\\n3. Teile diese ZIP-Datei\\n\\nDownload startet...",
+    "web_support_message": "Support-Datei erfolgreich erstellt!\n\n📁 Inhalt:\n• Steuerungskonfiguration\n• Download-Verlauf\n• RGSX-Einstellungen\n• Anwendungsprotokolle\n• Webserver-Protokolle\n\n💬 Um Hilfe zu erhalten:\n1. Trete dem RGSX Discord bei\n2. Beschreibe dein Problem\n3. Teile diese ZIP-Datei\n\nDownload startet...",
     "web_support_generating": "Support-Datei wird generiert...",
     "web_support_download": "Support-Datei herunterladen",
     "web_support_error": "Fehler beim Erstellen der Support-Datei: {0}",
