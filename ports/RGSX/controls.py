@@ -517,6 +517,8 @@ def handle_controls(event, sources, joystick, screen):
                 max_row = len(keyboard_layout) - 1
                 max_col = len(keyboard_layout[row]) - 1
                 if is_input_matched(event, "up"):
+                    if row == 0: # if you are in the first row and press UP jump to last row
+                        row = max_row + (1 if col <= 5 else 0)
                     if row > 0:
                         config.selected_key = (row - 1, min(col, len(keyboard_layout[row - 1]) - 1))
                         config.repeat_action = "up"
@@ -525,6 +527,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                         config.needs_redraw = True
                 elif is_input_matched(event, "down"):
+                    if (col <= 5 and row == max_row) or (col > 5 and row == max_row-1): # if you are in the last row and press DOWN jump to first row
+                        row = -1
                     if row < max_row:
                         config.selected_key = (row + 1, min(col, len(keyboard_layout[row + 1]) - 1))
                         config.repeat_action = "down"
@@ -533,6 +537,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                         config.needs_redraw = True
                 elif is_input_matched(event, "left"):
+                    if col == 0: # if you are in the first col and press LEFT jump to last col
+                        col = max_col + 1
                     if col > 0:
                         config.selected_key = (row, col - 1)
                         config.repeat_action = "left"
@@ -541,6 +547,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                         config.needs_redraw = True
                 elif is_input_matched(event, "right"):
+                    if col == max_col: # if you are in the last col and press RIGHT jump to first col
+                        col = -1
                     if col < max_col:
                         config.selected_key = (row, col + 1)
                         config.repeat_action = "right"
