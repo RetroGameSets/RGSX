@@ -189,32 +189,38 @@ THEME_COLORS = {
     # Néon image grille des systèmes
     "neon": (0, 134, 179),  # bleu
     # Dégradé sombre pour le fond
-    "background_top": (30, 40, 50),  
-    "background_bottom": (60, 80, 100), # noir vers bleu foncé
+    "background_top": (20, 25, 35),  
+    "background_bottom": (45, 55, 75), # noir vers bleu foncé
     # Fond des cadres
-    "button_idle": (50, 50, 70, 150),  # Bleu sombre métal
+    "button_idle": (45, 50, 65, 180),  # Bleu sombre métal avec plus d'opacité
     # Fond des boutons sélectionnés
-    "button_selected": (70, 70, 100, 200),  # Bleu plus clair
+    "button_selected": (70, 80, 110, 220),  # Bleu plus clair
     # Fond des boutons hover dans les popups ou menu
-    "button_hover": (255, 0, 255, 220),  # Rose
+    "button_hover": (255, 0, 255, 240),  # Rose vif
     # Générique
     "text": (255, 255, 255),  # blanc
     # Texte sélectionné (alias pour compatibilité)
     "text_selected": (0, 255, 0),  # utilise le même vert que fond_lignes
     # Erreur
-    "error_text": (255, 0, 0),  # rouge
+    "error_text": (255, 60, 60),  # rouge vif
     # Succès
-    "success_text": (0, 255, 0),  # vert
+    "success_text": (0, 255, 150),  # vert cyan
     # Avertissement
-    "warning_text": (255, 100, 0),  # orange
+    "warning_text": (255, 150, 0),  # orange vif
     # Titres 
-    "title_text": (200, 200, 200), # gris clair
+    "title_text": (220, 220, 230), # gris très clair
     # Bordures
-    "border": (150, 150, 150),  # Bordures grises subtiles
-    "border_selected": (0, 255, 0),  # Bordure verte pour sélection
+    "border": (100, 120, 150),  # Bordures bleutées
+    "border_selected": (0, 255, 150),  # Bordure verte cyan pour sélection
     # Couleurs pour filtres
     "green": (0, 255, 0),  # vert
     "red": (255, 0, 0),  # rouge
+    # Nouvelles couleurs pour effets modernes
+    "shadow": (0, 0, 0, 100),  # Ombre portée
+    "glow": (100, 180, 255, 40),  # Effet glow bleu doux
+    "highlight": (255, 255, 255, 20),  # Reflet subtil
+    "accent_gradient_start": (80, 120, 200),  # Début dégradé accent
+    "accent_gradient_end": (120, 80, 200),  # Fin dégradé accent
 }
 
 # Général, résolution, overlay
@@ -228,34 +234,104 @@ def init_display():
     screen = pygame.display.set_mode((screen_width, screen_height))
     config.screen_width = screen_width
     config.screen_height = screen_height
-    # Initialisation de OVERLAY
+    # Initialisation de OVERLAY avec effet glassmorphism
     OVERLAY = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
-    OVERLAY.fill((0, 0, 0, 150))  # Transparence augmentée
+    OVERLAY.fill((5, 10, 20, 160))  # Bleu très foncé semi-transparent pour effet verre
     logger.debug(f"Écran initialisé avec résolution : {screen_width}x{screen_height}")
     return screen
 
 # Fond d'écran dégradé
 def draw_gradient(screen, top_color, bottom_color):
-    """Dessine un fond dégradé vertical avec des couleurs vibrantes."""
+    """Dessine un fond dégradé vertical avec des couleurs vibrantes et texture de grain."""
     height = screen.get_height()
+    width = screen.get_width()
     top_color = pygame.Color(*top_color)
     bottom_color = pygame.Color(*bottom_color)
+    
+    # Dégradé principal
     for y in range(height):
         ratio = y / height
         color = top_color.lerp(bottom_color, ratio)
-        pygame.draw.line(screen, color, (0, y), (screen.get_width(), y))
+        pygame.draw.line(screen, color, (0, y), (width, y))
+    
+    # Ajouter une texture de grain subtile pour plus de profondeur
+    grain_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+    import random
+    random.seed(42)  # Seed fixe pour cohérence
+    for _ in range(width * height // 200):  # Réduire la densité pour performance
+        x = random.randint(0, width - 1)
+        y = random.randint(0, height - 1)
+        alpha = random.randint(5, 20)
+        grain_surface.set_at((x, y), (255, 255, 255, alpha))
+    screen.blit(grain_surface, (0, 0))
+
+
+def draw_shadow(surface, rect, offset=6, alpha=120):
+    """Dessine une ombre portée pour un rectangle."""
+    shadow = pygame.Surface((rect.width + offset, rect.height + offset), pygame.SRCALPHA)
+    pygame.draw.rect(shadow, (0, 0, 0, alpha), (0, 0, rect.width + offset, rect.height + offset), border_radius=15)
+    return shadow
+
+
+def draw_glow_effect(screen, rect, color, intensity=80, size=10):
+    """Dessine un effet de glow autour d'un rectangle."""
+    glow = pygame.Surface((rect.width + size * 2, rect.height + size * 2), pygame.SRCALPHA)
+    for i in range(size):
+        alpha = int(intensity * (1 - i / size))
+        pygame.draw.rect(glow, (*color[:3], alpha), 
+                        (i, i, rect.width + (size - i) * 2, rect.height + (size - i) * 2), 
+                        border_radius=15)
+    screen.blit(glow, (rect.x - size, rect.y - size))
 
 # Nouvelle fonction pour dessiner un bouton stylisé
 def draw_stylized_button(screen, text, x, y, width, height, selected=False):
-    """Dessine un bouton moderne avec effet de survol et bordure arrondie."""
-    button_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+    """Dessine un bouton moderne avec effet de survol, ombre et bordure arrondie."""
+    # Ombre portée subtile
+    shadow_surf = pygame.Surface((width + 6, height + 6), pygame.SRCALPHA)
+    pygame.draw.rect(shadow_surf, THEME_COLORS["shadow"], (3, 3, width, height), border_radius=12)
+    screen.blit(shadow_surf, (x - 3, y - 3))
+    
     button_color = THEME_COLORS["button_hover"] if selected else THEME_COLORS["button_idle"]
-    pygame.draw.rect(button_surface, button_color, (0, 0, width, height), border_radius=12)
-    pygame.draw.rect(button_surface, THEME_COLORS["border"], (0, 0, width, height), 2, border_radius=12)
+    
+    button_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+    
+    # Fond avec dégradé subtil pour bouton sélectionné
     if selected:
-        glow_surface = pygame.Surface((width + 10, height + 10), pygame.SRCALPHA)
-        pygame.draw.rect(glow_surface, THEME_COLORS["fond_lignes"] + (50,), (5, 5, width, height), border_radius=12)
-        screen.blit(glow_surface, (x - 5, y - 5))
+        # Créer le dégradé
+        for i in range(height):
+            ratio = i / height
+            brightness = 1 + 0.2 * ratio
+            r = min(255, int(button_color[0] * brightness))
+            g = min(255, int(button_color[1] * brightness))
+            b = min(255, int(button_color[2] * brightness))
+            alpha = button_color[3] if len(button_color) > 3 else 255
+            rect = pygame.Rect(0, i, width, 1)
+            pygame.draw.rect(button_surface, (r, g, b, alpha), rect)
+        
+        # Appliquer les coins arrondis avec un masque
+        mask_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        pygame.draw.rect(mask_surface, (255, 255, 255, 255), (0, 0, width, height), border_radius=12)
+        button_surface.blit(mask_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    else:
+        pygame.draw.rect(button_surface, button_color, (0, 0, width, height), border_radius=12)
+    
+    # Reflet en haut
+    highlight = pygame.Surface((width - 4, height // 3), pygame.SRCALPHA)
+    highlight.fill(THEME_COLORS["highlight"])
+    button_surface.blit(highlight, (2, 2))
+    
+    # Bordure
+    pygame.draw.rect(button_surface, THEME_COLORS["border"], (0, 0, width, height), 2, border_radius=12)
+    
+    if selected:
+        # Effet glow doux pour sélection
+        glow_surface = pygame.Surface((width + 16, height + 16), pygame.SRCALPHA)
+        for i in range(6):
+            alpha = int(40 * (1 - i / 6))
+            pygame.draw.rect(glow_surface, (*THEME_COLORS["glow"][:3], alpha), 
+                           (i, i, width + 16 - i*2, height + 16 - i*2), border_radius=15)
+        screen.blit(glow_surface, (x - 8, y - 8))
+    
     screen.blit(button_surface, (x, y))
     
     # Vérifier si le texte dépasse la largeur disponible
@@ -636,14 +712,35 @@ def draw_platform_grid(screen):
 
     # Effet de pulsation subtil pour le titre - calculé une seule fois par frame
     current_time = pygame.time.get_ticks()
-    pulse_factor = 0.05 * (1 + math.sin(current_time / 500))
-    title_glow = pygame.Surface((title_rect_inflated.width + 10, title_rect_inflated.height + 10), pygame.SRCALPHA)
-    pygame.draw.rect(title_glow, THEME_COLORS["neon"] + (int(40 * pulse_factor),), 
-                    title_glow.get_rect(), border_radius=14)
-    screen.blit(title_glow, (title_rect_inflated.left - 5, title_rect_inflated.top - 5))
+    pulse_factor = 0.08 * (1 + math.sin(current_time / 400))
     
-    pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)
-    pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
+    # Ombre portée pour le titre
+    shadow_surf = pygame.Surface((title_rect_inflated.width + 12, title_rect_inflated.height + 12), pygame.SRCALPHA)
+    pygame.draw.rect(shadow_surf, (0, 0, 0, 140), (6, 6, title_rect_inflated.width, title_rect_inflated.height), border_radius=16)
+    screen.blit(shadow_surf, (title_rect_inflated.left - 6, title_rect_inflated.top - 6))
+    
+            # Glow multicouche pour le titre
+    for i in range(2):
+        glow_size = title_rect_inflated.inflate(15 + i * 8, 15 + i * 8)
+        title_glow = pygame.Surface((glow_size.width, glow_size.height), pygame.SRCALPHA)
+        alpha = int((30 + 20 * pulse_factor) * (1 - i / 2))
+        pygame.draw.rect(title_glow, (*THEME_COLORS["neon"][:3], alpha), 
+                        title_glow.get_rect(), border_radius=16 + i * 2)
+        screen.blit(title_glow, (title_rect_inflated.left - 8 - i * 4, title_rect_inflated.top - 8 - i * 4))    # Fond du titre avec dégradé
+    title_bg = pygame.Surface((title_rect_inflated.width, title_rect_inflated.height), pygame.SRCALPHA)
+    for i in range(title_rect_inflated.height):
+        ratio = i / title_rect_inflated.height
+        alpha = int(THEME_COLORS["button_idle"][3] * (1 + ratio * 0.1))
+        pygame.draw.line(title_bg, (*THEME_COLORS["button_idle"][:3], alpha), 
+                        (0, i), (title_rect_inflated.width, i))
+    screen.blit(title_bg, title_rect_inflated.topleft)
+    
+    # Reflet en haut du titre
+    highlight = pygame.Surface((title_rect_inflated.width - 8, title_rect_inflated.height // 3), pygame.SRCALPHA)
+    highlight.fill((255, 255, 255, 25))
+    screen.blit(highlight, (title_rect_inflated.left + 4, title_rect_inflated.top + 4))
+    
+    pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=14)
     screen.blit(title_surface, title_rect)
 
     # Configuration de la grille - calculée une seule fois
@@ -689,9 +786,11 @@ def draw_platform_grid(screen):
     if total_pages > 1:
         page_indicator_text = _("platform_page").format(config.current_page + 1, total_pages)
         page_indicator = config.small_font.render(page_indicator_text, True, THEME_COLORS["text"])
-        # Positionner au-dessus du footer (réserver ~80px pour le footer)
-        footer_reserved_height = 80
-        page_y = config.screen_height - footer_reserved_height - page_indicator.get_height() - 10
+        # Position fixe : 5px au-dessus du footer
+        # Le footer commence à screen_height - rect_height - 5 (voir draw_controls)
+        # On estime la hauteur du footer à environ 50-60px selon le contenu
+        # Pour être sûr, on positionne à screen_height - 60px (hauteur footer) - 5px (marge) - hauteur du texte
+        page_y = config.screen_height - 65 - page_indicator.get_height()
         page_rect = page_indicator.get_rect(center=(config.screen_width // 2, page_y))
         screen.blit(page_indicator, page_rect)
 
@@ -860,6 +959,17 @@ def draw_game_list(screen):
         title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
         title_rect_inflated = title_rect.inflate(60, 30)
         title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
+        
+        # Ombre pour le titre de recherche
+        shadow = pygame.Surface((title_rect_inflated.width + 10, title_rect_inflated.height + 10), pygame.SRCALPHA)
+        pygame.draw.rect(shadow, (0, 0, 0, 120), (5, 5, title_rect_inflated.width, title_rect_inflated.height), border_radius=14)
+        screen.blit(shadow, (title_rect_inflated.left - 5, title_rect_inflated.top - 5))
+        
+        # Glow pour recherche active
+        glow = pygame.Surface((title_rect_inflated.width + 20, title_rect_inflated.height + 20), pygame.SRCALPHA)
+        pygame.draw.rect(glow, (*THEME_COLORS["glow"][:3], 60), glow.get_rect(), border_radius=16)
+        screen.blit(glow, (title_rect_inflated.left - 10, title_rect_inflated.top - 10))
+        
         pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)
         pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
         screen.blit(title_surface, title_rect)
@@ -884,11 +994,30 @@ def draw_game_list(screen):
         title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
         title_rect_inflated = title_rect.inflate(60, 30)
         title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
+        
+        # Ombre et glow pour titre normal
+        shadow = pygame.Surface((title_rect_inflated.width + 10, title_rect_inflated.height + 10), pygame.SRCALPHA)
+        pygame.draw.rect(shadow, (0, 0, 0, 120), (5, 5, title_rect_inflated.width, title_rect_inflated.height), border_radius=14)
+        screen.blit(shadow, (title_rect_inflated.left - 5, title_rect_inflated.top - 5))
+        
         pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)
         pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
         screen.blit(title_surface, title_rect)
 
+    # Ombre portée pour le cadre principal
+    shadow_rect = pygame.Rect(rect_x + 6, rect_y + 6, rect_width, rect_height)
+    shadow_surf = pygame.Surface((rect_width + 8, rect_height + 8), pygame.SRCALPHA)
+    pygame.draw.rect(shadow_surf, (0, 0, 0, 100), (4, 4, rect_width, rect_height), border_radius=14)
+    screen.blit(shadow_surf, (rect_x - 4, rect_y - 4))
+    
+    # Fond du cadre avec légère transparence glassmorphism
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    
+    # Reflet en haut du cadre
+    highlight = pygame.Surface((rect_width - 8, 40), pygame.SRCALPHA)
+    highlight.fill((255, 255, 255, 15))
+    screen.blit(highlight, (rect_x + 4, rect_y + 4))
+    
     pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
 
     # Largeur colonne taille (15%) mini 120px, reste pour nom
@@ -947,10 +1076,29 @@ def draw_game_list(screen):
         size_rect.midright = (rect_x + rect_width - 20, row_center_y)
         if i == config.current_game:
             glow_width = rect_width - 40
-            glow_height = name_rect.height + 10
-            glow_surface = pygame.Surface((glow_width, glow_height), pygame.SRCALPHA)
-            pygame.draw.rect(glow_surface, THEME_COLORS["fond_lignes"] + (50,), (0, 0, glow_width, glow_height), border_radius=8)
-            screen.blit(glow_surface, (rect_x + 20, row_center_y - glow_height // 2))
+            glow_height = name_rect.height + 12
+            
+            # Effet de glow plus doux pour la sélection
+            glow_surface = pygame.Surface((glow_width + 6, glow_height + 6), pygame.SRCALPHA)
+            alpha = 50
+            pygame.draw.rect(glow_surface, (*THEME_COLORS["fond_lignes"][:3], alpha), 
+                           (3, 3, glow_width, glow_height), 
+                           border_radius=8)
+            screen.blit(glow_surface, (rect_x + 17, row_center_y - glow_height // 2 - 3))
+            
+            # Fond principal de la sélection avec dégradé subtil
+            selection_bg = pygame.Surface((glow_width, glow_height), pygame.SRCALPHA)
+            for j in range(glow_height):
+                ratio = j / glow_height
+                alpha = int(60 + 20 * ratio)
+                pygame.draw.line(selection_bg, (*THEME_COLORS["fond_lignes"][:3], alpha), 
+                               (0, j), (glow_width, j))
+            screen.blit(selection_bg, (rect_x + 20, row_center_y - glow_height // 2))
+            
+            # Bordure lumineuse plus subtile
+            border_rect = pygame.Rect(rect_x + 20, row_center_y - glow_height // 2, glow_width, glow_height)
+            pygame.draw.rect(screen, (*THEME_COLORS["fond_lignes"][:3], 120), border_rect, width=1, border_radius=8)
+        
         screen.blit(name_surface, name_rect)
         screen.blit(size_surface, size_rect)
 
@@ -1777,9 +1925,9 @@ def draw_language_menu(screen):
     # Instructions (placer juste au-dessus du footer sans chevauchement)
     instruction_text = _("language_select_instruction")
     instruction_surface = config.small_font.render(instruction_text, True, THEME_COLORS["text"])
-    footer_reserved = 72  # hauteur approximative footer (barre bas) + marge
-    bottom_margin = 12
-    instruction_y = config.screen_height - footer_reserved - bottom_margin
+    # Position fixe : 5px au-dessus du footer
+    footer_height = 70  # Hauteur estimée du footer
+    instruction_y = config.screen_height - footer_height - instruction_surface.get_height() - 5
     # Empêcher un chevauchement avec les derniers boutons si espace réduit
     last_button_bottom = start_y + (len(available_languages) - 1) * (button_height + button_spacing) + button_height
     min_gap = 16
@@ -1799,9 +1947,10 @@ def draw_menu_instruction(screen, instruction_text, last_button_bottom=None):
         return
     try:
         instruction_surface = config.small_font.render(instruction_text, True, THEME_COLORS["text"])
-        footer_reserved = 72
-        bottom_margin = 12
-        instruction_y = config.screen_height - footer_reserved - bottom_margin
+        # Position fixe : 5px au-dessus du footer
+        footer_height = 70  # Hauteur estimée du footer
+        instruction_y = config.screen_height - footer_height - instruction_surface.get_height() - 5
+        # Empêcher chevauchement avec le dernier bouton
         min_gap = 16
         if last_button_bottom is not None and instruction_y - last_button_bottom < min_gap:
             instruction_y = last_button_bottom + min_gap
@@ -1876,10 +2025,13 @@ def draw_display_menu(screen):
             selected=(i == selected)
         )
 
-    # Aide en bas de l'écran
+    # Aide en bas de l'écran - Position fixe au-dessus du footer
     instruction_text = _("language_select_instruction")
     instruction_surface = config.small_font.render(instruction_text, True, THEME_COLORS["text"])
-    instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, config.screen_height - 50))
+    # Calculer la position en fonction de la hauteur du footer (environ 60-70px) + marge de 5px
+    footer_height = 70  # Hauteur estimée du footer
+    instruction_y = config.screen_height - footer_height - instruction_surface.get_height() - 5
+    instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, instruction_y))
     screen.blit(instruction_surface, instruction_rect)
 
 def draw_pause_menu(screen, selected_option):

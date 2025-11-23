@@ -1294,6 +1294,18 @@ def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=No
         if not success:
             return False, error_msg
     
+    # PSVita: extraction dans ux0/app + création fichier .psvita
+    psvita_dir_normal = os.path.join(config.ROMS_FOLDER, "psvita")
+    psvita_dir_symlink = os.path.join(config.ROMS_FOLDER, "psvita", "psvita")
+    is_psvita = (dest_dir == psvita_dir_normal or dest_dir == psvita_dir_symlink)
+    
+    if is_psvita:
+        expected_base = os.path.splitext(os.path.basename(archive_path))[0]
+        items_before = before_items if before_items is not None else before_dirs
+        success, error_msg = handle_psvita(dest_dir, items_before, extracted_basename=expected_base)
+        if not success:
+            return False, error_msg
+    
     return True, None
 
 def extract_zip(zip_path, dest_dir, url):
@@ -1957,6 +1969,136 @@ def handle_scummvm(dest_dir, before_items, extracted_basename=None):
         error_msg = f"Erreur lors de l'organisation ScummVM dans {game_folder_path}: {str(e)}"
         logger.error(error_msg)
         return False, error_msg
+
+
+def handle_psvita(dest_dir, before_items, extracted_basename=None):
+    """Gère l'organisation spécifique des jeux PSVita extraits.
+    
+    Structure attendue:
+    - Archive RAR extraite → Dossier "Nom du jeu"/
+    - Dans ce dossier → Fichier "IDJeu.zip" (ex: PCSE00890.zip)
+    - Ce ZIP contient → Dossier "IDJeu" (ex: PCSE00890/)
+    
+    Actions:
+    1. Créer fichier "Nom du jeu [IDJeu].psvita" dans dest_dir
+    2. Extraire IDJeu.zip dans config.SAVE_FOLDER/psvita/ux0/app/
+    3. Supprimer le dossier temporaire "Nom du jeu"/
+    
+    Args:
+        dest_dir: Dossier de destination (psvita ou psvita/psvita)
+        before_items: Set des éléments présents avant extraction
+        extracted_basename: Nom de base de l'archive extraite (sans extension)
+    """
+    logger.debug(f"Traitement spécifique PSVita dans: {dest_dir}")
+    time.sleep(2)  # Petite latence post-extraction
+    
+    try:
+        after_items = set(os.listdir(dest_dir))
+    except Exception:
+        after_items = set()
+    
+    ignore_names = {"psvita", "images", "videos", "manuals", "media"}
+    # Filtrer les nouveaux éléments (fichiers ou dossiers)
+    new_items = [item for item in (after_items - before_items) 
+                 if item not in ignore_names and not item.endswith('.psvita')]
+    
+    if not new_items:
+        logger.warning("PSVita: Aucun nouveau dossier détecté après extraction")
+        return True, None
+    
+    if not extracted_basename:
+        extracted_basename = new_items[0] if new_items else "game"
+    
+    # Chercher le dossier du jeu (normalement il n'y en a qu'un)
+    game_folder = None
+    for item in new_items:
+        item_path = os.path.join(dest_dir, item)
+        if os.path.isdir(item_path):
+            game_folder = item
+            game_folder_path = item_path
+            break
+    
+    if not game_folder:
+        logger.error("PSVita: Aucun dossier de jeu trouvé après extraction")
+        return False, "PSVita: Aucun dossier de jeu trouvé"
+    
+    logger.debug(f"PSVita: Dossier de jeu trouvé: {game_folder}")
+    
+    # Chercher le fichier ZIP à l'intérieur (IDJeu.zip)
+    try:
+        contents = os.listdir(game_folder_path)
+        zip_files = [f for f in contents if f.lower().endswith('.zip')]
+        
+        if not zip_files:
+            logger.error(f"PSVita: Aucun fichier ZIP trouvé dans {game_folder}")
+            return False, f"PSVita: Aucun ZIP trouvé dans {game_folder}"
+        
+        # Prendre le premier ZIP trouvé
+        zip_filename = zip_files[0]
+        zip_path = os.path.join(game_folder_path, zip_filename)
+        
+        # Extraire l'ID du jeu (nom du ZIP sans extension)
+        game_id = os.path.splitext(zip_filename)[0]
+        logger.debug(f"PSVita: ZIP trouvé: {zip_filename}, ID du jeu: {game_id}")
+        
+        # 1. Créer le fichier .psvita dans dest_dir
+        psvita_filename = f"{game_folder} [{game_id}].psvita"
+        psvita_file_path = os.path.join(dest_dir, psvita_filename)
+        
+        try:
+            # Créer un fichier vide .psvita
+            with open(psvita_file_path, 'w', encoding='utf-8') as f:
+                f.write(f"# PSVita Game\n")
+                f.write(f"# Game: {game_folder}\n")
+                f.write(f"# ID: {game_id}\n")
+            logger.info(f"PSVita: Fichier .psvita créé: {psvita_filename}")
+        except Exception as e:
+            logger.error(f"PSVita: Erreur création fichier .psvita: {e}")
+            return False, f"Erreur création {psvita_filename}: {e}"
+        
+        # 2. Extraire le ZIP dans le dossier parent de config.SAVE_FOLDER/psvita/ux0/app/
+        save_parent2 = os.path.dirname(config.SAVE_FOLDER)
+        save_parent = os.path.dirname(save_parent2)
+        ux0_app_dir = os.path.join(save_parent, "psvita", "ux0", "app")
+        os.makedirs(ux0_app_dir, exist_ok=True)
+        
+        logger.debug(f"PSVita: Extraction de {zip_filename} dans {ux0_app_dir}")
+        
+        try:
+            import zipfile
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(ux0_app_dir)
+            logger.info(f"PSVita: ZIP extrait avec succès dans {ux0_app_dir}")
+            
+            # Vérifier que le dossier game_id existe bien
+            game_id_path = os.path.join(ux0_app_dir, game_id)
+            if not os.path.exists(game_id_path):
+                logger.warning(f"PSVita: Le dossier {game_id} n'a pas été trouvé dans l'extraction")
+            else:
+                logger.info(f"PSVita: Dossier {game_id} confirmé dans ux0/app/")
+        
+        except zipfile.BadZipFile as e:
+            logger.error(f"PSVita: Fichier ZIP corrompu: {e}")
+            return False, f"ZIP corrompu: {zip_filename}"
+        except Exception as e:
+            logger.error(f"PSVita: Erreur extraction ZIP: {e}")
+            return False, f"Erreur extraction {zip_filename}: {e}"
+        
+        # 3. Supprimer le dossier temporaire du jeu
+        try:
+            import shutil
+            shutil.rmtree(game_folder_path)
+            logger.info(f"PSVita: Dossier temporaire supprimé: {game_folder}")
+        except Exception as e:
+            logger.warning(f"PSVita: Impossible de supprimer {game_folder}: {e}")
+            # Ne pas échouer pour ça, le jeu est quand même installé
+        
+        logger.info(f"PSVita: Traitement terminé avec succès - {psvita_filename} créé, {game_id} installé dans ux0/app/")
+        return True, None
+        
+    except Exception as e:
+        logger.error(f"PSVita: Erreur générale: {e}", exc_info=True)
+        return False, f"Erreur PSVita: {str(e)}"
 
 
 def handle_xbox(dest_dir, iso_files, url=None):
