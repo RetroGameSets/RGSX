@@ -453,8 +453,102 @@ async def check_for_updates():
         config.loading_progress = 5.0
         config.needs_redraw = True
 
-        response = requests.get(OTA_VERSION_ENDPOINT, timeout=5)
-        response.raise_for_status()
+        # Liste des endpoints à essayer (GitHub principal, puis fallback)
+        endpoints = [
+            OTA_VERSION_ENDPOINT,
+            "https://retrogamesets.fr/softs/version.json"
+        ]
+        
+        response = None
+        last_error = None
+        
+        for endpoint_index, endpoint in enumerate(endpoints):
+            is_fallback = endpoint_index > 0
+            if is_fallback:
+                logger.info(f"Tentative sur endpoint de secours : {endpoint}")
+            
+            # Gestion des erreurs de rate limit GitHub (429) avec retry
+            max_retries = 3 if not is_fallback else 1  # Moins de retries sur fallback
+            retry_count = 0
+            
+            while retry_count < max_retries:
+                try:
+                    response = requests.get(endpoint, timeout=10)
+                    
+                    # Gestion spécifique des erreurs 429 (Too Many Requests) - surtout pour GitHub
+                    if response.status_code == 429:
+                        retry_after = response.headers.get('retry-after')
+                        x_ratelimit_remaining = response.headers.get('x-ratelimit-remaining', '1')
+                        x_ratelimit_reset = response.headers.get('x-ratelimit-reset')
+                        
+                        if retry_after:
+                            # En-tête retry-after présent : attendre le nombre de secondes spécifié
+                            wait_time = int(retry_after)
+                            logger.warning(f"Rate limit atteint (429) sur {endpoint}. Attente de {wait_time}s (retry-after header)")
+                        elif x_ratelimit_remaining == '0' and x_ratelimit_reset:
+                            # x-ratelimit-remaining est 0 : attendre jusqu'à x-ratelimit-reset
+                            import time
+                            reset_time = int(x_ratelimit_reset)
+                            current_time = int(time.time())
+                            wait_time = max(reset_time - current_time, 60)  # Minimum 60s
+                            logger.warning(f"Rate limit atteint (429) sur {endpoint}. Attente de {wait_time}s (x-ratelimit-reset)")
+                        else:
+                            # Pas d'en-têtes spécifiques : attendre au moins 60s
+                            wait_time = 60
+                            logger.warning(f"Rate limit atteint (429) sur {endpoint}. Attente de {wait_time}s par défaut")
+                        
+                        if retry_count < max_retries - 1:
+                            logger.info(f"Nouvelle tentative dans {wait_time}s... ({retry_count + 1}/{max_retries})")
+                            await asyncio.sleep(wait_time)
+                            retry_count += 1
+                            continue
+                        else:
+                            # Si rate limit persistant et qu'on est sur GitHub, essayer le fallback
+                            if not is_fallback:
+                                logger.warning(f"Rate limit GitHub persistant, passage au serveur de secours")
+                                break  # Sortir de la boucle retry pour essayer le prochain endpoint
+                            raise requests.exceptions.HTTPError(
+                                f"Limite de débit atteinte (429). Veuillez réessayer plus tard."
+                            )
+                    
+                    response.raise_for_status()
+                    # Succès, sortir de toutes les boucles
+                    logger.debug(f"Version récupérée avec succès depuis : {endpoint}")
+                    break
+                    
+                except requests.exceptions.HTTPError as e:
+                    last_error = e
+                    if response and response.status_code == 429:
+                        # 429 géré au-dessus, continuer la boucle ou passer au fallback
+                        retry_count += 1
+                        if retry_count >= max_retries:
+                            break  # Passer au prochain endpoint
+                    else:
+                        # Erreur HTTP autre que 429
+                        logger.warning(f"Erreur HTTP {response.status_code if response else 'inconnue'} sur {endpoint}")
+                        break  # Passer au prochain endpoint
+                        
+                except requests.exceptions.RequestException as e:
+                    last_error = e
+                    if retry_count < max_retries - 1:
+                        # Erreur réseau, réessayer avec backoff exponentiel
+                        wait_time = 2 ** retry_count  # 1s, 2s, 4s
+                        logger.warning(f"Erreur réseau sur {endpoint}. Nouvelle tentative dans {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                        retry_count += 1
+                    else:
+                        logger.warning(f"Erreur réseau persistante sur {endpoint} : {e}")
+                        break  # Passer au prochain endpoint
+            
+            # Si on a une réponse valide, sortir de la boucle des endpoints
+            if response and response.status_code == 200:
+                break
+        
+        # Si aucun endpoint n'a fonctionné
+        if not response or response.status_code != 200:
+            raise last_error if last_error else requests.exceptions.RequestException(
+                "Impossible de vérifier les mises à jour sur tous les serveurs"
+            )
         
         # Accepter différents content-types (application/json, text/plain, text/html)
         content_type = response.headers.get("content-type", "")
