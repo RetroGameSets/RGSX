@@ -30,16 +30,9 @@ jobs:
           zip -r "../../dist/RGSX_update_latest.zip" . \
             -x "logs/*" \
                "logs/**" \
-               "images/*" \
-               "images/**" \
-               "games/*" \
-               "games/**" \
-               "scripts/*" \
-               "scripts/**" \
                "__pycache__/*" \
                "__pycache__/**" \
                "*.pyc" \
-               "sources.json" \
                "*.log"
           
           cd ../..
@@ -52,16 +45,9 @@ jobs:
           zip -r "dist/RGSX_full_latest.zip" ports windows \
             -x "ports/RGSX/logs/*" \
                "ports/RGSX/logs/**" \
-               "ports/RGSX/images/*" \
-               "ports/RGSX/images/**" \
-               "ports/RGSX/games/*" \
-               "ports/RGSX/games/**" \
-               "ports/RGSX/scripts/*" \
-               "ports/RGSX/scripts/**" \
                "ports/RGSX/__pycache__/*" \
                "ports/RGSX/__pycache__/**" \
                "ports/RGSX/*.pyc" \
-               "ports/RGSX/sources.json" \
                "ports/RGSX/*.log" \
                "windows/logs/*" \
                "windows/*.xml" \
