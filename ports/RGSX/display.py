@@ -755,8 +755,18 @@ def draw_platform_grid(screen):
     available_width = config.screen_width - margin_left - margin_right
     available_height = config.screen_height - margin_top - margin_bottom
 
+    # Calculer la taille des cellules en tenant compte de l'espace nécessaire pour le glow
+    # Réduire la taille effective pour laisser de l'espace entre les éléments
     col_width = available_width // num_cols
     row_height = available_height // num_rows
+    
+    # Calculer la taille du container basée sur la cellule la plus petite
+    # avec marges pour éviter les chevauchements (20% de marge)
+    cell_size = min(col_width, row_height)
+    container_size = int(cell_size * 0.70)  # 70% de la cellule pour laisser de l'espace
+    
+    # Espacement entre les cellules pour éviter les chevauchements
+    cell_padding = int(cell_size * 0.15)  # 15% d'espacement
 
     x_positions = [margin_left + col_width * i + col_width // 2 for i in range(num_cols)]
     y_positions = [margin_top + row_height * i + row_height // 2 for i in range(num_rows)]
@@ -794,8 +804,8 @@ def draw_platform_grid(screen):
         page_rect = page_indicator.get_rect(center=(config.screen_width // 2, page_y))
         screen.blit(page_indicator, page_rect)
 
-    # Calculer une seule fois la pulsation pour les éléments sélectionnés
-    pulse = 0.1 * math.sin(current_time / 300)
+    # Calculer une seule fois la pulsation pour les éléments sélectionnés (réduite)
+    pulse = 0.05 * math.sin(current_time / 300)  # Réduit de 0.1 à 0.05
     glow_intensity = 40 + int(30 * math.sin(current_time / 300))
     
     # Pré-calcul des images pour optimiser le rendu
@@ -809,9 +819,9 @@ def draw_platform_grid(screen):
         x = x_positions[col]
         y = y_positions[row]
         
-        # Animation fluide pour l'item sélectionné
+        # Animation fluide pour l'item sélectionné (réduite pour éviter chevauchement)
         is_selected = idx == config.selected_platform
-        scale_base = 1.5 if is_selected else 1.0
+        scale_base = 1.15 if is_selected else 1.0  # Réduit de 1.5 à 1.15
         scale = scale_base + pulse if is_selected else scale_base
             
         # Récupération robuste du dict via nom
@@ -830,62 +840,120 @@ def draw_platform_grid(screen):
         platform_id = platform_dict.get("platform_name") or platform_dict.get("platform") or display_name
         
         # Utiliser le cache d'images pour éviter de recharger/redimensionner à chaque frame
-        cache_key = f"{platform_id}_{scale:.2f}"
+        cache_key = f"{platform_id}_{scale:.2f}_{container_size}"
         if cache_key not in platform_images_cache:
             image = load_system_image(platform_dict)
             if image:
                 orig_width, orig_height = image.get_width(), image.get_height()
-                max_size = int(min(col_width, row_height) * scale * 1.1)  # Légèrement plus grand que la cellule
-                ratio = min(max_size / orig_width, max_size / orig_height)
+                
+                # Taille normalisée basée sur container_size calculé en fonction de la grille
+                # Le scale affecte uniquement l'item sélectionné
+                # Adapter la largeur en fonction du nombre de colonnes pour occuper ~25-30% de l'écran
+                if num_cols == 3:
+                    # En 3 colonnes, augmenter significativement la largeur (15% de l'écran par carte)
+                    actual_container_width = int(config.screen_width * 0.15 * scale)
+                elif num_cols == 4:
+                    # En 4 colonnes, largeur plus modérée (10% de l'écran par carte)
+                    actual_container_width = int(config.screen_width * 0.15 * scale)
+                else:
+                    # Par défaut, utiliser container_size * 1.3
+                    actual_container_width = int(container_size * scale * 1.3)
+                
+                actual_container_height = int(container_size * scale)  # Hauteur normale
+                
+                # Calculer le ratio pour fit dans le container en gardant l'aspect ratio
+                ratio = min(actual_container_width / orig_width, actual_container_height / orig_height)
                 new_width = int(orig_width * ratio)
                 new_height = int(orig_height * ratio)
+                
                 scaled_image = pygame.transform.smoothscale(image, (new_width, new_height))
                 platform_images_cache[cache_key] = {
                     "image": scaled_image,
                     "width": new_width,
                     "height": new_height,
+                    "container_width": actual_container_width,
+                    "container_height": actual_container_height,
                     "last_used": current_time
                 }
             else:
                 continue
-        else:
-            # Mettre à jour le timestamp de dernière utilisation
+        
+        # Récupérer les données du cache (que ce soit nouveau ou existant)
+        if cache_key in platform_images_cache:
             platform_images_cache[cache_key]["last_used"] = current_time
             scaled_image = platform_images_cache[cache_key]["image"]
             new_width = platform_images_cache[cache_key]["width"]
             new_height = platform_images_cache[cache_key]["height"]
+            container_width = platform_images_cache[cache_key]["container_width"]
+            container_height = platform_images_cache[cache_key]["container_height"]
+        else:
+            continue
         
         image_rect = scaled_image.get_rect(center=(x, y))
 
-        # Effet visuel amélioré pour l'item sélectionné
+        # Effet visuel moderne similaire au titre pour toutes les images
+        border_radius = 12
+        padding = 12
+        
+        # Utiliser la taille du container normalisé au lieu de la taille variable de l'image
+        rect_width = container_width + 2 * padding
+        rect_height = container_height + 2 * padding
+        
+        # Centrer le conteneur sur la position (x, y)
+        container_left = x - rect_width // 2
+        container_top = y - rect_height // 2
+        
+        # Ombre portée
+        shadow_surf = pygame.Surface((rect_width + 12, rect_height + 12), pygame.SRCALPHA)
+        pygame.draw.rect(shadow_surf, (0, 0, 0, 160), (6, 6, rect_width, rect_height), border_radius=border_radius + 4)
+        screen.blit(shadow_surf, (container_left - 6, container_top - 6))
+        
+        # Effet de glow multicouche pour l'item sélectionné
         if is_selected:
             neon_color = THEME_COLORS["neon"]
-            border_radius = 12
-            padding = 12
-            rect_width = image_rect.width + 2 * padding
-            rect_height = image_rect.height + 2 * padding
             
-            # Effet de glow dynamique
-            neon_surface = pygame.Surface((rect_width, rect_height), pygame.SRCALPHA)
-            pygame.draw.rect(neon_surface, neon_color + (glow_intensity,), neon_surface.get_rect(), border_radius=border_radius)
-            pygame.draw.rect(neon_surface, neon_color + (100,), neon_surface.get_rect().inflate(-10, -10), border_radius=border_radius)
-            pygame.draw.rect(neon_surface, neon_color + (200,), neon_surface.get_rect().inflate(-20, -20), width=1, border_radius=border_radius)
-            screen.blit(neon_surface, (image_rect.left - padding, image_rect.top - padding), special_flags=pygame.BLEND_RGBA_ADD)
+            # Glow multicouche (2 couches pour effet profondeur)
+            for i in range(2):
+                glow_size = (rect_width + 15 + i * 8, rect_height + 15 + i * 8)
+                glow_surf = pygame.Surface(glow_size, pygame.SRCALPHA)
+                alpha = int((glow_intensity + 40) * (1 - i / 2))
+                pygame.draw.rect(glow_surf, neon_color + (alpha,), glow_surf.get_rect(), border_radius=border_radius + i * 2)
+                screen.blit(glow_surf, (container_left - 8 - i * 4, container_top - 8 - i * 4))
+        
+        # Fond avec dégradé vertical (similaire au titre)
+        bg_surface = pygame.Surface((rect_width, rect_height), pygame.SRCALPHA)
+        base_color = THEME_COLORS["button_idle"] if is_selected else THEME_COLORS["fond_image"]
+        
+        for i in range(rect_height):
+            ratio = i / rect_height
+            # Dégradé du haut (plus clair) vers le bas (plus foncé)
+            alpha = int(base_color[3] * (1 + ratio * 0.15)) if len(base_color) > 3 else int(200 * (1 + ratio * 0.15))
+            color = (*base_color[:3], min(255, alpha))
+            pygame.draw.line(bg_surface, color, (0, i), (rect_width, i))
+        
+        screen.blit(bg_surface, (container_left, container_top))
+        
+        # Reflet en haut (highlight pour effet glossy)
+        highlight_height = rect_height // 3
+        highlight = pygame.Surface((rect_width - 8, highlight_height), pygame.SRCALPHA)
+        highlight.fill((255, 255, 255, 35 if is_selected else 20))
+        screen.blit(highlight, (container_left + 4, container_top + 4))
+        
+        # Bordure avec effet 3D
+        border_color = THEME_COLORS["neon"] if is_selected else THEME_COLORS["border"]
+        border_rect = pygame.Rect(container_left, container_top, rect_width, rect_height)
+        pygame.draw.rect(screen, border_color, border_rect, 2, border_radius=border_radius)
 
-        # Fond pour toutes les images
-        background_surface = pygame.Surface((image_rect.width + 10, image_rect.height + 10), pygame.SRCALPHA)
-        bg_alpha = 220 if is_selected else 180  # Plus opaque pour l'item sélectionné
-        pygame.draw.rect(background_surface, THEME_COLORS["fond_image"] + (bg_alpha,), background_surface.get_rect(), border_radius=12)
-        screen.blit(background_surface, (image_rect.left - 5, image_rect.top - 5))
-
+        # Centrer l'image dans le container (l'image peut être plus petite que le container)
+        centered_image_rect = scaled_image.get_rect(center=(x, y))
+        
         # Affichage de l'image avec un léger effet de transparence pour les items non sélectionnés
         if not is_selected:
-            # Appliquer la transparence seulement si nécessaire
             temp_image = scaled_image.copy()
             temp_image.set_alpha(220)
-            screen.blit(temp_image, image_rect)
+            screen.blit(temp_image, centered_image_rect)
         else:
-            screen.blit(scaled_image, image_rect)
+            screen.blit(scaled_image, centered_image_rect)
     
     # Nettoyer le cache périodiquement (garder seulement les images utilisées récemment)
     if len(platform_images_cache) > 50:  # Limite arbitraire pour éviter une croissance excessive
@@ -2037,16 +2105,15 @@ def draw_display_menu(screen):
 def draw_pause_menu(screen, selected_option):
     """Dessine le menu pause racine (catégories)."""
     screen.blit(OVERLAY, (0, 0))
-    # Nouvel ordre: Language / Controls / Display / Games / Settings / Restart / Support / Quit
+    # Nouvel ordre: Games / Language / Controls / Display / Settings / Support / Quit
     options = [
-        _("menu_language") if _ else "Language",          # 0 -> sélecteur de langue direct
-        _("menu_controls"),                                 # 1 -> sous-menu controls
-        _("menu_display"),                                  # 2 -> sous-menu display
-    _("menu_games") if _ else "Games",                  # 3 -> sous-menu games (history + sources + update)
-        _("menu_settings_category") if _ else "Settings",  # 4 -> sous-menu settings
-        _("menu_restart"),                                  # 5 -> reboot
-        _("menu_support"),                                  # 6 -> support
-        _("menu_quit")                                      # 7 -> quit
+        _("menu_games") if _ else "Games",                  # 0 -> sous-menu games (history + sources + update)
+        _("menu_language") if _ else "Language",            # 1 -> sélecteur de langue direct
+        _("menu_controls"),                                 # 2 -> sous-menu controls
+        _("menu_display"),                                  # 3 -> sous-menu display
+        _("menu_settings_category") if _ else "Settings",   # 4 -> sous-menu settings
+        _("menu_support"),                                  # 5 -> support
+        _("menu_quit")                                      # 6 -> sous-menu quit (quit + restart)
     ]
     # Calculer hauteur dynamique basée sur la taille de police
     sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
@@ -2083,12 +2150,11 @@ def draw_pause_menu(screen, selected_option):
     # Instruction contextuelle pour l'option sélectionnée
     # Mapping des clés i18n parallèles à la liste options (même ordre)
     instruction_keys = [
+        "instruction_pause_games",
         "instruction_pause_language",
         "instruction_pause_controls",
         "instruction_pause_display",
-        "instruction_pause_games",
         "instruction_pause_settings",
-        "instruction_pause_restart",
         "instruction_pause_support",
         "instruction_pause_quit",
     ]
@@ -2296,12 +2362,12 @@ def draw_pause_games_menu(screen, selected_index):
     filter_txt = _("submenu_display_filter_platforms") if _ else "Filter Platforms"
     
     back_txt = _("menu_back") if _ else "Back"
-    options = [history_txt, source_txt, update_txt, unsupported_txt, hide_premium_txt, filter_txt, back_txt]
+    options = [update_txt, history_txt, source_txt, unsupported_txt, hide_premium_txt, filter_txt, back_txt]
     _draw_submenu_generic(screen, _("menu_games") if _ else "Games", options, selected_index)
     instruction_keys = [
+        "instruction_games_update_cache",
         "instruction_games_history",
         "instruction_games_source_mode",
-        "instruction_games_update_cache",
         "instruction_display_show_unsupported",
         "instruction_display_hide_premium",
         "instruction_display_filter_platforms",
@@ -2805,57 +2871,29 @@ def draw_controls_help(screen, previous_state):
 
 # Menu Quitter Appli
 def draw_confirm_dialog(screen):
-    """Affiche la boîte de dialogue de confirmation pour quitter."""
-    global OVERLAY
-    if OVERLAY is None or OVERLAY.get_size() != (config.screen_width, config.screen_height):
-        OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
-        OVERLAY.fill((0, 0, 0, 150))
-        logger.debug("OVERLAY recréé dans draw_confirm_dialog")
-
-    screen.blit(OVERLAY, (0, 0))
-    # Dynamic message: warn when downloads are active
-    active_downloads = 0
-    try:
-        active_downloads = len(getattr(config, 'download_tasks', {}) or {})
-        queued_downloads = len(getattr(config, 'download_queue', []) or [])
-        total_downloads = active_downloads + queued_downloads
-    except Exception:
-        total_downloads = 0
-    if total_downloads > 0:
-        # Try translated key if it exists; otherwise fallback to generic message
-        try:
-            warn_tpl = _("confirm_exit_with_downloads")  # optional key
-            # If untranslated key returns the same string, still format
-            message = warn_tpl.format(total_downloads)
-        except Exception:
-            message = f"Attention: {total_downloads} téléchargement(s) en cours. Quitter quand même ?"
-    else:
-        message = _("confirm_exit")
-    wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
-    line_height = config.font.get_height() + 5
-    text_height = len(wrapped_message) * line_height
-    # Adapter hauteur bouton en fonction de la taille de police
-    sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
-    font_height = sample_text.get_height()
-    button_height = max(int(config.screen_height * 0.0463), font_height + 15)
-    margin_top_bottom = 20
-    rect_height = text_height + button_height + 2 * margin_top_bottom
-    max_text_width = max([config.font.size(line)[0] for line in wrapped_message], default=300)
-    rect_width = max_text_width + 150
-    rect_x = (config.screen_width - rect_width) // 2
-    rect_y = (config.screen_height - rect_height) // 2
-
-    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
-    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
-
-    for i, line in enumerate(wrapped_message):
-        text = config.font.render(line, True, THEME_COLORS["text"])
-        text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
-        screen.blit(text, text_rect)
-
-    button_width = min(160, (rect_width - 60) // 2)
-    draw_stylized_button(screen, _("button_yes"), rect_x + rect_width // 2 - button_width - 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=config.confirm_selection == 1)
-    draw_stylized_button(screen, _("button_no"), rect_x + rect_width // 2 + 10, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=config.confirm_selection == 0)
+    """Affiche le sous-menu Quit avec les options Quit et Restart."""
+    options = [
+        _("menu_quit_app") if _ else "Quit RGSX",
+        _("menu_restart") if _ else "Restart RGSX",
+        _("menu_back") if _ else "Back"
+    ]
+    _draw_submenu_generic(screen, _("menu_quit") if _ else "Quit", options, config.confirm_selection)
+    instruction_keys = [
+        "instruction_quit_app",
+        "instruction_quit_restart",
+        "instruction_generic_back",
+    ]
+    key = instruction_keys[config.confirm_selection] if 0 <= config.confirm_selection < len(instruction_keys) else None
+    if key:
+        button_height = int(config.screen_height * 0.045)
+        margin_top_bottom = 26
+        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
+        menu_y = (config.screen_height - menu_height) // 2
+        title_surface = config.font.render("X", True, THEME_COLORS["text"])
+        title_rect_height = title_surface.get_height()
+        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10
+        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
+        draw_menu_instruction(screen, _(key), last_button_bottom)
 
 
 def draw_reload_games_data_dialog(screen):

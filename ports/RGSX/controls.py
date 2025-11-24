@@ -1482,8 +1482,15 @@ def handle_controls(event, sources, joystick, screen):
 
         # Confirmation quitter
         elif config.menu_state == "confirm_exit":
-            if is_input_matched(event, "confirm"):
-                if config.confirm_selection == 1:
+            # Sous-menu Quit: 0=Quit RGSX, 1=Restart RGSX, 2=Back
+            if is_input_matched(event, "up"):
+                config.confirm_selection = max(0, config.confirm_selection - 1)
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                config.confirm_selection = min(2, config.confirm_selection + 1)
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                if config.confirm_selection == 0:  # Quit RGSX
                     # Mark all in-progress downloads as canceled in history
                     try:
                         for entry in getattr(config, 'history', []) or []:
@@ -1495,7 +1502,9 @@ def handle_controls(event, sources, joystick, screen):
                     except Exception:
                         pass
                     return "quit"
-                else:
+                elif config.confirm_selection == 1:  # Restart RGSX
+                    restart_application(2000)
+                elif config.confirm_selection == 2:  # Back
                     # Retour à l'état capturé (confirm_exit_origin) sinon previous_menu_state sinon platform
                     target = getattr(config, 'confirm_exit_origin', getattr(config, 'previous_menu_state', 'platform'))
                     config.menu_state = validate_menu_state(target)
@@ -1505,11 +1514,18 @@ def handle_controls(event, sources, joystick, screen):
                         except Exception:
                             pass
                     config.needs_redraw = True
-                    logger.debug(f"Retour à {config.menu_state} depuis confirm_exit (annulation)")
-            elif is_input_matched(event, "left") or is_input_matched(event, "right"):
-                config.confirm_selection = 1 - config.confirm_selection
+                    logger.debug(f"Retour à {config.menu_state} depuis confirm_exit (back)")
+            elif is_input_matched(event, "cancel"):
+                # Retour à l'état capturé
+                target = getattr(config, 'confirm_exit_origin', getattr(config, 'previous_menu_state', 'platform'))
+                config.menu_state = validate_menu_state(target)
+                if hasattr(config, 'confirm_exit_origin'):
+                    try:
+                        delattr(config, 'confirm_exit_origin')
+                    except Exception:
+                        pass
                 config.needs_redraw = True
-                #logger.debug(f"Changement sélection confirm_exit: {config.confirm_selection}")
+                logger.debug(f"Retour à {config.menu_state} depuis confirm_exit (cancel)")
 
         # Menu pause
         elif config.menu_state == "pause_menu":
@@ -1529,27 +1545,27 @@ def handle_controls(event, sources, joystick, screen):
                 config.selected_option = min(total - 1, config.selected_option + 1)
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
-                if config.selected_option == 0:  # Language selector direct
+                if config.selected_option == 0:  # Games submenu
+                    config.menu_state = "pause_games_menu"
+                    if not hasattr(config, 'pause_games_selection'):
+                        config.pause_games_selection = 0
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+                elif config.selected_option == 1:  # Language selector direct
                     config.menu_state = "language_select"
                     config.previous_menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 1:  # Controls submenu
+                elif config.selected_option == 2:  # Controls submenu
                     config.menu_state = "pause_controls_menu"
                     if not hasattr(config, 'pause_controls_selection'):
                         config.pause_controls_selection = 0
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 2:  # Display submenu
+                elif config.selected_option == 3:  # Display submenu
                     config.menu_state = "pause_display_menu"
                     if not hasattr(config, 'pause_display_selection'):
                         config.pause_display_selection = 0
-                    config.last_state_change_time = pygame.time.get_ticks()
-                    config.needs_redraw = True
-                elif config.selected_option == 3:  # Games submenu
-                    config.menu_state = "pause_games_menu"
-                    if not hasattr(config, 'pause_games_selection'):
-                        config.pause_games_selection = 0
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
                 elif config.selected_option == 4:  # Settings submenu
@@ -1558,9 +1574,7 @@ def handle_controls(event, sources, joystick, screen):
                         config.pause_settings_selection = 0
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 5:  # Restart
-                    restart_application(2000)
-                elif config.selected_option == 6:  # Support
+                elif config.selected_option == 5:  # Support
                     success, message, zip_path = generate_support_zip()
                     if success:
                         config.support_zip_path = zip_path
@@ -1571,7 +1585,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "support_dialog"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 7:  # Quit
+                elif config.selected_option == 6:  # Quit submenu
                     # Capturer l'origine pause_menu pour retour si annulation
                     config.confirm_exit_origin = "pause_menu"
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
@@ -1736,7 +1750,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Games
         elif config.menu_state == "pause_games_menu":
             sel = getattr(config, 'pause_games_selection', 0)
-            total = 7  # history, source, redownload, unsupported, hide premium, filter, back
+            total = 7  # update cache, history, source, unsupported, hide premium, filter, back
             if is_input_matched(event, "up"):
                 config.pause_games_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1744,14 +1758,19 @@ def handle_controls(event, sources, joystick, screen):
                 config.pause_games_selection = (sel + 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right"):
-                if sel == 0 and is_input_matched(event, "confirm"):  # history
+                if sel == 0 and is_input_matched(event, "confirm"):  # update cache
+                    config.previous_menu_state = "pause_games_menu"
+                    config.menu_state = "reload_games_data"
+                    config.redownload_confirm_selection = 0
+                    config.needs_redraw = True
+                elif sel == 1 and is_input_matched(event, "confirm"):  # history
                     config.history = load_history()
                     config.current_history_item = 0
                     config.history_scroll_offset = 0
                     config.previous_menu_state = "pause_games_menu"
                     config.menu_state = "history"
                     config.needs_redraw = True
-                elif sel == 1 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                elif sel == 2 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # source mode
                     try:
                         current_mode = get_sources_mode()
                         new_mode = set_sources_mode('custom' if current_mode == 'rgsx' else 'rgsx')
@@ -1766,11 +1785,6 @@ def handle_controls(event, sources, joystick, screen):
                         logger.info(f"Changement du mode des sources vers {new_mode}")
                     except Exception as e:
                         logger.error(f"Erreur changement mode sources: {e}")
-                elif sel == 2 and is_input_matched(event, "confirm"):  # redownload cache
-                    config.previous_menu_state = "pause_games_menu"
-                    config.menu_state = "reload_games_data"
-                    config.redownload_confirm_selection = 0
-                    config.needs_redraw = True
                 elif sel == 3 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # unsupported toggle
                     try:
                         current = get_show_unsupported_platforms()
@@ -1809,11 +1823,19 @@ def handle_controls(event, sources, joystick, screen):
         elif config.menu_state == "pause_settings_menu":
             sel = getattr(config, 'pause_settings_selection', 0)
             # Calculer le nombre total d'options selon le système
-            total = 4  # music, symlink, api keys, back
+            # Liste des options : music, symlink, [web_service], [custom_dns], api keys, back
+            total = 4  # music, symlink, api keys, back (Windows)
             web_service_index = -1
+            custom_dns_index = -1
+            api_keys_index = 2
+            back_index = 3
+            
             if config.OPERATING_SYSTEM == "Linux":
-                total = 5  # music, symlink, web_service, api keys, back
+                total = 6  # music, symlink, web_service, custom_dns, api keys, back
                 web_service_index = 2
+                custom_dns_index = 3
+                api_keys_index = 4
+                back_index = 5
             
             if is_input_matched(event, "up"):
                 config.pause_settings_selection = (sel - 1) % total
@@ -1862,12 +1884,31 @@ def handle_controls(event, sources, joystick, screen):
                         else:
                             logger.error(f"Erreur toggle service web: {message}")
                     threading.Thread(target=toggle_service, daemon=True).start()
-                # Option API Keys (index varie selon Linux ou pas)
-                elif sel == (web_service_index + 1 if web_service_index >= 0 else 2) and is_input_matched(event, "confirm"):
+                # Option 3: Custom DNS toggle (seulement si Linux)
+                elif sel == custom_dns_index and custom_dns_index >= 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    from utils import check_custom_dns_status, toggle_custom_dns_at_boot
+                    current_status = check_custom_dns_status()
+                    # Afficher un message de chargement
+                    config.popup_message = _("settings_custom_dns_enabling") if not current_status else _("settings_custom_dns_disabling")
+                    config.popup_timer = 1000
+                    config.needs_redraw = True
+                    # Exécuter en thread pour ne pas bloquer l'UI
+                    def toggle_dns():
+                        success, message = toggle_custom_dns_at_boot(not current_status)
+                        config.popup_message = message
+                        config.popup_timer = 5000 if success else 7000
+                        config.needs_redraw = True
+                        if success:
+                            logger.info(f"Custom DNS {'activé' if not current_status else 'désactivé'} au démarrage")
+                        else:
+                            logger.error(f"Erreur toggle custom DNS: {message}")
+                    threading.Thread(target=toggle_dns, daemon=True).start()
+                # Option API Keys
+                elif sel == api_keys_index and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_api_keys_status"
                     config.needs_redraw = True
                 # Option Back (dernière option)
-                elif sel == (total - 1) and is_input_matched(event, "confirm"):
+                elif sel == back_index and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
