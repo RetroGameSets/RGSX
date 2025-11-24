@@ -88,12 +88,12 @@ jobs:
             
             ## 📥 Automatic Installation (Only for batocera Knulli)
 
-            ### ON PC : 
+            ### ON PC , NUC, SteamDeck or any x86_64 based: 
             1. Open File Manager (F1) then "Applications" and launch xterm
             2. Use the command line `curl -L bit.ly/rgsx-install | sh`
             3. Launch RGSX from "Ports" menu
 
-            ### ON RASPBERRY/ARM SBC / HANDHELD : 
+            ### ON RASPBERRY/ ARM based SBC / HANDHELD : 
             1. Connect your device with SSH on a computer/smartphone connected to same network (ssh root@IPADDRESS , pass:linux)
             2. Use the command line `curl -L bit.ly/rgsx-install | sh`
             3. Launch RGSX from "Ports" menu            
@@ -111,17 +111,12 @@ jobs:
             3. Launch RGSX from system "Windows"
             
 
-            ## 📥 Manual Update (you shouldn't need to do this as RGSX updates automatically on each start)
-            
-            #### Batocera/Knulli
+            ## 📥 Manual Update (only if automatic doesn't work for some obcure reason)
+
+            #### Batocera/Knulli/Retrobat
             1. Download latest update : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_update_latest.zip
-            2. Extract only PORTS folder in `/userdata/roms/`
-            3. Launch RGSX from the Ports menu
-            
-            #### Retrobat
-            1. Download latest update : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_update_latest.zip
-            2. Extract all folders in your Retrobat\roms folder
-            3. Launch RGSX from system "Windows"
+            2. Extract zip content on  in `/userdata/roms/ports/RGSX`
+            3. Launch RGSX
             
             
             ### 📖 Documentation
