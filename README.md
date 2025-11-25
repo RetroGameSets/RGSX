@@ -201,11 +201,12 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 
 | Issue | Solution |
 |-------|----------|
-| Controls not working | Delete `/saves/ports/rgsx/controls.json` + restart |
-| Games not showing | Pause Menu > Games > Update Game Cache |
-| Download stuck | Check API keys in `/saves/ports/rgsx/` |
+| Controls not working | Delete `/saves/ports/rgsx/controls.json` + restart app, you can try delete /roms/ports/RGSX/assets/controls/xx.json too |
+| No games ? | Pause Menu > Games > Update Game Cache |
+| Missing systems on the list? | RGSX read es_systems.cfg to show only supported systems, if you want all systems : Pause Menu > Games > Show unsupported systems |
 | App crashes | Check `/roms/ports/RGSX/logs/RGSX.log` |
 | Layout change not applied | Restart RGSX after changing layout |
+| Downloading BIOS file is ok but you can't download any games? | Activate custom DNS on Pause Menu> Settings and reboot , server can be blocked by your ISP. check any threat/website protection on your router too, especially on ASUS one|
 
 **Need help?** Share logs from `/roms/ports/RGSX/logs/` on [Discord](https://discord.gg/Vph9jwg3VV).
 
