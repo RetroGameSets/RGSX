@@ -1,6 +1,6 @@
 # 🎮 Retro Game Sets Xtra (RGSX)
 
-**[Discord Support](https://discord.gg/Vph9jwg3VV)** • **[Installation](#-installation)** • **[French Documentation](https://github.com/RetroGameSets/RGSX/blob/main/README_FR.md)**
+**[Discord Support](https://discord.gg/Vph9jwg3VV)** • **[Installation](#-installation)** • **[French Documentation](https://github.com/RetroGameSets/RGSX/blob/main/README_FR.md)** • **[Troubleshoot / Common Errors](https://github.com/RetroGameSets/RGSX#%EF%B8%8F-troubleshooting)** •
 
 A free, user-friendly ROM downloader for Batocera, Knulli, and RetroBat with multi-source support.
 
