@@ -3163,7 +3163,15 @@ def draw_history_game_options(screen):
     option_labels.append(_("history_option_scraper"))
  
     # Options selon statut
-    if status == "Download_OK" or status == "Completed":
+    if status == "Queued":
+        # En attente dans la queue
+        options.append("remove_from_queue")
+        option_labels.append(_("history_option_remove_from_queue"))
+    elif status in ["Downloading", "Téléchargement", "Extracting"]:
+        # Téléchargement en cours
+        options.append("cancel_download")
+        option_labels.append(_("history_option_cancel_download"))
+    elif status == "Download_OK" or status == "Completed":
         # Vérifier si c'est une archive ET si le fichier existe
         if actual_filename and file_exists:
             ext = os.path.splitext(actual_filename)[1].lower()

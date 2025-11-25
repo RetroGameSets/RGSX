@@ -28,7 +28,7 @@ from display import (
     draw_toast, show_toast, THEME_COLORS
 )
 from language import _
-from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates, cancel_all_downloads
+from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates, cancel_all_downloads, download_queue_worker
 from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls
 from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
@@ -438,6 +438,11 @@ async def main():
     # Démarrer le serveur web en arrière-plan
     start_web_server()
     
+    # Démarrer le worker de la queue de téléchargement
+    queue_worker_thread = threading.Thread(target=download_queue_worker, daemon=True)
+    queue_worker_thread.start()
+    logger.info("Worker de la queue de téléchargement démarré")
+    
     running = True
     loading_step = "none"
     sources = []
@@ -473,7 +478,7 @@ async def main():
             config.needs_redraw = True
             last_redraw_time = current_time
         # Forcer redraw toutes les 100 ms dans history avec téléchargement actif
-        if config.menu_state == "history" and any(entry["status"] == "Téléchargement" for entry in config.history):
+        if config.menu_state == "history" and any(entry["status"] in ["Downloading", "Téléchargement"] for entry in config.history):
             if current_time - last_redraw_time >= 100:
                 config.needs_redraw = True
                 last_redraw_time = current_time

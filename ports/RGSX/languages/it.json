@@ -44,6 +44,7 @@
     "free_mode_completed": "[Modalità gratuita] Completato: {0}",
     "download_status": "{0}: {1}",
     "download_canceled": "Download annullato dall'utente.",
+    "download_removed_from_queue": "Rimosso dalla coda di download",
     "extension_warning_zip": "Il file '{0}' è un archivio e Batocera non supporta archivi per questo sistema. L'estrazione automatica avverrà dopo il download, continuare?",
     "extension_warning_unsupported": "L'estensione del file '{0}' non è supportata da Batocera secondo la configurazione di es_systems.cfg. Vuoi continuare?",
     "extension_warning_enable_unknown_hint": "\nPer non visualizzare questo messaggio: abilita \"Nascondi avviso estensione sconosciuta\" in Menu Pausa > Schermo",

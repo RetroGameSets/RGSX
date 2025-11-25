@@ -44,6 +44,7 @@
     "free_mode_completed": "[Mode gratuit] Terminé: {0}",
     "download_status": "{0} : {1}",
     "download_canceled": "Téléchargement annulé par l'utilisateur.",
+    "download_removed_from_queue": "Retiré de la file de téléchargement",
     "extension_warning_zip": "Le fichier '{0}' est une archive et Batocera ne prend pas en charge les archives pour ce système. L'extraction automatique du fichier aura lieu après le téléchargement, continuer ?",
     "extension_warning_unsupported": "L'extension du fichier '{0}' n'est pas supportée par Batocera d'après la configuration es_systems.cfg. Voulez-vous continuer ?",
     "extension_warning_enable_unknown_hint": "\nPour ne plus afficher ce messager : Activer l'option \"Masquer avertissement\" dans le Menu Pause>Display",

@@ -925,6 +925,16 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
                     result[0] = True
                     result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                    
+                    # Mettre à jour l'historique
+                    for entry in config.history:
+                        if entry.get("url") == url:
+                            entry["status"] = "Download_OK"
+                            entry["progress"] = 100
+                            entry["message"] = result[1]
+                            save_history(config.history)
+                            break
+                    
                     # Afficher un toast au lieu d'ouvrir l'historique
                     try:
                         show_toast(result[1])
@@ -933,6 +943,13 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     with urls_lock:
                         urls_in_progress.discard(url)
                         logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                    
+                    # Libérer le slot de la queue
+                    try:
+                        notify_download_finished()
+                    except Exception:
+                        pass
+                    
                     return result[0], result[1]
                 file_found = True
             
@@ -975,6 +992,16 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                         logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
                                         result[0] = True
                                         result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
+                                        
+                                        # Mettre à jour l'historique
+                                        for entry in config.history:
+                                            if entry.get("url") == url:
+                                                entry["status"] = "Download_OK"
+                                                entry["progress"] = 100
+                                                entry["message"] = result[1]
+                                                save_history(config.history)
+                                                break
+                                        
                                         # Afficher un toast au lieu d'ouvrir l'historique
                                         try:
                                             show_toast(result[1])
@@ -983,6 +1010,13 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                         with urls_lock:
                                             urls_in_progress.discard(url)
                                             logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                                        
+                                        # Libérer le slot de la queue
+                                        try:
+                                            notify_download_finished()
+                                        except Exception:
+                                            pass
+                                        
                                         return result[0], result[1]
                     except Exception as e:
                         logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
@@ -1209,6 +1243,11 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
 
             # Si annulé, ne pas continuer avec extraction
             if download_canceled:
+                # Libérer le slot de la queue
+                try:
+                    notify_download_finished()
+                except Exception:
+                    pass
                 return
             
             os.chmod(dest_path, 0o644)
@@ -1429,6 +1468,12 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
         # Signaler l'événement pour les appels doublons en attente
         if url in url_done_events:
             url_done_events[url].set()
+    
+    # Libérer le slot de la queue
+    try:
+        notify_download_finished()
+    except Exception:
+        pass
     
     return result[0], result[1]
 

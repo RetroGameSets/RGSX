@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.3.3.2"
+app_version = "2.3.3.3"
 
 
 def get_application_root():
@@ -133,6 +133,7 @@ logger = logging.getLogger(__name__)
 
 # File d'attente de téléchargements (jobs en attente)
 download_queue = []  # Liste de dicts: {url, platform, game_name, ...}
+pending_download_is_queue = False  # Indique si pending_download doit être ajouté à la queue
 # Indique si un téléchargement est en cours
 download_active = False
 

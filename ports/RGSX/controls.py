@@ -740,6 +740,7 @@ def handle_controls(event, sources, joystick, screen):
                             # Si extension non supportée ET pas en archive connu, afficher avertissement
                             if (not is_supported and not zip_ok) and not allow_unknown:
                                 config.pending_download = pending_download
+                                config.pending_download_is_queue = True  # Marquer comme action queue
                                 config.previous_menu_state = config.menu_state
                                 config.menu_state = "extension_warning"
                                 config.extension_confirm_selection = 0
@@ -813,29 +814,69 @@ def handle_controls(event, sources, joystick, screen):
                 if config.extension_confirm_selection == 0:  # 0 = Oui, 1 = Non
                     if config.pending_download and len(config.pending_download) == 4:
                         url, platform, game_name, is_zip_non_supported = config.pending_download
-                        if is_1fichier_url(url):
-                            ensure_download_provider_keys(False)
-                          
-                            
-                            # Avertissement si pas de clé (utilisation mode gratuit)
-                            if missing_all_provider_keys():
-                                logger.warning("Aucune clé API - Mode gratuit 1fichier sera utilisé (attente requise)")
-                            
+                        
+                        # Vérifier si c'est une action queue
+                        is_queue_action = getattr(config, 'pending_download_is_queue', False)
+                        
+                        if is_queue_action:
+                            # Ajouter à la queue au lieu de télécharger immédiatement
                             task_id = str(pygame.time.get_ticks())
-                            task = asyncio.create_task(download_from_1fichier(url, platform, game_name, is_zip_non_supported, task_id))
+                            queue_item = {
+                                'url': url,
+                                'platform': platform,
+                                'game_name': game_name,
+                                'is_zip_non_supported': is_zip_non_supported,
+                                'is_1fichier': is_1fichier_url(url),
+                                'task_id': task_id,
+                                'status': 'Queued'
+                            }
+                            config.download_queue.append(queue_item)
+                            
+                            # Ajouter une entrée à l'historique avec status "Queued"
+                            config.history.append({
+                                'platform': platform,
+                                'game_name': game_name,
+                                'status': 'Queued',
+                                'url': url,
+                                'progress': 0,
+                                'message': _("download_queued"),
+                                'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                'downloaded_size': 0,
+                                'total_size': 0,
+                                'task_id': task_id
+                            })
+                            save_history(config.history)
+                            
+                            # Afficher un toast de notification
+                            show_toast(f"{game_name}\n{_('download_queued')}")
+                            
+                            # Le worker de la queue détectera automatiquement le nouvel élément
+                            logger.debug(f"{game_name} ajouté à la file d'attente après confirmation. Queue size: {len(config.download_queue)}")
                         else:
-                            task_id = str(pygame.time.get_ticks())
-                            task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported, task_id))
-                        config.download_tasks[task_id] = (task, url, game_name, platform)
-                        # Afficher un toast de notification
-                        show_toast(f"{_('download_started')}: {game_name}")
+                            # Téléchargement immédiat
+                            if is_1fichier_url(url):
+                                ensure_download_provider_keys(False)
+                                
+                                # Avertissement si pas de clé (utilisation mode gratuit)
+                                if missing_all_provider_keys():
+                                    logger.warning("Aucune clé API - Mode gratuit 1fichier sera utilisé (attente requise)")
+                                
+                                task_id = str(pygame.time.get_ticks())
+                                task = asyncio.create_task(download_from_1fichier(url, platform, game_name, is_zip_non_supported, task_id))
+                            else:
+                                task_id = str(pygame.time.get_ticks())
+                                task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported, task_id))
+                            config.download_tasks[task_id] = (task, url, game_name, platform)
+                            # Afficher un toast de notification
+                            show_toast(f"{_('download_started')}: {game_name}")
+                            logger.debug(f"[CONTROLS_EXT_WARNING] Téléchargement confirmé après avertissement: {game_name} pour {platform} depuis {url}, task_id={task_id}")
+                        
                         config.previous_menu_state = validate_menu_state(config.previous_menu_state)
                         config.needs_redraw = True
-                        logger.debug(f"[CONTROLS_EXT_WARNING] Téléchargement confirmé après avertissement: {game_name} pour {platform} depuis {url}, task_id={task_id}")
                         config.pending_download = None
+                        config.pending_download_is_queue = False
                         config.extension_confirm_selection = 0  # Réinitialiser la sélection
-                        action = "download"
-                        # Téléchargement simple - retourner au menu précédent
+                        # Retourner au menu précédent
                         config.menu_state = config.previous_menu_state if config.previous_menu_state else "game"
                         logger.debug(f"[CONTROLS_EXT_WARNING] Retour au menu {config.menu_state} après confirmation")
                     else:
@@ -943,22 +984,35 @@ def handle_controls(event, sources, joystick, screen):
             if is_input_matched(event, "confirm"):
                 if config.confirm_cancel_selection == 1:  # Oui
                     entry = config.history[config.current_history_item]
+                    task_id = entry.get("task_id")
                     url = entry.get("url")
-                    # Annuler la tâche correspondante
-                    for task_id, (task, task_url, game_name, platform) in list(config.download_tasks.items()):
-                        if task_url == url:
+                    game_name = entry.get("game_name", "Unknown")
+                    
+                    # Annuler via cancel_events (pour les threads de téléchargement)
+                    try:
+                        request_cancel(task_id)
+                        logger.debug(f"Signal d'annulation envoyé pour task_id={task_id}")
+                    except Exception as e:
+                        logger.debug(f"Erreur lors de l'envoi du signal d'annulation: {e}")
+                    
+                    # Annuler aussi la tâche asyncio si elle existe (pour les téléchargements directs)
+                    for tid, (task, task_url, tname, tplatform) in list(config.download_tasks.items()):
+                        if tid == task_id or task_url == url:
                             try:
-                                request_cancel(task_id)
-                            except Exception:
-                                pass
-                            task.cancel()
-                            del config.download_tasks[task_id]
-                            entry["status"] = "Canceled"
-                            entry["progress"] = 0
-                            entry["message"] = _("download_canceled") if _ else "Download canceled"
-                            save_history(config.history)
-                            logger.debug(f"Téléchargement annulé: {game_name}")
+                                task.cancel()
+                                del config.download_tasks[tid]
+                                logger.debug(f"Tâche asyncio annulée: {tname}")
+                            except Exception as e:
+                                logger.debug(f"Erreur lors de l'annulation de la tâche asyncio: {e}")
                             break
+                    
+                    # Mettre à jour l'entrée historique
+                    entry["status"] = "Canceled"
+                    entry["progress"] = 0
+                    entry["message"] = _("download_canceled") if _ else "Download canceled"
+                    save_history(config.history)
+                    logger.debug(f"Téléchargement annulé: {game_name}")
+                    
                     config.menu_state = "history"
                     config.needs_redraw = True
                 else:  # Non
@@ -1034,7 +1088,13 @@ def handle_controls(event, sources, joystick, screen):
                 options.append("scraper")
                 
                 # Options selon statut
-                if status == "Download_OK" or status == "Completed":
+                if status == "Queued":
+                    # En attente dans la queue
+                    options.append("remove_from_queue")
+                elif status in ["Downloading", "Téléchargement", "Extracting"]:
+                    # Téléchargement en cours
+                    options.append("cancel_download")
+                elif status == "Download_OK" or status == "Completed":
                     # Vérifier si c'est une archive ET si le fichier existe
                     if actual_filename and file_exists:
                         ext = os.path.splitext(actual_filename)[1].lower()
@@ -1077,7 +1137,37 @@ def handle_controls(event, sources, joystick, screen):
                     selected_option = options[sel]
                     logger.debug(f"history_game_options: CONFIRM option={selected_option}")
                     
-                    if selected_option == "download_folder":
+                    if selected_option == "remove_from_queue":
+                        # Retirer de la queue
+                        task_id = entry.get("task_id")
+                        url = entry.get("url")
+                        
+                        # Chercher et retirer de la queue
+                        for i, queue_item in enumerate(config.download_queue):
+                            if queue_item.get("task_id") == task_id or queue_item.get("url") == url:
+                                config.download_queue.pop(i)
+                                logger.debug(f"Jeu retiré de la queue: {game_name}")
+                                break
+                        
+                        # Mettre à jour l'entrée historique avec status Canceled
+                        entry["status"] = "Canceled"
+                        entry["progress"] = 0
+                        entry["message"] = _("download_canceled") if _ else "Download canceled"
+                        save_history(config.history)
+                        
+                        # Retour à l'historique
+                        config.menu_state = "history"
+                        config.needs_redraw = True
+                        
+                    elif selected_option == "cancel_download":
+                        # Rediriger vers le dialogue de confirmation (même que bouton cancel)
+                        config.previous_menu_state = "history"
+                        config.menu_state = "confirm_cancel_download"
+                        config.confirm_cancel_selection = 0
+                        config.needs_redraw = True
+                        logger.debug("Redirection vers confirm_cancel_download depuis history_game_options")
+                        
+                    elif selected_option == "download_folder":
                         # Afficher le chemin de destination
                         config.previous_menu_state = "history_game_options"
                         config.menu_state = "history_show_folder"
