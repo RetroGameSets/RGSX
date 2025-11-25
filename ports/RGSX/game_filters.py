@@ -69,30 +69,67 @@ class GameFilters:
         name = game_name.upper()
         regions = []
         
-        # Patterns de région communs
-        if 'USA' in name or 'US)' in name:
-            regions.append('USA')
+        # Patterns de région communs - chercher les codes entre parenthèses d'abord
+        # Codes de région/langue dans les parenthèses (Ex: (Fr,De) ou (En,Nl))
+        paren_content = re.findall(r'\(([^)]+)\)', name)
+        for content in paren_content:
+            # Codes de langue/région séparés par virgules
+            codes = [c.strip() for c in content.split(',')]
+            for code in codes:
+                if code in ['FR', 'FRA']:
+                    if 'France' not in regions:
+                        regions.append('France')
+                elif code in ['DE', 'GER', 'DEU']:
+                    if 'Germany' not in regions:
+                        regions.append('Germany')
+                elif code in ['EN', 'ENG'] or code.startswith('EN-'):
+                    # EN peut être USA, Europe ou autre - on vérifie le contexte
+                    if 'EU' in codes or 'EUR' in codes:
+                        if 'Europe' not in regions:
+                            regions.append('Europe')
+                elif code in ['ES', 'ESP', 'SPA']:
+                    if 'Other' not in regions:
+                        regions.append('Other')
+                elif code in ['IT', 'ITA']:
+                    if 'Other' not in regions:
+                        regions.append('Other')
+                elif code in ['NL', 'NLD', 'DU', 'DUT']:
+                    if 'Europe' not in regions:
+                        regions.append('Europe')
+                elif code in ['PT', 'POR']:
+                    if 'Other' not in regions:
+                        regions.append('Other')
+        
+        # Patterns de région complets (mots entiers)
+        if 'USA' in name or 'US)' in name or re.search(r'\bUS\b', name):
+            if 'USA' not in regions:
+                regions.append('USA')
         if 'CANADA' in name or 'CA)' in name:
-            regions.append('Canada')
-        if 'EUROPE' in name or 'EU)' in name:
-            regions.append('Europe')
+            if 'Canada' not in regions:
+                regions.append('Canada')
+        if 'EUROPE' in name or 'EU)' in name or re.search(r'\bEU\b', name):
+            if 'Europe' not in regions:
+                regions.append('Europe')
         if 'FRANCE' in name or 'FR)' in name:
-            regions.append('France')
+            if 'France' not in regions:
+                regions.append('France')
         if 'GERMANY' in name or 'DE)' in name or 'GER)' in name:
-            regions.append('Germany')
-        if 'JAPAN' in name or 'JP)' in name or 'JPN)' in name:
-            regions.append('Japan')
+            if 'Germany' not in regions:
+                regions.append('Germany')
+        if 'JAPAN' in name or 'JP)' in name or 'JPN)' in name or re.search(r'\bJP\b', name):
+            if 'Japan' not in regions:
+                regions.append('Japan')
         if 'KOREA' in name or 'KR)' in name or 'KOR)' in name:
-            regions.append('Korea')
+            if 'Korea' not in regions:
+                regions.append('Korea')
         if 'WORLD' in name:
-            regions.append('World')
+            if 'World' not in regions:
+                regions.append('World')
         
         # Autres régions
-        if re.search(r'\b(AUSTRALIA|ASIA|KOREA|BRAZIL|CHINA|RUSSIA|SCANDINAVIA|'
-                     r'SPAIN|FRANCE|GERMANY|ITALY|CANADA)\b', name):
-            if 'CANADA' in name:
-                regions.append('Canada')
-            else:
+        if re.search(r'\b(AUSTRALIA|ASIA|BRAZIL|CHINA|RUSSIA|SCANDINAVIA|'
+                     r'SPAIN|ITALY)\b', name):
+            if 'Other' not in regions:
                 regions.append('Other')
         
         # Si aucune région trouvée
@@ -157,14 +194,22 @@ class GameFilters:
     
     def get_region_priority(self, game_name: str) -> int:
         """Obtient la priorité de région pour un jeu (pour one-rom-per-game)"""
-        name = game_name.upper()
+        # Utiliser la fonction de détection de régions pour être cohérent
+        game_regions = self.get_game_regions(game_name)
         
-        for i, region in enumerate(self.region_priority):
-            region_upper = region.upper()
-            if region_upper in name:
-                return i
+        # Trouver la meilleure priorité parmi toutes les régions détectées
+        best_priority = len(self.region_priority)  # Par défaut: priorité la plus basse
         
-        return len(self.region_priority)  # Autres régions (priorité la plus basse)
+        for region in game_regions:
+            try:
+                priority = self.region_priority.index(region)
+                if priority < best_priority:
+                    best_priority = priority
+            except ValueError:
+                # La région n'est pas dans la liste de priorité
+                continue
+        
+        return best_priority
     
     def apply_filters(self, games: List[Tuple]) -> List[Tuple]:
         """

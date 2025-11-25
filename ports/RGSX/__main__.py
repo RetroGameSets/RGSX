@@ -213,7 +213,7 @@ except Exception:
 normalized_names = [n.lower() for n in joystick_names]
 if not joystick_names:
     joystick_names = ["Clavier"]
-    print("Aucun joystick détecté, utilisation du clavier par défaut")
+    print("Aucun joystick detecte, utilisation du clavier par defaut")
     logger.debug("Aucun joystick détecté, utilisation du clavier par défaut.")
     config.joystick = False
     config.keyboard = True

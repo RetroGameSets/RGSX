@@ -1042,14 +1042,14 @@ def draw_game_list(screen):
         pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
         screen.blit(title_surface, title_rect)
     elif config.filter_active:
-        # Display filter active indicator with count
-        if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
-            total_games = len(config.games)
-            filtered_count = len(games)
-            filter_text = _("filter_games_shown").format(filtered_count, total_games)
-        else:
-            filter_text = _("game_filter").format(config.search_query)
-        title_surface = config.font.render(filter_text, True, THEME_COLORS["green"])
+        # Afficher le nom de la plateforme avec indicateur de filtre actif
+        filter_indicator = " (Active Filter)"
+        if config.search_query:
+            # Si recherche par nom active, afficher aussi la recherche
+            filter_indicator = f" - {_('game_filter').format(config.search_query)}"
+        
+        title_text = _("game_count").format(platform_name, game_count) + filter_indicator
+        title_surface = config.title_font.render(title_text, True, THEME_COLORS["green"])
         title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
         title_rect_inflated = title_rect.inflate(60, 30)
         title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
@@ -1057,7 +1057,12 @@ def draw_game_list(screen):
         pygame.draw.rect(screen, THEME_COLORS["border_selected"], title_rect_inflated, 3, border_radius=12)
         screen.blit(title_surface, title_rect)
     else:
-        title_text = _("game_count").format(platform_name, game_count)
+        # Ajouter indicateur de filtre actif si filtres avancés sont actifs
+        filter_indicator = ""
+        if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
+            filter_indicator = " (Active Filter)"
+        
+        title_text = _("game_count").format(platform_name, game_count) + filter_indicator
         title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
         title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
         title_rect_inflated = title_rect.inflate(60, 30)

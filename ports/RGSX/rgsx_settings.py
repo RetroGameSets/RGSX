@@ -29,7 +29,7 @@ def delete_old_files():
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
-                print(f"Ancien fichier supprimé : {file_path}")
+                print(f"Ancien fichier supprime : {file_path}")
                 logger.info(f"Ancien fichier supprimé : {file_path}")
         except Exception as e:
             print(f"Erreur lors de la suppression de {file_path} : {str(e)}")
@@ -39,7 +39,7 @@ def delete_old_files():
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
-                print(f"Ancien fichier supprimé : {file_path}")
+                print(f"Ancien fichier supprime : {file_path}")
                 logger.info(f"Ancien fichier supprimé : {file_path}")
         except Exception as e:
             print(f"Erreur lors de la suppression de {file_path} : {str(e)}")

@@ -159,7 +159,7 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
                         dev_field = preset.get('device') if isinstance(preset, dict) else None
                         if isinstance(dev_field, str) and _sanitize(dev_field) == target_norm:
                             logging.getLogger(__name__).info(f"Chargement préréglage (device) depuis le fichier: {fname}")
-                            print(f"Chargement préréglage (device) depuis le fichier: {fname}")
+                            print(f"Chargement prereglage (device) depuis le fichier: {fname}")
                             return preset
                 except Exception as e:
                     logging.getLogger(__name__).warning(f"Échec scan préréglages par device: {e}")
@@ -559,7 +559,11 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                 elif is_input_matched(event, "confirm"):
                     config.search_query += keyboard_layout[row][col]
-                    config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()]
+                    # Appliquer d'abord les filtres avancés si actifs, puis le filtre par nom
+                    base_games = config.games
+                    if config.game_filter_obj and config.game_filter_obj.is_active():
+                        base_games = config.game_filter_obj.apply_filters(config.games)
+                    config.filtered_games = [game for game in base_games if config.search_query.lower() in game[0].lower()]
                     config.current_game = 0
                     config.scroll_offset = 0
                     config.needs_redraw = True
@@ -567,14 +571,22 @@ def handle_controls(event, sources, joystick, screen):
                 elif is_input_matched(event, "delete"):
                     if config.search_query:
                         config.search_query = config.search_query[:-1]
-                        config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()]
+                        # Appliquer d'abord les filtres avancés si actifs, puis le filtre par nom
+                        base_games = config.games
+                        if config.game_filter_obj and config.game_filter_obj.is_active():
+                            base_games = config.game_filter_obj.apply_filters(config.games)
+                        config.filtered_games = [game for game in base_games if config.search_query.lower() in game[0].lower()]
                         config.current_game = 0
                         config.scroll_offset = 0
                         config.needs_redraw = True
                         #logger.debug(f"Suppression caractère: query={config.search_query}, jeux filtrés={len(config.filtered_games)}")
                 elif is_input_matched(event, "space"):
                     config.search_query += " "
-                    config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()]
+                    # Appliquer d'abord les filtres avancés si actifs, puis le filtre par nom
+                    base_games = config.games
+                    if config.game_filter_obj and config.game_filter_obj.is_active():
+                        base_games = config.game_filter_obj.apply_filters(config.games)
+                    config.filtered_games = [game for game in base_games if config.search_query.lower() in game[0].lower()]
                     config.current_game = 0
                     config.scroll_offset = 0
                     config.needs_redraw = True
@@ -583,7 +595,13 @@ def handle_controls(event, sources, joystick, screen):
                     config.search_mode = False
                     config.search_query = ""
                     config.selected_key = (0, 0)
-                    config.filtered_games = config.games
+                    # Restaurer les jeux filtrés par les filtres avancés si actifs
+                    if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
+                        config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                        config.filter_active = True
+                    else:
+                        config.filtered_games = config.games
+                        config.filter_active = False
                     config.current_game = 0
                     config.scroll_offset = 0
                     config.needs_redraw = True
@@ -605,8 +623,13 @@ def handle_controls(event, sources, joystick, screen):
                 elif is_input_matched(event, "cancel"):
                     config.search_mode = False
                     config.search_query = ""
-                    config.filtered_games = config.games
-                    config.filter_active = False
+                    # Restaurer les jeux filtrés par les filtres avancés si actifs
+                    if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
+                        config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                        config.filter_active = True
+                    else:
+                        config.filtered_games = config.games
+                        config.filter_active = False
                     config.current_game = 0
                     config.scroll_offset = 0
                     config.needs_redraw = True
@@ -615,7 +638,11 @@ def handle_controls(event, sources, joystick, screen):
                     # Saisie de texte alphanumérique
                     if event.unicode.isalnum() or event.unicode == ' ':
                         config.search_query += event.unicode
-                        config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()]
+                        # Appliquer d'abord les filtres avancés si actifs, puis le filtre par nom
+                        base_games = config.games
+                        if config.game_filter_obj and config.game_filter_obj.is_active():
+                            base_games = config.game_filter_obj.apply_filters(config.games)
+                        config.filtered_games = [game for game in base_games if config.search_query.lower() in game[0].lower()]
                         config.current_game = 0
                         config.scroll_offset = 0
                         config.needs_redraw = True
@@ -624,7 +651,11 @@ def handle_controls(event, sources, joystick, screen):
                     elif is_input_matched(event, "delete"):
                         if config.search_query:
                             config.search_query = config.search_query[:-1]
-                            config.filtered_games = [game for game in config.games if config.search_query.lower() in game[0].lower()]
+                            # Appliquer d'abord les filtres avancés si actifs, puis le filtre par nom
+                            base_games = config.games
+                            if config.game_filter_obj and config.game_filter_obj.is_active():
+                                base_games = config.game_filter_obj.apply_filters(config.games)
+                            config.filtered_games = [game for game in base_games if config.search_query.lower() in game[0].lower()]
                             config.current_game = 0
                             config.scroll_offset = 0
                             config.needs_redraw = True
@@ -2140,7 +2171,11 @@ def handle_controls(event, sources, joystick, screen):
                     # Recherche par nom (mode existant)
                     config.search_mode = True
                     config.search_query = ""
-                    config.filtered_games = config.games
+                    # Initialiser avec les jeux déjà filtrés par les filtres avancés si actifs
+                    if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
+                        config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                    else:
+                        config.filtered_games = config.games
                     config.current_game = 0
                     config.scroll_offset = 0
                     config.selected_key = (0, 0)

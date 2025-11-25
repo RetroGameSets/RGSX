@@ -364,7 +364,7 @@ try:
     logger.info("Test d'écriture dans le fichier de log réussi")
 except Exception as e:
     logger.error(f"Erreur lors du test d'écriture : {e}")
-    print(f"ERREUR: Impossible d'écrire dans {config.log_file_web}: {e}", file=sys.stderr)
+    print(f"ERREUR: Impossible d'ecrire dans {config.log_file_web}: {e}", file=sys.stderr)
 
 # Initialiser les données au démarrage
 logger.info("Chargement initial des données...")
@@ -772,7 +772,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 # Lire depuis history.json - filtrer seulement les téléchargements en cours
                 history = load_history() or []
                 
-                print(f"\n[DEBUG PROGRESS] history.json chargé avec {len(history)} entrées totales")
+                print(f"\n[DEBUG PROGRESS] history.json charge avec {len(history)} entrees totales")
                 
                 # Filtrer les entrées avec status "Downloading", "Téléchargement", "Connecting", "Try X/Y"
                 in_progress_statuses = ["Downloading", "Téléchargement", "Downloading", "Connecting", "Extracting"]
@@ -797,9 +797,9 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     else:
                         # Debug: afficher les premiers status qui ne matchent pas
                         if len(downloads) < 3:
-                            print(f"  [DEBUG] Ignoré - Status: '{status}', Game: {entry.get('game_name', '')[:50]}")
+                            print(f"  [DEBUG] Ignore - Status: '{status}', Game: {entry.get('game_name', '')[:50]}")
                 
-                print(f"[DEBUG PROGRESS] {len(downloads)} téléchargements en cours trouvés")
+                print(f"[DEBUG PROGRESS] {len(downloads)} telechargements en cours trouves")
                 if downloads:
                     for url, data in list(downloads.items())[:2]:
                         print(f"  - URL: {url[:80]}...")
@@ -2088,7 +2088,7 @@ def run_server(host='0.0.0.0', port=5000):
 if __name__ == '__main__':
     print("="*60, flush=True)
     print("Demarrage du serveur RGSX Web...", flush=True)
-    print(f"Fichier de log prévu: {config.log_file_web}", flush=True)
+    print(f"Fichier de log prevu: {config.log_file_web}", flush=True)
     print("="*60, flush=True)
     
     parser = argparse.ArgumentParser(description='RGSX Web Server')
