@@ -1658,12 +1658,14 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 logger.debug(f"Start: retour à {config.menu_state} depuis pause_menu")
             elif is_input_matched(event, "up"):
-                config.selected_option = max(0, config.selected_option - 1)
+                # Menu racine hiérarchique: nombre dynamique (langue + catégories)
+                total = getattr(config, 'pause_menu_total_options', 7)
+                config.selected_option = (config.selected_option - 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "down"):
                 # Menu racine hiérarchique: nombre dynamique (langue + catégories)
                 total = getattr(config, 'pause_menu_total_options', 7)
-                config.selected_option = min(total - 1, config.selected_option + 1)
+                config.selected_option = (config.selected_option + 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
                 if config.selected_option == 0:  # Games submenu
