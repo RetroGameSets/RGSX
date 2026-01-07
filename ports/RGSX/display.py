@@ -2465,13 +2465,6 @@ def draw_pause_display_menu(screen, selected_index):
         monitor_value = _('display_monitor_single') if _ else "Single monitor"
     monitor_txt = f"{_('display_monitor') if _ else 'Monitor'}: < {monitor_value} >"
     
-    # Fullscreen/Windowed (Windows only)
-    is_windows = config.OPERATING_SYSTEM == "Windows"
-    if is_windows:
-        is_fullscreen = get_display_fullscreen()
-        mode_value = _('display_fullscreen') if is_fullscreen else _('display_windowed')
-        mode_txt = f"{_('display_mode') if _ else 'Screen mode'}: < {mode_value} >"
-
     # Allow unknown extensions
     allow_unknown = get_allow_unknown_extensions()
     status_unknown = _('status_on') if allow_unknown else _('status_off')
@@ -2487,34 +2480,19 @@ def draw_pause_display_menu(screen, selected_index):
 
     back_txt = _("menu_back") if _ else "Back"
     
-    # Build options list - mode only on Windows
-    # Windows: layout, font, footer, family, monitor, mode, light, unknown, back (9)
-    # Linux: layout, font, footer, family, monitor, light, unknown, back (8)
-    if is_windows:
-        options = [layout_txt, font_txt, footer_font_txt, font_family_txt, monitor_txt, mode_txt, light_txt, unknown_txt, back_txt]
-        instruction_keys = [
-            "instruction_display_layout",
-            "instruction_display_font_size",
-            "instruction_display_footer_font_size",
-            "instruction_display_font_family",
-            "instruction_display_monitor",
-            "instruction_display_mode",
-            "instruction_display_light_mode",
-            "instruction_display_unknown_ext",
-            "instruction_generic_back",
-        ]
-    else:
-        options = [layout_txt, font_txt, footer_font_txt, font_family_txt, monitor_txt, light_txt, unknown_txt, back_txt]
-        instruction_keys = [
-            "instruction_display_layout",
-            "instruction_display_font_size",
-            "instruction_display_footer_font_size",
-            "instruction_display_font_family",
-            "instruction_display_monitor",
-            "instruction_display_light_mode",
-            "instruction_display_unknown_ext",
-            "instruction_generic_back",
-        ]
+    # Build options list - same for all platforms
+    # layout, font, footer, family, monitor, light, unknown, back (8)
+    options = [layout_txt, font_txt, footer_font_txt, font_family_txt, monitor_txt, light_txt, unknown_txt, back_txt]
+    instruction_keys = [
+        "instruction_display_layout",
+        "instruction_display_font_size",
+        "instruction_display_footer_font_size",
+        "instruction_display_font_family",
+        "instruction_display_monitor",
+        "instruction_display_light_mode",
+        "instruction_display_unknown_ext",
+        "instruction_generic_back",
+    ]
     
     _draw_submenu_generic(screen, _("menu_display"), options, selected_index)
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None

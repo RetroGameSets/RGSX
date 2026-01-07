@@ -1755,10 +1755,8 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Display
         elif config.menu_state == "pause_display_menu":
             sel = getattr(config, 'pause_display_selection', 0)
-            # Windows: layout, font size, footer font size, font family, monitor, mode, light, allow unknown extensions, back (9)
-            # Linux: layout, font size, footer font size, font family, monitor, light, allow unknown extensions, back (8)
-            is_windows = config.OPERATING_SYSTEM == "Windows"
-            total = 9 if is_windows else 8
+            # layout, font size, footer font size, font family, monitor, light, allow unknown extensions, back (8)
+            total = 8
             if is_input_matched(event, "up"):
                 config.pause_display_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1871,71 +1869,29 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur changement moniteur: {e}")
-                # 5 fullscreen/windowed toggle (Windows) or light mode (Linux)
+                # 5 light mode toggle
                 elif sel == 5 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
-                    if is_windows:
-                        # Fullscreen/windowed toggle
-                        try:
-                            from rgsx_settings import get_display_fullscreen, set_display_fullscreen
-                            current = get_display_fullscreen()
-                            new_val = set_display_fullscreen(not current)
-                            config.popup_message = _("display_mode_restart_required") if _ else "Restart required to apply screen mode"
-                            config.popup_timer = 3000
-                            config.needs_redraw = True
-                        except Exception as e:
-                            logger.error(f"Erreur toggle fullscreen: {e}")
-                    else:
-                        # Linux: light mode toggle
-                        try:
-                            from rgsx_settings import get_light_mode, set_light_mode
-                            current = get_light_mode()
-                            new_val = set_light_mode(not current)
-                            config.popup_message = _("display_light_mode_enabled") if new_val else _("display_light_mode_disabled")
-                            config.popup_timer = 2000
-                            config.needs_redraw = True
-                        except Exception as e:
-                            logger.error(f"Erreur toggle light mode: {e}")
-                # 6 light mode (Windows) or allow unknown extensions (Linux)
-                elif sel == 6 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
-                    if is_windows:
-                        # Windows: light mode toggle
-                        try:
-                            from rgsx_settings import get_light_mode, set_light_mode
-                            current = get_light_mode()
-                            new_val = set_light_mode(not current)
-                            config.popup_message = _("display_light_mode_enabled") if new_val else _("display_light_mode_disabled")
-                            config.popup_timer = 2000
-                            config.needs_redraw = True
-                        except Exception as e:
-                            logger.error(f"Erreur toggle light mode: {e}")
-                    else:
-                        # Linux: allow unknown extensions
-                        try:
-                            current = get_allow_unknown_extensions()
-                            new_val = set_allow_unknown_extensions(not current)
-                            config.popup_message = _("menu_allow_unknown_ext_enabled") if new_val else _("menu_allow_unknown_ext_disabled")
-                            config.popup_timer = 3000
-                            config.needs_redraw = True
-                        except Exception as e:
-                            logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
-                # 7 allow unknown extensions (Windows) or back (Linux)
-                elif sel == 7:
-                    if is_windows and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
-                        try:
-                            current = get_allow_unknown_extensions()
-                            new_val = set_allow_unknown_extensions(not current)
-                            config.popup_message = _("menu_allow_unknown_ext_enabled") if new_val else _("menu_allow_unknown_ext_disabled")
-                            config.popup_timer = 3000
-                            config.needs_redraw = True
-                        except Exception as e:
-                            logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
-                    elif not is_windows and is_input_matched(event, "confirm"):
-                        # Linux: back
-                        config.menu_state = "pause_menu"
-                        config.last_state_change_time = pygame.time.get_ticks()
+                    try:
+                        from rgsx_settings import get_light_mode, set_light_mode
+                        current = get_light_mode()
+                        new_val = set_light_mode(not current)
+                        config.popup_message = _("display_light_mode_enabled") if new_val else _("display_light_mode_disabled")
+                        config.popup_timer = 2000
                         config.needs_redraw = True
-                # 8 back (Windows only)
-                elif sel == 8 and is_windows and is_input_matched(event, "confirm"):
+                    except Exception as e:
+                        logger.error(f"Erreur toggle light mode: {e}")
+                # 6 allow unknown extensions
+                elif sel == 6 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                    try:
+                        current = get_allow_unknown_extensions()
+                        new_val = set_allow_unknown_extensions(not current)
+                        config.popup_message = _("menu_allow_unknown_ext_enabled") if new_val else _("menu_allow_unknown_ext_disabled")
+                        config.popup_timer = 3000
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
+                # 7 back
+                elif sel == 7 and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
