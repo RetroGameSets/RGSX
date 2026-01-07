@@ -225,26 +225,125 @@ THEME_COLORS = {
 
 # Général, résolution, overlay
 def init_display():
-    """Initialise l'écran et les ressources globales."""
+    """Initialise l'écran et les ressources globales.
+    Supporte la sélection de moniteur et le mode fenêtré/plein écran.
+    Compatible Windows et Linux (Batocera).
+    """
     global OVERLAY
+    import platform
+    import os
+    from rgsx_settings import get_display_monitor, get_display_fullscreen, load_rgsx_settings
+    
     logger.debug("Initialisation de l'écran")
-    display_info = pygame.display.Info()
-    screen_width = display_info.current_w
-    screen_height = display_info.current_h
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    
+    # Charger les paramètres d'affichage avec debug
+    settings = load_rgsx_settings()
+    logger.debug(f"Settings chargés: display={settings.get('display', {})}")
+    target_monitor = settings.get("display", {}).get("monitor", 0)
+    fullscreen = settings.get("display", {}).get("fullscreen", True)
+    
+    logger.debug(f"Paramètres lus: monitor={target_monitor}, fullscreen={fullscreen}")
+    
+    # Vérifier les variables d'environnement (priorité sur les settings)
+    env_display = os.environ.get("RGSX_DISPLAY")
+    env_windowed = os.environ.get("RGSX_WINDOWED")
+    if env_display is not None:
+        try:
+            target_monitor = int(env_display)
+            logger.debug(f"Override par RGSX_DISPLAY: monitor={target_monitor}")
+        except ValueError:
+            pass
+    if env_windowed == "1":
+        fullscreen = False
+        logger.debug("Override par RGSX_WINDOWED: fullscreen=False")
+    
+    logger.debug(f"Configuration finale: monitor={target_monitor}, fullscreen={fullscreen}")
+    
+    # Configurer SDL pour utiliser le bon moniteur
+    # Cette variable d'environnement doit être définie AVANT la création de la fenêtre
+    os.environ["SDL_VIDEO_FULLSCREEN_HEAD"] = str(target_monitor)
+    
+    # Obtenir les informations d'affichage
+    num_displays = 1
+    try:
+        num_displays = pygame.display.get_num_displays()
+    except Exception:
+        pass
+    
+    # S'assurer que le moniteur cible existe
+    if target_monitor >= num_displays:
+        logger.warning(f"Monitor {target_monitor} not available, using monitor 0")
+        target_monitor = 0
+    
+    # Obtenir la résolution du moniteur cible
+    try:
+        if hasattr(pygame.display, 'get_desktop_sizes') and num_displays > 1:
+            desktop_sizes = pygame.display.get_desktop_sizes()
+            if target_monitor < len(desktop_sizes):
+                screen_width, screen_height = desktop_sizes[target_monitor]
+            else:
+                display_info = pygame.display.Info()
+                screen_width = display_info.current_w
+                screen_height = display_info.current_h
+        else:
+            display_info = pygame.display.Info()
+            screen_width = display_info.current_w
+            screen_height = display_info.current_h
+    except Exception as e:
+        logger.error(f"Error getting display info: {e}")
+        display_info = pygame.display.Info()
+        screen_width = display_info.current_w
+        screen_height = display_info.current_h
+    
+    # Créer la fenêtre
+    flags = 0
+    if fullscreen:
+        flags = pygame.FULLSCREEN
+        # Sur certains systèmes, NOFRAME aide pour le multi-écran
+        if platform.system() == "Windows":
+            flags |= pygame.NOFRAME
+    
+    try:
+        screen = pygame.display.set_mode((screen_width, screen_height), flags, display=target_monitor)
+    except TypeError:
+        # Anciennes versions de pygame ne supportent pas le paramètre display=
+        screen = pygame.display.set_mode((screen_width, screen_height), flags)
+    except Exception as e:
+        logger.error(f"Error creating display on monitor {target_monitor}: {e}")
+        screen = pygame.display.set_mode((screen_width, screen_height), flags)
+    
     config.screen_width = screen_width
     config.screen_height = screen_height
+    config.current_monitor = target_monitor
+    config.is_fullscreen = fullscreen
+    
     # Initialisation de OVERLAY avec effet glassmorphism
     OVERLAY = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
     OVERLAY.fill((5, 10, 20, 160))  # Bleu très foncé semi-transparent pour effet verre
-    logger.debug(f"Écran initialisé avec résolution : {screen_width}x{screen_height}")
+    logger.debug(f"Écran initialisé: {screen_width}x{screen_height} sur moniteur {target_monitor} (fullscreen={fullscreen})")
     return screen
 
 # Fond d'écran dégradé
-def draw_gradient(screen, top_color, bottom_color):
-    """Dessine un fond dégradé vertical avec des couleurs vibrantes et texture de grain."""
+def draw_gradient(screen, top_color, bottom_color, light_mode=None):
+    """Dessine un fond dégradé vertical avec des couleurs vibrantes et texture de grain.
+    En mode light, utilise une couleur unie pour de meilleures performances."""
+    from rgsx_settings import get_light_mode
+    if light_mode is None:
+        light_mode = get_light_mode()
+    
     height = screen.get_height()
     width = screen.get_width()
+    
+    if light_mode:
+        # Mode light: couleur unie (moyenne des deux couleurs)
+        avg_color = (
+            (top_color[0] + bottom_color[0]) // 2,
+            (top_color[1] + bottom_color[1]) // 2,
+            (top_color[2] + bottom_color[2]) // 2
+        )
+        screen.fill(avg_color)
+        return
+    
     top_color = pygame.Color(*top_color)
     bottom_color = pygame.Color(*bottom_color)
     
@@ -266,15 +365,25 @@ def draw_gradient(screen, top_color, bottom_color):
     screen.blit(grain_surface, (0, 0))
 
 
-def draw_shadow(surface, rect, offset=6, alpha=120):
-    """Dessine une ombre portée pour un rectangle."""
+def draw_shadow(surface, rect, offset=6, alpha=120, light_mode=None):
+    """Dessine une ombre portée pour un rectangle. Désactivé en mode light."""
+    from rgsx_settings import get_light_mode
+    if light_mode is None:
+        light_mode = get_light_mode()
+    if light_mode:
+        return None  # Pas d'ombre en mode light
     shadow = pygame.Surface((rect.width + offset, rect.height + offset), pygame.SRCALPHA)
     pygame.draw.rect(shadow, (0, 0, 0, alpha), (0, 0, rect.width + offset, rect.height + offset), border_radius=15)
     return shadow
 
 
-def draw_glow_effect(screen, rect, color, intensity=80, size=10):
-    """Dessine un effet de glow autour d'un rectangle."""
+def draw_glow_effect(screen, rect, color, intensity=80, size=10, light_mode=None):
+    """Dessine un effet de glow autour d'un rectangle. Désactivé en mode light."""
+    from rgsx_settings import get_light_mode
+    if light_mode is None:
+        light_mode = get_light_mode()
+    if light_mode:
+        return  # Pas de glow en mode light
     glow = pygame.Surface((rect.width + size * 2, rect.height + size * 2), pygame.SRCALPHA)
     for i in range(size):
         alpha = int(intensity * (1 - i / size))
@@ -284,55 +393,68 @@ def draw_glow_effect(screen, rect, color, intensity=80, size=10):
     screen.blit(glow, (rect.x - size, rect.y - size))
 
 # Nouvelle fonction pour dessiner un bouton stylisé
-def draw_stylized_button(screen, text, x, y, width, height, selected=False):
-    """Dessine un bouton moderne avec effet de survol, ombre et bordure arrondie."""
-    # Ombre portée subtile
-    shadow_surf = pygame.Surface((width + 6, height + 6), pygame.SRCALPHA)
-    pygame.draw.rect(shadow_surf, THEME_COLORS["shadow"], (3, 3, width, height), border_radius=12)
-    screen.blit(shadow_surf, (x - 3, y - 3))
+def draw_stylized_button(screen, text, x, y, width, height, selected=False, light_mode=None):
+    """Dessine un bouton moderne avec effet de survol, ombre et bordure arrondie.
+    En mode light, utilise un style simplifié pour de meilleures performances."""
+    from rgsx_settings import get_light_mode
+    if light_mode is None:
+        light_mode = get_light_mode()
     
     button_color = THEME_COLORS["button_hover"] if selected else THEME_COLORS["button_idle"]
     
-    button_surface = pygame.Surface((width, height), pygame.SRCALPHA)
-    
-    # Fond avec dégradé subtil pour bouton sélectionné
-    if selected:
-        # Créer le dégradé
-        for i in range(height):
-            ratio = i / height
-            brightness = 1 + 0.2 * ratio
-            r = min(255, int(button_color[0] * brightness))
-            g = min(255, int(button_color[1] * brightness))
-            b = min(255, int(button_color[2] * brightness))
-            alpha = button_color[3] if len(button_color) > 3 else 255
-            rect = pygame.Rect(0, i, width, 1)
-            pygame.draw.rect(button_surface, (r, g, b, alpha), rect)
-        
-        # Appliquer les coins arrondis avec un masque
-        mask_surface = pygame.Surface((width, height), pygame.SRCALPHA)
-        pygame.draw.rect(mask_surface, (255, 255, 255, 255), (0, 0, width, height), border_radius=12)
-        button_surface.blit(mask_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    if light_mode:
+        # Mode light: bouton simple sans effets
+        pygame.draw.rect(screen, button_color[:3], (x, y, width, height), border_radius=8)
+        if selected:
+            # Bordure simple pour indiquer la sélection
+            pygame.draw.rect(screen, THEME_COLORS["neon"], (x, y, width, height), width=2, border_radius=8)
     else:
-        pygame.draw.rect(button_surface, button_color, (0, 0, width, height), border_radius=12)
-    
-    # Reflet en haut
-    highlight = pygame.Surface((width - 4, height // 3), pygame.SRCALPHA)
-    highlight.fill(THEME_COLORS["highlight"])
-    button_surface.blit(highlight, (2, 2))
-    
-    # Bordure
-    pygame.draw.rect(button_surface, THEME_COLORS["border"], (0, 0, width, height), 2, border_radius=12)
-    
-    if selected:
-        # Effet glow doux pour sélection
-        glow_surface = pygame.Surface((width + 16, height + 16), pygame.SRCALPHA)
-        for i in range(6):
-            alpha = int(40 * (1 - i / 6))
-            pygame.draw.rect(glow_surface, (*THEME_COLORS["glow"][:3], alpha), 
-                           (i, i, width + 16 - i*2, height + 16 - i*2), border_radius=15)
-        screen.blit(glow_surface, (x - 8, y - 8))
-    
-    screen.blit(button_surface, (x, y))
+        # Mode normal avec tous les effets
+        # Ombre portée subtile
+        shadow_surf = pygame.Surface((width + 6, height + 6), pygame.SRCALPHA)
+        pygame.draw.rect(shadow_surf, THEME_COLORS["shadow"], (3, 3, width, height), border_radius=12)
+        screen.blit(shadow_surf, (x - 3, y - 3))
+        
+        button_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        
+        # Fond avec dégradé subtil pour bouton sélectionné
+        if selected:
+            # Créer le dégradé
+            for i in range(height):
+                ratio = i / height
+                brightness = 1 + 0.2 * ratio
+                r = min(255, int(button_color[0] * brightness))
+                g = min(255, int(button_color[1] * brightness))
+                b = min(255, int(button_color[2] * brightness))
+                alpha = button_color[3] if len(button_color) > 3 else 255
+                rect = pygame.Rect(0, i, width, 1)
+                pygame.draw.rect(button_surface, (r, g, b, alpha), rect)
+            
+            # Appliquer les coins arrondis avec un masque
+            mask_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+            pygame.draw.rect(mask_surface, (255, 255, 255, 255), (0, 0, width, height), border_radius=12)
+            button_surface.blit(mask_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        else:
+            pygame.draw.rect(button_surface, button_color, (0, 0, width, height), border_radius=12)
+        
+        # Reflet en haut
+        highlight = pygame.Surface((width - 4, height // 3), pygame.SRCALPHA)
+        highlight.fill(THEME_COLORS["highlight"])
+        button_surface.blit(highlight, (2, 2))
+        
+        # Bordure
+        pygame.draw.rect(button_surface, THEME_COLORS["border"], (0, 0, width, height), 2, border_radius=12)
+        
+        if selected:
+            # Effet glow doux pour sélection
+            glow_surface = pygame.Surface((width + 16, height + 16), pygame.SRCALPHA)
+            for i in range(6):
+                alpha = int(40 * (1 - i / 6))
+                pygame.draw.rect(glow_surface, (*THEME_COLORS["glow"][:3], alpha), 
+                               (i, i, width + 16 - i*2, height + 16 - i*2), border_radius=15)
+            screen.blit(glow_surface, (x - 8, y - 8))
+        
+        screen.blit(button_surface, (x, y))
     
     # Vérifier si le texte dépasse la largeur disponible
     text_surface = config.font.render(text, True, THEME_COLORS["text"])
@@ -2033,15 +2155,32 @@ def draw_menu_instruction(screen, instruction_text, last_button_bottom=None):
         logger.error(f"Erreur draw_menu_instruction: {e}")
 
 def draw_display_menu(screen):
-    """Affiche le sous-menu Affichage (layout, taille de police, systèmes non supportés)."""
+    """Affiche le sous-menu Affichage (layout, taille de police, systèmes non supportés, moniteur)."""
     screen.blit(OVERLAY, (0, 0))
 
     # États actuels
     layout_str = f"{getattr(config, 'GRID_COLS', 3)}x{getattr(config, 'GRID_ROWS', 4)}"
     font_scale = config.accessibility_settings.get("font_scale", 1.0)
-    from rgsx_settings import get_show_unsupported_platforms, get_allow_unknown_extensions
+    from rgsx_settings import (get_show_unsupported_platforms, get_allow_unknown_extensions,
+                               get_display_monitor, get_display_fullscreen, get_available_monitors)
     show_unsupported = get_show_unsupported_platforms()
     allow_unknown = get_allow_unknown_extensions()
+    
+    # Monitor info
+    current_monitor = get_display_monitor()
+    is_fullscreen = get_display_fullscreen()
+    monitors = get_available_monitors()
+    num_monitors = len(monitors)
+    
+    # Construire le label du moniteur
+    if num_monitors > 1:
+        monitor_info = monitors[current_monitor] if current_monitor < num_monitors else monitors[0]
+        monitor_label = f"{_('display_monitor')}: {monitor_info['name']} ({monitor_info['resolution']})"
+    else:
+        monitor_label = f"{_('display_monitor')}: {_('display_monitor_single')}"
+    
+    # Label mode écran
+    fullscreen_label = f"{_('display_mode')}: {_('display_fullscreen') if is_fullscreen else _('display_windowed')}"
 
     # Compter les systèmes non supportés actuellement masqués
     unsupported_list = getattr(config, "unsupported_platforms", []) or []
@@ -2054,11 +2193,13 @@ def draw_display_menu(screen):
     else:
         unsupported_label = _("menu_show_unsupported_all_displayed")
 
-    # Libellés
+    # Libellés - ajout des options moniteur et mode écran
     options = [
         f"{_('display_layout')}: {layout_str}",
         _("accessibility_font_size").format(f"{font_scale:.1f}"),
-    unsupported_label,
+        monitor_label,
+        fullscreen_label,
+        unsupported_label,
         _("menu_allow_unknown_ext_on") if allow_unknown else _("menu_allow_unknown_ext_off"),
         _("menu_filter_platforms"),
     ]
@@ -2279,7 +2420,11 @@ def draw_pause_controls_menu(screen, selected_index):
 def draw_pause_display_menu(screen, selected_index):
     from rgsx_settings import (
         get_allow_unknown_extensions,
-        get_font_family
+        get_font_family,
+        get_display_monitor,
+        get_display_fullscreen,
+        get_available_monitors,
+        get_light_mode
     )
     # Layout label
     layouts = [(3,3),(3,4),(4,3),(4,4)]
@@ -2309,6 +2454,24 @@ def draw_pause_display_menu(screen, selected_index):
     fam_label = family_map.get(current_family, current_family)
     font_family_txt = f"{_('submenu_display_font_family') if _ else 'Font'}: < {fam_label} >"
 
+    # Monitor selection
+    current_monitor = get_display_monitor()
+    monitors = get_available_monitors()
+    num_monitors = len(monitors)
+    if num_monitors > 1:
+        monitor_info = monitors[current_monitor] if current_monitor < num_monitors else monitors[0]
+        monitor_value = f"{monitor_info['name']} ({monitor_info['resolution']})"
+    else:
+        monitor_value = _('display_monitor_single') if _ else "Single monitor"
+    monitor_txt = f"{_('display_monitor') if _ else 'Monitor'}: < {monitor_value} >"
+    
+    # Fullscreen/Windowed (Windows only)
+    is_windows = config.OPERATING_SYSTEM == "Windows"
+    if is_windows:
+        is_fullscreen = get_display_fullscreen()
+        mode_value = _('display_fullscreen') if is_fullscreen else _('display_windowed')
+        mode_txt = f"{_('display_mode') if _ else 'Screen mode'}: < {mode_value} >"
+
     # Allow unknown extensions
     allow_unknown = get_allow_unknown_extensions()
     status_unknown = _('status_on') if allow_unknown else _('status_off')
@@ -2317,17 +2480,43 @@ def draw_pause_display_menu(screen, selected_index):
         raw_unknown_label = raw_unknown_label.split('{status}')[0].rstrip(' :')
     unknown_txt = f"{raw_unknown_label}: < {status_unknown} >"
 
+    # Light mode (performance)
+    light_mode = get_light_mode()
+    light_status = _('status_on') if light_mode else _('status_off')
+    light_txt = f"{_('display_light_mode') if _ else 'Light mode'}: < {light_status} >"
+
     back_txt = _("menu_back") if _ else "Back"
-    options = [layout_txt, font_txt, footer_font_txt, font_family_txt, unknown_txt, back_txt]
+    
+    # Build options list - mode only on Windows
+    # Windows: layout, font, footer, family, monitor, mode, light, unknown, back (9)
+    # Linux: layout, font, footer, family, monitor, light, unknown, back (8)
+    if is_windows:
+        options = [layout_txt, font_txt, footer_font_txt, font_family_txt, monitor_txt, mode_txt, light_txt, unknown_txt, back_txt]
+        instruction_keys = [
+            "instruction_display_layout",
+            "instruction_display_font_size",
+            "instruction_display_footer_font_size",
+            "instruction_display_font_family",
+            "instruction_display_monitor",
+            "instruction_display_mode",
+            "instruction_display_light_mode",
+            "instruction_display_unknown_ext",
+            "instruction_generic_back",
+        ]
+    else:
+        options = [layout_txt, font_txt, footer_font_txt, font_family_txt, monitor_txt, light_txt, unknown_txt, back_txt]
+        instruction_keys = [
+            "instruction_display_layout",
+            "instruction_display_font_size",
+            "instruction_display_footer_font_size",
+            "instruction_display_font_family",
+            "instruction_display_monitor",
+            "instruction_display_light_mode",
+            "instruction_display_unknown_ext",
+            "instruction_generic_back",
+        ]
+    
     _draw_submenu_generic(screen, _("menu_display"), options, selected_index)
-    instruction_keys = [
-        "instruction_display_layout",
-        "instruction_display_font_size",
-        "instruction_display_footer_font_size",
-        "instruction_display_font_family",
-        "instruction_display_unknown_ext",
-        "instruction_generic_back",
-    ]
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
     if key:
         button_height = int(config.screen_height * 0.045)

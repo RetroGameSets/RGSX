@@ -49,6 +49,8 @@ def load_rgsx_settings():
     """Charge tous les paramètres depuis rgsx_settings.json."""
     from config import RGSX_SETTINGS_PATH
     
+    logger.debug(f"Chargement des settings depuis: {RGSX_SETTINGS_PATH}")
+    
     default_settings = {
         "language": "en",
         "music_enabled": True,
@@ -58,7 +60,10 @@ def load_rgsx_settings():
         },
         "display": {
             "grid": "3x4",
-            "font_family": "pixel"
+            "font_family": "pixel",
+            "monitor": 0,
+            "fullscreen": True,
+            "light_mode": False
         },
         "symlink": {
             "enabled": False,
@@ -78,13 +83,17 @@ def load_rgsx_settings():
         if os.path.exists(RGSX_SETTINGS_PATH):
             with open(RGSX_SETTINGS_PATH, 'r', encoding='utf-8') as f:
                 settings = json.load(f)
+                logger.debug(f"Settings JSON chargé: display={settings.get('display', {})}")
                 # Fusionner avec les valeurs par défaut pour assurer la compatibilité
                 for key, value in default_settings.items():
                     if key not in settings:
                         settings[key] = value
                 return settings
+        else:
+            logger.warning(f"Fichier settings non trouvé: {RGSX_SETTINGS_PATH}")
     except Exception as e:
         print(f"Erreur lors du chargement de rgsx_settings.json: {str(e)}")
+        logger.error(f"Erreur chargement settings: {e}")
     
     return default_settings
 
@@ -306,6 +315,92 @@ def set_display_grid(cols: int, rows: int):
     disp["grid"] = f"{cols}x{rows}"
     save_rgsx_settings(settings)
     return cols, rows
+
+# ----------------------- Monitor/Display settings ----------------------- #
+
+def get_display_monitor(settings=None):
+    """Retourne l'index du moniteur configuré (par défaut 0 = principal)."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return settings.get("display", {}).get("monitor", 0)
+
+def set_display_monitor(monitor_index: int):
+    """Définit et sauvegarde l'index du moniteur à utiliser."""
+    settings = load_rgsx_settings()
+    disp = settings.setdefault("display", {})
+    disp["monitor"] = max(0, int(monitor_index))
+    save_rgsx_settings(settings)
+    return disp["monitor"]
+
+def get_display_fullscreen(settings=None):
+    """Retourne True si le mode plein écran est activé."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return settings.get("display", {}).get("fullscreen", True)
+
+def set_display_fullscreen(fullscreen: bool):
+    """Définit et sauvegarde le mode plein écran."""
+    settings = load_rgsx_settings()
+    disp = settings.setdefault("display", {})
+    disp["fullscreen"] = bool(fullscreen)
+    save_rgsx_settings(settings)
+    return disp["fullscreen"]
+
+def get_light_mode(settings=None):
+    """Retourne True si le mode léger (performance) est activé."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return settings.get("display", {}).get("light_mode", False)
+
+def set_light_mode(enabled: bool):
+    """Définit et sauvegarde le mode léger (performance)."""
+    settings = load_rgsx_settings()
+    disp = settings.setdefault("display", {})
+    disp["light_mode"] = bool(enabled)
+    save_rgsx_settings(settings)
+    return disp["light_mode"]
+
+def get_available_monitors():
+    """Retourne la liste des moniteurs disponibles avec leurs informations.
+    Compatible Windows, Linux (Batocera), et autres plateformes.
+    Retourne une liste de dicts: [{"index": 0, "name": "Monitor 1", "resolution": "1920x1080"}, ...]
+    """
+    monitors = []
+    try:
+        import pygame
+        if not pygame.display.get_init():
+            pygame.display.init()
+        
+        num_displays = pygame.display.get_num_displays()
+        for i in range(num_displays):
+            try:
+                # Essayer d'obtenir le mode desktop pour ce display
+                mode = pygame.display.get_desktop_sizes()[i] if hasattr(pygame.display, 'get_desktop_sizes') else None
+                if mode:
+                    width, height = mode
+                else:
+                    # Fallback: utiliser la résolution actuelle si disponible
+                    info = pygame.display.Info()
+                    width, height = info.current_w, info.current_h
+                
+                monitors.append({
+                    "index": i,
+                    "name": f"Monitor {i + 1}",
+                    "resolution": f"{width}x{height}"
+                })
+            except Exception as e:
+                # Si on ne peut pas obtenir les infos, ajouter quand même le moniteur
+                monitors.append({
+                    "index": i,
+                    "name": f"Monitor {i + 1}",
+                    "resolution": "Unknown"
+                })
+    except Exception as e:
+        logger.error(f"Error getting monitors: {e}")
+        # Fallback: au moins un moniteur
+        monitors = [{"index": 0, "name": "Monitor 1 (Default)", "resolution": "Auto"}]
+    
+    return monitors if monitors else [{"index": 0, "name": "Monitor 1 (Default)", "resolution": "Auto"}]
 
 def get_font_family(settings=None):
     if settings is None:

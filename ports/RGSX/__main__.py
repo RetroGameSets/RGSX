@@ -1,5 +1,11 @@
 import os
 import platform
+import warnings
+
+# Ignorer le warning de deprecation de pkg_resources dans pygame
+warnings.filterwarnings("ignore", category=UserWarning, module="pygame.pkgdata")
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
+
 # Ne pas forcer SDL_FBDEV ici; si déjà défini par l'environnement, on le garde
 try:
     if "SDL_FBDEV" in os.environ:
