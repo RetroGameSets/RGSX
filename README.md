@@ -5,7 +5,7 @@
 A free, user-friendly ROM downloader for Batocera, Knulli, and RetroBat with multi-source support.
 
 <p align="center">
-  <img width="69%" alt="platform menu" src="https://github.com/user-attachments/assets/4464b57b-06a8-45e9-a411-cc12b421545a" />
+  <img width="69%" alt="main" src="https://github.com/user-attachments/assets/a98f1189-9a50-4cc3-b588-3f85245640d8" />
   <img width="30%" alt="controls help" src="https://github.com/user-attachments/assets/38cac7e6-14f2-4e83-91da-0679669822ee" />
 </p>
 <p align="center">
