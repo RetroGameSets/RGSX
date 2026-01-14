@@ -49,7 +49,7 @@ def load_rgsx_settings():
     """Charge tous les paramètres depuis rgsx_settings.json."""
     from config import RGSX_SETTINGS_PATH
     
-    logger.debug(f"Chargement des settings depuis: {RGSX_SETTINGS_PATH}")
+    #logger.debug(f"Chargement des settings depuis: {RGSX_SETTINGS_PATH}")
     
     default_settings = {
         "language": "en",
@@ -83,7 +83,7 @@ def load_rgsx_settings():
         if os.path.exists(RGSX_SETTINGS_PATH):
             with open(RGSX_SETTINGS_PATH, 'r', encoding='utf-8') as f:
                 settings = json.load(f)
-                logger.debug(f"Settings JSON chargé: display={settings.get('display', {})}")
+                #logger.debug(f"Settings JSON chargé: display={settings.get('display', {})}")
                 # Fusionner avec les valeurs par défaut pour assurer la compatibilité
                 for key, value in default_settings.items():
                     if key not in settings:

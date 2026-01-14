@@ -264,6 +264,8 @@
     "history_option_extract_archive": "Extraire l'archive",
     "history_option_open_file": "Ouvrir le fichier",
     "history_option_scraper": "Récupérer métadonnées",
+    "history_option_remove_from_queue": "Retirer de la file d'attente",
+    "history_option_cancel_download": "Annuler le téléchargement",
     "history_option_delete_game": "Supprimer le jeu",
     "history_option_error_info": "Détails de l'erreur",
     "history_option_retry": "Retenter le téléchargement",

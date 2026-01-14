@@ -3,12 +3,21 @@
 import pygame  # type: ignore
 import os
 import io
+import platform
+import random
 import config
-from utils import truncate_text_middle, wrap_text, load_system_image, truncate_text_end
+from utils import (truncate_text_middle, wrap_text, load_system_image, truncate_text_end,
+                   check_web_service_status, check_custom_dns_status, load_api_keys,
+                   _get_dest_folder_name, find_file_with_or_without_extension)
 import logging
 import math
 from history import load_history, is_game_downloaded  
-from language import _, get_size_units, get_speed_unit  
+from language import _, get_size_units, get_speed_unit, get_available_languages, get_language_name
+from rgsx_settings import (load_rgsx_settings, get_light_mode, get_show_unsupported_platforms,
+                            get_allow_unknown_extensions, get_display_monitor, get_display_fullscreen,
+                            get_available_monitors, get_font_family, get_sources_mode,
+                            get_hide_premium_systems, get_symlink_option)
+from game_filters import GameFilters  
 
 logger = logging.getLogger(__name__)
 
@@ -226,38 +235,27 @@ THEME_COLORS = {
 # Général, résolution, overlay
 def init_display():
     """Initialise l'écran et les ressources globales.
-    Supporte la sélection de moniteur et le mode fenêtré/plein écran.
+    Supporte la sélection de moniteur en plein écran.
     Compatible Windows et Linux (Batocera).
     """
     global OVERLAY
-    import platform
-    import os
-    from rgsx_settings import get_display_monitor, get_display_fullscreen, load_rgsx_settings
     
-    logger.debug("Initialisation de l'écran")
     
-    # Charger les paramètres d'affichage avec debug
+    # Charger les paramètres d'affichage
     settings = load_rgsx_settings()
     logger.debug(f"Settings chargés: display={settings.get('display', {})}")
     target_monitor = settings.get("display", {}).get("monitor", 0)
-    fullscreen = settings.get("display", {}).get("fullscreen", True)
     
-    logger.debug(f"Paramètres lus: monitor={target_monitor}, fullscreen={fullscreen}")
     
     # Vérifier les variables d'environnement (priorité sur les settings)
     env_display = os.environ.get("RGSX_DISPLAY")
-    env_windowed = os.environ.get("RGSX_WINDOWED")
     if env_display is not None:
         try:
             target_monitor = int(env_display)
             logger.debug(f"Override par RGSX_DISPLAY: monitor={target_monitor}")
         except ValueError:
             pass
-    if env_windowed == "1":
-        fullscreen = False
-        logger.debug("Override par RGSX_WINDOWED: fullscreen=False")
     
-    logger.debug(f"Configuration finale: monitor={target_monitor}, fullscreen={fullscreen}")
     
     # Configurer SDL pour utiliser le bon moniteur
     # Cette variable d'environnement doit être définie AVANT la création de la fenêtre
@@ -295,13 +293,14 @@ def init_display():
         screen_width = display_info.current_w
         screen_height = display_info.current_h
     
-    # Créer la fenêtre
-    flags = 0
-    if fullscreen:
-        flags = pygame.FULLSCREEN
-        # Sur certains systèmes, NOFRAME aide pour le multi-écran
-        if platform.system() == "Windows":
-            flags |= pygame.NOFRAME
+    # Créer la fenêtre en plein écran
+    flags = pygame.FULLSCREEN
+    # Sur Linux/Batocera, utiliser SCALED pour respecter la résolution forcée d'EmulationStation
+    if platform.system() == "Linux":
+        flags |= pygame.SCALED
+    # Sur certains systèmes Windows, NOFRAME aide pour le multi-écran
+    elif platform.system() == "Windows":
+        flags |= pygame.NOFRAME
     
     try:
         screen = pygame.display.set_mode((screen_width, screen_height), flags, display=target_monitor)
@@ -315,19 +314,17 @@ def init_display():
     config.screen_width = screen_width
     config.screen_height = screen_height
     config.current_monitor = target_monitor
-    config.is_fullscreen = fullscreen
     
     # Initialisation de OVERLAY avec effet glassmorphism
     OVERLAY = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
     OVERLAY.fill((5, 10, 20, 160))  # Bleu très foncé semi-transparent pour effet verre
-    logger.debug(f"Écran initialisé: {screen_width}x{screen_height} sur moniteur {target_monitor} (fullscreen={fullscreen})")
+    logger.debug(f"Écran initialisé: {screen_width}x{screen_height} sur moniteur {target_monitor}")
     return screen
 
 # Fond d'écran dégradé
 def draw_gradient(screen, top_color, bottom_color, light_mode=None):
     """Dessine un fond dégradé vertical avec des couleurs vibrantes et texture de grain.
     En mode light, utilise une couleur unie pour de meilleures performances."""
-    from rgsx_settings import get_light_mode
     if light_mode is None:
         light_mode = get_light_mode()
     
@@ -355,7 +352,6 @@ def draw_gradient(screen, top_color, bottom_color, light_mode=None):
     
     # Ajouter une texture de grain subtile pour plus de profondeur
     grain_surface = pygame.Surface((width, height), pygame.SRCALPHA)
-    import random
     random.seed(42)  # Seed fixe pour cohérence
     for _ in range(width * height // 200):  # Réduire la densité pour performance
         x = random.randint(0, width - 1)
@@ -367,7 +363,6 @@ def draw_gradient(screen, top_color, bottom_color, light_mode=None):
 
 def draw_shadow(surface, rect, offset=6, alpha=120, light_mode=None):
     """Dessine une ombre portée pour un rectangle. Désactivé en mode light."""
-    from rgsx_settings import get_light_mode
     if light_mode is None:
         light_mode = get_light_mode()
     if light_mode:
@@ -379,7 +374,6 @@ def draw_shadow(surface, rect, offset=6, alpha=120, light_mode=None):
 
 def draw_glow_effect(screen, rect, color, intensity=80, size=10, light_mode=None):
     """Dessine un effet de glow autour d'un rectangle. Désactivé en mode light."""
-    from rgsx_settings import get_light_mode
     if light_mode is None:
         light_mode = get_light_mode()
     if light_mode:
@@ -396,7 +390,6 @@ def draw_glow_effect(screen, rect, color, intensity=80, size=10, light_mode=None
 def draw_stylized_button(screen, text, x, y, width, height, selected=False, light_mode=None):
     """Dessine un bouton moderne avec effet de survol, ombre et bordure arrondie.
     En mode light, utilise un style simplifié pour de meilleures performances."""
-    from rgsx_settings import get_light_mode
     if light_mode is None:
         light_mode = get_light_mode()
     
@@ -1843,49 +1836,46 @@ def draw_extension_warning(screen):
 def draw_controls(screen, menu_state, current_music_name=None, music_popup_start_time=0):
     """Affiche les contrôles contextuels en bas de l'écran selon le menu_state."""
     
-    # Import local de la fonction de traduction pour éviter les conflits de scope
-    from language import _ as i18n
-    
     # Mapping des contrôles par menu_state
     controls_map = {
         "platform": [
-            ("history", i18n("controls_action_history")),
-            ("confirm", i18n("controls_confirm_select")),
-            ("start", i18n("controls_action_start")),
+            ("history", _("controls_action_history")),
+            ("confirm", _("controls_confirm_select")),
+            ("start", _("controls_action_start")),
         ],
         "game": [
-            ("confirm", i18n("controls_confirm_select")),
-            ("clear_history", i18n("controls_action_queue")),
-            (("page_up", "page_down"), i18n("controls_pages")),
-            ("filter", i18n("controls_filter_search")),
-            ("history", i18n("controls_action_history")),
+            ("confirm", _("controls_confirm_select")),
+            ("clear_history", _("controls_action_queue")),
+            (("page_up", "page_down"), _("controls_pages")),
+            ("filter", _("controls_filter_search")),
+            ("history", _("controls_action_history")),
         ],
         "history": [
-            ("confirm", i18n("history_game_options_title")),
-            ("clear_history", i18n("controls_action_clear_history")),
-            ("history", i18n("controls_action_close_history")),
-            ("cancel", i18n("controls_cancel_back")),
+            ("confirm", _("history_game_options_title")),
+            ("clear_history", _("controls_action_clear_history")),
+            ("history", _("controls_action_close_history")),
+            ("cancel", _("controls_cancel_back")),
         ],
         "scraper": [
-            ("confirm", i18n("controls_confirm_select")),
-            ("cancel", i18n("controls_cancel_back")),
+            ("confirm", _("controls_confirm_select")),
+            ("cancel", _("controls_cancel_back")),
         ],
         "error": [
-            ("confirm", i18n("controls_confirm_select")),
+            ("confirm", _("controls_confirm_select")),
         ],
         "confirm_exit": [
-            ("confirm", i18n("controls_confirm_select")),
-            ("cancel", i18n("controls_cancel_back")),
+            ("confirm", _("controls_confirm_select")),
+            ("cancel", _("controls_cancel_back")),
         ],
         "extension_warning": [
-            ("confirm", i18n("controls_confirm_select")),
+            ("confirm", _("controls_confirm_select")),
         ],
     }
     
     # Récupérer les contrôles pour ce menu, sinon affichage par défaut
     controls_list = controls_map.get(menu_state, [
-        ("confirm", i18n("controls_confirm_select")),
-        ("cancel", i18n("controls_cancel_back")),
+        ("confirm", _("controls_confirm_select")),
+        ("cancel", _("controls_cancel_back")),
     ])
     
     # Construire les lignes avec icônes
@@ -1899,7 +1889,7 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
         # Si aucun joystick, afficher la touche entre crochets
         if not getattr(config, 'joystick', True):
             start_button = f"[{start_button}]"
-        start_text = i18n("controls_action_start")
+        start_text = _("controls_action_start")
         control_parts.append(f"RGSX v{config.app_version} - {start_button} : {start_text}")
         
         # Afficher le nom du joystick s'il est détecté
@@ -1907,7 +1897,7 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
             device_name = getattr(config, 'controller_device_name', '') or ''
             if device_name:
                 try:
-                    joy_label = i18n("footer_joystick")
+                    joy_label = _("footer_joystick")
                 except Exception:
                     joy_label = "Joystick: {0}"
                 if isinstance(joy_label, str) and "{0}" in joy_label:
@@ -1962,7 +1952,7 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
                 combined_surf = pygame.Surface((max_width, 50), pygame.SRCALPHA)
                 x_pos = 10
                 for action_tuple in all_controls:
-                    _, actions, label = action_tuple
+                    ignored, actions, label = action_tuple
                     try:
                         surf = _render_icons_line(actions, label, max_width - x_pos - 10, config.tiny_font, THEME_COLORS["text"], icon_size=scaled_icon_size, icon_gap=scaled_icon_gap, icon_text_gap=scaled_icon_text_gap)
                         if x_pos + surf.get_width() > max_width - 10:
@@ -1977,7 +1967,7 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
                     final_surf.blit(combined_surf, (0, 0), (0, 0, x_pos - 10, 50))
                     icon_surfs.append(final_surf)
             elif line_data[0] == "icons" and len(line_data) == 3:
-                _, actions, label = line_data
+                ignored, actions, label = line_data
                 try:
                     surf = _render_icons_line(actions, label, max_width, config.tiny_font, THEME_COLORS["text"], icon_size=scaled_icon_size, icon_gap=scaled_icon_gap, icon_text_gap=scaled_icon_text_gap)
                     icon_surfs.append(surf)
@@ -2015,7 +2005,6 @@ def draw_language_menu(screen):
     - Bloc (titre + liste de langues) centré verticalement.
     - Gestion d'overflow: réduit légèrement la hauteur/espacement si nécessaire.
     """
-    from language import get_available_languages, get_language_name
     
     screen.blit(OVERLAY, (0, 0))
     
@@ -2161,8 +2150,6 @@ def draw_display_menu(screen):
     # États actuels
     layout_str = f"{getattr(config, 'GRID_COLS', 3)}x{getattr(config, 'GRID_ROWS', 4)}"
     font_scale = config.accessibility_settings.get("font_scale", 1.0)
-    from rgsx_settings import (get_show_unsupported_platforms, get_allow_unknown_extensions,
-                               get_display_monitor, get_display_fullscreen, get_available_monitors)
     show_unsupported = get_show_unsupported_platforms()
     allow_unknown = get_allow_unknown_extensions()
     
@@ -2418,14 +2405,6 @@ def draw_pause_controls_menu(screen, selected_index):
         draw_menu_instruction(screen, text, last_button_bottom)
 
 def draw_pause_display_menu(screen, selected_index):
-    from rgsx_settings import (
-        get_allow_unknown_extensions,
-        get_font_family,
-        get_display_monitor,
-        get_display_fullscreen,
-        get_available_monitors,
-        get_light_mode
-    )
     # Layout label
     layouts = [(3,3),(3,4),(4,3),(4,4)]
     try:
@@ -2509,7 +2488,6 @@ def draw_pause_display_menu(screen, selected_index):
         draw_menu_instruction(screen, _(key), last_button_bottom)
 
 def draw_pause_games_menu(screen, selected_index):
-    from rgsx_settings import get_sources_mode, get_show_unsupported_platforms, get_hide_premium_systems
     mode = get_sources_mode()
     source_label = _("games_source_rgsx") if mode == "rgsx" else _("games_source_custom")
     source_txt = f"{_('menu_games_source_prefix')}: < {source_label} >"
@@ -2582,8 +2560,6 @@ def draw_pause_games_menu(screen, selected_index):
         draw_menu_instruction(screen, text, last_button_bottom)
 
 def draw_pause_settings_menu(screen, selected_index):
-    from rgsx_settings import get_symlink_option
-    from utils import check_web_service_status, check_custom_dns_status
     # Music
     if config.music_enabled:
         music_name = config.current_music_name or ""
@@ -2653,7 +2629,6 @@ def draw_pause_settings_menu(screen, selected_index):
 
 def draw_pause_api_keys_status(screen):
     screen.blit(OVERLAY, (0,0))
-    from utils import load_api_keys
     keys = load_api_keys()
     title = _("api_keys_status_title") if _ else "API Keys Status"
     # Préparer données avec masquage partiel des clés (afficher 4 premiers et 2 derniers caractères si longueur > 10)
@@ -2757,7 +2732,6 @@ def draw_pause_api_keys_status(screen):
 
 def draw_filter_platforms_menu(screen):
     """Affiche le menu de filtrage des plateformes (afficher/masquer)."""
-    from rgsx_settings import load_rgsx_settings
     screen.blit(OVERLAY, (0, 0))
     settings = load_rgsx_settings()
     hidden = set(settings.get("hidden_platforms", [])) if isinstance(settings, dict) else set()
@@ -3302,8 +3276,6 @@ def show_toast(message, duration=2000):
     config.toast_start_time = pygame.time.get_ticks()
 def draw_history_game_options(screen):
     """Affiche le menu d'options pour un jeu de l'historique."""
-    import os
-    from utils import _get_dest_folder_name, find_file_with_or_without_extension
     
     screen.blit(OVERLAY, (0, 0))
     
@@ -3410,8 +3382,6 @@ def draw_history_game_options(screen):
 
 def draw_history_show_folder(screen):
     """Affiche le chemin complet du fichier téléchargé."""
-    import os
-    from utils import _get_dest_folder_name
     
     screen.blit(OVERLAY, (0, 0))
     
@@ -3956,7 +3926,6 @@ def draw_filter_menu_choice(screen):
 
 def draw_filter_advanced(screen):
     """Affiche l'écran de filtrage avancé"""
-    from game_filters import GameFilters
     
     screen.blit(OVERLAY, (0, 0))
     
@@ -4236,7 +4205,6 @@ def draw_filter_advanced(screen):
 
 def draw_filter_priority_config(screen):
     """Affiche l'écran de configuration de la priorité des régions pour One ROM per game"""
-    from game_filters import GameFilters
     
     screen.blit(OVERLAY, (0, 0))
     
@@ -4254,7 +4222,6 @@ def draw_filter_priority_config(screen):
     
     # Initialiser le filtre si nécessaire
     if not hasattr(config, 'game_filter_obj'):
-        from game_filters import GameFilters
         from rgsx_settings import load_game_filters
         config.game_filter_obj = GameFilters()
         filter_dict = load_game_filters()

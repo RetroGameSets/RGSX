@@ -176,7 +176,6 @@ config.init_footer_font()
 
 # Mise à jour de la résolution dans config
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
-logger.debug(f"Resolution d'ecran : {config.screen_width}x{config.screen_height}")
 print(f"Resolution ecran validee: {config.screen_width}x{config.screen_height}")
 
 # Afficher un premier écran de chargement immédiatement pour éviter un écran noir
@@ -276,7 +275,6 @@ logger.debug(f"Historique de téléchargement : {len(config.history)} entrées")
 
 # Chargement des jeux téléchargés
 config.downloaded_games = load_downloaded_games()
-logger.debug(f"Jeux téléchargés : {sum(len(v) for v in config.downloaded_games.values())} jeux")
 
 # Vérification et chargement de la configuration des contrôles (après mises à jour et détection manette)
 config.controls_config = load_controls_config()
@@ -302,6 +300,9 @@ try:
     if config.controls_config:
         summary = {}
         for action, mapping in config.controls_config.items():
+            # Vérifier que mapping est bien un dictionnaire
+            if not isinstance(mapping, dict):
+                continue
             mtype = mapping.get("type")
             val = None
             if mtype == "key":
@@ -341,9 +342,6 @@ def start_web_server():
     global web_server_process
     try:
         web_server_script = os.path.join(config.APP_FOLDER, "rgsx_web.py")
-        logger.info(f"Tentative de démarrage du serveur web...")
-        logger.info(f"Script: {web_server_script}")
-        logger.info(f"Fichier existe: {os.path.exists(web_server_script)}")
         
         if not os.path.exists(web_server_script):
             logger.warning(f"Script serveur web introuvable: {web_server_script}")
@@ -384,7 +382,6 @@ def start_web_server():
         
         logger.info(f"✅ Serveur web démarré (PID: {web_server_process.pid})")
         logger.info(f"🌐 Serveur accessible sur http://localhost:5000")
-        logger.info(f"📝 Logs de démarrage: {web_server_log}")
         
         # Attendre un peu pour voir si le processus crash immédiatement
         import time
@@ -447,7 +444,6 @@ async def main():
     # Démarrer le worker de la queue de téléchargement
     queue_worker_thread = threading.Thread(target=download_queue_worker, daemon=True)
     queue_worker_thread.start()
-    logger.info("Worker de la queue de téléchargement démarré")
     
     running = True
     loading_step = "none"
@@ -1235,6 +1231,7 @@ async def main():
                     config.loading_progress = 20.0
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
+                    continue  # Passer immédiatement à check_ota
                 else:
                     config.menu_state = "error"
                     config.error_message = _("error_no_internet")
@@ -1264,6 +1261,7 @@ async def main():
                     config.loading_progress = 50.0
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
+                    continue  # Passer immédiatement à check_data
             elif loading_step == "check_data":
                 is_data_empty = not os.path.exists(config.GAMES_FOLDER) or not any(os.scandir(config.GAMES_FOLDER))
                 if is_data_empty:
@@ -1271,6 +1269,7 @@ async def main():
                     config.loading_progress = 30.0
                     config.needs_redraw = True
                     logger.debug("Dossier Data vide, début du téléchargement du ZIP")
+                    sources_zip_url = None  # Initialiser pour éviter les erreurs
                     try:
                         zip_path = os.path.join(config.SAVE_FOLDER, "data_download.zip")
                         headers = {'User-Agent': 'Mozilla/5.0'}
@@ -1376,7 +1375,9 @@ async def main():
                     config.loading_progress = 80.0
                     config.needs_redraw = True
                     logger.debug(f"Dossier Data non vide, passage à {loading_step}")
+                    continue  # Passer immédiatement à load_sources
             elif loading_step == "load_sources":
+                logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
                 sources = load_sources()
                 config.menu_state = "platform"
                 config.loading_progress = 100.0

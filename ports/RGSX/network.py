@@ -404,7 +404,6 @@ def test_internet():
     ]
     
     for test_url in test_urls:
-        logger.debug(f"Test connexion HTTP vers {test_url}")
         try:
             response = requests.get(test_url, timeout=5, allow_redirects=True)
             if response.status_code == 200:

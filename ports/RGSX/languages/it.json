@@ -259,6 +259,8 @@
     "history_option_extract_archive": "Estrai archivio",
     "history_option_open_file": "Apri file",
     "history_option_scraper": "Scraper metadati",
+    "history_option_remove_from_queue": "Rimuovi dalla coda",
+    "history_option_cancel_download": "Annulla download",
     "history_option_delete_game": "Elimina gioco",
     "history_option_error_info": "Dettagli errore",
     "history_option_retry": "Riprova download",
