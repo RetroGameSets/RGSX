@@ -1918,6 +1918,23 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
         "extension_warning": [
             ("confirm", _("controls_confirm_select")),
         ],
+        "folder_browser": [
+            ("confirm", _("folder_browser_enter")),
+            ("history", _("folder_browser_select")),
+            ("clear_history", _("folder_new_folder")),
+            ("cancel", _("controls_cancel_back")),
+        ],
+        "folder_browser_new_folder": [
+            ("confirm", _("controls_action_select_char")),
+            ("delete", _("controls_action_delete")),
+            ("space", _("controls_action_space")),
+            ("history", _("folder_new_confirm")),
+            ("cancel", _("controls_cancel_back")),
+        ],
+        "platform_folder_config": [
+            ("confirm", _("controls_confirm_select")),
+            ("cancel", _("controls_cancel_back")),
+        ],
     }
     
     # Récupérer les contrôles pour ce menu, sinon affichage par défaut
@@ -3328,6 +3345,245 @@ def draw_gamelist_update_prompt(screen):
     draw_stylized_button(screen, _("button_no"), no_x, buttons_y, button_width, button_height, selected=config.gamelist_update_selection == 0)
 
 
+def draw_platform_folder_config_dialog(screen):
+    """Affiche le dialogue de configuration du dossier personnalisé pour une plateforme."""
+    global OVERLAY
+    if OVERLAY is None or OVERLAY.get_size() != (config.screen_width, config.screen_height):
+        OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
+        OVERLAY.fill((0, 0, 0, 150))
+
+    screen.blit(OVERLAY, (0, 0))
+    
+    from rgsx_settings import get_platform_custom_path
+    platform_name = getattr(config, 'platform_config_name', '')
+    current_path = get_platform_custom_path(platform_name)
+    
+    # Message d'information
+    if current_path:
+        message = _("platform_folder_config_current").format(platform_name, current_path) if _ else f"Configure download folder for {platform_name}\nCurrent: {current_path}"
+    else:
+        message = _("platform_folder_config_default").format(platform_name) if _ else f"Configure download folder for {platform_name}\nUsing default location"
+    
+    # Traiter les sauts de ligne explicites, puis wrapper chaque partie
+    wrapped_message = []
+    for part in message.split('\n'):
+        wrapped_message.extend(wrap_text(part, config.small_font, config.screen_width - 100))
+    
+    line_height = config.small_font.get_height() + 5
+    text_height = len(wrapped_message) * line_height
+    
+    # Options
+    options = [
+        _("platform_folder_show_current") if _ else "Show current path",
+        _("platform_folder_browse") if _ else "Browse",
+        _("platform_folder_reset") if _ else "Reset to default",
+        _("web_cancel") if _ else "Cancel"
+    ]
+    
+    sample_text = config.small_font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    button_height = max(int(config.screen_height * 0.0463), font_height + 15)
+    margin_top_bottom = 20
+    buttons_spacing = 10
+    
+    rect_height = text_height + len(options) * (button_height + buttons_spacing) + 2 * margin_top_bottom
+    max_text_width = max([config.small_font.size(line)[0] for line in wrapped_message], default=400)
+    max_button_width = max([config.small_font.size(opt)[0] for opt in options], default=200) + 60  # Plus de marge pour les boutons
+    rect_width = max(max_text_width + 80, max_button_width + 40, 550)  # Largeur minimale augmentée
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+
+    # Afficher le message
+    for i, line in enumerate(wrapped_message):
+        text = config.small_font.render(line, True, THEME_COLORS["text"])
+        text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
+        screen.blit(text, text_rect)
+
+    # Afficher les boutons
+    button_width = min(max_button_width, rect_width - 60)
+    buttons_start_y = rect_y + text_height + margin_top_bottom
+    
+    for i, option in enumerate(options):
+        button_x = rect_x + (rect_width - button_width) // 2
+        button_y = buttons_start_y + i * (button_height + buttons_spacing)
+        selected = config.platform_folder_selection == i
+        draw_stylized_button(screen, option, button_x, button_y, button_width, button_height, selected=selected)
+
+
+def draw_folder_browser(screen):
+    """Affiche le navigateur de dossiers intégré."""
+    global OVERLAY
+    if OVERLAY is None or OVERLAY.get_size() != (config.screen_width, config.screen_height):
+        OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
+        OVERLAY.fill((0, 0, 0, 180))
+
+    screen.blit(OVERLAY, (0, 0))
+    
+    platform_name = getattr(config, 'platform_config_name', '')
+    current_path = config.folder_browser_path
+    items = config.folder_browser_items
+    selection = config.folder_browser_selection
+    scroll_offset = config.folder_browser_scroll_offset
+    visible_items = config.folder_browser_visible_items
+    
+    # Dimensions du panneau
+    panel_width = int(config.screen_width * 0.8)
+    panel_height = int(config.screen_height * 0.85)
+    panel_x = (config.screen_width - panel_width) // 2
+    panel_y = (config.screen_height - panel_height) // 2
+    
+    # Fond du panneau
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (panel_x, panel_y, panel_width, panel_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (panel_x, panel_y, panel_width, panel_height), 2, border_radius=12)
+    
+    # Titre
+    title = _("folder_browser_title").format(platform_name) if _ else f"Select folder for {platform_name}"
+    title_text = config.font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_text.get_rect(center=(config.screen_width // 2, panel_y + 30))
+    screen.blit(title_text, title_rect)
+    
+    # Chemin actuel (tronqué si trop long)
+    path_max_width = panel_width - 40
+    path_display = current_path
+    while config.small_font.size(path_display)[0] > path_max_width and len(path_display) > 10:
+        path_display = "..." + path_display[4:]
+    path_text = config.small_font.render(path_display, True, THEME_COLORS["highlight"])
+    path_rect = path_text.get_rect(center=(config.screen_width // 2, panel_y + 70))
+    screen.blit(path_text, path_rect)
+    
+    # Zone de liste des dossiers
+    list_y = panel_y + 100
+    list_height = panel_height - 180
+    item_height = max(35, config.small_font.get_height() + 10)
+    visible_items = min(visible_items, list_height // item_height)
+    config.folder_browser_visible_items = visible_items
+    
+    # Afficher les éléments visibles
+    for i in range(visible_items):
+        item_index = scroll_offset + i
+        if item_index >= len(items):
+            break
+        
+        item = items[item_index]
+        item_y = list_y + i * item_height
+        is_selected = item_index == selection
+        
+        # Fond de l'élément sélectionné
+        if is_selected:
+            sel_rect = (panel_x + 20, item_y, panel_width - 40, item_height)
+            pygame.draw.rect(screen, THEME_COLORS["button_hover"], sel_rect, border_radius=6)
+            pygame.draw.rect(screen, THEME_COLORS["highlight"], sel_rect, 2, border_radius=6)
+        
+        # Icône dossier (texte simple au lieu d'emoji)
+        folder_icon = "[..]" if item == ".." else "[D]"
+        icon_text = config.small_font.render(folder_icon, True, THEME_COLORS["highlight"] if item == ".." else THEME_COLORS["text"])
+        screen.blit(icon_text, (panel_x + 30, item_y + (item_height - icon_text.get_height()) // 2))
+        
+        # Nom du dossier
+        display_name = _("folder_browser_parent") if item == ".." and _ else (".." if item == ".." else item)
+        text_color = THEME_COLORS["highlight"] if is_selected else THEME_COLORS["text"]
+        item_text = config.small_font.render(display_name, True, text_color)
+        screen.blit(item_text, (panel_x + 70, item_y + (item_height - item_text.get_height()) // 2))
+    
+    # Indicateur de scroll si nécessaire
+    if len(items) > visible_items:
+        scrollbar_x = panel_x + panel_width - 25
+        scrollbar_y = list_y
+        scrollbar_height = list_height
+        scrollbar_width = 8
+        
+        # Fond de la scrollbar
+        pygame.draw.rect(screen, THEME_COLORS["border"], (scrollbar_x, scrollbar_y, scrollbar_width, scrollbar_height), border_radius=4)
+        
+        # Curseur de la scrollbar
+        cursor_height = max(20, scrollbar_height * visible_items // len(items))
+        cursor_y = scrollbar_y + (scrollbar_height - cursor_height) * scroll_offset // max(1, len(items) - visible_items)
+        pygame.draw.rect(screen, THEME_COLORS["highlight"], (scrollbar_x, cursor_y, scrollbar_width, cursor_height), border_radius=4)
+
+
+def draw_folder_browser_new_folder(screen):
+    """Affiche l'écran de création d'un nouveau dossier avec clavier virtuel."""
+    global OVERLAY
+    if OVERLAY is None or OVERLAY.get_size() != (config.screen_width, config.screen_height):
+        OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
+        OVERLAY.fill((0, 0, 0, 200))
+
+    screen.blit(OVERLAY, (0, 0))
+    
+    # Dimensions du panneau
+    panel_width = int(config.screen_width * 0.7)
+    panel_height = int(config.screen_height * 0.6)
+    panel_x = (config.screen_width - panel_width) // 2
+    panel_y = (config.screen_height - panel_height) // 2
+    
+    # Fond du panneau
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (panel_x, panel_y, panel_width, panel_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (panel_x, panel_y, panel_width, panel_height), 2, border_radius=12)
+    
+    # Titre
+    title = _("folder_new_title") if _ else "Create New Folder"
+    title_text = config.font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_text.get_rect(center=(config.screen_width // 2, panel_y + 30))
+    screen.blit(title_text, title_rect)
+    
+    # Champ de saisie avec le nom actuel
+    folder_name = getattr(config, 'new_folder_name', '')
+    input_y = panel_y + 70
+    input_width = panel_width - 60
+    input_height = 40
+    input_x = panel_x + 30
+    
+    # Fond du champ de saisie
+    pygame.draw.rect(screen, THEME_COLORS["button_selected"], (input_x, input_y, input_width, input_height), border_radius=6)
+    pygame.draw.rect(screen, THEME_COLORS["border_selected"], (input_x, input_y, input_width, input_height), 2, border_radius=6)
+    
+    # Texte du champ de saisie avec curseur
+    display_text = folder_name + "_"
+    input_text = config.font.render(display_text, True, THEME_COLORS["text"])
+    input_rect = input_text.get_rect(midleft=(input_x + 10, input_y + input_height // 2))
+    screen.blit(input_text, input_rect)
+    
+    # Clavier virtuel
+    keyboard_layout = [
+        ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+        ['A', 'Z', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+        ['Q', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M'],
+        ['W', 'X', 'C', 'V', 'B', 'N', '-', '_', '.']
+    ]
+    
+    selected_row, selected_col = getattr(config, 'new_folder_selected_key', (0, 0))
+    
+    keyboard_y = input_y + input_height + 30
+    key_size = min(40, (panel_width - 60) // 10)
+    key_gap = 5
+    
+    for row_idx, row in enumerate(keyboard_layout):
+        row_width = len(row) * (key_size + key_gap) - key_gap
+        row_x = (config.screen_width - row_width) // 2
+        
+        for col_idx, key in enumerate(row):
+            key_x = row_x + col_idx * (key_size + key_gap)
+            key_y = keyboard_y + row_idx * (key_size + key_gap)
+            
+            is_selected = (row_idx == selected_row and col_idx == selected_col)
+            
+            # Fond de la touche
+            if is_selected:
+                pygame.draw.rect(screen, THEME_COLORS["button_hover"], (key_x, key_y, key_size, key_size), border_radius=4)
+                pygame.draw.rect(screen, THEME_COLORS["border_selected"], (key_x, key_y, key_size, key_size), 2, border_radius=4)
+            else:
+                pygame.draw.rect(screen, THEME_COLORS["button_idle"], (key_x, key_y, key_size, key_size), border_radius=4)
+                pygame.draw.rect(screen, THEME_COLORS["border"], (key_x, key_y, key_size, key_size), 1, border_radius=4)
+            
+            # Lettre
+            key_text = config.small_font.render(key, True, THEME_COLORS["text_selected"] if is_selected else THEME_COLORS["text"])
+            key_rect = key_text.get_rect(center=(key_x + key_size // 2, key_y + key_size // 2))
+            screen.blit(key_text, key_rect)
+
+
 def draw_support_dialog(screen):
     """Affiche la boîte de dialogue du fichier de support généré."""
     global OVERLAY
@@ -3552,8 +3808,14 @@ def draw_history_game_options(screen):
         # En attente dans la queue
         options.append("remove_from_queue")
         option_labels.append(_("history_option_remove_from_queue"))
-    elif status in ["Downloading", "Téléchargement", "Extracting"]:
-        # Téléchargement en cours
+    elif status in ["Downloading", "Téléchargement", "Extracting", "Paused"]:
+        # Téléchargement en cours ou en pause
+        options.append("pause_resume_download")
+        # Afficher le bon label selon l'état actuel
+        if status == "Paused":
+            option_labels.append(_("history_option_resume_download"))
+        else:
+            option_labels.append(_("history_option_pause_download"))
         options.append("cancel_download")
         option_labels.append(_("history_option_cancel_download"))
     elif status == "Download_OK" or status == "Completed":

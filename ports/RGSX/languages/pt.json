@@ -267,6 +267,8 @@
     "history_option_scraper": "Obter metadados",
     "history_option_remove_from_queue": "Remover da fila",
     "history_option_cancel_download": "Cancelar download",
+    "history_option_pause_download": "Pausar download",
+    "history_option_resume_download": "Retomar download",
     "history_option_delete_game": "Excluir jogo",
     "history_option_error_info": "Detalhes do erro",
     "history_option_retry": "Tentar novamente",
@@ -429,5 +431,23 @@
     "filter_reset_filters": "Redefinir",
     "filter_back": "Voltar",
     "filter_active": "Filtro ativo",
-    "filter_games_shown": "{0} jogo(s) exibido(s)"
+    "filter_games_shown": "{0} jogo(s) exibido(s)",
+    "platform_folder_config_current": "Configurar pasta de download para {0}\nAtual: {1}",
+    "platform_folder_config_default": "Configurar pasta de download para {0}\nUsando localização padrão",
+    "platform_folder_show_current": "Mostrar caminho atual",
+    "platform_folder_browse": "Navegar",
+    "platform_folder_reset": "Redefinir para padrão",
+    "platform_folder_set": "Pasta definida para {0}: {1}",
+    "platform_folder_default_path": "Padrão: {0}",
+    "folder_browser_title": "Selecionar pasta para {0}",
+    "folder_browser_parent": "Pasta superior",
+    "folder_browser_enter": "Entrar",
+    "folder_browser_select": "Selecionar",
+    "folder_new_folder": "Nova pasta",
+    "folder_new_title": "Criar nova pasta",
+    "folder_new_confirm": "Criar",
+    "folder_created": "Pasta criada: {0}",
+    "folder_create_error": "Erro ao criar: {0}",
+    "controls_action_select_char": "Adicionar"
+}
 }

@@ -694,6 +694,8 @@ def extract_update(zip_path, dest_dir, source_url):
 progress_queues = {}
 # Cancellation and thread tracking per download task
 cancel_events = {}
+# Pause events for downloads
+pause_events = {}  # {task_id: threading.Event} - Event is set when paused
 download_threads = {}
 # URLs actuellement en cours de téléchargement (pour éviter les doublons)
 urls_in_progress = set()
@@ -715,6 +717,32 @@ def request_cancel(task_id: str) -> bool:
             logger.debug(f"Failed to set cancel for task_id={task_id}: {e}")
             return False
     logger.debug(f"No cancel event found for task_id={task_id}")
+    return False
+
+def toggle_pause_download(task_id: str) -> bool:
+    """Toggle pause state for a running download task. Returns True if now paused, False if resumed."""
+    ev = pause_events.get(task_id)
+    if ev is None:
+        # Créer l'événement de pause s'il n'existe pas
+        pause_events[task_id] = threading.Event()
+        ev = pause_events[task_id]
+    
+    if ev.is_set():
+        # Actuellement en pause, reprendre
+        ev.clear()
+        logger.debug(f"Download resumed for task_id={task_id}")
+        return False  # Retourne False = pas en pause (repris)
+    else:
+        # Actuellement actif, mettre en pause
+        ev.set()
+        logger.debug(f"Download paused for task_id={task_id}")
+        return True  # Retourne True = en pause
+
+def is_download_paused(task_id: str) -> bool:
+    """Check if a download is currently paused."""
+    ev = pause_events.get(task_id)
+    if ev is not None:
+        return ev.is_set()
     return False
 
 def cancel_all_downloads():
@@ -836,19 +864,27 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             
             cancel_ev = cancel_events.get(task_id)
             # Use symlink path if enabled
-            from rgsx_settings import apply_symlink_path
+            from rgsx_settings import apply_symlink_path, get_platform_custom_path
             
-            dest_dir = None
-            for platform_dict in config.platform_dicts:
-                if platform_dict.get("platform_name") == platform:
-                    # Priorité: clé 'folder'; fallback legacy: 'dossier'; sinon normalisation du nom de plateforme
-                    platform_folder = platform_dict.get("folder") or platform_dict.get("dossier") or normalize_platform_name(platform)
+            # Vérifier si un dossier personnalisé est configuré pour cette plateforme
+            custom_path = get_platform_custom_path(platform)
+            if custom_path and os.path.isdir(custom_path):
+                dest_dir = custom_path
+                platform_folder = os.path.basename(dest_dir)
+                logger.debug(f"Utilisation du dossier personnalisé pour {platform}: {dest_dir}")
+            else:
+                dest_dir = None
+                platform_folder = None
+                for platform_dict in config.platform_dicts:
+                    if platform_dict.get("platform_name") == platform:
+                        # Priorité: clé 'folder'; fallback legacy: 'dossier'; sinon normalisation du nom de plateforme
+                        platform_folder = platform_dict.get("folder") or platform_dict.get("dossier") or normalize_platform_name(platform)
+                        dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
+                        logger.debug(f"Répertoire de destination trouvé pour {platform}: {dest_dir}")
+                        break
+                if not dest_dir:
+                    platform_folder = normalize_platform_name(platform)
                     dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
-                    logger.debug(f"Répertoire de destination trouvé pour {platform}: {dest_dir}")
-                    break
-            if not dest_dir:
-                platform_folder = normalize_platform_name(platform)
-                dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
 
             # Spécifique: si le système est "BIOS" on force le dossier BIOS
             if platform_folder == "bios" or platform == "BIOS" or platform == "- BIOS by TMCTV -":
@@ -1202,6 +1238,15 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             download_canceled = False
             with open(dest_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=chunk_size):
+                    # Vérifier la pause (dynamiquement car l'événement peut être créé après le début)
+                    while True:
+                        pause_ev = pause_events.get(task_id)
+                        if pause_ev is None or not pause_ev.is_set():
+                            break  # Pas en pause, continuer le téléchargement
+                        if cancel_ev is not None and cancel_ev.is_set():
+                            break  # Sortir de la boucle de pause si annulation demandée
+                        time.sleep(0.1)  # Attendre en pause
+                    
                     if cancel_ev is not None and cancel_ev.is_set():
                         logger.debug(f"Annulation détectée, arrêt du téléchargement pour task_id={task_id}")
                         result[0] = False
@@ -1608,18 +1653,26 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             save_history(config.history)
             
             # Use symlink path if enabled
-            from rgsx_settings import apply_symlink_path
+            from rgsx_settings import apply_symlink_path, get_platform_custom_path
             
-            dest_dir = None
-            for platform_dict in config.platform_dicts:
-                if platform_dict.get("platform_name") == platform:
-                    platform_folder = platform_dict.get("folder") or platform_dict.get("dossier") or normalize_platform_name(platform)
+            # Vérifier si un dossier personnalisé est configuré pour cette plateforme
+            custom_path = get_platform_custom_path(platform)
+            if custom_path and os.path.isdir(custom_path):
+                dest_dir = custom_path
+                logger.debug(f"Utilisation du dossier personnalisé pour {platform}: {dest_dir}")
+                platform_folder = os.path.basename(dest_dir)
+            else:
+                dest_dir = None
+                platform_folder = None
+                for platform_dict in config.platform_dicts:
+                    if platform_dict.get("platform_name") == platform:
+                        platform_folder = platform_dict.get("folder") or platform_dict.get("dossier") or normalize_platform_name(platform)
+                        dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
+                        break
+                if not dest_dir:
+                    logger.warning(f"Aucun dossier 'folder'/'dossier' trouvé pour la plateforme {platform}")
+                    platform_folder = normalize_platform_name(platform)
                     dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
-                    break
-            if not dest_dir:
-                logger.warning(f"Aucun dossier 'folder'/'dossier' trouvé pour la plateforme {platform}")
-                platform_folder = normalize_platform_name(platform)
-                dest_dir = apply_symlink_path(config.ROMS_FOLDER, platform_folder)
             logger.debug(f"Répertoire destination déterminé: {dest_dir}")
 
             # Spécifique: si le système est "- BIOS by TMCTV -" on force le dossier BIOS
@@ -2236,6 +2289,15 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         logger.debug(f"Ouverture fichier: {dest_path}")
                         with open(dest_path, 'wb') as f:
                             for chunk in response.iter_content(chunk_size=chunk_size):
+                                # Vérifier la pause (dynamiquement car l'événement peut être créé après le début)
+                                while True:
+                                    pause_ev = pause_events.get(task_id)
+                                    if pause_ev is None or not pause_ev.is_set():
+                                        break  # Pas en pause, continuer le téléchargement
+                                    if cancel_ev is not None and cancel_ev.is_set():
+                                        break  # Sortir de la boucle de pause si annulation demandée
+                                    time.sleep(0.1)  # Attendre en pause
+                                
                                 if cancel_ev is not None and cancel_ev.is_set():
                                     logger.debug(f"Annulation détectée, arrêt du téléchargement 1fichier pour task_id={task_id}")
                                     result[0] = False

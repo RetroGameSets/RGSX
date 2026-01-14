@@ -575,6 +575,24 @@ async def main():
                     thread = threading.Thread(target=scrape_async, daemon=True)
                     thread.start()
         
+        # Gestion de l'appui long sur confirm dans le menu platform pour configurer le dossier de destination
+        if (config.menu_state == "platform" and 
+            getattr(config, 'platform_confirm_press_start_time', 0) > 0 and 
+            not getattr(config, 'platform_confirm_long_press_triggered', False)):
+            press_duration = current_time - config.platform_confirm_press_start_time
+            if press_duration >= config.confirm_long_press_threshold:
+                # Appui long détecté, ouvrir le dialogue de configuration du dossier
+                if config.platforms:
+                    platform = config.platforms[config.selected_platform]
+                    platform_name = platform["name"] if isinstance(platform, dict) else platform
+                    config.platform_config_name = platform_name
+                    config.previous_menu_state = "platform"
+                    config.menu_state = "platform_folder_config"
+                    config.platform_folder_selection = 0  # 0=Current, 1=Browse, 2=Reset, 3=Cancel
+                    config.needs_redraw = True
+                    config.platform_confirm_long_press_triggered = True
+                    logger.debug(f"Appui long détecté ({press_duration}ms), ouverture config dossier pour {platform_name}")
+        
         # Gestion des événements
         events = pygame.event.get()
         for event in events:            
@@ -737,6 +755,21 @@ async def main():
                 continue
 
             if config.menu_state == "gamelist_update_prompt":
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
+                continue
+
+            if config.menu_state == "platform_folder_config":
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
+                continue
+
+            if config.menu_state == "folder_browser":
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
+                continue
+
+            if config.menu_state == "folder_browser_new_folder":
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 continue
@@ -1158,6 +1191,15 @@ async def main():
             elif config.menu_state == "gamelist_update_prompt":
                 from display import draw_gamelist_update_prompt
                 draw_gamelist_update_prompt(screen)
+            elif config.menu_state == "platform_folder_config":
+                from display import draw_platform_folder_config_dialog
+                draw_platform_folder_config_dialog(screen)
+            elif config.menu_state == "folder_browser":
+                from display import draw_folder_browser
+                draw_folder_browser(screen)
+            elif config.menu_state == "folder_browser_new_folder":
+                from display import draw_folder_browser_new_folder
+                draw_folder_browser_new_folder(screen)
             elif config.menu_state == "restart_popup":
                 draw_popup(screen)
             elif config.menu_state == "accessibility_menu":

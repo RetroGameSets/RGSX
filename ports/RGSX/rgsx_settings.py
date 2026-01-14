@@ -77,7 +77,8 @@ def load_rgsx_settings():
     "allow_unknown_extensions": False,
     "roms_folder": "",
     "web_service_at_boot": False,
-    "last_gamelist_update": None
+    "last_gamelist_update": None,
+    "platform_custom_paths": {}  # Chemins personnalisés par plateforme
     }
     
     try:
@@ -479,3 +480,43 @@ def save_game_filters(filters_dict):
     except Exception as e:
         logger.error(f"Error saving game filters: {str(e)}")
         return False
+
+
+def get_platform_custom_path(platform_name):
+    """Récupère le chemin personnalisé pour une plateforme."""
+    try:
+        settings = load_rgsx_settings()
+        custom_paths = settings.get("platform_custom_paths", {})
+        return custom_paths.get(platform_name, "")
+    except Exception as e:
+        logger.error(f"Error getting platform custom path: {str(e)}")
+        return ""
+
+
+def set_platform_custom_path(platform_name, path):
+    """Définit le chemin personnalisé pour une plateforme."""
+    try:
+        settings = load_rgsx_settings()
+        if "platform_custom_paths" not in settings:
+            settings["platform_custom_paths"] = {}
+        if path:
+            settings["platform_custom_paths"][platform_name] = path
+        else:
+            # Si le chemin est vide, supprimer l'entrée
+            settings["platform_custom_paths"].pop(platform_name, None)
+        save_rgsx_settings(settings)
+        logger.info(f"Platform custom path set: {platform_name} -> {path}")
+        return True
+    except Exception as e:
+        logger.error(f"Error setting platform custom path: {str(e)}")
+        return False
+
+
+def get_all_platform_custom_paths():
+    """Récupère tous les chemins personnalisés des plateformes."""
+    try:
+        settings = load_rgsx_settings()
+        return settings.get("platform_custom_paths", {})
+    except Exception as e:
+        logger.error(f"Error getting all platform custom paths: {str(e)}")
+        return {}

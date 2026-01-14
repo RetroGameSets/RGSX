@@ -451,6 +451,21 @@ confirm_press_start_time = 0  # Timestamp du début de l'appui sur confirm
 confirm_long_press_threshold = 2000  # Durée en ms pour déclencher l'appui long (2 secondes)
 confirm_long_press_triggered = False  # Flag pour éviter de déclencher plusieurs fois
 
+# Détection d'appui long sur confirm (menu platform - pour config dossier)
+platform_confirm_press_start_time = 0  # Timestamp du début de l'appui sur confirm dans le menu platform
+platform_confirm_long_press_triggered = False  # Flag pour éviter de déclencher plusieurs fois
+
+# Configuration dossier personnalisé par plateforme
+platform_config_name = ""  # Nom de la plateforme en cours de configuration
+platform_folder_selection = 0  # Index de sélection dans le menu de config dossier (0=Current, 1=Browse, 2=Reset, 3=Cancel)
+
+# Navigateur de dossiers intégré (folder browser)
+folder_browser_path = ""  # Chemin actuel dans le navigateur
+folder_browser_items = []  # Liste des éléments (dossiers) dans le répertoire actuel
+folder_browser_selection = 0  # Index de l'élément sélectionné
+folder_browser_scroll_offset = 0  # Offset de défilement
+folder_browser_visible_items = 10  # Nombre d'éléments visibles
+
 # Tenter la récupération de la famille de police sauvegardée
 try:
     from rgsx_settings import get_font_family  # import tardif pour éviter dépendances circulaires lors de l'exécution initiale

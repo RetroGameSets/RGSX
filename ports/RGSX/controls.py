@@ -45,7 +45,7 @@ VALID_STATES = [
     "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
     "reload_games_data", "restart_popup", "error", "loading", "confirm_clear_history",
     "language_select", "filter_platforms", "display_menu", "confirm_cancel_download",
-    "gamelist_update_prompt",
+    "gamelist_update_prompt", "platform_folder_config",
     # Nouveaux sous-menus hiérarchiques (refonte pause menu)
     "pause_controls_menu",      # sous-menu Controls (aide, remap)
     "pause_display_menu",       # sous-menu Display (layout, font size, unsupported, unknown ext, filter)
@@ -68,6 +68,9 @@ VALID_STATES = [
     "filter_search",            # recherche par nom (existant, mais renommé)
     "filter_advanced",          # filtrage avancé par région, etc.
     "filter_priority_config",   # configuration priorité régions pour one-rom-per-game
+    "platform_folder_config",   # configuration du dossier personnalisé pour une plateforme
+    "folder_browser",           # navigateur de dossiers intégré
+    "folder_browser_new_folder", # création d'un nouveau dossier
 ]
 
 def validate_menu_state(state):
@@ -482,29 +485,17 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 logger.debug("Ouverture history depuis platform")
             elif is_input_matched(event, "confirm"):
-                if config.platforms:
-                    config.current_platform = config.selected_platform
-                    config.games = load_games(config.platforms[config.current_platform])
-                    
-                    # Apply saved filters automatically if any
-                    if config.game_filter_obj and config.game_filter_obj.is_active():
-                        config.filtered_games = config.game_filter_obj.apply_filters(config.games)
-                        config.filter_active = True
-                    else:
-                        config.filtered_games = config.games
-                        config.filter_active = False
-                    
-                    config.current_game = 0
-                    config.scroll_offset = 0
-                    
-                    # Désactiver l'animation de transition en mode performance (light mode)
-                    from rgsx_settings import get_light_mode
-                    if not get_light_mode():
-                        draw_validation_transition(screen, config.current_platform)
-                    
-                    config.menu_state = "game"
-                    config.needs_redraw = True
-                    #logger.debug(f"Plateforme sélectionnée: {config.platforms[config.current_platform]}, {len(config.games)} jeux chargés")
+                # Démarrer le chronomètre pour l'appui long - ne pas exécuter immédiatement
+                # L'action sera exécutée au relâchement si appui court, ou config dossier si appui long
+                if not hasattr(config, 'platform_confirm_press_start_time'):
+                    config.platform_confirm_press_start_time = 0
+                if not hasattr(config, 'platform_confirm_long_press_triggered'):
+                    config.platform_confirm_long_press_triggered = False
+                
+                config.platform_confirm_press_start_time = current_time
+                config.platform_confirm_long_press_triggered = False
+                config.needs_redraw = True
+                # Note: la navigation vers les jeux sera gérée au BUTTONUP/KEYUP si appui court
             elif is_input_matched(event, "cancel"):
                 # Capturer l'origine (plateformes) pour un retour correct si l'utilisateur choisit "Non"
                 config.confirm_exit_origin = "platform"
@@ -1099,8 +1090,9 @@ def handle_controls(event, sources, joystick, screen):
                 if status == "Queued":
                     # En attente dans la queue
                     options.append("remove_from_queue")
-                elif status in ["Downloading", "Téléchargement", "Extracting"]:
-                    # Téléchargement en cours
+                elif status in ["Downloading", "Téléchargement", "Extracting", "Paused"]:
+                    # Téléchargement en cours ou en pause - ajouter pause/resume avant cancel
+                    options.append("pause_resume_download")
                     options.append("cancel_download")
                 elif status == "Download_OK" or status == "Completed":
                     # Vérifier si c'est une archive ET si le fichier existe
@@ -1166,6 +1158,21 @@ def handle_controls(event, sources, joystick, screen):
                         # Retour à l'historique
                         config.menu_state = "history"
                         config.needs_redraw = True
+                        
+                    elif selected_option == "pause_resume_download":
+                        # Mettre en pause ou reprendre le téléchargement
+                        task_id = entry.get("task_id")
+                        if task_id:
+                            from network import toggle_pause_download, is_download_paused
+                            is_paused = toggle_pause_download(task_id)
+                            if is_paused:
+                                entry["status"] = "Paused"
+                            else:
+                                entry["status"] = "Downloading"
+                            save_history(config.history)
+                            config.needs_redraw = True
+                        # Retour à l'historique
+                        config.menu_state = "history"
                         
                     elif selected_option == "cancel_download":
                         # Rediriger vers le dialogue de confirmation (même que bouton cancel)
@@ -2315,6 +2322,230 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "platform"
                 config.needs_redraw = True
         
+        # Configuration du dossier personnalisé pour une plateforme
+        elif config.menu_state == "platform_folder_config":
+            # Options: 0=Current path, 1=Browse, 2=Reset, 3=Cancel
+            if is_input_matched(event, "up") or is_input_matched(event, "down"):
+                total_options = 4
+                if is_input_matched(event, "up"):
+                    config.platform_folder_selection = (config.platform_folder_selection - 1) % total_options
+                else:
+                    config.platform_folder_selection = (config.platform_folder_selection + 1) % total_options
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                from rgsx_settings import get_platform_custom_path, set_platform_custom_path
+                platform_name = config.platform_config_name
+                
+                if config.platform_folder_selection == 0:  # Show current path
+                    current_path = get_platform_custom_path(platform_name)
+                    if current_path:
+                        config.popup_message = current_path
+                    else:
+                        # Afficher le chemin par défaut en utilisant le vrai nom de dossier
+                        folder_name = _get_dest_folder_name(platform_name)
+                        default_path = os.path.join(config.ROMS_FOLDER, folder_name)
+                        config.popup_message = _("platform_folder_default_path").format(default_path) if _ else f"Default: {default_path}"
+                    config.popup_timer = 5000
+                    config.needs_redraw = True
+                elif config.platform_folder_selection == 1:  # Browse
+                    # Ouvrir le navigateur de dossiers intégré
+                    current_path = get_platform_custom_path(platform_name)
+                    if not current_path or not os.path.isdir(current_path):
+                        # Démarrer depuis le dossier ROMS par défaut
+                        current_path = config.ROMS_FOLDER
+                    config.folder_browser_path = current_path
+                    config.folder_browser_selection = 0
+                    config.folder_browser_scroll_offset = 0
+                    # Charger la liste des dossiers
+                    try:
+                        items = [".."]
+                        for item in sorted(os.listdir(current_path)):
+                            full_path = os.path.join(current_path, item)
+                            if os.path.isdir(full_path):
+                                items.append(item)
+                        config.folder_browser_items = items
+                    except Exception as e:
+                        logger.error(f"Erreur lecture dossier {current_path}: {e}")
+                        config.folder_browser_items = [".."]
+                    config.menu_state = "folder_browser"
+                    config.needs_redraw = True
+                elif config.platform_folder_selection == 2:  # Reset
+                    set_platform_custom_path(platform_name, "")
+                    config.popup_message = _("platform_folder_reset").format(platform_name) if _ else f"Folder reset for {platform_name}"
+                    config.popup_timer = 3000
+                    logger.info(f"Dossier personnalisé réinitialisé pour {platform_name}")
+                    config.menu_state = "platform"
+                    config.needs_redraw = True
+                elif config.platform_folder_selection == 3:  # Cancel
+                    config.menu_state = "platform"
+                    config.needs_redraw = True
+            elif is_input_matched(event, "cancel"):
+                config.menu_state = "platform"
+                config.needs_redraw = True
+        
+        # Navigateur de dossiers intégré
+        elif config.menu_state == "folder_browser":
+            if is_input_matched(event, "up"):
+                if config.folder_browser_selection > 0:
+                    config.folder_browser_selection -= 1
+                    # Ajuster le scroll
+                    if config.folder_browser_selection < config.folder_browser_scroll_offset:
+                        config.folder_browser_scroll_offset = config.folder_browser_selection
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                if config.folder_browser_selection < len(config.folder_browser_items) - 1:
+                    config.folder_browser_selection += 1
+                    # Ajuster le scroll
+                    if config.folder_browser_selection >= config.folder_browser_scroll_offset + config.folder_browser_visible_items:
+                        config.folder_browser_scroll_offset = config.folder_browser_selection - config.folder_browser_visible_items + 1
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                if config.folder_browser_items:
+                    selected_item = config.folder_browser_items[config.folder_browser_selection]
+                    if selected_item == "..":
+                        # Remonter d'un niveau
+                        parent = os.path.dirname(config.folder_browser_path)
+                        if parent and parent != config.folder_browser_path:
+                            config.folder_browser_path = parent
+                            config.folder_browser_selection = 0
+                            config.folder_browser_scroll_offset = 0
+                            try:
+                                items = [".."]
+                                for item in sorted(os.listdir(parent)):
+                                    full_path = os.path.join(parent, item)
+                                    if os.path.isdir(full_path):
+                                        items.append(item)
+                                config.folder_browser_items = items
+                            except Exception as e:
+                                logger.error(f"Erreur lecture dossier {parent}: {e}")
+                                config.folder_browser_items = [".."]
+                    else:
+                        # Entrer dans le dossier sélectionné
+                        new_path = os.path.join(config.folder_browser_path, selected_item)
+                        if os.path.isdir(new_path):
+                            config.folder_browser_path = new_path
+                            config.folder_browser_selection = 0
+                            config.folder_browser_scroll_offset = 0
+                            try:
+                                items = [".."]
+                                for item in sorted(os.listdir(new_path)):
+                                    full_path = os.path.join(new_path, item)
+                                    if os.path.isdir(full_path):
+                                        items.append(item)
+                                config.folder_browser_items = items
+                            except Exception as e:
+                                logger.error(f"Erreur lecture dossier {new_path}: {e}")
+                                config.folder_browser_items = [".."]
+                config.needs_redraw = True
+            elif is_input_matched(event, "history"):
+                # Valider et sélectionner le dossier actuel (touche X/Y)
+                from rgsx_settings import set_platform_custom_path
+                platform_name = config.platform_config_name
+                selected_path = config.folder_browser_path
+                set_platform_custom_path(platform_name, selected_path)
+                config.popup_message = _("platform_folder_set").format(platform_name, selected_path) if _ else f"Folder set for {platform_name}: {selected_path}"
+                config.popup_timer = 3000
+                logger.info(f"Dossier personnalisé défini pour {platform_name}: {selected_path}")
+                config.menu_state = "platform"
+                config.needs_redraw = True
+            elif is_input_matched(event, "cancel"):
+                # Annuler et revenir au menu de config
+                config.menu_state = "platform_folder_config"
+                config.needs_redraw = True
+            elif is_input_matched(event, "clear_history"):
+                # Créer un nouveau dossier
+                config.new_folder_name = ""
+                config.new_folder_selected_key = (0, 0)
+                config.menu_state = "folder_browser_new_folder"
+                config.needs_redraw = True
+                logger.debug("Ouverture mode création de dossier")
+        
+        # Création d'un nouveau dossier dans le folder browser
+        elif config.menu_state == "folder_browser_new_folder":
+            keyboard_layout = [
+                ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+                ['A', 'Z', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+                ['Q', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M'],
+                ['W', 'X', 'C', 'V', 'B', 'N', '-', '_', '.']
+            ]
+            row, col = getattr(config, 'new_folder_selected_key', (0, 0))
+            max_row = len(keyboard_layout) - 1
+            max_col = len(keyboard_layout[row]) - 1
+            
+            if is_input_matched(event, "up"):
+                if row == 0:
+                    row = max_row + (1 if col <= len(keyboard_layout[max_row]) - 1 else 0)
+                if row > 0:
+                    config.new_folder_selected_key = (row - 1, min(col, len(keyboard_layout[row - 1]) - 1))
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                if row == max_row:
+                    row = -1
+                if row < max_row:
+                    config.new_folder_selected_key = (row + 1, min(col, len(keyboard_layout[row + 1]) - 1))
+                config.needs_redraw = True
+            elif is_input_matched(event, "left"):
+                if col == 0:
+                    col = max_col + 1
+                if col > 0:
+                    config.new_folder_selected_key = (row, col - 1)
+                config.needs_redraw = True
+            elif is_input_matched(event, "right"):
+                if col == max_col:
+                    col = -1
+                if col < max_col:
+                    config.new_folder_selected_key = (row, col + 1)
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                # Ajouter le caractère sélectionné
+                config.new_folder_name = getattr(config, 'new_folder_name', '') + keyboard_layout[row][col]
+                config.needs_redraw = True
+            elif is_input_matched(event, "delete"):
+                # Supprimer le dernier caractère
+                if getattr(config, 'new_folder_name', ''):
+                    config.new_folder_name = config.new_folder_name[:-1]
+                config.needs_redraw = True
+            elif is_input_matched(event, "space"):
+                # Ajouter un espace
+                config.new_folder_name = getattr(config, 'new_folder_name', '') + " "
+                config.needs_redraw = True
+            elif is_input_matched(event, "history"):
+                # Valider et créer le dossier
+                folder_name = getattr(config, 'new_folder_name', '').strip()
+                if folder_name:
+                    new_folder_path = os.path.join(config.folder_browser_path, folder_name)
+                    try:
+                        os.makedirs(new_folder_path, exist_ok=True)
+                        logger.info(f"Dossier créé: {new_folder_path}")
+                        config.popup_message = _("folder_created").format(folder_name) if _ else f"Folder created: {folder_name}"
+                        config.popup_timer = 2000
+                        # Rafraîchir la liste des dossiers et sélectionner le nouveau
+                        try:
+                            items = [".."]
+                            for item in sorted(os.listdir(config.folder_browser_path)):
+                                full_path = os.path.join(config.folder_browser_path, item)
+                                if os.path.isdir(full_path):
+                                    items.append(item)
+                            config.folder_browser_items = items
+                            # Sélectionner le nouveau dossier
+                            if folder_name in items:
+                                config.folder_browser_selection = items.index(folder_name)
+                                # Ajuster le scroll si nécessaire
+                                if config.folder_browser_selection >= config.folder_browser_visible_items:
+                                    config.folder_browser_scroll_offset = config.folder_browser_selection - config.folder_browser_visible_items + 1
+                        except Exception as e:
+                            logger.error(f"Erreur rafraîchissement liste: {e}")
+                    except Exception as e:
+                        logger.error(f"Erreur création dossier {new_folder_path}: {e}")
+                        config.popup_message = _("folder_create_error").format(str(e)) if _ else f"Error: {e}"
+                        config.popup_timer = 3000
+                config.menu_state = "folder_browser"
+                config.needs_redraw = True
+            elif is_input_matched(event, "cancel"):
+                # Annuler et revenir au folder browser
+                config.menu_state = "folder_browser"
+                config.needs_redraw = True
+        
         # Redownload game cache
         elif config.menu_state == "reload_games_data":
             if is_input_matched(event, "left") or is_input_matched(event, "right"):
@@ -2911,6 +3142,42 @@ def handle_controls(event, sources, joystick, screen):
                     # Réinitialiser les flags
                     config.confirm_press_start_time = 0
                     config.confirm_long_press_triggered = False
+            
+            # Gestion spéciale pour confirm dans le menu platform (appui court = aller aux jeux)
+            if action_name == "confirm" and config.menu_state == "platform" and \
+               ((action_name in keyboard_fallback and keyboard_fallback[action_name] == event.key) or \
+                (config.controls_config.get(action_name, {}).get("type") == "key" and \
+                 config.controls_config.get(action_name, {}).get("key") == event.key)):
+                    press_duration = current_time - getattr(config, 'platform_confirm_press_start_time', 0)
+                    # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
+                    if press_duration < config.confirm_long_press_threshold and not getattr(config, 'platform_confirm_long_press_triggered', False):
+                        # Naviguer vers les jeux
+                        if config.platforms:
+                            config.current_platform = config.selected_platform
+                            config.games = load_games(config.platforms[config.current_platform])
+                            
+                            # Apply saved filters automatically if any
+                            if config.game_filter_obj and config.game_filter_obj.is_active():
+                                config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                                config.filter_active = True
+                            else:
+                                config.filtered_games = config.games
+                                config.filter_active = False
+                            
+                            config.current_game = 0
+                            config.scroll_offset = 0
+                            
+                            # Désactiver l'animation de transition en mode performance (light mode)
+                            from rgsx_settings import get_light_mode
+                            if not get_light_mode():
+                                draw_validation_transition(screen, config.current_platform)
+                            
+                            config.menu_state = "game"
+                            config.needs_redraw = True
+                            logger.debug(f"Appui court clavier sur confirm ({press_duration}ms), navigation vers les jeux de {config.platforms[config.current_platform]}")
+                    # Réinitialiser les flags platform
+                    config.platform_confirm_press_start_time = 0
+                    config.platform_confirm_long_press_triggered = False
     
     elif event.type == pygame.JOYBUTTONUP:
         # Vérifier quel bouton a été relâché
@@ -3007,6 +3274,39 @@ def handle_controls(event, sources, joystick, screen):
                     # Réinitialiser les flags
                     config.confirm_press_start_time = 0
                     config.confirm_long_press_triggered = False
+                
+                # Gestion spéciale pour confirm dans le menu platform (appui court = aller aux jeux)
+                if action_name == "confirm" and config.menu_state == "platform":
+                    press_duration = current_time - getattr(config, 'platform_confirm_press_start_time', 0)
+                    # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
+                    if press_duration < config.confirm_long_press_threshold and not getattr(config, 'platform_confirm_long_press_triggered', False):
+                        # Naviguer vers les jeux
+                        if config.platforms:
+                            config.current_platform = config.selected_platform
+                            config.games = load_games(config.platforms[config.current_platform])
+                            
+                            # Apply saved filters automatically if any
+                            if config.game_filter_obj and config.game_filter_obj.is_active():
+                                config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                                config.filter_active = True
+                            else:
+                                config.filtered_games = config.games
+                                config.filter_active = False
+                            
+                            config.current_game = 0
+                            config.scroll_offset = 0
+                            
+                            # Désactiver l'animation de transition en mode performance (light mode)
+                            from rgsx_settings import get_light_mode
+                            if not get_light_mode():
+                                draw_validation_transition(screen, config.current_platform)
+                            
+                            config.menu_state = "game"
+                            config.needs_redraw = True
+                            logger.debug(f"Appui court sur confirm ({press_duration}ms), navigation vers les jeux de {config.platforms[config.current_platform]}")
+                    # Réinitialiser les flags platform
+                    config.platform_confirm_press_start_time = 0
+                    config.platform_confirm_long_press_triggered = False
     
     elif event.type == pygame.JOYAXISMOTION:
         # Détection de relâchement d'axe
