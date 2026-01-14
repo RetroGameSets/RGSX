@@ -13,7 +13,10 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.4.0.2"
+app_version = "2.4.1.0"
+
+# Nombre de jours avant de proposer la mise à jour de la liste des jeux
+GAMELIST_UPDATE_DAYS = 7
 
 
 def get_application_root():

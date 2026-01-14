@@ -45,9 +45,12 @@ VALID_STATES = [
     "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
     "reload_games_data", "restart_popup", "error", "loading", "confirm_clear_history",
     "language_select", "filter_platforms", "display_menu", "confirm_cancel_download",
+    "gamelist_update_prompt",
     # Nouveaux sous-menus hiérarchiques (refonte pause menu)
     "pause_controls_menu",      # sous-menu Controls (aide, remap)
     "pause_display_menu",       # sous-menu Display (layout, font size, unsupported, unknown ext, filter)
+    "pause_display_layout_menu",# sous-menu Display > Layout (disposition avec visualisation)
+    "pause_display_font_menu",  # sous-menu Display > Font (taille police + footer)
     "pause_games_menu",         # sous-menu Games (source mode, update/redownload cache)
     "pause_settings_menu",      # sous-menu Settings (music on/off, symlink toggle, api keys status)
     "pause_api_keys_status",    # sous-menu API Keys (affichage statut des clés)
@@ -493,7 +496,12 @@ def handle_controls(event, sources, joystick, screen):
                     
                     config.current_game = 0
                     config.scroll_offset = 0
-                    draw_validation_transition(screen, config.current_platform)
+                    
+                    # Désactiver l'animation de transition en mode performance (light mode)
+                    from rgsx_settings import get_light_mode
+                    if not get_light_mode():
+                        draw_validation_transition(screen, config.current_platform)
+                    
                     config.menu_state = "game"
                     config.needs_redraw = True
                     #logger.debug(f"Plateforme sélectionnée: {config.platforms[config.current_platform]}, {len(config.games)} jeux chargés")
@@ -1755,8 +1763,11 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Display
         elif config.menu_state == "pause_display_menu":
             sel = getattr(config, 'pause_display_selection', 0)
-            # layout, font size, footer font size, font family, monitor, light, allow unknown extensions, back (8)
-            total = 8
+            # layout, font submenu, family, [monitor if multi], light, unknown, back
+            from rgsx_settings import get_available_monitors
+            monitors = get_available_monitors()
+            show_monitor = len(monitors) > 1
+            total = 7 if show_monitor else 6  # dynamic total based on monitor count
             if is_input_matched(event, "up"):
                 config.pause_display_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -1764,61 +1775,24 @@ def handle_controls(event, sources, joystick, screen):
                 config.pause_display_selection = (sel + 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm"):
-                # 0 layout cycle
-                if sel == 0 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
+                # 0 layout submenu - open submenu on confirm
+                if sel == 0 and is_input_matched(event, "confirm"):
+                    config.menu_state = "pause_display_layout_menu"
+                    # Trouver l'index actuel pour la sélection
                     layouts = [(3,3),(3,4),(4,3),(4,4)]
                     try:
                         idx = layouts.index((config.GRID_COLS, config.GRID_ROWS))
                     except ValueError:
                         idx = 0
-                    idx = (idx + 1) % len(layouts) if is_input_matched(event, "right") else (idx - 1) % len(layouts)
-                    new_cols, new_rows = layouts[idx]
-                    try:
-                        set_display_grid(new_cols, new_rows)
-                    except Exception as e:
-                        logger.error(f"Erreur set_display_grid: {e}")
-                    config.GRID_COLS = new_cols
-                    config.GRID_ROWS = new_rows
-                    # Afficher un popup indiquant que le changement sera effectif après redémarrage
-                    try:
-                        config.popup_message = _("popup_layout_changed_restart_required") if _ else "Layout changed. Restart required to apply."
-                        config.popup_timer = 3000
-                    except Exception as e:
-                        logger.error(f"Erreur popup layout: {e}")
+                    config.pause_display_layout_selection = idx
                     config.needs_redraw = True
-                # 1 font size
-                elif sel == 1 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    opts = getattr(config, 'font_scale_options', [0.75,1.0,1.25,1.5,1.75])
-                    idx = getattr(config, 'current_font_scale_index', 1)
-                    idx = max(0, idx-1) if is_input_matched(event, "left") else min(len(opts)-1, idx+1)
-                    if idx != getattr(config, 'current_font_scale_index', 1):
-                        config.current_font_scale_index = idx
-                        scale = opts[idx]
-                        config.accessibility_settings["font_scale"] = scale
-                        try:
-                            save_accessibility_settings(config.accessibility_settings)
-                        except Exception as e:
-                            logger.error(f"Erreur sauvegarde accessibilité: {e}")
-                        try:
-                            config.init_font()
-                        except Exception as e:
-                            logger.error(f"Erreur init polices: {e}")
-                        config.needs_redraw = True
-                # 2 footer font size
-                elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    from accessibility import update_footer_font_scale
-                    footer_opts = getattr(config, 'footer_font_scale_options', [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0])
-                    idx = getattr(config, 'current_footer_font_scale_index', 3)
-                    idx = max(0, idx-1) if is_input_matched(event, "left") else min(len(footer_opts)-1, idx+1)
-                    if idx != getattr(config, 'current_footer_font_scale_index', 3):
-                        config.current_footer_font_scale_index = idx
-                        try:
-                            update_footer_font_scale()
-                        except Exception as e:
-                            logger.error(f"Erreur update footer font scale: {e}")
-                        config.needs_redraw = True
-                # 3 font family cycle
-                elif sel == 3 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # 1 font size submenu - open submenu on confirm
+                elif sel == 1 and is_input_matched(event, "confirm"):
+                    config.menu_state = "pause_display_font_menu"
+                    config.pause_display_font_selection = 0
+                    config.needs_redraw = True
+                # 2 font family cycle
+                elif sel == 2 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         families = getattr(config, 'FONT_FAMILIES', ["pixel"]) or ["pixel"]
                         current = get_font_family()
@@ -1851,26 +1825,20 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur changement font family: {e}")
-                # 4 monitor selection
-                elif sel == 4 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
+                # 3 monitor selection (only if multiple monitors)
+                elif sel == 3 and show_monitor and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
-                        from rgsx_settings import get_display_monitor, set_display_monitor, get_available_monitors
-                        monitors = get_available_monitors()
-                        num_monitors = len(monitors)
-                        if num_monitors > 1:
-                            current = get_display_monitor()
-                            new_monitor = (current - 1) % num_monitors if is_input_matched(event, "left") else (current + 1) % num_monitors
-                            set_display_monitor(new_monitor)
-                            config.popup_message = _("display_monitor_restart_required") if _ else "Restart required to apply monitor change"
-                            config.popup_timer = 3000
-                        else:
-                            config.popup_message = _("display_monitor_single_only") if _ else "Only one monitor detected"
-                            config.popup_timer = 2000
+                        from rgsx_settings import get_display_monitor, set_display_monitor
+                        current = get_display_monitor()
+                        new_monitor = (current - 1) % len(monitors) if is_input_matched(event, "left") else (current + 1) % len(monitors)
+                        set_display_monitor(new_monitor)
+                        config.popup_message = _("display_monitor_restart_required") if _ else "Restart required to apply monitor change"
+                        config.popup_timer = 3000
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur changement moniteur: {e}")
-                # 5 light mode toggle
-                elif sel == 5 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # light mode toggle (index 4 if show_monitor, else 3)
+                elif ((sel == 4 and show_monitor) or (sel == 3 and not show_monitor)) and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         from rgsx_settings import get_light_mode, set_light_mode
                         current = get_light_mode()
@@ -1880,8 +1848,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle light mode: {e}")
-                # 6 allow unknown extensions
-                elif sel == 6 and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # allow unknown extensions (index 5 if show_monitor, else 4)
+                elif ((sel == 5 and show_monitor) or (sel == 4 and not show_monitor)) and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         current = get_allow_unknown_extensions()
                         new_val = set_allow_unknown_extensions(not current)
@@ -1890,13 +1858,102 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
-                # 7 back
-                elif sel == 7 and is_input_matched(event, "confirm"):
+                # back (index 6 if show_monitor, else 5)
+                elif ((sel == 6 and show_monitor) or (sel == 5 and not show_monitor)) and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
             elif is_input_matched(event, "cancel") or is_input_matched(event, "start"):
                 config.menu_state = "pause_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+                config.needs_redraw = True
+
+        # Sous-menu Display > Layout (disposition avec visualisation)
+        elif config.menu_state == "pause_display_layout_menu":
+            sel = getattr(config, 'pause_display_layout_selection', 0)
+            total = 5  # 3x3, 3x4, 4x3, 4x4, back
+            if is_input_matched(event, "up"):
+                config.pause_display_layout_selection = (sel - 1) % total
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                config.pause_display_layout_selection = (sel + 1) % total
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                if sel < 4:  # Une des dispositions
+                    layouts = [(3,3),(3,4),(4,3),(4,4)]
+                    new_cols, new_rows = layouts[sel]
+                    try:
+                        set_display_grid(new_cols, new_rows)
+                    except Exception as e:
+                        logger.error(f"Erreur set_display_grid: {e}")
+                    config.GRID_COLS = new_cols
+                    config.GRID_ROWS = new_rows
+                    # Afficher un popup indiquant que le changement sera effectif après redémarrage
+                    try:
+                        config.popup_message = _("popup_layout_changed_restart").format(new_cols, new_rows) if _ else f"Layout changed to {new_cols}x{new_rows}. Restart required to apply."
+                        config.popup_timer = 3000
+                    except Exception as e:
+                        logger.error(f"Erreur popup layout: {e}")
+                    config.menu_state = "pause_display_menu"
+                    config.needs_redraw = True
+                elif sel == 4:  # Back
+                    config.menu_state = "pause_display_menu"
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "start"):
+                config.menu_state = "pause_display_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+                config.needs_redraw = True
+
+        # Sous-menu Display > Font (tailles de police)
+        elif config.menu_state == "pause_display_font_menu":
+            sel = getattr(config, 'pause_display_font_selection', 0)
+            total = 3  # font size, footer font size, back
+            if is_input_matched(event, "up"):
+                config.pause_display_font_selection = (sel - 1) % total
+                config.needs_redraw = True
+            elif is_input_matched(event, "down"):
+                config.pause_display_font_selection = (sel + 1) % total
+                config.needs_redraw = True
+            elif is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm"):
+                # 0 font size
+                if sel == 0 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    opts = getattr(config, 'font_scale_options', [0.75,1.0,1.25,1.5,1.75])
+                    idx = getattr(config, 'current_font_scale_index', 1)
+                    idx = max(0, idx-1) if is_input_matched(event, "left") else min(len(opts)-1, idx+1)
+                    if idx != getattr(config, 'current_font_scale_index', 1):
+                        config.current_font_scale_index = idx
+                        scale = opts[idx]
+                        config.accessibility_settings["font_scale"] = scale
+                        try:
+                            save_accessibility_settings(config.accessibility_settings)
+                        except Exception as e:
+                            logger.error(f"Erreur sauvegarde accessibilité: {e}")
+                        try:
+                            config.init_font()
+                        except Exception as e:
+                            logger.error(f"Erreur init polices: {e}")
+                        config.needs_redraw = True
+                # 1 footer font size
+                elif sel == 1 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    from accessibility import update_footer_font_scale
+                    footer_opts = getattr(config, 'footer_font_scale_options', [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0])
+                    idx = getattr(config, 'current_footer_font_scale_index', 3)
+                    idx = max(0, idx-1) if is_input_matched(event, "left") else min(len(footer_opts)-1, idx+1)
+                    if idx != getattr(config, 'current_footer_font_scale_index', 3):
+                        config.current_footer_font_scale_index = idx
+                        try:
+                            update_footer_font_scale()
+                        except Exception as e:
+                            logger.error(f"Erreur update footer font scale: {e}")
+                        config.needs_redraw = True
+                # 2 back
+                elif sel == 2 and is_input_matched(event, "confirm"):
+                    config.menu_state = "pause_display_menu"
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "start"):
+                config.menu_state = "pause_display_menu"
                 config.last_state_change_time = pygame.time.get_ticks()
                 config.needs_redraw = True
 
@@ -2209,6 +2266,55 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 logger.debug("Retour à pause_menu depuis controls_mapping")
         
+        # Prompt de mise à jour automatique de la liste des jeux
+        elif config.menu_state == "gamelist_update_prompt":
+            if is_input_matched(event, "left") or is_input_matched(event, "right"):
+                config.gamelist_update_selection = 1 - config.gamelist_update_selection
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                if config.gamelist_update_selection == 1:  # Oui
+                    logger.info("Utilisateur a accepté la mise à jour de la liste des jeux")
+                    # Lancer le téléchargement
+                    config.download_tasks.clear()
+                    config.pending_download = None
+                    if os.path.exists(config.SOURCES_FILE):
+                        try:
+                            if os.path.exists(config.SOURCES_FILE):
+                                os.remove(config.SOURCES_FILE)
+                            if os.path.exists(os.path.join(config.SAVE_FOLDER, "sources.json")):
+                                os.remove(os.path.join(config.SAVE_FOLDER, "sources.json"))
+                            if os.path.exists(config.GAMES_FOLDER):
+                                shutil.rmtree(config.GAMES_FOLDER)
+                            if os.path.exists(config.IMAGES_FOLDER):
+                                shutil.rmtree(config.IMAGES_FOLDER)
+                            # Mettre à jour la date
+                            from rgsx_settings import set_last_gamelist_update
+                            set_last_gamelist_update()
+                            config.menu_state = "restart_popup"
+                            config.popup_message = _("popup_gamelist_updating") if _ else "Updating game list... Restarting..."
+                            config.popup_timer = 2000
+                            config.needs_redraw = True
+                            restart_application(2000)
+                        except Exception as e:
+                            logger.error(f"Erreur lors de la mise à jour: {e}")
+                            config.menu_state = "loading"
+                            config.needs_redraw = True
+                    else:
+                        # Pas de cache existant, juste mettre à jour la date et continuer
+                        from rgsx_settings import set_last_gamelist_update
+                        set_last_gamelist_update()
+                        config.menu_state = "loading"
+                        config.needs_redraw = True
+                else:  # Non
+                    logger.info("Utilisateur a refusé la mise à jour de la liste des jeux")
+                    # Ne pas mettre à jour la date pour redemander plus tard
+                    config.menu_state = "platform"
+                    config.needs_redraw = True
+            elif is_input_matched(event, "cancel"):
+                logger.info("Utilisateur a annulé le prompt de mise à jour")
+                config.menu_state = "platform"
+                config.needs_redraw = True
+        
         # Redownload game cache
         elif config.menu_state == "reload_games_data":
             if is_input_matched(event, "left") or is_input_matched(event, "right"):
@@ -2234,6 +2340,9 @@ def handle_controls(event, sources, joystick, screen):
                             if os.path.exists(config.IMAGES_FOLDER):
                                 shutil.rmtree(config.IMAGES_FOLDER)
                                 logger.debug("Dossier images supprimé avec succès")
+                            # Mettre à jour la date de dernière mise à jour
+                            from rgsx_settings import set_last_gamelist_update
+                            set_last_gamelist_update()
                             config.menu_state = "restart_popup"
                             config.popup_message = _("popup_redownload_success")
                             config.popup_timer = 2000  # bref message

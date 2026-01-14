@@ -52,6 +52,8 @@
     "confirm_exit_with_downloads": "Attention : {0} téléchargement(s) en cours. Quitter quand même ?",
     "confirm_clear_history": "Vider l'historique ?",
     "confirm_redownload_cache": "Mettre à jour la liste des jeux ?",
+    "gamelist_update_prompt_with_date": "La liste des jeux n'a pas été mise à jour depuis plus de {0} jours (dernière mise à jour : {1}). Télécharger la dernière version ?",
+    "gamelist_update_prompt_first_time": "Souhaitez-vous télécharger la dernière liste des jeux ?",
     "popup_redownload_success": "Le cache a été effacé, merci de relancer l'application",
     "popup_no_cache": "Aucun cache trouvé.\nVeuillez redémarrer l'application pour charger les jeux.",
     "popup_countdown": "Ce message se fermera dans {0} seconde{1}",

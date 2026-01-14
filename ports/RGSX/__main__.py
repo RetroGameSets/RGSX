@@ -97,6 +97,7 @@ _run_windows_gamelist_update()
 
 try:
     config.update_checked = False
+    config.gamelist_update_prompted = False  # Flag pour ne pas redemander la mise à jour plusieurs fois
 except Exception:
     pass
 
@@ -677,6 +678,8 @@ async def main():
                 "pause_menu",
                 "pause_controls_menu",
                 "pause_display_menu",
+                "pause_display_layout_menu",
+                "pause_display_font_menu",
                 "pause_games_menu",
                 "pause_settings_menu",
                 "pause_api_keys_status",
@@ -690,11 +693,11 @@ async def main():
                 "history_game_options",
                 "history_show_folder",
                 "history_scraper_info",
-                "scraper",  # Ajout du scraper pour gérer les contrôles
+                "scraper",
                 "history_error_details",
                 "history_confirm_delete",
                 "history_extract_archive",
-                "text_file_viewer",  # Visualiseur de fichiers texte
+                "text_file_viewer",
                 # Menus filtrage avancé
                 "filter_menu_choice",
                 "filter_advanced",
@@ -729,6 +732,11 @@ async def main():
                 continue
 
             if config.menu_state == "reload_games_data":
+                action = handle_controls(event, sources, joystick, screen)
+                config.needs_redraw = True
+                continue
+
+            if config.menu_state == "gamelist_update_prompt":
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 continue
@@ -1085,6 +1093,12 @@ async def main():
             elif config.menu_state == "pause_display_menu":
                 from display import draw_pause_display_menu
                 draw_pause_display_menu(screen, getattr(config, 'pause_display_selection', 0))
+            elif config.menu_state == "pause_display_layout_menu":
+                from display import draw_pause_display_layout_menu
+                draw_pause_display_layout_menu(screen, getattr(config, 'pause_display_layout_selection', 0))
+            elif config.menu_state == "pause_display_font_menu":
+                from display import draw_pause_display_font_menu
+                draw_pause_display_font_menu(screen, getattr(config, 'pause_display_font_selection', 0))
             elif config.menu_state == "pause_games_menu":
                 from display import draw_pause_games_menu
                 draw_pause_games_menu(screen, getattr(config, 'pause_games_selection', 0))
@@ -1141,6 +1155,9 @@ async def main():
                 draw_cancel_download_dialog(screen)
             elif config.menu_state == "reload_games_data":
                 draw_reload_games_data_dialog(screen)
+            elif config.menu_state == "gamelist_update_prompt":
+                from display import draw_gamelist_update_prompt
+                draw_gamelist_update_prompt(screen)
             elif config.menu_state == "restart_popup":
                 draw_popup(screen)
             elif config.menu_state == "accessibility_menu":
@@ -1379,11 +1396,47 @@ async def main():
             elif loading_step == "load_sources":
                 logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
                 sources = load_sources()
-                config.menu_state = "platform"
                 config.loading_progress = 100.0
                 config.current_loading_system = ""
+                
+                # Vérifier si une mise à jour de la liste des jeux est nécessaire (seulement si pas déjà demandé)
+                if not config.gamelist_update_prompted:
+                    from rgsx_settings import get_last_gamelist_update
+                    from config import GAMELIST_UPDATE_DAYS
+                    from datetime import datetime, timedelta
+                    
+                    last_update = get_last_gamelist_update()
+                    should_prompt_update = False
+                    
+                    if last_update is None:
+                        # Première utilisation, proposer la mise à jour
+                        logger.info("Première utilisation détectée, proposition de mise à jour de la liste des jeux")
+                        should_prompt_update = True
+                    else:
+                        try:
+                            last_update_date = datetime.strptime(last_update, "%Y-%m-%d")
+                            days_since_update = (datetime.now() - last_update_date).days
+                            logger.info(f"Dernière mise à jour de la liste des jeux: {last_update} ({days_since_update} jours)")
+                            
+                            if days_since_update >= GAMELIST_UPDATE_DAYS:
+                                logger.info(f"Mise à jour de la liste des jeux recommandée (>{GAMELIST_UPDATE_DAYS} jours)")
+                                should_prompt_update = True
+                        except Exception as e:
+                            logger.error(f"Erreur lors de la vérification de la date de mise à jour: {e}")
+                    
+                    if should_prompt_update:
+                        config.menu_state = "gamelist_update_prompt"
+                        config.gamelist_update_selection = 1  # 0=Non, 1=Oui (par défaut)
+                        config.gamelist_update_prompted = True  # Marquer comme déjà demandé
+                        logger.debug("Affichage du prompt de mise à jour de la liste des jeux")
+                    else:
+                        config.menu_state = "platform"
+                        logger.debug(f"Fin chargement, passage à platform, progress={config.loading_progress}")
+                else:
+                    config.menu_state = "platform"
+                    logger.debug(f"Prompt déjà affiché, passage à platform, progress={config.loading_progress}")
+                
                 config.needs_redraw = True
-                logger.debug(f"Fin chargement, passage à platform, progress={config.loading_progress}")
 
         # Gestion de l'état de transition
         if config.transition_state == "to_game":

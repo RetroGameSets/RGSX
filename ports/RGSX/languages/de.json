@@ -52,6 +52,8 @@
     "confirm_exit_with_downloads": "Achtung: {0} Download(s) laufen. Trotzdem beenden?",
     "confirm_clear_history": "Verlauf löschen?",
     "confirm_redownload_cache": "Spieleliste aktualisieren?",
+    "gamelist_update_prompt_with_date": "Die Spieleliste wurde seit mehr als {0} Tagen nicht aktualisiert (letzte Aktualisierung: {1}). Die neueste Version herunterladen?",
+    "gamelist_update_prompt_first_time": "Möchten Sie die neueste Spieleliste herunterladen?",
     "popup_redownload_success": "Cache gelöscht, bitte die Anwendung neu starten",
     "popup_no_cache": "Kein Cache gefunden.\nBitte starte die Anwendung neu, um die Spiele zu laden.",
     "popup_countdown": "Diese Nachricht schließt in {0} Sekunde{1}",

@@ -76,7 +76,8 @@ def load_rgsx_settings():
     "show_unsupported_platforms": False,
     "allow_unknown_extensions": False,
     "roms_folder": "",
-    "web_service_at_boot": False
+    "web_service_at_boot": False,
+    "last_gamelist_update": None
     }
     
     try:
@@ -108,6 +109,27 @@ def save_rgsx_settings(settings):
             json.dump(settings, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"Erreur lors de la sauvegarde de rgsx_settings.json: {str(e)}")
+
+
+def get_last_gamelist_update(settings=None):
+    """Récupère la date de dernière mise à jour de la liste des jeux."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return settings.get("last_gamelist_update", None)
+
+
+def set_last_gamelist_update(date_string=None):
+    """Définit la date de dernière mise à jour de la liste des jeux.
+    Si date_string est None, utilise la date actuelle.
+    """
+    from datetime import datetime
+    settings = load_rgsx_settings()
+    if date_string is None:
+        date_string = datetime.now().strftime("%Y-%m-%d")
+    settings["last_gamelist_update"] = date_string
+    save_rgsx_settings(settings)
+    logger.info(f"Date de dernière mise à jour de la liste des jeux: {date_string}")
+    return date_string
 
 
 

@@ -52,6 +52,8 @@
     "confirm_exit_with_downloads": "Atenção: {0} download(s) em andamento. Sair mesmo assim?",
     "confirm_clear_history": "Limpar histórico?",
     "confirm_redownload_cache": "Atualizar lista de jogos?",
+    "gamelist_update_prompt_with_date": "A lista de jogos não foi atualizada há mais de {0} dias (última atualização: {1}). Baixar a versão mais recente?",
+    "gamelist_update_prompt_first_time": "Gostaria de baixar a última lista de jogos?",
     "popup_redownload_success": "Cache limpo, reinicie a aplicação",
     "popup_no_cache": "Nenhum cache encontrado.\nReinicie a aplicação para carregar os jogos.",
     "popup_countdown": "Esta mensagem fechará em {0} segundo{1}",

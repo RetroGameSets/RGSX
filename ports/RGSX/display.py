@@ -799,6 +799,10 @@ def draw_platform_grid(screen):
     """Affiche la grille des plateformes avec un style moderne et fluide."""
     global platform_images_cache
     
+    # Vérifier si le mode performance est activé
+    from rgsx_settings import get_light_mode
+    light_mode = get_light_mode()
+    
     if not config.platforms or config.selected_platform >= len(config.platforms):
         platform_name = _("platform_no_platform")
         logger.warning("Aucune plateforme ou selected_platform hors limites")
@@ -827,35 +831,45 @@ def draw_platform_grid(screen):
 
     # Effet de pulsation subtil pour le titre - calculé une seule fois par frame
     current_time = pygame.time.get_ticks()
-    pulse_factor = 0.08 * (1 + math.sin(current_time / 400))
     
-    # Ombre portée pour le titre
-    shadow_surf = pygame.Surface((title_rect_inflated.width + 12, title_rect_inflated.height + 12), pygame.SRCALPHA)
-    pygame.draw.rect(shadow_surf, (0, 0, 0, 140), (6, 6, title_rect_inflated.width, title_rect_inflated.height), border_radius=16)
-    screen.blit(shadow_surf, (title_rect_inflated.left - 6, title_rect_inflated.top - 6))
+    if not light_mode:
+        # Mode normal : effets visuels complets
+        pulse_factor = 0.08 * (1 + math.sin(current_time / 400))
+        
+        # Ombre portée pour le titre
+        shadow_surf = pygame.Surface((title_rect_inflated.width + 12, title_rect_inflated.height + 12), pygame.SRCALPHA)
+        pygame.draw.rect(shadow_surf, (0, 0, 0, 140), (6, 6, title_rect_inflated.width, title_rect_inflated.height), border_radius=16)
+        screen.blit(shadow_surf, (title_rect_inflated.left - 6, title_rect_inflated.top - 6))
+        
+        # Glow multicouche pour le titre
+        for i in range(2):
+            glow_size = title_rect_inflated.inflate(15 + i * 8, 15 + i * 8)
+            title_glow = pygame.Surface((glow_size.width, glow_size.height), pygame.SRCALPHA)
+            alpha = int((30 + 20 * pulse_factor) * (1 - i / 2))
+            pygame.draw.rect(title_glow, (*THEME_COLORS["neon"][:3], alpha), 
+                            title_glow.get_rect(), border_radius=16 + i * 2)
+            screen.blit(title_glow, (title_rect_inflated.left - 8 - i * 4, title_rect_inflated.top - 8 - i * 4))
+        
+        # Fond du titre avec dégradé
+        title_bg = pygame.Surface((title_rect_inflated.width, title_rect_inflated.height), pygame.SRCALPHA)
+        for i in range(title_rect_inflated.height):
+            ratio = i / title_rect_inflated.height
+            alpha = int(THEME_COLORS["button_idle"][3] * (1 + ratio * 0.1))
+            pygame.draw.line(title_bg, (*THEME_COLORS["button_idle"][:3], alpha), 
+                            (0, i), (title_rect_inflated.width, i))
+        screen.blit(title_bg, title_rect_inflated.topleft)
+        
+        # Reflet en haut du titre
+        highlight = pygame.Surface((title_rect_inflated.width - 8, title_rect_inflated.height // 3), pygame.SRCALPHA)
+        highlight.fill((255, 255, 255, 25))
+        screen.blit(highlight, (title_rect_inflated.left + 4, title_rect_inflated.top + 4))
+        
+        pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=14)
+    else:
+        # Mode performance : rendu simplifié
+        pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=14)
+        pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=14)
     
-            # Glow multicouche pour le titre
-    for i in range(2):
-        glow_size = title_rect_inflated.inflate(15 + i * 8, 15 + i * 8)
-        title_glow = pygame.Surface((glow_size.width, glow_size.height), pygame.SRCALPHA)
-        alpha = int((30 + 20 * pulse_factor) * (1 - i / 2))
-        pygame.draw.rect(title_glow, (*THEME_COLORS["neon"][:3], alpha), 
-                        title_glow.get_rect(), border_radius=16 + i * 2)
-        screen.blit(title_glow, (title_rect_inflated.left - 8 - i * 4, title_rect_inflated.top - 8 - i * 4))    # Fond du titre avec dégradé
-    title_bg = pygame.Surface((title_rect_inflated.width, title_rect_inflated.height), pygame.SRCALPHA)
-    for i in range(title_rect_inflated.height):
-        ratio = i / title_rect_inflated.height
-        alpha = int(THEME_COLORS["button_idle"][3] * (1 + ratio * 0.1))
-        pygame.draw.line(title_bg, (*THEME_COLORS["button_idle"][:3], alpha), 
-                        (0, i), (title_rect_inflated.width, i))
-    screen.blit(title_bg, title_rect_inflated.topleft)
-    
-    # Reflet en haut du titre
-    highlight = pygame.Surface((title_rect_inflated.width - 8, title_rect_inflated.height // 3), pygame.SRCALPHA)
-    highlight.fill((255, 255, 255, 25))
-    screen.blit(highlight, (title_rect_inflated.left + 4, title_rect_inflated.top + 4))
-    
-    pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=14)
     screen.blit(title_surface, title_rect)
 
     # Configuration de la grille - calculée une seule fois
@@ -920,8 +934,12 @@ def draw_platform_grid(screen):
         screen.blit(page_indicator, page_rect)
 
     # Calculer une seule fois la pulsation pour les éléments sélectionnés (réduite)
-    pulse = 0.05 * math.sin(current_time / 300)  # Réduit de 0.1 à 0.05
-    glow_intensity = 40 + int(30 * math.sin(current_time / 300))
+    if not light_mode:
+        pulse = 0.05 * math.sin(current_time / 300)  # Réduit de 0.1 à 0.05
+        glow_intensity = 40 + int(30 * math.sin(current_time / 300))
+    else:
+        pulse = 0
+        glow_intensity = 0
     
     # Pré-calcul des images pour optimiser le rendu
     start_idx = config.current_page * systems_per_page
@@ -936,8 +954,14 @@ def draw_platform_grid(screen):
         
         # Animation fluide pour l'item sélectionné (réduite pour éviter chevauchement)
         is_selected = idx == config.selected_platform
-        scale_base = 1.15 if is_selected else 1.0  # Réduit de 1.5 à 1.15
-        scale = scale_base + pulse if is_selected else scale_base
+        if light_mode:
+            # Mode performance : pas d'animation, taille fixe
+            scale_base = 1.0
+            scale = 1.0
+        else:
+            # Mode normal : animation réduite
+            scale_base = 1.15 if is_selected else 1.0  # Réduit de 1.5 à 1.15
+            scale = scale_base + pulse if is_selected else scale_base
             
         # Récupération robuste du dict via nom
         display_name = visible_platforms[idx]
@@ -1006,6 +1030,7 @@ def draw_platform_grid(screen):
         
         image_rect = scaled_image.get_rect(center=(x, y))
 
+
         # Effet visuel moderne similaire au titre pour toutes les images
         border_radius = 12
         padding = 12
@@ -1018,57 +1043,80 @@ def draw_platform_grid(screen):
         container_left = x - rect_width // 2
         container_top = y - rect_height // 2
         
-        # Ombre portée
-        shadow_surf = pygame.Surface((rect_width + 12, rect_height + 12), pygame.SRCALPHA)
-        pygame.draw.rect(shadow_surf, (0, 0, 0, 160), (6, 6, rect_width, rect_height), border_radius=border_radius + 4)
-        screen.blit(shadow_surf, (container_left - 6, container_top - 6))
-        
-        # Effet de glow multicouche pour l'item sélectionné
-        if is_selected:
-            neon_color = THEME_COLORS["neon"]
+        if not light_mode:
+            # Mode normal : effets visuels complets
+            # Ombre portée
+            shadow_surf = pygame.Surface((rect_width + 12, rect_height + 12), pygame.SRCALPHA)
+            pygame.draw.rect(shadow_surf, (0, 0, 0, 160), (6, 6, rect_width, rect_height), border_radius=border_radius + 4)
+            screen.blit(shadow_surf, (container_left - 6, container_top - 6))
             
-            # Glow multicouche (2 couches pour effet profondeur)
-            for i in range(2):
-                glow_size = (rect_width + 15 + i * 8, rect_height + 15 + i * 8)
-                glow_surf = pygame.Surface(glow_size, pygame.SRCALPHA)
-                alpha = int((glow_intensity + 40) * (1 - i / 2))
-                pygame.draw.rect(glow_surf, neon_color + (alpha,), glow_surf.get_rect(), border_radius=border_radius + i * 2)
-                screen.blit(glow_surf, (container_left - 8 - i * 4, container_top - 8 - i * 4))
+            # Effet de glow multicouche pour l'item sélectionné
+            if is_selected:
+                neon_color = THEME_COLORS["neon"]
+                
+                # Glow multicouche (2 couches pour effet profondeur)
+                for i in range(2):
+                    glow_size = (rect_width + 15 + i * 8, rect_height + 15 + i * 8)
+                    glow_surf = pygame.Surface(glow_size, pygame.SRCALPHA)
+                    alpha = int((glow_intensity + 40) * (1 - i / 2))
+                    pygame.draw.rect(glow_surf, neon_color + (alpha,), glow_surf.get_rect(), border_radius=border_radius + i * 2)
+                    screen.blit(glow_surf, (container_left - 8 - i * 4, container_top - 8 - i * 4))
+            
+            # Fond avec dégradé vertical (similaire au titre)
+            bg_surface = pygame.Surface((rect_width, rect_height), pygame.SRCALPHA)
+            base_color = THEME_COLORS["button_idle"] if is_selected else THEME_COLORS["fond_image"]
+            
+            for i in range(rect_height):
+                ratio = i / rect_height
+                # Dégradé du haut (plus clair) vers le bas (plus foncé)
+                alpha = int(base_color[3] * (1 + ratio * 0.15)) if len(base_color) > 3 else int(200 * (1 + ratio * 0.15))
+                color = (*base_color[:3], min(255, alpha))
+                pygame.draw.line(bg_surface, color, (0, i), (rect_width, i))
+            
+            screen.blit(bg_surface, (container_left, container_top))
+            
+            # Reflet en haut (highlight pour effet glossy)
+            highlight_height = rect_height // 3
+            highlight = pygame.Surface((rect_width - 8, highlight_height), pygame.SRCALPHA)
+            highlight.fill((255, 255, 255, 35 if is_selected else 20))
+            screen.blit(highlight, (container_left + 4, container_top + 4))
+        else:
+            # Mode performance : fond simple sans effets
+            bg_color = THEME_COLORS["button_idle"] if is_selected else THEME_COLORS["fond_image"]
+            pygame.draw.rect(screen, bg_color, (container_left, container_top, rect_width, rect_height), border_radius=border_radius)
         
-        # Fond avec dégradé vertical (similaire au titre)
-        bg_surface = pygame.Surface((rect_width, rect_height), pygame.SRCALPHA)
-        base_color = THEME_COLORS["button_idle"] if is_selected else THEME_COLORS["fond_image"]
+        # Bordure
+        if light_mode and is_selected:
+            # Mode performance : bordure épaisse et très visible pour l'item sélectionné
+            border_color = THEME_COLORS["neon"]  # Couleur verte bien visible
+            border_width = 4  # Bordure plus épaisse
+        elif not light_mode and is_selected:
+            # Mode normal : bordure neon
+            border_color = THEME_COLORS["neon"]
+            border_width = 2
+        else:
+            # Non sélectionné : bordure standard
+            border_color = THEME_COLORS["border"]
+            border_width = 2
         
-        for i in range(rect_height):
-            ratio = i / rect_height
-            # Dégradé du haut (plus clair) vers le bas (plus foncé)
-            alpha = int(base_color[3] * (1 + ratio * 0.15)) if len(base_color) > 3 else int(200 * (1 + ratio * 0.15))
-            color = (*base_color[:3], min(255, alpha))
-            pygame.draw.line(bg_surface, color, (0, i), (rect_width, i))
-        
-        screen.blit(bg_surface, (container_left, container_top))
-        
-        # Reflet en haut (highlight pour effet glossy)
-        highlight_height = rect_height // 3
-        highlight = pygame.Surface((rect_width - 8, highlight_height), pygame.SRCALPHA)
-        highlight.fill((255, 255, 255, 35 if is_selected else 20))
-        screen.blit(highlight, (container_left + 4, container_top + 4))
-        
-        # Bordure avec effet 3D
-        border_color = THEME_COLORS["neon"] if is_selected else THEME_COLORS["border"]
         border_rect = pygame.Rect(container_left, container_top, rect_width, rect_height)
-        pygame.draw.rect(screen, border_color, border_rect, 2, border_radius=border_radius)
+        pygame.draw.rect(screen, border_color, border_rect, border_width, border_radius=border_radius)
 
         # Centrer l'image dans le container (l'image peut être plus petite que le container)
         centered_image_rect = scaled_image.get_rect(center=(x, y))
         
-        # Affichage de l'image avec un léger effet de transparence pour les items non sélectionnés
-        if not is_selected:
-            temp_image = scaled_image.copy()
-            temp_image.set_alpha(220)
-            screen.blit(temp_image, centered_image_rect)
-        else:
+        # Affichage de l'image
+        if light_mode:
+            # Mode performance : pas d'effet de transparence
             screen.blit(scaled_image, centered_image_rect)
+        else:
+            # Mode normal : effet de transparence pour les items non sélectionnés
+            if not is_selected:
+                temp_image = scaled_image.copy()
+                temp_image.set_alpha(220)
+                screen.blit(temp_image, centered_image_rect)
+            else:
+                screen.blit(scaled_image, centered_image_rect)
     
     # Nettoyer le cache périodiquement (garder seulement les images utilisées récemment)
     if len(platform_images_cache) > 50:  # Limite arbitraire pour éviter une croissance excessive
@@ -2405,14 +2453,8 @@ def draw_pause_controls_menu(screen, selected_index):
         draw_menu_instruction(screen, text, last_button_bottom)
 
 def draw_pause_display_menu(screen, selected_index):
-    # Layout label
-    layouts = [(3,3),(3,4),(4,3),(4,4)]
-    try:
-        idx = layouts.index((config.GRID_COLS, config.GRID_ROWS))
-    except ValueError:
-        idx = 0
-    layout_value = f"{layouts[idx][0]}x{layouts[idx][1]}"
-    layout_txt = f"{_('submenu_display_layout') if _ else 'Layout'}: < {layout_value} >"
+    # Layout label - now opens a submenu
+    layout_txt = f"{_('submenu_display_layout') if _ else 'Layout'} >"
     # Font size
     opts = getattr(config, 'font_scale_options', [0.75, 1.0, 1.25, 1.5, 1.75])
     cur_idx = getattr(config, 'current_font_scale_index', 1)
@@ -2433,16 +2475,16 @@ def draw_pause_display_menu(screen, selected_index):
     fam_label = family_map.get(current_family, current_family)
     font_family_txt = f"{_('submenu_display_font_family') if _ else 'Font'}: < {fam_label} >"
 
-    # Monitor selection
+    # Monitor selection - only show if multiple monitors
     current_monitor = get_display_monitor()
     monitors = get_available_monitors()
     num_monitors = len(monitors)
-    if num_monitors > 1:
+    show_monitor_option = num_monitors > 1
+    
+    if show_monitor_option:
         monitor_info = monitors[current_monitor] if current_monitor < num_monitors else monitors[0]
         monitor_value = f"{monitor_info['name']} ({monitor_info['resolution']})"
-    else:
-        monitor_value = _('display_monitor_single') if _ else "Single monitor"
-    monitor_txt = f"{_('display_monitor') if _ else 'Monitor'}: < {monitor_value} >"
+        monitor_txt = f"{_('display_monitor') if _ else 'Monitor'}: < {monitor_value} >"
     
     # Allow unknown extensions
     allow_unknown = get_allow_unknown_extensions()
@@ -2459,21 +2501,177 @@ def draw_pause_display_menu(screen, selected_index):
 
     back_txt = _("menu_back") if _ else "Back"
     
-    # Build options list - same for all platforms
-    # layout, font, footer, family, monitor, light, unknown, back (8)
-    options = [layout_txt, font_txt, footer_font_txt, font_family_txt, monitor_txt, light_txt, unknown_txt, back_txt]
+    # Build options list - conditional monitor option
+    # layout, font submenu, family, [monitor if multi], light, unknown, back
+    font_submenu_txt = f"{_('submenu_display_font_size') if _ else 'Font Size'} >"
+    options = [layout_txt, font_submenu_txt, font_family_txt]
     instruction_keys = [
         "instruction_display_layout",
         "instruction_display_font_size",
-        "instruction_display_footer_font_size",
         "instruction_display_font_family",
-        "instruction_display_monitor",
+    ]
+    
+    if show_monitor_option:
+        options.append(monitor_txt)
+        instruction_keys.append("instruction_display_monitor")
+    
+    options.extend([light_txt, unknown_txt, back_txt])
+    instruction_keys.extend([
         "instruction_display_light_mode",
         "instruction_display_unknown_ext",
         "instruction_generic_back",
-    ]
+    ])
     
     _draw_submenu_generic(screen, _("menu_display"), options, selected_index)
+    key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
+    if key:
+        button_height = int(config.screen_height * 0.045)
+        menu_width = int(config.screen_width * 0.72)
+        margin_top_bottom = 26
+        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
+        menu_y = (config.screen_height - menu_height) // 2
+        title_surface = config.font.render("X", True, THEME_COLORS["text"])
+        title_rect_height = title_surface.get_height()
+        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10
+        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
+        draw_menu_instruction(screen, _(key), last_button_bottom)
+
+def draw_pause_display_layout_menu(screen, selected_index):
+    """Sous-menu pour la disposition avec visualisation schématique des grilles."""
+    layouts = [(3,3),(3,4),(4,3),(4,4)]
+    layout_labels = ["3x3", "3x4", "4x3", "4x4"]
+    
+    # Trouver le layout actuel
+    try:
+        current_idx = layouts.index((config.GRID_COLS, config.GRID_ROWS))
+    except ValueError:
+        current_idx = 0
+    
+    # Créer les options avec indicateur du layout actuel
+    options = []
+    for i, label in enumerate(layout_labels):
+        if i == current_idx:
+            options.append(f"{label} [CURRENT]" if not _ else f"{label} [{_('status_current') if _ else 'ACTUEL'}]")
+        else:
+            options.append(label)
+    options.append(_("menu_back") if _ else "Back")
+    
+    # Dessiner le menu de base
+    title = _("submenu_display_layout") if _ else "Layout"
+    
+    # Calculer les dimensions
+    button_height = int(config.screen_height * 0.045)
+    menu_width = int(config.screen_width * 0.72)
+    margin_top_bottom = 26
+    
+    # Calculer la hauteur nécessaire pour les boutons
+    menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
+    menu_x = (config.screen_width - menu_width) // 2
+    menu_y = (config.screen_height - menu_height) // 2
+    
+    # Fond du menu
+    menu_rect = pygame.Rect(menu_x, menu_y, menu_width, menu_height)
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], menu_rect, border_radius=14)
+    pygame.draw.rect(screen, THEME_COLORS["border"], menu_rect, 3, border_radius=14)
+    
+    # Titre
+    title_surface = config.font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, menu_y + margin_top_bottom//2 + title_surface.get_height()//2))
+    screen.blit(title_surface, title_rect)
+    
+    # Position de départ pour le contenu
+    content_start_y = title_rect.bottom + 20
+    
+    # Division en deux colonnes : gauche pour la grille, droite pour les options
+    left_column_x = menu_x + 20
+    left_column_width = int(menu_width * 0.4)
+    right_column_x = left_column_x + left_column_width + 20
+    right_column_width = menu_width - left_column_width - 60
+    
+    # COLONNE GAUCHE : Dessiner uniquement la grille sélectionnée
+    if selected_index < len(layouts):
+        cols, rows = layouts[selected_index]
+        
+        # Calculer la taille des cellules pour le schéma
+        cell_size = min(60, (left_column_width - 20) // max(cols, rows))
+        grid_width = cols * cell_size
+        grid_height = rows * cell_size
+        
+        # Centrer la grille verticalement dans l'espace disponible
+        available_height = (len(options) * (button_height + 10)) - 10
+        grid_x = left_column_x + (left_column_width - grid_width) // 2
+        grid_y = content_start_y + (available_height - grid_height) // 2
+        
+        # Dessiner le schéma de la grille sélectionnée
+        for row in range(rows):
+            for col in range(cols):
+                cell_rect = pygame.Rect(
+                    grid_x + col * cell_size,
+                    grid_y + row * cell_size,
+                    cell_size - 3,
+                    cell_size - 3
+                )
+                # Couleur selon si c'est aussi le layout actuel
+                if selected_index == current_idx:
+                    # Sélectionné ET actuel : vert brillant
+                    pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], cell_rect)
+                    pygame.draw.rect(screen, THEME_COLORS["text"], cell_rect, 2)
+                else:
+                    # Seulement sélectionné : bleu clair
+                    pygame.draw.rect(screen, THEME_COLORS["button_selected"], cell_rect)
+                    pygame.draw.rect(screen, THEME_COLORS["text"], cell_rect, 2)
+    
+    # COLONNE DROITE : Dessiner les boutons d'options
+    for i, option in enumerate(options):
+        button_x = right_column_x
+        button_y = content_start_y + i * (button_height + 10)
+        button_width = right_column_width
+        
+        button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
+        
+        if i == selected_index:
+            pygame.draw.rect(screen, THEME_COLORS["button_selected"], button_rect, border_radius=8)
+        else:
+            pygame.draw.rect(screen, THEME_COLORS["button_idle"], button_rect, border_radius=8)
+        
+        pygame.draw.rect(screen, THEME_COLORS["border"], button_rect, 2, border_radius=8)
+        
+        text_surface = config.font.render(option, True, THEME_COLORS["text"])
+        text_rect = text_surface.get_rect(center=button_rect.center)
+        screen.blit(text_surface, text_rect)
+    
+    # Instruction en bas
+    last_button_bottom = content_start_y + (len(options)-1) * (button_height + 10) + button_height
+    if selected_index < len(layouts):
+        instruction = _("instruction_display_layout") if _ else "Left/Right: Navigate • Confirm: Select"
+    else:
+        instruction = _("instruction_generic_back") if _ else "Confirm: Go back"
+    draw_menu_instruction(screen, instruction, last_button_bottom)
+
+def draw_pause_display_font_menu(screen, selected_index):
+    """Sous-menu pour les tailles de police."""
+    # Font size
+    opts = getattr(config, 'font_scale_options', [0.75, 1.0, 1.25, 1.5, 1.75])
+    cur_idx = getattr(config, 'current_font_scale_index', 1)
+    font_value = f"{opts[cur_idx]}x"
+    font_txt = f"{_('submenu_display_font_size') if _ else 'Font Size'}: < {font_value} >"
+    
+    # Footer font size
+    footer_opts = getattr(config, 'footer_font_scale_options', [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0])
+    footer_cur_idx = getattr(config, 'current_footer_font_scale_index', 3)
+    footer_font_value = f"{footer_opts[footer_cur_idx]}x"
+    footer_font_txt = f"{_('accessibility_footer_font_size').split(':')[0] if _ else 'Footer Font Size'}: < {footer_font_value} >"
+    
+    back_txt = _("menu_back") if _ else "Back"
+    
+    options = [font_txt, footer_font_txt, back_txt]
+    instruction_keys = [
+        "instruction_display_font_size",
+        "instruction_display_footer_font_size",
+        "instruction_generic_back",
+    ]
+    
+    _draw_submenu_generic(screen, _("submenu_display_font_size") if _ else "Font Size", options, selected_index)
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
     if key:
         button_height = int(config.screen_height * 0.045)
@@ -3080,6 +3278,54 @@ def draw_reload_games_data_dialog(screen):
     buttons_y = rect_y + text_height + margin_top_bottom
     draw_stylized_button(screen, _("button_yes"), yes_x, buttons_y, button_width, button_height, selected=config.redownload_confirm_selection == 1)
     draw_stylized_button(screen, _("button_no"), no_x, buttons_y, button_width, button_height, selected=config.redownload_confirm_selection == 0)
+
+
+def draw_gamelist_update_prompt(screen):
+    """Affiche la boîte de dialogue pour proposer la mise à jour de la liste des jeux."""
+    global OVERLAY
+    if OVERLAY is None or OVERLAY.get_size() != (config.screen_width, config.screen_height):
+        OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
+        OVERLAY.fill((0, 0, 0, 150))
+
+    screen.blit(OVERLAY, (0, 0))
+    
+    from config import GAMELIST_UPDATE_DAYS
+    from rgsx_settings import get_last_gamelist_update
+    
+    last_update = get_last_gamelist_update()
+    if last_update:
+        message = _("gamelist_update_prompt_with_date").format(GAMELIST_UPDATE_DAYS, last_update) if _ else f"Game list hasn't been updated for more than {GAMELIST_UPDATE_DAYS} days (last update: {last_update}). Download the latest version?"
+    else:
+        message = _("gamelist_update_prompt_first_time") if _ else "Would you like to download the latest game list?"
+    
+    wrapped_message = wrap_text(message, config.small_font, config.screen_width - 80)
+    line_height = config.small_font.get_height() + 5
+    text_height = len(wrapped_message) * line_height
+    
+    sample_text = config.small_font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    button_height = max(int(config.screen_height * 0.0463), font_height + 15)
+    margin_top_bottom = 20
+    rect_height = text_height + button_height + 2 * margin_top_bottom
+    max_text_width = max([config.small_font.size(line)[0] for line in wrapped_message], default=300)
+    rect_width = max_text_width + 80
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+
+    for i, line in enumerate(wrapped_message):
+        text = config.small_font.render(line, True, THEME_COLORS["text"])
+        text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
+        screen.blit(text, text_rect)
+
+    button_width = min(160, (rect_width - 60) // 2)
+    yes_x = rect_x + rect_width // 2 - button_width - 10
+    no_x = rect_x + rect_width // 2 + 10
+    buttons_y = rect_y + text_height + margin_top_bottom
+    draw_stylized_button(screen, _("button_yes"), yes_x, buttons_y, button_width, button_height, selected=config.gamelist_update_selection == 1)
+    draw_stylized_button(screen, _("button_no"), no_x, buttons_y, button_width, button_height, selected=config.gamelist_update_selection == 0)
 
 
 def draw_support_dialog(screen):

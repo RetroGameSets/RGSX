@@ -52,6 +52,8 @@
     "confirm_exit_with_downloads": "Attention: {0} download(s) in progress. Quit anyway?",
     "confirm_clear_history": "Clear history?",
     "confirm_redownload_cache": "Update games list?",
+    "gamelist_update_prompt_with_date": "Game list hasn't been updated for more than {0} days (last update: {1}). Download the latest version?",
+    "gamelist_update_prompt_first_time": "Would you like to download the latest game list?",
     "popup_redownload_success": "Cache cleared, please restart the application",
     "popup_no_cache": "No cache found.\nPlease restart the application to load games.",
     "popup_countdown": "This message will close in {0} second{1}",
