@@ -61,52 +61,78 @@ jobs:
           echo "✓ All packages created successfully"
           ls -lh dist/
 
+      - name: Generate release notes with commit message
+        shell: bash
+        run: |
+          # Récupérer le message de commit associé au tag
+          COMMIT_MSG=$(git log -1 --format=%B ${{ github.ref_name }})
+          echo "Commit message:"
+          echo "$COMMIT_MSG"
+          
+          # Créer le fichier de release notes
+          cat > dist/RELEASE_NOTES.md << 'RELEASE_EOF'
+          # 📦 RGSX Release ${{ github.ref_name }}
+          
+          ## 📝 Changelog
+          RELEASE_EOF
+          
+          # Ajouter le message de commit
+          echo "$COMMIT_MSG" >> dist/RELEASE_NOTES.md
+          
+          # Ajouter le reste des instructions
+          cat >> dist/RELEASE_NOTES.md << 'RELEASE_EOF'
+          
+          ---
+          
+          ## 📥 Automatic Installation (Only for Batocera/Knulli)
+
+          ### ON PC, NUC, SteamDeck or any x86_64 based: 
+          1. Open File Manager (F1) then "Applications" and launch xterm
+          2. Use the command line `curl -L bit.ly/rgsx-install | sh`
+          3. Launch RGSX from "Ports" menu
+
+          ### ON RASPBERRY/ ARM based SBC / HANDHELD : 
+          1. Connect your device with SSH on a computer/smartphone connected to same network (ssh root@IPADDRESS , pass:linux)
+          2. Use the command line `curl -L bit.ly/rgsx-install | sh`
+          3. Launch RGSX from "Ports" menu            
+
+          ## 📥 Manual Installation 
+          
+          ### Batocera/Knulli
+          1. Download latest release : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip
+          2. Extract only PORTS folder in `/userdata/roms/`
+          3. Launch RGSX from the Ports menu
+          
+          ### Retrobat/Full Installation on Windows
+          1. Download latest release : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip
+          2. Extract all folders in your Retrobat\roms folder
+          3. Launch RGSX from system "Windows"
+          
+
+          ## 📥 Manual Update (only if automatic doesn't work for some obscure reason)
+
+          #### Batocera/Knulli/Retrobat
+          1. Download latest update : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_update_latest.zip
+          2. Extract zip content in `/userdata/roms/ports/RGSX`
+          3. Launch RGSX
+          
+          
+          ### 📖 Documentation
+          [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
+          RELEASE_EOF
+          
+          echo "✓ Release notes generated"
+          cat dist/RELEASE_NOTES.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: RGSX ${{ github.ref_name }}
-          generate_release_notes: true
+          generate_release_notes: false
           draft: false
           prerelease: false
-          body: |
-            # 📦 RGSX Release ${{ github.ref_name }}
-            
-            ## 📥 Automatic Installation (Only for batocera Knulli)
-
-            ### ON PC , NUC, SteamDeck or any x86_64 based: 
-            1. Open File Manager (F1) then "Applications" and launch xterm
-            2. Use the command line `curl -L bit.ly/rgsx-install | sh`
-            3. Launch RGSX from "Ports" menu
-
-            ### ON RASPBERRY/ ARM based SBC / HANDHELD : 
-            1. Connect your device with SSH on a computer/smartphone connected to same network (ssh root@IPADDRESS , pass:linux)
-            2. Use the command line `curl -L bit.ly/rgsx-install | sh`
-            3. Launch RGSX from "Ports" menu            
-
-            ## 📥 Manual Installation 
-            
-            ### Batocera/Knulli
-            1. Download latest release : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip
-            2. Extract only PORTS folder in `/userdata/roms/`
-            3. Launch RGSX from the Ports menu
-            
-            ### Retrobat/Full Installation on Windows
-            1. Download latest release : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip
-            2. Extract all folders in your Retrobat\roms folder
-            3. Launch RGSX from system "Windows"
-            
-
-            ## 📥 Manual Update (only if automatic doesn't work for some obcure reason)
-
-            #### Batocera/Knulli/Retrobat
-            1. Download latest update : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_update_latest.zip
-            2. Extract zip content on  in `/userdata/roms/ports/RGSX`
-            3. Launch RGSX
-            
-            
-            ### 📖 Documentation
-            [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
+          body_path: dist/RELEASE_NOTES.md
           files: |
             dist/RGSX_update_latest.zip
             dist/RGSX_full_latest.zip
