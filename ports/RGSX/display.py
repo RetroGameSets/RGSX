@@ -925,13 +925,10 @@ def draw_platform_grid(screen):
     if total_pages > 1:
         page_indicator_text = _("platform_page").format(config.current_page + 1, total_pages)
         page_indicator = config.small_font.render(page_indicator_text, True, THEME_COLORS["text"])
-        # Position fixe : 5px au-dessus du footer
-        # Le footer commence à screen_height - rect_height - 5 (voir draw_controls)
-        # On estime la hauteur du footer à environ 50-60px selon le contenu
-        # Pour être sûr, on positionne à screen_height - 60px (hauteur footer) - 5px (marge) - hauteur du texte
-        page_y = config.screen_height - 65 - page_indicator.get_height()
-        page_rect = page_indicator.get_rect(center=(config.screen_width // 2, page_y))
-        screen.blit(page_indicator, page_rect)
+        # Position en haut à gauche
+        page_x = 10
+        page_y = 10
+        screen.blit(page_indicator, (page_x, page_y))
 
     # Calculer une seule fois la pulsation pour les éléments sélectionnés (réduite)
     if not light_mode:
@@ -1935,7 +1932,18 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
             ("confirm", _("controls_confirm_select")),
             ("cancel", _("controls_cancel_back")),
         ],
+        "pause_settings_roms_folder": [
+            ("confirm", _("folder_browser_browse")),
+            ("clear_history", _("settings_roms_folder_default")),
+            ("cancel", _("controls_cancel_back")),
+        ],
     }
+    
+    # Cas spécial : pause_settings_menu avec option roms_folder sélectionnée
+    if menu_state == "pause_settings_menu":
+        roms_folder_index = 3  # Index de l'option Dossier ROMs
+        if getattr(config, 'pause_settings_selection', 0) == roms_folder_index:
+            menu_state = "pause_settings_roms_folder"
     
     # Récupérer les contrôles pour ce menu, sinon affichage par défaut
     controls_list = controls_map.get(menu_state, [
@@ -2080,14 +2088,21 @@ def draw_language_menu(screen):
         logger.error("Aucune langue disponible")
         return
     
+    # Instruction en haut - calculer d'abord pour connaître l'espace disponible
+    instruction_text = _("language_select_instruction")
+    instruction_height = get_top_instruction_height(instruction_text)
+    footer_height = 70
+    
+    # Espace disponible pour le contenu (entre instruction et footer)
+    available_h = config.screen_height - instruction_height - footer_height - 20
+    
     # Titre (mesuré d'abord pour connaître la hauteur réelle du fond)
     title_text = _("language_select_title")
     title_surface = config.font.render(title_text, True, THEME_COLORS["text"])
-    # On calcule un rect neutre, on positionnera ensuite pour centrer le bloc
     title_rect = title_surface.get_rect()
-    # Padding responsive plus léger pour réduire la hauteur
-    hpad = max(24, min(36, int(config.screen_width * 0.04)))
-    vpad = max(8, min(14, int(title_surface.get_height() * 0.4)))
+    # Padding responsive plus léger
+    hpad = max(20, min(30, int(config.screen_width * 0.03)))
+    vpad = max(6, min(10, int(title_surface.get_height() * 0.3)))
     title_bg_rect = title_rect.inflate(hpad, vpad)
 
     # Calculer hauteur dynamique basée sur la taille de police
@@ -2103,46 +2118,60 @@ def draw_language_menu(screen):
             max_text_width = text_surface.get_width()
     
     # Largeur bornée entre valeur calculée et limites raisonnables
-    button_width = max(260, min(500, max_text_width + 60))
-    # Hauteur réduite et responsive (env. 5.5% de la hauteur écran), bornée mais aussi fonction de la police
-    # Augmenter le padding pour grandes polices
-    button_height = max(28, min(70, max(int(config.screen_height * 0.055), font_height + 20)))
-    # Espacement vertical proportionnel et borné
-    button_spacing = max(8, int(button_height * 0.35))
-
-    # Calcul des dimensions globales pour centrer verticalement (titre + boutons)
+    button_width = max(200, min(400, max_text_width + 40))
+    
+    # Nombre de langues
     n = len(available_languages)
+    
+    # Calculer la hauteur de bouton idéale en fonction de l'espace disponible
+    # Espace pour les boutons = available_h - titre - espacement titre
+    title_total_height = title_bg_rect.height + 8  # titre + petit espace
+    space_for_buttons = available_h - title_total_height
+    
+    # Calculer hauteur et espacement optimaux
+    # On veut : n * button_height + (n-1) * spacing <= space_for_buttons
+    # Avec spacing = 0.2 * button_height environ
+    # Donc : n * h + (n-1) * 0.2 * h = h * (n + 0.2*(n-1)) <= space_for_buttons
+    # h <= space_for_buttons / (n + 0.2*(n-1))
+    
+    max_button_height = space_for_buttons / (n + 0.15 * max(0, n - 1))
+    
+    # Borner la hauteur des boutons
+    button_height = int(min(50, max(24, min(max_button_height, font_height + 12))))
+    button_spacing = max(4, min(8, int(button_height * 0.15)))
+    
+    # Recalculer la hauteur totale
     total_buttons_height = n * button_height + (n - 1) * button_spacing
-    content_height = title_bg_rect.height + button_spacing + total_buttons_height
-
-    # Si le contenu dépasse, on réduit légèrement la hauteur/espacement jusqu'à rentrer
-    available_h = config.screen_height - 80  # marges haut/bas de confort
+    content_height = title_bg_rect.height + 8 + total_buttons_height
+    
+    # Réduction supplémentaire si nécessaire
     safety_counter = 0
-    while content_height > available_h and safety_counter < 20:
-        if button_height > 28:
-            button_height -= 2
-        elif button_spacing > 6:
+    while content_height > available_h and safety_counter < 30:
+        if button_height > 24:
+            button_height -= 1
+        elif button_spacing > 2:
             button_spacing -= 1
         else:
             break
         total_buttons_height = n * button_height + (n - 1) * button_spacing
-        content_height = title_bg_rect.height + button_spacing + total_buttons_height
+        content_height = title_bg_rect.height + 8 + total_buttons_height
         safety_counter += 1
-
+    
     # Positionner le bloc au centre verticalement
-    content_top = max(10, (config.screen_height - content_height) // 2)
+    content_top = instruction_height + max(5, (available_h - content_height) // 2)
+    
     # Positionner le titre
     title_bg_rect.centerx = config.screen_width // 2
     title_bg_rect.y = content_top
     title_rect.center = (title_bg_rect.centerx, title_bg_rect.y + title_bg_rect.height // 2)
 
     # Dessiner le titre
-    pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_bg_rect, border_radius=10)
-    pygame.draw.rect(screen, THEME_COLORS["border"], title_bg_rect, 2, border_radius=10)
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_bg_rect, border_radius=8)
+    pygame.draw.rect(screen, THEME_COLORS["border"], title_bg_rect, 2, border_radius=8)
     screen.blit(title_surface, title_rect)
 
-    # Démarrer la liste juste sous le titre avec le même écart que les boutons
-    start_y = title_bg_rect.bottom + button_spacing
+    # Démarrer la liste juste sous le titre
+    start_y = title_bg_rect.bottom + 8
     
     for i, lang_code in enumerate(available_languages):
         # Obtenir le nom de la langue
@@ -2154,12 +2183,12 @@ def draw_language_menu(screen):
 
         # Dessiner le bouton
         button_color = THEME_COLORS["button_hover"] if i == config.selected_language_index else THEME_COLORS["button_idle"]
-        pygame.draw.rect(screen, button_color, (button_x, button_y, button_width, button_height), border_radius=10)
-        pygame.draw.rect(screen, THEME_COLORS["border"], (button_x, button_y, button_width, button_height), 2, border_radius=10)
+        pygame.draw.rect(screen, button_color, (button_x, button_y, button_width, button_height), border_radius=8)
+        pygame.draw.rect(screen, THEME_COLORS["border"], (button_x, button_y, button_width, button_height), 2, border_radius=8)
 
         # Texte avec gestion du dépassement
         text_surface = config.font.render(lang_name, True, THEME_COLORS["text"])
-        available_width = button_width - 20  # Marge de 10px de chaque côté
+        available_width = button_width - 16  # Marge de 8px de chaque côté
         
         if text_surface.get_width() > available_width:
             # Tronquer le texte avec "..."
@@ -2171,42 +2200,92 @@ def draw_language_menu(screen):
         text_rect = text_surface.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
         screen.blit(text_surface, text_rect)
     
-    # Instructions (placer juste au-dessus du footer sans chevauchement)
-    instruction_text = _("language_select_instruction")
-    instruction_surface = config.small_font.render(instruction_text, True, THEME_COLORS["text"])
-    # Position fixe : 5px au-dessus du footer
-    footer_height = 70  # Hauteur estimée du footer
-    instruction_y = config.screen_height - footer_height - instruction_surface.get_height() - 5
-    # Empêcher un chevauchement avec les derniers boutons si espace réduit
-    last_button_bottom = start_y + (len(available_languages) - 1) * (button_height + button_spacing) + button_height
-    min_gap = 16
-    if instruction_y - last_button_bottom < min_gap:
-        instruction_y = last_button_bottom + min_gap
-    instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, instruction_y))
-    screen.blit(instruction_surface, instruction_rect)
+    # Dessiner l'instruction en haut
+    draw_menu_instruction(screen, instruction_text)
 
-def draw_menu_instruction(screen, instruction_text, last_button_bottom=None):
-    """Dessine une ligne d'instruction centrée au-dessus du footer.
-
-    - Réserve une zone footer (72px) + marge bas.
-    - Si last_button_bottom est fourni, s'assure d'un écart minimal (16px).
-    - Utilise la petite police et couleurs du thème.
+def get_top_instruction_height(instruction_text):
+    """Calcule la hauteur totale occupée par l'instruction en haut (cadre + marge).
+    
+    Retourne 0 si pas d'instruction.
     """
     if not instruction_text:
-        return
+        return 0
     try:
-        instruction_surface = config.small_font.render(instruction_text, True, THEME_COLORS["text"])
-        # Position fixe : 5px au-dessus du footer
-        footer_height = 70  # Hauteur estimée du footer
-        instruction_y = config.screen_height - footer_height - instruction_surface.get_height() - 5
-        # Empêcher chevauchement avec le dernier bouton
-        min_gap = 16
-        if last_button_bottom is not None and instruction_y - last_button_bottom < min_gap:
-            instruction_y = last_button_bottom + min_gap
-        instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, instruction_y))
-        screen.blit(instruction_surface, instruction_rect)
+        margin_top = 3
+        margin_bottom = 6  # Espace entre l'instruction et le menu
+        padding_y = 4
+        text_surface = config.small_font.render(instruction_text, True, THEME_COLORS["text"])
+        frame_height = text_surface.get_height() + (padding_y * 2)
+        return margin_top + frame_height + margin_bottom
+    except Exception:
+        return 0
+
+def draw_top_instruction(screen, instruction_text):
+    """Dessine une instruction en haut de l'écran dans un cadre élégant sur une ligne.
+    
+    - Largeur maximale de l'écran avec marges
+    - Centré horizontalement
+    - Fond semi-transparent avec bordure
+    
+    Retourne la hauteur totale occupée (pour le positionnement des menus).
+    """
+    if not instruction_text:
+        return 0
+    try:
+        # Marges réduites pour coller au haut
+        margin_x = 20
+        margin_top = 3
+        margin_bottom = 6  # Espace entre l'instruction et le menu
+        padding_x = 15
+        padding_y = 4
+        
+        # Rendre le texte
+        text_surface = config.small_font.render(instruction_text, True, THEME_COLORS["text"])
+        
+        # Calculer les dimensions du cadre
+        max_width = config.screen_width - (margin_x * 2)
+        frame_width = min(text_surface.get_width() + (padding_x * 2), max_width)
+        frame_height = text_surface.get_height() + (padding_y * 2)
+        
+        # Position du cadre (centré en haut)
+        frame_x = (config.screen_width - frame_width) // 2
+        frame_y = margin_top
+        
+        # Créer surface avec transparence pour le fond
+        frame_surface = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
+        
+        # Dessiner le fond semi-transparent avec coins arrondis
+        pygame.draw.rect(frame_surface, THEME_COLORS["button_idle"], 
+                        (0, 0, frame_width, frame_height), border_radius=10)
+        
+        # Dessiner la bordure
+        pygame.draw.rect(frame_surface, THEME_COLORS["border"], 
+                        (0, 0, frame_width, frame_height), 2, border_radius=10)
+        
+        # Blitter le cadre sur l'écran
+        screen.blit(frame_surface, (frame_x, frame_y))
+        
+        # Calculer la position du texte (centré dans le cadre)
+        text_x = frame_x + (frame_width - text_surface.get_width()) // 2
+        text_y = frame_y + padding_y
+        
+        # Dessiner le texte
+        screen.blit(text_surface, (text_x, text_y))
+        
+        return margin_top + frame_height + margin_bottom
+        
     except Exception as e:
-        logger.error(f"Erreur draw_menu_instruction: {e}")
+        logger.error(f"Erreur draw_top_instruction: {e}")
+        return 0
+
+def draw_menu_instruction(screen, instruction_text, last_button_bottom=None):
+    """Dessine une ligne d'instruction centrée en haut de l'écran dans un cadre.
+
+    Utilise draw_top_instruction pour un affichage cohérent.
+    Le paramètre last_button_bottom est conservé pour compatibilité mais n'est plus utilisé.
+    Retourne la hauteur totale occupée.
+    """
+    return draw_top_instruction(screen, instruction_text)
 
 def draw_display_menu(screen):
     """Affiche le sous-menu Affichage (layout, taille de police, systèmes non supportés, moniteur)."""
@@ -2257,6 +2336,10 @@ def draw_display_menu(screen):
     ]
 
     selected = getattr(config, 'display_menu_selection', 0)
+    
+    # Instruction à afficher en haut
+    instruction_text = _("language_select_instruction")
+    instruction_height = get_top_instruction_height(instruction_text)
 
     # Dimensions du cadre (cohérent avec le menu pause)
     title_text = _("menu_display")
@@ -2266,9 +2349,13 @@ def draw_display_menu(screen):
     button_height = int(config.screen_height * 0.0463)
     margin_top_bottom = 20
     vertical_spacing = 10
+    footer_height = 70
     menu_height = title_height + len(options) * (button_height + vertical_spacing) + 2 * margin_top_bottom
     menu_x = (config.screen_width - menu_width) // 2
-    menu_y = (config.screen_height - menu_height) // 2
+    
+    # Calculer menu_y en tenant compte de l'instruction et du footer
+    available_height = config.screen_height - instruction_height - footer_height
+    menu_y = instruction_height + (available_height - menu_height) // 2
 
     # Cadre
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=12)
@@ -2291,14 +2378,8 @@ def draw_display_menu(screen):
             selected=(i == selected)
         )
 
-    # Aide en bas de l'écran - Position fixe au-dessus du footer
-    instruction_text = _("language_select_instruction")
-    instruction_surface = config.small_font.render(instruction_text, True, THEME_COLORS["text"])
-    # Calculer la position en fonction de la hauteur du footer (environ 60-70px) + marge de 5px
-    footer_height = 70  # Hauteur estimée du footer
-    instruction_y = config.screen_height - footer_height - instruction_surface.get_height() - 5
-    instruction_rect = instruction_surface.get_rect(center=(config.screen_width // 2, instruction_y))
-    screen.blit(instruction_surface, instruction_rect)
+    # Dessiner l'instruction en haut
+    draw_menu_instruction(screen, instruction_text)
 
 def draw_pause_menu(screen, selected_option):
     """Dessine le menu pause racine (catégories)."""
@@ -2313,6 +2394,26 @@ def draw_pause_menu(screen, selected_option):
         _("menu_support"),                                  # 5 -> support
         _("menu_quit")                                      # 6 -> sous-menu quit (quit + restart)
     ]
+    
+    # Instruction contextuelle pour l'option sélectionnée
+    instruction_keys = [
+        "instruction_pause_games",
+        "instruction_pause_language",
+        "instruction_pause_controls",
+        "instruction_pause_display",
+        "instruction_pause_settings",
+        "instruction_pause_support",
+        "instruction_pause_quit",
+    ]
+    try:
+        key = instruction_keys[selected_option]
+        instruction_text = _(key)
+    except Exception:
+        instruction_text = ""
+    
+    # Calculer la hauteur de l'instruction AVANT de dessiner le menu
+    instruction_height = get_top_instruction_height(instruction_text) if instruction_text else 0
+    
     # Calculer hauteur dynamique basée sur la taille de police
     sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
     font_height = sample_text.get_height()
@@ -2330,7 +2431,13 @@ def draw_pause_menu(screen, selected_option):
     margin_top_bottom = 24
     menu_height = len(options) * (button_height + 12) + 2 * margin_top_bottom
     menu_x = (config.screen_width - menu_width) // 2
-    menu_y = (config.screen_height - menu_height) // 2
+    
+    # Calculer menu_y en tenant compte de l'instruction en haut
+    # Zone disponible = écran - instruction_height - footer (70px)
+    footer_height = 70
+    available_height = config.screen_height - instruction_height - footer_height
+    menu_y = instruction_height + (available_height - menu_height) // 2
+    
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (menu_x, menu_y, menu_width, menu_height), 2, border_radius=12)
     for i, option in enumerate(options):
@@ -2345,36 +2452,85 @@ def draw_pause_menu(screen, selected_option):
         )
     config.pause_menu_total_options = len(options)
 
-    # Instruction contextuelle pour l'option sélectionnée
-    # Mapping des clés i18n parallèles à la liste options (même ordre)
-    instruction_keys = [
-        "instruction_pause_games",
-        "instruction_pause_language",
-        "instruction_pause_controls",
-        "instruction_pause_display",
-        "instruction_pause_settings",
-        "instruction_pause_support",
-        "instruction_pause_quit",
-    ]
-    try:
-        key = instruction_keys[selected_option]
-        instruction_text = _(key)
-    except Exception:
-        instruction_text = ""  # Sécurité si index hors borne
-
+    # Dessiner l'instruction en haut
     if instruction_text:
-        # Calcul de la position du dernier bouton pour éviter chevauchement
-        last_button_bottom = menu_y + margin_top_bottom + (len(options) - 1) * (button_height + 12) + button_height
-        draw_menu_instruction(screen, instruction_text, last_button_bottom)
+        draw_menu_instruction(screen, instruction_text)
 
-def _draw_submenu_generic(screen, title, options, selected_index):
-    """Helper générique pour dessiner un sous-menu hiérarchique."""
-    screen.blit(OVERLAY, (0, 0))
+def _calc_submenu_dimensions(num_options, instruction_height=0):
+    """Calcule les dimensions adaptatives pour un sous-menu.
     
-    # Calculer hauteur dynamique basée sur la taille de police
+    Args:
+        num_options: Nombre d'options dans le menu
+        instruction_height: Hauteur de l'instruction en haut (0 si pas d'instruction)
+    """
     sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
     font_height = sample_text.get_height()
-    button_height = max(int(config.screen_height * 0.045), font_height + 18)
+    title_height = font_height + 10
+    margin_top_bottom = 20
+    footer_height = 70
+    
+    max_menu_height = int(config.screen_height * 0.85)
+    available_height_for_buttons = max_menu_height - title_height - 2 * margin_top_bottom
+    
+    ideal_button_height = max(int(config.screen_height * 0.040), font_height + 12)
+    ideal_spacing = 6
+    total_ideal_height = num_options * ideal_button_height + (num_options - 1) * ideal_spacing
+    
+    if total_ideal_height <= available_height_for_buttons:
+        button_height = ideal_button_height
+        button_spacing = ideal_spacing
+    else:
+        min_spacing = 3
+        min_button_height = font_height + 6
+        available_for_buttons = available_height_for_buttons - (num_options - 1) * min_spacing
+        button_height = max(min_button_height, available_for_buttons // num_options)
+        button_spacing = min_spacing
+        total_height = num_options * button_height + (num_options - 1) * button_spacing
+        if total_height > available_height_for_buttons:
+            button_height = min_button_height
+            button_spacing = max(1, (available_height_for_buttons - num_options * button_height) // max(1, num_options - 1))
+    
+    menu_height = title_height + num_options * button_height + (num_options - 1) * button_spacing + 2 * margin_top_bottom
+    
+    # Calculer menu_y en tenant compte de l'instruction en haut et du footer
+    available_height = config.screen_height - instruction_height - footer_height
+    menu_y = instruction_height + (available_height - menu_height) // 2
+    
+    start_y = menu_y + margin_top_bottom + title_height
+    last_button_bottom = start_y + (num_options - 1) * (button_height + button_spacing) + button_height
+    
+    return {
+        'button_height': button_height,
+        'button_spacing': button_spacing,
+        'menu_height': menu_height,
+        'menu_y': menu_y,
+        'start_y': start_y,
+        'last_button_bottom': last_button_bottom,
+        'margin_top_bottom': margin_top_bottom
+    }
+
+def _draw_submenu_generic(screen, title, options, selected_index, instruction_text=None):
+    """Helper générique pour dessiner un sous-menu hiérarchique.
+    
+    Args:
+        screen: Surface pygame
+        title: Titre du menu
+        options: Liste des options
+        selected_index: Index de l'option sélectionnée
+        instruction_text: Texte d'instruction optionnel à afficher en haut
+    """
+    screen.blit(OVERLAY, (0, 0))
+    
+    # Calculer la hauteur de l'instruction si présente
+    instruction_height = get_top_instruction_height(instruction_text) if instruction_text else 0
+    
+    # Calculer les dimensions adaptatives en tenant compte de l'instruction
+    dims = _calc_submenu_dimensions(len(options), instruction_height)
+    button_height = dims['button_height']
+    button_spacing = dims['button_spacing']
+    menu_height = dims['menu_height']
+    menu_y = dims['menu_y']
+    margin_top_bottom = dims['margin_top_bottom']
     
     # Calculer largeur maximale nécessaire pour le texte (titre + options)
     max_text_width = 0
@@ -2387,10 +2543,8 @@ def _draw_submenu_generic(screen, title, options, selected_index):
     
     # Largeur du menu basée sur le texte le plus long + marges
     menu_width = min(int(config.screen_width * 0.85), max(int(config.screen_width * 0.55), max_text_width + 80))
-    margin_top_bottom = 26
-    menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom  # +1 pour le titre
     menu_x = (config.screen_width - menu_width) // 2
-    menu_y = (config.screen_height - menu_height) // 2
+    
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=14)
     pygame.draw.rect(screen, THEME_COLORS["border"], (menu_x, menu_y, menu_width, menu_height), 2, border_radius=14)
     # Title
@@ -2404,11 +2558,15 @@ def _draw_submenu_generic(screen, title, options, selected_index):
             screen,
             opt,
             menu_x + 20,
-            start_y + i * (button_height + 10),
+            start_y + i * (button_height + button_spacing),
             menu_width - 40,
             button_height,
             selected=(i == selected_index)
         )
+    
+    # Dessiner l'instruction en haut si présente
+    if instruction_text:
+        draw_menu_instruction(screen, instruction_text)
 
 def draw_pause_controls_menu(screen, selected_index):
     options = [
@@ -2416,7 +2574,6 @@ def draw_pause_controls_menu(screen, selected_index):
         _("menu_remap_controls"),  # remap
         _("menu_back") if _ else "Back"
     ]
-    _draw_submenu_generic(screen, _("menu_controls") if _ else "Controls", options, selected_index)
     # Instructions contextuelles
     instruction_keys = [
         "instruction_controls_help",   # pour menu_controls (afficher l'aide)
@@ -2424,50 +2581,10 @@ def draw_pause_controls_menu(screen, selected_index):
         "instruction_generic_back",    # retour
     ]
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
-    if key:
-        last_button_bottom = None  # recalculer via géométrie si nécessaire; ici on réutilise calcul simple
-        # Reconstituer la position du dernier bouton comme dans _draw_submenu_generic
-        menu_width = int(config.screen_width * 0.72)
-        button_height = int(config.screen_height * 0.045)
-        margin_top_bottom = 26
-        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
-        menu_y = (config.screen_height - menu_height) // 2
-        # Title height approximatif
-        title_surface = config.font.render("X", True, THEME_COLORS["text"])  # hauteur représentative
-        title_rect_height = title_surface.get_height()
-        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10  # approx: title center adjust + bottom spacing
-        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
-        text = _(key)
-        if key == "instruction_display_hide_premium":
-            # Inject dynamic list of premium providers from config.PREMIUM_HOST_MARKERS
-            try:
-                from config import PREMIUM_HOST_MARKERS
-                # Clean, preserve order, remove duplicates (case-insensitive)
-                seen = set()
-                providers_clean = []
-                for p in PREMIUM_HOST_MARKERS:
-                    if not p: continue
-                    norm = p.strip()
-                    if not norm: continue
-                    low = norm.lower()
-                    if low in seen: continue
-                    seen.add(low)
-                    providers_clean.append(norm)
-                providers_str = ", ".join(providers_clean)
-                if not providers_str:
-                    providers_str = "-"
-                if "{providers}" in text:
-                    try:
-                        text = text.format(providers=providers_str)
-                    except Exception:
-                        # Fallback if formatting fails
-                        text = f"{text.replace('{providers}','').strip()} {providers_str}".strip()
-                else:
-                    # Append providers if placeholder missing (backward compatibility)
-                    text = f"{text} : {providers_str}" if providers_str else text
-            except Exception:
-                pass
-        draw_menu_instruction(screen, text, last_button_bottom)
+    instruction_text = _(key) if key else None
+    
+    # Dessiner le menu avec l'instruction
+    _draw_submenu_generic(screen, _("menu_controls") if _ else "Controls", options, selected_index, instruction_text)
 
 def draw_pause_display_menu(screen, selected_index):
     # Layout label - now opens a submenu
@@ -2539,19 +2656,10 @@ def draw_pause_display_menu(screen, selected_index):
         "instruction_generic_back",
     ])
     
-    _draw_submenu_generic(screen, _("menu_display"), options, selected_index)
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
-    if key:
-        button_height = int(config.screen_height * 0.045)
-        menu_width = int(config.screen_width * 0.72)
-        margin_top_bottom = 26
-        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
-        menu_y = (config.screen_height - menu_height) // 2
-        title_surface = config.font.render("X", True, THEME_COLORS["text"])
-        title_rect_height = title_surface.get_height()
-        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10
-        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
-        draw_menu_instruction(screen, _(key), last_button_bottom)
+    instruction_text = _(key) if key else None
+    
+    _draw_submenu_generic(screen, _("menu_display"), options, selected_index, instruction_text)
 
 def draw_pause_display_layout_menu(screen, selected_index):
     """Sous-menu pour la disposition avec visualisation schématique des grilles."""
@@ -2573,6 +2681,15 @@ def draw_pause_display_layout_menu(screen, selected_index):
             options.append(label)
     options.append(_("menu_back") if _ else "Back")
     
+    # Déterminer l'instruction
+    if selected_index < len(layouts):
+        instruction = _("instruction_display_layout") if _ else "Left/Right: Navigate • Confirm: Select"
+    else:
+        instruction = _("instruction_generic_back") if _ else "Confirm: Go back"
+    
+    # Calculer la hauteur de l'instruction
+    instruction_height = get_top_instruction_height(instruction)
+    
     # Dessiner le menu de base
     title = _("submenu_display_layout") if _ else "Layout"
     
@@ -2580,11 +2697,15 @@ def draw_pause_display_layout_menu(screen, selected_index):
     button_height = int(config.screen_height * 0.045)
     menu_width = int(config.screen_width * 0.72)
     margin_top_bottom = 26
+    footer_height = 70
     
     # Calculer la hauteur nécessaire pour les boutons
     menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
     menu_x = (config.screen_width - menu_width) // 2
-    menu_y = (config.screen_height - menu_height) // 2
+    
+    # Calculer menu_y en tenant compte de l'instruction et du footer
+    available_height = config.screen_height - instruction_height - footer_height
+    menu_y = instruction_height + (available_height - menu_height) // 2
     
     # Fond du menu
     menu_rect = pygame.Rect(menu_x, menu_y, menu_width, menu_height)
@@ -2657,13 +2778,8 @@ def draw_pause_display_layout_menu(screen, selected_index):
         text_rect = text_surface.get_rect(center=button_rect.center)
         screen.blit(text_surface, text_rect)
     
-    # Instruction en bas
-    last_button_bottom = content_start_y + (len(options)-1) * (button_height + 10) + button_height
-    if selected_index < len(layouts):
-        instruction = _("instruction_display_layout") if _ else "Left/Right: Navigate • Confirm: Select"
-    else:
-        instruction = _("instruction_generic_back") if _ else "Confirm: Go back"
-    draw_menu_instruction(screen, instruction, last_button_bottom)
+    # Dessiner l'instruction en haut
+    draw_menu_instruction(screen, instruction)
 
 def draw_pause_display_font_menu(screen, selected_index):
     """Sous-menu pour les tailles de police."""
@@ -2688,19 +2804,9 @@ def draw_pause_display_font_menu(screen, selected_index):
         "instruction_generic_back",
     ]
     
-    _draw_submenu_generic(screen, _("submenu_display_font_size") if _ else "Font Size", options, selected_index)
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
-    if key:
-        button_height = int(config.screen_height * 0.045)
-        menu_width = int(config.screen_width * 0.72)
-        margin_top_bottom = 26
-        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
-        menu_y = (config.screen_height - menu_height) // 2
-        title_surface = config.font.render("X", True, THEME_COLORS["text"])
-        title_rect_height = title_surface.get_height()
-        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10
-        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
-        draw_menu_instruction(screen, _(key), last_button_bottom)
+    instruction_text = _(key) if key else None
+    _draw_submenu_generic(screen, _("submenu_display_font_size") if _ else "Font Size", options, selected_index, instruction_text)
 
 def draw_pause_games_menu(screen, selected_index):
     mode = get_sources_mode()
@@ -2728,7 +2834,6 @@ def draw_pause_games_menu(screen, selected_index):
     
     back_txt = _("menu_back") if _ else "Back"
     options = [update_txt, history_txt, source_txt, unsupported_txt, hide_premium_txt, filter_txt, back_txt]
-    _draw_submenu_generic(screen, _("menu_games") if _ else "Games", options, selected_index)
     instruction_keys = [
         "instruction_games_update_cache",
         "instruction_games_history",
@@ -2739,16 +2844,9 @@ def draw_pause_games_menu(screen, selected_index):
         "instruction_generic_back",
     ]
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
+    instruction_text = None
     if key:
-        button_height = int(config.screen_height * 0.045)
-        margin_top_bottom = 26
-        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
-        menu_y = (config.screen_height - menu_height) // 2
-        title_surface = config.font.render("X", True, THEME_COLORS["text"])
-        title_rect_height = title_surface.get_height()
-        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10
-        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
-        text = _(key)
+        instruction_text = _(key)
         if key == "instruction_display_hide_premium":
             # Inject dynamic list of premium providers from config.PREMIUM_HOST_MARKERS
             try:
@@ -2764,17 +2862,19 @@ def draw_pause_games_menu(screen, selected_index):
                 providers_str = ", ".join(providers_clean)
                 if not providers_str:
                     providers_str = "1fichier, etc."
-                if "{providers}" in text:
-                    text = text.format(providers=providers_str)
+                if "{providers}" in instruction_text:
+                    instruction_text = instruction_text.format(providers=providers_str)
                 else:
                     # fallback si placeholder absent
-                    text = f"{text} ({providers_str})"
+                    instruction_text = f"{instruction_text} ({providers_str})"
                     
             except Exception:
                 pass
-        draw_menu_instruction(screen, text, last_button_bottom)
+    
+    _draw_submenu_generic(screen, _("menu_games") if _ else "Games", options, selected_index, instruction_text)
 
 def draw_pause_settings_menu(screen, selected_index):
+    from rgsx_settings import get_auto_extract, get_roms_folder
     # Music
     if config.music_enabled:
         music_name = config.current_music_name or ""
@@ -2793,6 +2893,21 @@ def draw_pause_settings_menu(screen, selected_index):
         base, val = symlink_option.split(' : ',1)
         symlink_option = f"{base} : < {val.strip()} >"
     
+    # Auto Extract option
+    auto_extract_enabled = get_auto_extract()
+    auto_extract_status = _("settings_auto_extract_enabled") if auto_extract_enabled else _("settings_auto_extract_disabled")
+    auto_extract_txt = f"{_('settings_auto_extract')} : < {auto_extract_status} >"
+    
+    # ROMs folder option
+    roms_folder_custom = get_roms_folder()
+    if roms_folder_custom:
+        # Tronquer si trop long pour affichage
+        max_display = 25
+        display_path = roms_folder_custom if len(roms_folder_custom) <= max_display else "..." + roms_folder_custom[-(max_display-3):]
+        roms_folder_txt = f"{_('settings_roms_folder')} : {display_path}"
+    else:
+        roms_folder_txt = f"{_('settings_roms_folder')} : < {_('settings_roms_folder_default')} >"
+    
     # Web Service at boot (only on Linux/Batocera)
     web_service_txt = ""
     custom_dns_txt = ""
@@ -2810,17 +2925,22 @@ def draw_pause_settings_menu(screen, selected_index):
     back_txt = _("menu_back") if _ else "Back"
     
     # Construction de la liste des options
-    options = [music_option, symlink_option]
+    options = [music_option, symlink_option, auto_extract_txt, roms_folder_txt]
     if web_service_txt:  # Ajouter seulement si Linux/Batocera
         options.append(web_service_txt)
     if custom_dns_txt:  # Ajouter seulement si Linux/Batocera
         options.append(custom_dns_txt)
     options.extend([api_keys_txt, back_txt])
     
-    _draw_submenu_generic(screen, _("menu_settings_category") if _ else "Settings", options, selected_index)
+    # Index de l'option Dossier ROMs
+    roms_folder_index = 3
+    
+    # Instructions textuelles pour chaque option
     instruction_keys = [
         "instruction_settings_music",
         "instruction_settings_symlink",
+        "instruction_settings_auto_extract",
+        "instruction_settings_roms_folder",
     ]
     if web_service_txt:
         instruction_keys.append("instruction_settings_web_service")
@@ -2831,16 +2951,9 @@ def draw_pause_settings_menu(screen, selected_index):
         "instruction_generic_back",
     ])
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
-    if key:
-        button_height = int(config.screen_height * 0.045)
-        margin_top_bottom = 26
-        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
-        menu_y = (config.screen_height - menu_height) // 2
-        title_surface = config.font.render("X", True, THEME_COLORS["text"])
-        title_rect_height = title_surface.get_height()
-        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10
-        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
-        draw_menu_instruction(screen, _(key), last_button_bottom)
+    instruction_text = _(key) if key else None
+    
+    _draw_submenu_generic(screen, _("menu_settings_category") if _ else "Settings", options, selected_index, instruction_text)
 
 def draw_pause_api_keys_status(screen):
     screen.blit(OVERLAY, (0,0))
@@ -3238,23 +3351,14 @@ def draw_confirm_dialog(screen):
         _("menu_restart") if _ else "Restart RGSX",
         _("menu_back") if _ else "Back"
     ]
-    _draw_submenu_generic(screen, _("menu_quit") if _ else "Quit", options, config.confirm_selection)
     instruction_keys = [
         "instruction_quit_app",
         "instruction_quit_restart",
         "instruction_generic_back",
     ]
     key = instruction_keys[config.confirm_selection] if 0 <= config.confirm_selection < len(instruction_keys) else None
-    if key:
-        button_height = int(config.screen_height * 0.045)
-        margin_top_bottom = 26
-        menu_height = (len(options)+1) * (button_height + 10) + 2 * margin_top_bottom
-        menu_y = (config.screen_height - menu_height) // 2
-        title_surface = config.font.render("X", True, THEME_COLORS["text"])
-        title_rect_height = title_surface.get_height()
-        start_y = menu_y + margin_top_bottom//2 + title_rect_height + 10 + 10
-        last_button_bottom = start_y + (len(options)-1) * (button_height + 10) + button_height
-        draw_menu_instruction(screen, _(key), last_button_bottom)
+    instruction_text = _(key) if key else None
+    _draw_submenu_generic(screen, _("menu_quit") if _ else "Quit", options, config.confirm_selection, instruction_text)
 
 
 def draw_reload_games_data_dialog(screen):
@@ -3422,6 +3526,7 @@ def draw_folder_browser(screen):
 
     screen.blit(OVERLAY, (0, 0))
     
+    browser_mode = getattr(config, 'folder_browser_mode', 'platform')
     platform_name = getattr(config, 'platform_config_name', '')
     current_path = config.folder_browser_path
     items = config.folder_browser_items
@@ -3439,8 +3544,11 @@ def draw_folder_browser(screen):
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (panel_x, panel_y, panel_width, panel_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (panel_x, panel_y, panel_width, panel_height), 2, border_radius=12)
     
-    # Titre
-    title = _("folder_browser_title").format(platform_name) if _ else f"Select folder for {platform_name}"
+    # Titre selon le mode
+    if browser_mode == "roms_root":
+        title = _("folder_browser_title_roms_root") if _ else "Select default ROMs folder"
+    else:
+        title = _("folder_browser_title").format(platform_name) if _ else f"Select folder for {platform_name}"
     title_text = config.font.render(title, True, THEME_COLORS["text"])
     title_rect = title_text.get_rect(center=(config.screen_width // 2, panel_y + 30))
     screen.blit(title_text, title_rect)

@@ -540,3 +540,24 @@ header p { opacity: 0.9; font-size: 1.1em; }
     from { opacity: 1; }
     to { opacity: 0; }
 }
+
+/* System Info Collapse/Details */
+details summary {
+    list-style: none;
+}
+details summary::-webkit-details-marker {
+    display: none;
+}
+details summary .collapse-arrow {
+    transition: transform 0.3s ease;
+    display: inline-block;
+}
+details[open] summary .collapse-arrow {
+    transform: rotate(90deg);
+}
+details[open] summary {
+    border-radius: 8px 8px 0 0;
+}
+details summary:hover {
+    opacity: 0.9;
+}

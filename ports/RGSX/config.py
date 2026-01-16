@@ -13,7 +13,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.4.1.0"
+app_version = "2.5.0.0"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 7
@@ -465,6 +465,7 @@ folder_browser_items = []  # Liste des éléments (dossiers) dans le répertoire
 folder_browser_selection = 0  # Index de l'élément sélectionné
 folder_browser_scroll_offset = 0  # Offset de défilement
 folder_browser_visible_items = 10  # Nombre d'éléments visibles
+folder_browser_mode = "platform"  # "platform" pour dossier plateforme, "roms_root" pour dossier ROMs principal
 
 # Tenter la récupération de la famille de police sauvegardée
 try:

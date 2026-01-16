@@ -222,9 +222,20 @@
     "instruction_games_update_cache": "Baixar novamente e atualizar a lista de jogos",
     "instruction_settings_music": "Ativar ou desativar música de fundo",
     "instruction_settings_symlink": "Ativar/desativar uso de symlinks para instalações",
+    "instruction_settings_auto_extract": "Ativar/desativar extração automática de arquivos após download",
+    "instruction_settings_roms_folder": "Alterar o diretório de download de ROMs padrão",
     "instruction_settings_api_keys": "Ver chaves API premium detectadas",
     "instruction_settings_web_service": "Ativar/desativar início automático do serviço web na inicialização",
     "instruction_settings_custom_dns": "Ativar/desativar DNS personalizado (Cloudflare 1.1.1.1) na inicialização",
+    "settings_auto_extract": "Extração auto de arquivos",
+    "settings_auto_extract_enabled": "Ativado",
+    "settings_auto_extract_disabled": "Desativado",
+    "settings_roms_folder": "Pasta ROMs",
+    "settings_roms_folder_default": "Padrão",
+    "roms_folder_set": "Pasta ROMs definida: {0}",
+    "roms_folder_set_restart": "Pasta ROMs definida: {0}\nReinício necessário para aplicar!",
+    "roms_folder_reset": "Pasta ROMs redefinida para padrão\nReinício necessário para aplicar!",
+    "folder_browser_title_roms_root": "Selecionar pasta ROMs padrão",
     "settings_web_service": "Serviço Web na Inicialização",
     "settings_web_service_enabled": "Ativado",
     "settings_web_service_disabled": "Desativado",
@@ -331,6 +342,9 @@
     "web_settings_source_mode": "Fonte de jogos",
     "web_settings_custom_url": "URL personalizada",
     "web_settings_custom_url_placeholder": "Deixar vazio para /saves/ports/rgsx/games.zip ou usar uma URL direta como https://example.com/games.zip",
+    "web_settings_auto_extract": "Extrair arquivos automaticamente após o download",
+    "web_settings_web_service": "Iniciar serviço web na inicialização",
+    "web_settings_custom_dns": "Ativar DNS personalizado na inicialização",
     "web_settings_save": "Salvar configurações",
     "web_settings_saved": "Configurações salvas com sucesso!",
     "web_settings_saved_restart": "Configurações salvas com sucesso!\\n\\n⚠️ Algumas configurações exigem reiniciar o servidor:\\n- Pasta ROMs personalizada\\n- Idioma\\n\\nPor favor, reinicie o servidor web para aplicar essas alterações.",
@@ -354,6 +368,7 @@
     "web_history_status_completed": "Concluído",
     "web_history_status_error": "Erro",
     "web_settings_os": "Sistema operacional",
+    "web_system_info_title": "Informações do sistema",
     "web_settings_platforms_count": "Número de plataformas",
     "web_settings_show_unsupported": "Mostrar plataformas não suportadas (sistema ausente em es_systems.cfg)",
     "web_settings_allow_unknown": "Permitir extensões desconhecidas (não mostrar avisos)",
@@ -448,6 +463,8 @@
     "folder_new_confirm": "Criar",
     "folder_created": "Pasta criada: {0}",
     "folder_create_error": "Erro ao criar: {0}",
-    "controls_action_select_char": "Adicionar"
+    "controls_action_select_char": "Adicionar",
+    "folder_browser_browse": "Explorar"
+}
 }
 }

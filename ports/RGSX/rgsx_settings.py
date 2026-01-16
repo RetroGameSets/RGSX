@@ -520,3 +520,26 @@ def get_all_platform_custom_paths():
     except Exception as e:
         logger.error(f"Error getting all platform custom paths: {str(e)}")
         return {}
+
+
+def get_auto_extract():
+    """Récupère le paramètre d'extraction automatique des archives après téléchargement."""
+    try:
+        settings = load_rgsx_settings()
+        return settings.get("auto_extract", True)  # Activé par défaut
+    except Exception as e:
+        logger.error(f"Error getting auto_extract setting: {str(e)}")
+        return True
+
+
+def set_auto_extract(enabled: bool):
+    """Définit le paramètre d'extraction automatique des archives après téléchargement."""
+    try:
+        settings = load_rgsx_settings()
+        settings["auto_extract"] = enabled
+        save_rgsx_settings(settings)
+        logger.info(f"Auto extract set to: {enabled}")
+        return True
+    except Exception as e:
+        logger.error(f"Error setting auto_extract: {str(e)}")
+        return False

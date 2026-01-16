@@ -1866,101 +1866,107 @@
                 const showUnsupportedLabel = t('web_settings_show_unsupported');
                 const allowUnknownLabel = t('web_settings_allow_unknown');
                 
-                // Construire la section d'informations système détaillées
+                // Construire la section d'informations système détaillées (dans un collapse fermé par défaut)
                 let systemInfoHTML = '';
                 if (systemInfo && (systemInfo.model || systemInfo.cpu_model)) {
                     systemInfoHTML = `
-                        <h3 style="margin-top: 20px; margin-bottom: 15px;">🖥️ System Information</h3>
-                        <div class="info-grid" style="margin-bottom: 20px; background: #f0f8ff; padding: 15px; border-radius: 8px; border: 2px solid #007bff;">
-                            ${systemInfo.model ? `
+                        <details style="margin-top: 20px; margin-bottom: 20px;">
+                            <summary style="cursor: pointer; padding: 12px 15px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border-radius: 8px; font-weight: bold; font-size: 1.1em; list-style: none; display: flex; align-items: center; gap: 10px;">
+                                <span class="collapse-arrow">▶</span>
+                                🖥️ ${t('web_system_info_title') || 'System Information'}
+                                <span style="margin-left: auto; font-size: 0.85em; opacity: 0.9;">${systemInfo.model || systemInfo.system || ''}</span>
+                            </summary>
+                            <div class="info-grid" style="margin-top: 10px; background: #f0f8ff; padding: 15px; border-radius: 0 0 8px 8px; border: 2px solid #007bff; border-top: none;">
+                                ${systemInfo.model ? `
+                                    <div class="info-item">
+                                        <strong>💻 Model</strong>
+                                        ${systemInfo.model}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.system ? `
+                                    <div class="info-item">
+                                        <strong>🐧 System</strong>
+                                        ${systemInfo.system}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.architecture ? `
+                                    <div class="info-item">
+                                        <strong>⚙️ Architecture</strong>
+                                        ${systemInfo.architecture}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.cpu_model ? `
+                                    <div class="info-item">
+                                        <strong>🔧 CPU Model</strong>
+                                        ${systemInfo.cpu_model}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.cpu_cores ? `
+                                    <div class="info-item">
+                                        <strong>🧮 CPU Cores</strong>
+                                        ${systemInfo.cpu_cores}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.cpu_max_frequency ? `
+                                    <div class="info-item">
+                                        <strong>⚡ CPU Frequency</strong>
+                                        ${systemInfo.cpu_max_frequency}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.cpu_features ? `
+                                    <div class="info-item">
+                                        <strong>✨ CPU Features</strong>
+                                        ${systemInfo.cpu_features}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.temperature ? `
+                                    <div class="info-item">
+                                        <strong>🌡️ Temperature</strong>
+                                        ${systemInfo.temperature}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.available_memory && systemInfo.total_memory ? `
+                                    <div class="info-item">
+                                        <strong>💾 Memory</strong>
+                                        ${systemInfo.available_memory} / ${systemInfo.total_memory}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.display_resolution ? `
+                                    <div class="info-item">
+                                        <strong>🖥️ Display Resolution</strong>
+                                        ${systemInfo.display_resolution}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.display_refresh_rate ? `
+                                    <div class="info-item">
+                                        <strong>🔄 Refresh Rate</strong>
+                                        ${systemInfo.display_refresh_rate}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.data_partition_format ? `
+                                    <div class="info-item">
+                                        <strong>💽 Partition Format</strong>
+                                        ${systemInfo.data_partition_format}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.data_partition_space ? `
+                                    <div class="info-item">
+                                        <strong>💿 Available Space</strong>
+                                        ${systemInfo.data_partition_space}
+                                    </div>
+                                ` : ''}
+                                ${systemInfo.network_ip ? `
+                                    <div class="info-item">
+                                        <strong>🌐 Network IP</strong>
+                                        ${systemInfo.network_ip}
+                                    </div>
+                                ` : ''}
                                 <div class="info-item">
-                                    <strong>💻 Model</strong>
-                                    ${systemInfo.model}
+                                    <strong>🎮 ${platformsCountLabel}</strong>
+                                    ${info.platforms_count}
                                 </div>
-                            ` : ''}
-                            ${systemInfo.system ? `
-                                <div class="info-item">
-                                    <strong>🐧 System</strong>
-                                    ${systemInfo.system}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.architecture ? `
-                                <div class="info-item">
-                                    <strong>⚙️ Architecture</strong>
-                                    ${systemInfo.architecture}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.cpu_model ? `
-                                <div class="info-item">
-                                    <strong>🔧 CPU Model</strong>
-                                    ${systemInfo.cpu_model}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.cpu_cores ? `
-                                <div class="info-item">
-                                    <strong>🧮 CPU Cores</strong>
-                                    ${systemInfo.cpu_cores}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.cpu_max_frequency ? `
-                                <div class="info-item">
-                                    <strong>⚡ CPU Frequency</strong>
-                                    ${systemInfo.cpu_max_frequency}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.cpu_features ? `
-                                <div class="info-item">
-                                    <strong>✨ CPU Features</strong>
-                                    ${systemInfo.cpu_features}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.temperature ? `
-                                <div class="info-item">
-                                    <strong>🌡️ Temperature</strong>
-                                    ${systemInfo.temperature}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.available_memory && systemInfo.total_memory ? `
-                                <div class="info-item">
-                                    <strong>💾 Memory</strong>
-                                    ${systemInfo.available_memory} / ${systemInfo.total_memory}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.display_resolution ? `
-                                <div class="info-item">
-                                    <strong>🖥️ Display Resolution</strong>
-                                    ${systemInfo.display_resolution}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.display_refresh_rate ? `
-                                <div class="info-item">
-                                    <strong>🔄 Refresh Rate</strong>
-                                    ${systemInfo.display_refresh_rate}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.data_partition_format ? `
-                                <div class="info-item">
-                                    <strong>💽 Partition Format</strong>
-                                    ${systemInfo.data_partition_format}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.data_partition_space ? `
-                                <div class="info-item">
-                                    <strong>💿 Available Space</strong>
-                                    ${systemInfo.data_partition_space}
-                                </div>
-                            ` : ''}
-                            ${systemInfo.network_ip ? `
-                                <div class="info-item">
-                                    <strong>🌐 Network IP</strong>
-                                    ${systemInfo.network_ip}
-                                </div>
-                            ` : ''}
-                            <div class="info-item">
-                                <strong>🎮 ${platformsCountLabel}</strong>
-                                ${info.platforms_count}
                             </div>
-                        </div>
+                        </details>
                     `;
                 }
                 
@@ -2059,6 +2065,13 @@
                         
                         <div style="margin-bottom: 20px;">
                             <label class="checkbox-label">
+                                <input type="checkbox" id="setting-auto-extract" ${settings.auto_extract !== false ? 'checked' : ''}>
+                                <span>📦 ${t('web_settings_auto_extract')}</span>
+                            </label>
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label class="checkbox-label">
                                 <input type="checkbox" id="setting-show-unsupported" ${settings.show_unsupported_platforms ? 'checked' : ''}>
                                 <span>👀 ${showUnsupportedLabel}</span>
                             </label>
@@ -2069,6 +2082,44 @@
                                 <input type="checkbox" id="setting-allow-unknown" ${settings.allow_unknown_extensions ? 'checked' : ''}>
                                 <span>⚠️ ${allowUnknownLabel}</span>
                             </label>
+                        </div>
+                        
+                        ${info.system === 'Linux' ? `
+                        <h4 style="margin-top: 25px; margin-bottom: 15px; border-top: 1px solid #ddd; padding-top: 15px;">🐧 Linux/Batocera Options</h4>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="setting-web-service" ${settings.web_service_at_boot ? 'checked' : ''}>
+                                <span>🌐 ${t('web_settings_web_service')}</span>
+                            </label>
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="setting-custom-dns" ${settings.custom_dns_at_boot ? 'checked' : ''}>
+                                <span>🔒 ${t('web_settings_custom_dns')}</span>
+                            </label>
+                        </div>
+                        ` : ''}
+                        
+                        <h4 style="margin-top: 25px; margin-bottom: 15px; border-top: 1px solid #ddd; padding-top: 15px;">🔑 API Keys</h4>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label>1fichier API Key</label>
+                            <input type="password" id="setting-api-1fichier" value="${settings.api_keys?.['1fichier'] || ''}" 
+                                   placeholder="Enter 1fichier API key">
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label>AllDebrid API Key</label>
+                            <input type="password" id="setting-api-alldebrid" value="${settings.api_keys?.alldebrid || ''}" 
+                                   placeholder="Enter AllDebrid API key">
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label>RealDebrid API Key</label>
+                            <input type="password" id="setting-api-realdebrid" value="${settings.api_keys?.realdebrid || ''}" 
+                                   placeholder="Enter RealDebrid API key">
                         </div>
                         
                         <button id="save-settings-btn" style="width: 100%; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; padding: 15px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 10px;">
@@ -2127,7 +2178,17 @@
                     },
                     show_unsupported_platforms: document.getElementById('setting-show-unsupported').checked,
                     allow_unknown_extensions: document.getElementById('setting-allow-unknown').checked,
+                    auto_extract: document.getElementById('setting-auto-extract').checked,
                     roms_folder: document.getElementById('setting-roms-folder').value.trim(),
+                    // Linux/Batocera options (only if elements exist)
+                    web_service_at_boot: document.getElementById('setting-web-service')?.checked || false,
+                    custom_dns_at_boot: document.getElementById('setting-custom-dns')?.checked || false,
+                    // API Keys
+                    api_keys: {
+                        '1fichier': document.getElementById('setting-api-1fichier')?.value.trim() || '',
+                        'alldebrid': document.getElementById('setting-api-alldebrid')?.value.trim() || '',
+                        'realdebrid': document.getElementById('setting-api-realdebrid')?.value.trim() || ''
+                    },
                     game_filters: {
                         region_filters: regionFiltersObj,
                         hide_non_release: document.getElementById('hide-non-release')?.checked || savedHideNonRelease,

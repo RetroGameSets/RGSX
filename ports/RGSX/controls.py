@@ -2040,19 +2040,21 @@ def handle_controls(event, sources, joystick, screen):
         elif config.menu_state == "pause_settings_menu":
             sel = getattr(config, 'pause_settings_selection', 0)
             # Calculer le nombre total d'options selon le système
-            # Liste des options : music, symlink, [web_service], [custom_dns], api keys, back
-            total = 4  # music, symlink, api keys, back (Windows)
+            # Liste des options : music, symlink, auto_extract, roms_folder, [web_service], [custom_dns], api keys, back
+            total = 6  # music, symlink, auto_extract, roms_folder, api keys, back (Windows)
+            auto_extract_index = 2
+            roms_folder_index = 3
             web_service_index = -1
             custom_dns_index = -1
-            api_keys_index = 2
-            back_index = 3
+            api_keys_index = 4
+            back_index = 5
             
             if config.OPERATING_SYSTEM == "Linux":
-                total = 6  # music, symlink, web_service, custom_dns, api keys, back
-                web_service_index = 2
-                custom_dns_index = 3
-                api_keys_index = 4
-                back_index = 5
+                total = 8  # music, symlink, auto_extract, roms_folder, web_service, custom_dns, api keys, back
+                web_service_index = 4
+                custom_dns_index = 5
+                api_keys_index = 6
+                back_index = 7
             
             if is_input_matched(event, "up"):
                 config.pause_settings_selection = (sel - 1) % total
@@ -2060,7 +2062,7 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "down"):
                 config.pause_settings_selection = (sel + 1) % total
                 config.needs_redraw = True
-            elif is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right"):
+            elif is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "clear_history"):
                 # Option 0: Music toggle
                 if sel == 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     config.music_enabled = not config.music_enabled
@@ -2082,7 +2084,55 @@ def handle_controls(event, sources, joystick, screen):
                     config.popup_timer = 3000 if success else 5000
                     config.needs_redraw = True
                     logger.info(f"Symlink option {'activée' if not current_status else 'désactivée'} via settings")
-                # Option 2: Web Service toggle (seulement si Linux)
+                # Option 2: Auto Extract toggle
+                elif sel == auto_extract_index and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                    from rgsx_settings import get_auto_extract, set_auto_extract
+                    current_status = get_auto_extract()
+                    set_auto_extract(not current_status)
+                    config.needs_redraw = True
+                    logger.info(f"Auto extract {'activée' if not current_status else 'désactivée'} via settings")
+                # Option 3: ROMs folder - ouvrir le navigateur (confirm) ou reset (clear_history)
+                elif sel == roms_folder_index:
+                    if is_input_matched(event, "confirm"):
+                        from rgsx_settings import get_roms_folder
+                        # Ouvrir le navigateur de dossiers en mode roms_root
+                        current_custom = get_roms_folder()
+                        if current_custom and os.path.isdir(current_custom):
+                            start_path = current_custom
+                        else:
+                            # Démarrer depuis le dossier parent de ROMS_FOLDER actuel
+                            start_path = os.path.dirname(config.ROMS_FOLDER) if config.ROMS_FOLDER else "/"
+                            if not os.path.isdir(start_path):
+                                start_path = "/"
+                        config.folder_browser_path = start_path
+                        config.folder_browser_selection = 0
+                        config.folder_browser_scroll_offset = 0
+                        config.folder_browser_mode = "roms_root"
+                        # Charger la liste des dossiers
+                        try:
+                            items = [".."]
+                            for item in sorted(os.listdir(start_path)):
+                                full_path = os.path.join(start_path, item)
+                                if os.path.isdir(full_path):
+                                    items.append(item)
+                            config.folder_browser_items = items
+                        except Exception as e:
+                            logger.error(f"Erreur lecture dossier {start_path}: {e}")
+                            config.folder_browser_items = [".."]
+                        config.menu_state = "folder_browser"
+                        config.needs_redraw = True
+                        logger.info("Ouverture navigateur dossier ROMs principal")
+                    elif is_input_matched(event, "clear_history"):
+                        # Réinitialiser le dossier ROMs par défaut
+                        from rgsx_settings import set_roms_folder, get_roms_folder
+                        current = get_roms_folder()
+                        if current:  # Si un dossier custom est défini, le réinitialiser
+                            set_roms_folder("")
+                            config.popup_message = _("roms_folder_reset") if _ else "ROMs folder reset to default\nRestart required!"
+                            config.popup_timer = 5000
+                            logger.info("Dossier ROMs réinitialisé par défaut")
+                        config.needs_redraw = True
+                # Option 4: Web Service toggle (seulement si Linux)
                 elif sel == web_service_index and web_service_index >= 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     
                     current_status = check_web_service_status()
@@ -2356,6 +2406,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.folder_browser_path = current_path
                     config.folder_browser_selection = 0
                     config.folder_browser_scroll_offset = 0
+                    config.folder_browser_mode = "platform"
                     # Charger la liste des dossiers
                     try:
                         items = [".."]
@@ -2439,18 +2490,36 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
             elif is_input_matched(event, "history"):
                 # Valider et sélectionner le dossier actuel (touche X/Y)
-                from rgsx_settings import set_platform_custom_path
-                platform_name = config.platform_config_name
+                browser_mode = getattr(config, 'folder_browser_mode', 'platform')
                 selected_path = config.folder_browser_path
-                set_platform_custom_path(platform_name, selected_path)
-                config.popup_message = _("platform_folder_set").format(platform_name, selected_path) if _ else f"Folder set for {platform_name}: {selected_path}"
-                config.popup_timer = 3000
-                logger.info(f"Dossier personnalisé défini pour {platform_name}: {selected_path}")
-                config.menu_state = "platform"
+                
+                if browser_mode == "roms_root":
+                    # Mode dossier ROMs principal
+                    from rgsx_settings import set_roms_folder
+                    set_roms_folder(selected_path)
+                    config.popup_message = _("roms_folder_set").format(selected_path) if _ else f"ROMs folder set: {selected_path}"
+                    config.popup_timer = 5000
+                    logger.info(f"Dossier ROMs principal défini: {selected_path}")
+                    # Informer qu'un redémarrage est nécessaire
+                    config.popup_message = _("roms_folder_set_restart").format(selected_path) if _ else f"ROMs folder set: {selected_path}\nRestart required!"
+                    config.menu_state = "pause_settings_menu"
+                else:
+                    # Mode dossier plateforme
+                    from rgsx_settings import set_platform_custom_path
+                    platform_name = config.platform_config_name
+                    set_platform_custom_path(platform_name, selected_path)
+                    config.popup_message = _("platform_folder_set").format(platform_name, selected_path) if _ else f"Folder set for {platform_name}: {selected_path}"
+                    config.popup_timer = 3000
+                    logger.info(f"Dossier personnalisé défini pour {platform_name}: {selected_path}")
+                    config.menu_state = "platform"
                 config.needs_redraw = True
             elif is_input_matched(event, "cancel"):
-                # Annuler et revenir au menu de config
-                config.menu_state = "platform_folder_config"
+                # Annuler et revenir au menu approprié selon le mode
+                browser_mode = getattr(config, 'folder_browser_mode', 'platform')
+                if browser_mode == "roms_root":
+                    config.menu_state = "pause_settings_menu"
+                else:
+                    config.menu_state = "platform_folder_config"
                 config.needs_redraw = True
             elif is_input_matched(event, "clear_history"):
                 # Créer un nouveau dossier

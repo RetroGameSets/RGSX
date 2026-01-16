@@ -1297,9 +1297,13 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             os.chmod(dest_path, 0o644)
             logger.debug(f"Téléchargement terminé: {dest_path}")
             
+            # Vérifier si l'extraction automatique est activée dans les paramètres
+            from rgsx_settings import get_auto_extract
+            auto_extract_enabled = get_auto_extract()
+            
             # Forcer extraction si plateforme BIOS même si le pré-check ne l'avait pas marqué
-            force_extract = is_zip_non_supported
-            if not force_extract:
+            force_extract = is_zip_non_supported and auto_extract_enabled
+            if not force_extract and auto_extract_enabled:
                 try:
                     bios_like = {"BIOS", "- BIOS by TMCTV -", "- BIOS"}
                     if platform_folder == "bios" or platform in bios_like:
@@ -2341,9 +2345,13 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     if download_canceled:
                         return
                     
+                    # Vérifier si l'extraction automatique est activée dans les paramètres
+                    from rgsx_settings import get_auto_extract
+                    auto_extract_enabled = get_auto_extract()
+                    
                     # Déterminer si extraction est nécessaire
-                    force_extract = is_zip_non_supported
-                    if not force_extract:
+                    force_extract = is_zip_non_supported and auto_extract_enabled
+                    if not force_extract and auto_extract_enabled:
                         try:
                             ps3_platforms = {"ps3", "PlayStation 3"}
                             if platform_folder == "ps3" or platform in ps3_platforms:

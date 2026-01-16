@@ -2414,6 +2414,66 @@ def load_api_keys(force: bool = False):
             'reloaded': False
         }
 
+
+def save_api_keys(api_keys: dict):
+    """Sauvegarde les clés API (1fichier, AllDebrid, RealDebrid) dans leurs fichiers respectifs.
+
+    Args:
+        api_keys: dict avec les clés '1fichier', 'alldebrid', 'realdebrid'
+    
+    Retourne: True si au moins une clé a été sauvegardée avec succès
+    """
+    if not api_keys:
+        return False
+    
+    paths = {
+        '1fichier': getattr(config, 'API_KEY_1FICHIER_PATH', ''),
+        'alldebrid': getattr(config, 'API_KEY_ALLDEBRID_PATH', ''),
+        'realdebrid': getattr(config, 'API_KEY_REALDEBRID_PATH', ''),
+    }
+    
+    saved_any = False
+    
+    for key_name, path in paths.items():
+        if not path:
+            continue
+        
+        # Récupérer la valeur (utiliser la clé telle quelle ou en minuscule)
+        value = api_keys.get(key_name, api_keys.get(key_name.lower(), None))
+        if value is None:
+            continue  # Ne pas modifier si la clé n'est pas fournie
+        
+        try:
+            # Créer le dossier si nécessaire
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            
+            # Écrire la clé (valeur nettoyée)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(value.strip())
+            
+            # Mettre à jour le cache config
+            if key_name == '1fichier':
+                config.API_KEY_1FICHIER = value.strip()
+            elif key_name == 'alldebrid':
+                config.API_KEY_ALLDEBRID = value.strip()
+            elif key_name == 'realdebrid':
+                config.API_KEY_REALDEBRID = value.strip()
+            
+            # Invalider le cache mtime
+            cache_attr = '_api_keys_cache'
+            if hasattr(config, cache_attr):
+                cache_data = getattr(config, cache_attr)
+                cache_data[f"{key_name}_mtime"] = None
+            
+            saved_any = True
+            logger.info(f"Clé API {key_name} sauvegardée avec succès")
+            
+        except Exception as e:
+            logger.error(f"Erreur sauvegarde clé {key_name}: {e}")
+    
+    return saved_any
+
+
 # Wrappers rétro-compatibilité (dépréciés)
 def load_api_key_1fichier(force: bool = False):  # pragma: no cover
     return load_api_keys(force).get('1fichier', '')

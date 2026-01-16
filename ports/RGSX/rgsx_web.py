@@ -865,8 +865,25 @@ class RGSXHandler(BaseHTTPRequestHandler):
             # Route: API - Settings (lecture)
             elif path == '/api/settings':
                 try:
-                    from rgsx_settings import load_rgsx_settings
+                    from rgsx_settings import load_rgsx_settings, get_auto_extract
+                    from utils import check_web_service_status, check_custom_dns_status, load_api_keys
                     settings = load_rgsx_settings()
+                    
+                    # Ajouter les options dynamiques
+                    settings['auto_extract'] = get_auto_extract()
+                    
+                    # Options Linux/Batocera
+                    if config.OPERATING_SYSTEM == "Linux":
+                        settings['web_service_at_boot'] = check_web_service_status()
+                        settings['custom_dns_at_boot'] = check_custom_dns_status()
+                    
+                    # API Keys (filtrer la clé 'reloaded' qui n'est pas utile pour l'UI)
+                    api_keys_data = load_api_keys()
+                    settings['api_keys'] = {
+                        '1fichier': api_keys_data.get('1fichier', ''),
+                        'alldebrid': api_keys_data.get('alldebrid', ''),
+                        'realdebrid': api_keys_data.get('realdebrid', '')
+                    }
                     
                     self._send_json({
                         'success': True,
@@ -1470,7 +1487,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
             # Route: Sauvegarder les settings
             elif path == '/api/settings':
                 try:
-                    from rgsx_settings import save_rgsx_settings
+                    from rgsx_settings import save_rgsx_settings, set_auto_extract
+                    from utils import toggle_web_service_at_boot, toggle_custom_dns_at_boot, save_api_keys
                     
                     settings = data.get('settings')
                     if not settings:
@@ -1479,6 +1497,37 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             'error': 'Paramètre "settings" manquant'
                         }, status=400)
                         return
+                    
+                    # Gérer auto_extract séparément
+                    if 'auto_extract' in settings:
+                        set_auto_extract(settings['auto_extract'])
+                        del settings['auto_extract']  # Ne pas sauvegarder dans le fichier principal
+                    
+                    # Gérer web_service_at_boot (Linux only)
+                    if 'web_service_at_boot' in settings:
+                        if config.OPERATING_SYSTEM == "Linux":
+                            try:
+                                toggle_web_service_at_boot(settings['web_service_at_boot'])
+                            except Exception as e:
+                                logger.error(f"Erreur toggle web service: {e}")
+                        del settings['web_service_at_boot']
+                    
+                    # Gérer custom_dns_at_boot (Linux only)
+                    if 'custom_dns_at_boot' in settings:
+                        if config.OPERATING_SYSTEM == "Linux":
+                            try:
+                                toggle_custom_dns_at_boot(settings['custom_dns_at_boot'])
+                            except Exception as e:
+                                logger.error(f"Erreur toggle custom DNS: {e}")
+                        del settings['custom_dns_at_boot']
+                    
+                    # Gérer API keys séparément
+                    if 'api_keys' in settings:
+                        try:
+                            save_api_keys(settings['api_keys'])
+                        except Exception as e:
+                            logger.error(f"Erreur sauvegarde API keys: {e}")
+                        del settings['api_keys']
                     
                     save_rgsx_settings(settings)
                     
