@@ -303,22 +303,43 @@ def _images_base_dir() -> str:
 
 def _action_icon_filename(action_name: str) -> Optional[str]:
     # Map actions to icon filenames present in assets/images
-    mapping = {
-        "up": "dpad_up.svg",
-        "down": "dpad_down.svg",
-        "left": "dpad_left.svg",
-        "right": "dpad_right.svg",
-        "confirm": "buttons_south.svg",  # A (south)
-        "cancel": "buttons_east.svg",    # B (east)
-        "clear_history": "buttons_west.svg",  # X (west)
-        "history": "buttons_north.svg",       # Y (north)
-        "start": "button_start.svg",
-        "filter": "button_select.svg",
-        "delete": "button_l.svg",   # LB
-        "space": "button_r.svg",    # RB
-        "page_up": "button_lt.svg",
-        "page_down": "button_rt.svg",
-    }
+    # Option d'inversion ABXY (A/B <-> X/Y) via config.nintendo_layout
+
+    is_nintendo = getattr(config, 'nintendo_layout', False)
+    if is_nintendo:
+        mapping = {
+            "up": "dpad_up.svg",
+            "down": "dpad_down.svg",
+            "left": "dpad_left.svg",
+            "right": "dpad_right.svg",
+            "confirm": "buttons_east.svg",      
+            "cancel": "buttons_south.svg",                
+            "clear_history": "buttons_west.svg",  
+            "history": "buttons_north.svg",       
+            "start": "button_start.svg",
+            "filter": "button_select.svg",
+            "delete": "button_l.svg",
+            "space": "button_r.svg",
+            "page_up": "button_lt.svg",
+            "page_down": "button_rt.svg",
+        }
+    else:
+        mapping = {
+            "up": "dpad_up.svg",
+            "down": "dpad_down.svg",
+            "left": "dpad_left.svg",
+            "right": "dpad_right.svg",
+            "confirm": "buttons_south.svg",  
+            "cancel": "buttons_east.svg",               
+            "clear_history": "buttons_north.svg", 
+            "history": "buttons_west.svg",        
+            "start": "button_start.svg",
+            "filter": "button_select.svg",
+            "delete": "button_l.svg",
+            "space": "button_r.svg",
+            "page_up": "button_lt.svg",
+            "page_down": "button_rt.svg",
+        }
     return mapping.get(action_name)
 
 def _load_svg_icon_surface(svg_path: str, size: int) -> Optional[pygame.Surface]:

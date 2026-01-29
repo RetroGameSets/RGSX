@@ -1,3 +1,4 @@
+
 import os
 import logging
 import platform
@@ -13,7 +14,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.5.0.0"
+app_version = "2.5.0.1"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 7
@@ -377,6 +378,7 @@ music_enabled = True  # Par défaut la musique est activée
 sources_mode = "rgsx"  # Mode des sources de jeux (rgsx/custom)
 custom_sources_url = {OTA_data_ZIP}  # URL personnalisée si mode custom
 selected_language_index = 0  # Index de la langue sélectionnée dans la liste
+
 
 # Recherche et filtres
 filtered_games = []  # Liste des jeux filtrés par recherche ou filtre

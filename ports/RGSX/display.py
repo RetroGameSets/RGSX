@@ -26,6 +26,15 @@ OVERLAY = None  # Initialisé dans init_display()
 # --- Helpers: SVG icons for controls (local cache, optional cairosvg) ---
 _HELP_ICON_CACHE = {}
 
+def clear_help_icon_cache():
+    """Vide le cache des surfaces d'icônes d'aide pour forcer leur rechargement.
+    Appeler cette fonction après un changement de mapping d'icônes (ex: inversion ABXY).
+    """
+    try:
+        _HELP_ICON_CACHE.clear()
+        logger.debug("Help icon cache cleared")
+    except Exception:
+        pass
 def _images_base_dir():
     try:
         base_dir = os.path.join(os.path.dirname(__file__), "assets", "images")
@@ -34,22 +43,41 @@ def _images_base_dir():
     return base_dir
 
 def _action_icon_filename(action_name: str):
-    mapping = {
-        "up": "dpad_up.svg",
-        "down": "dpad_down.svg",
-        "left": "dpad_left.svg",
-        "right": "dpad_right.svg",
-        "confirm": "buttons_south.svg",
-        "cancel": "buttons_east.svg",
-        "clear_history": "buttons_west.svg",
-        "history": "buttons_north.svg",
-        "start": "button_start.svg",
-        "filter": "button_select.svg",
-        "delete": "button_l.svg",
-        "space": "button_r.svg",
-        "page_up": "button_lt.svg",
-        "page_down": "button_rt.svg",
-    }
+    is_nintendo = getattr(config, 'nintendo_layout', False)
+    if is_nintendo:
+        mapping = {
+            "up": "dpad_up.svg",
+            "down": "dpad_down.svg",
+            "left": "dpad_left.svg",
+            "right": "dpad_right.svg",
+            "confirm": "buttons_east.svg",      
+            "cancel": "buttons_south.svg",                
+            "clear_history": "buttons_west.svg",  
+            "history": "buttons_north.svg",       
+            "start": "button_start.svg",
+            "filter": "button_select.svg",
+            "delete": "button_l.svg",
+            "space": "button_r.svg",
+            "page_up": "button_lt.svg",
+            "page_down": "button_rt.svg",
+        }
+    else:
+        mapping = {
+            "up": "dpad_up.svg",
+            "down": "dpad_down.svg",
+            "left": "dpad_left.svg",
+            "right": "dpad_right.svg",
+            "confirm": "buttons_south.svg",  
+            "cancel": "buttons_east.svg",               
+            "clear_history": "buttons_north.svg", 
+            "history": "buttons_west.svg",        
+            "start": "button_start.svg",
+            "filter": "button_select.svg",
+            "delete": "button_l.svg",
+            "space": "button_r.svg",
+            "page_up": "button_lt.svg",
+            "page_down": "button_rt.svg",
+        }
     return mapping.get(action_name)
 
 def _load_svg_icon_surface(svg_path: str, size: int):
@@ -2569,22 +2597,20 @@ def _draw_submenu_generic(screen, title, options, selected_index, instruction_te
         draw_menu_instruction(screen, instruction_text)
 
 def draw_pause_controls_menu(screen, selected_index):
+    # Synchronisé avec controls.py : help, remap, back
     options = [
-        _("menu_controls"),        # aide contrôles (réutilisée)
-        _("menu_remap_controls"),  # remap
-        _("menu_back") if _ else "Back"
+        _( "controls_help_title"),
+        _( "menu_remap_controls"),
+        _( "menu_back") if _ else "Back"
     ]
-    # Instructions contextuelles
     instruction_keys = [
-        "instruction_controls_help",   # pour menu_controls (afficher l'aide)
-        "instruction_controls_remap",  # remap
-        "instruction_generic_back",    # retour
+        "instruction_controls_help",
+        "instruction_controls_remap",
+        "instruction_generic_back",
     ]
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
     instruction_text = _(key) if key else None
-    
-    # Dessiner le menu avec l'instruction
-    _draw_submenu_generic(screen, _("menu_controls") if _ else "Controls", options, selected_index, instruction_text)
+    _draw_submenu_generic(screen, _( "menu_controls") if _ else "Controls", options, selected_index, instruction_text)
 
 def draw_pause_display_menu(screen, selected_index):
     # Layout label - now opens a submenu
@@ -3290,7 +3316,9 @@ def draw_controls_help(screen, previous_state):
     title_height = title_surf.get_height()
 
     content_height = max(col1_h, col2_h)
-    panel_height = title_height + title_spacing + content_height + 2 * padding
+    # Réserver un espace supplémentaire en bas pour éviter que le cadre ne coupe les icônes/boutons
+    extra_bottom_space = max(20, int(font.get_height() * 1.5))
+    panel_height = title_height + title_spacing + content_height + 2 * padding + extra_bottom_space
     if panel_height > max_panel_height:
         panel_height = max_panel_height
         enable_clip = True
@@ -3341,6 +3369,53 @@ def draw_controls_help(screen, previous_state):
 
     if enable_clip and prev_clip is not None:
         screen.set_clip(prev_clip)
+
+    # Footer: controller style selector display
+    try:
+        style_is_inverted = getattr(config, 'nintendo_layout', False)
+        style_label = _('controller_style_label') if _ else 'Controller Style :'
+        # When inverted flag is True we show Nintendo style (A/B swapped vs Xbox)
+        style_name = _('controller_style_nintendo') if style_is_inverted else _('controller_style_xbox')
+        # Render footer with left/right helper icons and the current controller style label
+        style_label = style_label
+        style_name = style_name
+        icon_size = max(18, font.get_height())
+        left_icon = get_help_icon_surface('left', icon_size)
+        right_icon = get_help_icon_surface('right', icon_size)
+        label_surf = font.render(f"{style_label} {style_name}", True, THEME_COLORS['text'])
+
+        # Compose horizontal footer surface: [left_icon]  label  [right_icon]
+        parts_width = 0
+        parts_height = 0
+        if left_icon:
+            parts_width += left_icon.get_width() + 8
+            parts_height = max(parts_height, left_icon.get_height())
+        parts_width += label_surf.get_width()
+        parts_height = max(parts_height, label_surf.get_height())
+        if right_icon:
+            parts_width += 8 + right_icon.get_width()
+            parts_height = max(parts_height, right_icon.get_height())
+
+        footer_surf = pygame.Surface((max(1, parts_width), max(1, parts_height)), pygame.SRCALPHA)
+        x = 0
+        if left_icon:
+            footer_surf.blit(left_icon, (x, (parts_height - left_icon.get_height()) // 2))
+            x += left_icon.get_width() + 8
+        footer_surf.blit(label_surf, (x, (parts_height - label_surf.get_height()) // 2))
+        x += label_surf.get_width()
+        if right_icon:
+            x += 8
+            footer_surf.blit(right_icon, (x, (parts_height - right_icon.get_height()) // 2))
+
+        # Place footer inside the panel, just above the bottom padding so it stays visible
+        try:
+            footer_y = panel_y + panel_height - padding - (footer_surf.get_height() // 2) - 4
+        except Exception:
+            footer_y = panel_y + panel_height - padding - 8
+        footer_rect = footer_surf.get_rect(center=(config.screen_width // 2, int(footer_y)))
+        screen.blit(footer_surf, footer_rect)
+    except Exception:
+        pass
 
 
 # Menu Quitter Appli

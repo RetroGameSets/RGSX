@@ -147,6 +147,14 @@ initialize_language()
 config.sources_mode = get_sources_mode()
 config.custom_sources_url = get_custom_sources_url()
 logger.debug(f"Mode sources initial: {config.sources_mode}, URL custom: {config.custom_sources_url}")
+# Charger l'option nintendo_layout depuis les settings
+try:
+    from rgsx_settings import get_nintendo_layout
+    config.nintendo_layout = get_nintendo_layout()
+    logger.debug(f"nintendo_layout initial: {config.nintendo_layout}")
+except Exception:
+    # fallback: si l'import ou la lecture échoue, conserver la valeur par défaut dans config
+    logger.debug("Impossible de charger nintendo_layout depuis rgsx_settings")
 
 # Détection du système grace a une commande windows / linux (on oublie is non-pc c'est juste pour connaitre le materiel et le systeme d'exploitation)
 def detect_system_info():

@@ -62,6 +62,12 @@
     "language_changed": "Idioma alterado para {0}",
     "menu_controls": "Controles",
     "menu_remap_controls": "Remapear controles",
+    "menu_nintendo_layout_on": "Layout do controle Nintendo",
+    "menu_nintendo_layout_off": "Layout do controle Xbox",
+    "instruction_nintendo_layout": "Inverte os controles exibidos para corresponder ao layout",
+    "controller_style_label": "Estilo do controle :",
+    "controller_style_nintendo": "Nintendo",
+    "controller_style_xbox": "Xbox",
     "menu_history": "Histórico",
     "menu_language": "Idioma",
     "menu_accessibility": "Acessibilidade",
@@ -465,6 +471,4 @@
     "folder_create_error": "Erro ao criar: {0}",
     "controls_action_select_char": "Adicionar",
     "folder_browser_browse": "Explorar"
-}
-}
 }

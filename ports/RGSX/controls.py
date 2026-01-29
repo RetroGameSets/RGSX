@@ -1739,18 +1739,26 @@ def handle_controls(event, sources, joystick, screen):
 
         # Sous-menu Controls
         elif config.menu_state == "pause_controls_menu":
+            # Ajout de l'option inversion ABXY
+            options = [
+                {"key": "help", "title": _("controls_help_title"), "desc": _("instruction_controls_help")},
+                {"key": "remap", "title": _("menu_remap_controls"), "desc": _("instruction_controls_remap")},
+                {"key": "back", "title": _("menu_back"), "desc": _("instruction_generic_back")},
+            ]
             sel = getattr(config, 'pause_controls_selection', 0)
+            total = len(options)
             if is_input_matched(event, "up"):
-                config.pause_controls_selection = (sel - 1) % 3
+                config.pause_controls_selection = (sel - 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "down"):
-                config.pause_controls_selection = (sel + 1) % 3
+                config.pause_controls_selection = (sel + 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
-                if sel == 0:  # Aide
+                selected = options[sel]["key"]
+                if selected == "help":
                     config.previous_menu_state = "pause_controls_menu"
                     config.menu_state = "controls_help"
-                elif sel == 1:  # Remap
+                elif selected == "remap":
                     if os.path.exists(config.CONTROLS_CONFIG_PATH):
                         try:
                             os.remove(config.CONTROLS_CONFIG_PATH)
@@ -1758,6 +1766,7 @@ def handle_controls(event, sources, joystick, screen):
                             logger.error(f"Erreur suppression controls_config: {e}")
                     config.previous_menu_state = "pause_controls_menu"
                     config.menu_state = "controls_mapping"
+                # invert_abxy moved to controls_help submenu (interactive)
                 else:  # Back
                     config.menu_state = "pause_menu"
                 config.last_state_change_time = pygame.time.get_ticks()
@@ -1767,6 +1776,31 @@ def handle_controls(event, sources, joystick, screen):
                 config.last_state_change_time = pygame.time.get_ticks()
                 config.needs_redraw = True
 
+        
+        # Menu Aide Contrôles (affichage interactif du style manette)
+        elif config.menu_state == "controls_help":
+            # Left/Right change controller style immediately
+            if is_input_matched(event, "left") or is_input_matched(event, "right"):
+                try:
+                    from rgsx_settings import set_nintendo_layout, get_nintendo_layout
+                    # Toggle style
+                    new_val = set_nintendo_layout(not get_nintendo_layout())
+                    config.nintendo_layout = new_val
+                    # Clear icon cache so help screen updates immediately
+                    try:
+                        from display import clear_help_icon_cache
+                        clear_help_icon_cache()
+                    except Exception:
+                        pass
+                    config.popup_message = (_("menu_nintendo_layout_on") if new_val else _("menu_nintendo_layout_off"))
+                    config.popup_timer = 1200
+                    config.needs_redraw = True
+                except Exception as e:
+                    logger.error(f"Erreur toggle nintendo_layout from controls_help: {e}")
+            elif is_input_matched(event, "confirm") or is_input_matched(event, "cancel") or is_input_matched(event, "start"):
+                # Return to previous menu
+                config.menu_state = validate_menu_state(config.previous_menu_state)
+                config.needs_redraw = True
         # Sous-menu Display
         elif config.menu_state == "pause_display_menu":
             sel = getattr(config, 'pause_display_selection', 0)

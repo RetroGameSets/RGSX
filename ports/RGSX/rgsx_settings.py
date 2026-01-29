@@ -75,6 +75,7 @@ def load_rgsx_settings():
     },
     "show_unsupported_platforms": False,
     "allow_unknown_extensions": False,
+    "nintendo_layout": False,
     "roms_folder": "",
     "web_service_at_boot": False,
     "last_gamelist_update": None,
@@ -297,6 +298,22 @@ def set_allow_unknown_extensions(enabled: bool) -> bool:
     settings["allow_unknown_extensions"] = bool(enabled)
     save_rgsx_settings(settings)
     return settings["allow_unknown_extensions"]
+
+
+# ----------------------- Invert ABXY layout ----------------------- #
+def get_nintendo_layout(settings=None) -> bool:
+    """Retourne True si l'inversion ABXY (icônes) est activée."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return bool(settings.get("nintendo_layout", False))
+
+
+def set_nintendo_layout(enabled: bool) -> bool:
+    """Active/désactive l'inversion ABXY (icônes) et sauvegarde."""
+    settings = load_rgsx_settings()
+    settings["nintendo_layout"] = bool(enabled)
+    save_rgsx_settings(settings)
+    return settings["nintendo_layout"]
 
 # ----------------------- Hide premium systems toggle ----------------------- #
 
