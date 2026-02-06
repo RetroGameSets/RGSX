@@ -2068,18 +2068,47 @@ def run_server(host='0.0.0.0', port=5000):
     class ReuseAddrHTTPServer(HTTPServer):
         allow_reuse_address = True
     
-    # Tuer les processus existants utilisant le port
+    # Tuer les processus existants utilisant le port (plateforme spécifique)
     try:
         import subprocess
-        result = subprocess.run(['lsof', '-ti', f':{port}'], capture_output=True, text=True, timeout=2)
-        pids = result.stdout.strip().split('\n')
-        for pid in pids:
-            if pid:
-                try:
-                    subprocess.run(['kill', '-9', pid], timeout=2)
-                    logger.info(f"Processus {pid} tué (port {port} libéré)")
-                except Exception as e:
-                    logger.warning(f"Impossible de tuer le processus {pid}: {e}")
+        # Windows: utiliser netstat + taskkill
+        if os.name == 'nt' or getattr(config, 'OPERATING_SYSTEM', '').lower() == 'windows':
+            try:
+                netstat = subprocess.run(['netstat', '-ano'], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=3)
+                lines = netstat.stdout.splitlines()
+                pids = set()
+                for line in lines:
+                    parts = line.split()
+                    if len(parts) >= 5:
+                        local = parts[1]
+                        pid = parts[-1]
+                        if local.endswith(f':{port}'):
+                            pids.add(pid)
+                for pid in pids:
+                    # Safer: ignore PID 0 and non-numeric entries (system / header lines)
+                    if not pid or not pid.isdigit():
+                        continue
+                    pid_int = int(pid)
+                    if pid_int <= 0:
+                        continue
+                    try:
+                        subprocess.run(['taskkill', '/PID', pid, '/F'], timeout=3)
+                        logger.info(f"Processus {pid} tué (port {port} libéré) [Windows]")
+                    except Exception as e:
+                        logger.warning(f"Impossible de tuer le processus {pid}: {e}")
+            except Exception as e:
+                logger.debug(f"Windows port release check failed: {e}")
+        else:
+            # Unix-like: utiliser lsof + kill
+            result = subprocess.run(['lsof', '-ti', f':{port}'], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=2)
+            pids = result.stdout.strip().split('\n')
+            for pid in pids:
+                if pid:
+                    try:
+                        subprocess.run(['kill', '-9', pid], timeout=2)
+                        logger.info(f"Processus {pid} tué (port {port} libéré)")
+                    except Exception as e:
+                        logger.warning(f"Impossible de tuer le processus {pid}: {e}")
     except Exception as e:
         logger.warning(f"Impossible de libérer le port {port}: {e}")
     

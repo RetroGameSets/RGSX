@@ -301,6 +301,7 @@ set PYGAME_HIDE_SUPPORT_PROMPT=1
 set SDL_VIDEODRIVER=windows
 set SDL_AUDIODRIVER=directsound
 set PYTHONWARNINGS=ignore::UserWarning:pygame.pkgdata
+set PYTHONIOENCODING=utf-8
 
 :: =============================================================================
 :: Configuration multi-ecran
@@ -331,6 +332,7 @@ echo [%DATE% %TIME%] Environment variables set: >> "%LOG_FILE%"
 echo [%DATE% %TIME%]   RGSX_ROOT=%RGSX_ROOT% >> "%LOG_FILE%"
 echo [%DATE% %TIME%]   SDL_VIDEODRIVER=%SDL_VIDEODRIVER% >> "%LOG_FILE%"
 echo [%DATE% %TIME%]   SDL_AUDIODRIVER=%SDL_AUDIODRIVER% >> "%LOG_FILE%"
+echo [%DATE% %TIME%]   PYTHONIOENCODING=%PYTHONIOENCODING% >> "%LOG_FILE%"
 
 echo.
 if defined DISPLAY_NUM (

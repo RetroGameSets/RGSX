@@ -709,6 +709,7 @@ async def main():
                 "pause_games_menu",
                 "pause_settings_menu",
                 "pause_api_keys_status",
+                "pause_connection_status",
                 "filter_platforms",
                 "display_menu",
                 "language_select",
@@ -1149,6 +1150,9 @@ async def main():
             elif config.menu_state == "pause_api_keys_status":
                 from display import draw_pause_api_keys_status
                 draw_pause_api_keys_status(screen)
+            elif config.menu_state == "pause_connection_status":
+                from display import draw_pause_connection_status
+                draw_pause_connection_status(screen)
             elif config.menu_state == "filter_platforms":
                 from display import draw_filter_platforms_menu
                 draw_filter_platforms_menu(screen)

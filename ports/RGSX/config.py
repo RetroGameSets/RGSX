@@ -14,7 +14,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.5.0.1"
+app_version = "2.5.0.2"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 7
@@ -140,6 +140,12 @@ download_queue = []  # Liste de dicts: {url, platform, game_name, ...}
 pending_download_is_queue = False  # Indique si pending_download doit être ajouté à la queue
 # Indique si un téléchargement est en cours
 download_active = False
+
+# Cache status de connexion (menu pause > settings)
+connection_status = {}
+connection_status_timestamp = 0.0
+connection_status_in_progress = False
+connection_status_progress = {"done": 0, "total": 0}
 
 # Log directory
 # Docker mode: /config/logs (persisted in config volume)
@@ -347,6 +353,7 @@ platforms = []  # Liste des plateformes disponibles
 current_platform = 0  # Index de la plateforme actuelle sélectionnée
 platform_names = {}  # {platform_id: platform_name}
 games_count = {}  # Dictionnaire comptant le nombre de jeux par plateforme
+games_count_log_verbose = False  # Log détaillé par fichier (sinon résumé compact)
 platform_dicts = []  # Liste des dictionnaires de plateformes
 
 # Filtre plateformes

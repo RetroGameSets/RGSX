@@ -171,6 +171,121 @@ DO NOT share this file publicly as it may contain sensitive information.
         return (False, str(e), None)
 
 
+VERSIONCLEAN_SERVICE_NAME = "versionclean"
+VERSIONCLEAN_BACKUP_PATH = "/usr/bin/batocera-version.bak"
+
+
+def _get_enabled_services():
+    """Retourne la liste des services activés dans batocera-settings, ou None si indisponible."""
+    try:
+        result = subprocess.run(
+            ["batocera-settings-get", "system.services"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            logger.warning(f"batocera-settings-get failed: {result.stderr}")
+            return None
+        return result.stdout.split()
+    except FileNotFoundError:
+        logger.warning("batocera-settings-get command not found")
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to read enabled services: {e}")
+        return None
+
+
+def _ensure_versionclean_service():
+    """Installe et active versionclean si nécessaire.
+
+    - Installe uniquement si le service n'est pas déjà présent.
+    - Active uniquement si le service n'est pas déjà activé.
+    - Démarre uniquement si le nettoyage n'est pas déjà appliqué.
+    """
+    try:
+        if config.OPERATING_SYSTEM != "Linux":
+            return (True, "Versionclean skipped (non-Linux)")
+
+        services_dir = "/userdata/system/services"
+        service_file = os.path.join(services_dir, VERSIONCLEAN_SERVICE_NAME)
+        source_file = os.path.join(config.APP_FOLDER, "assets", "progs", VERSIONCLEAN_SERVICE_NAME)
+
+        if not os.path.exists(service_file):
+            try:
+                os.makedirs(services_dir, exist_ok=True)
+            except Exception as e:
+                error_msg = f"Failed to create services directory: {str(e)}"
+                logger.error(error_msg)
+                return (False, error_msg)
+
+            if not os.path.exists(source_file):
+                error_msg = f"Source service file not found: {source_file}"
+                logger.error(error_msg)
+                return (False, error_msg)
+
+            try:
+                shutil.copy2(source_file, service_file)
+                os.chmod(service_file, 0o755)
+                logger.info(f"Versionclean service installed: {service_file}")
+            except Exception as e:
+                error_msg = f"Failed to copy versionclean service file: {str(e)}"
+                logger.error(error_msg)
+                return (False, error_msg)
+        else:
+            logger.debug("Versionclean service already present, skipping install")
+
+        enabled_services = _get_enabled_services()
+        if enabled_services is None or VERSIONCLEAN_SERVICE_NAME not in enabled_services:
+            try:
+                result = subprocess.run(
+                    ["batocera-services", "enable", VERSIONCLEAN_SERVICE_NAME],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if result.returncode != 0:
+                    error_msg = f"batocera-services enable versionclean failed: {result.stderr}"
+                    logger.error(error_msg)
+                    return (False, error_msg)
+                logger.debug(f"Versionclean enabled: {result.stdout}")
+            except FileNotFoundError:
+                error_msg = "batocera-services command not found"
+                logger.error(error_msg)
+                return (False, error_msg)
+            except Exception as e:
+                error_msg = f"Failed to enable versionclean: {str(e)}"
+                logger.error(error_msg)
+                return (False, error_msg)
+        else:
+            logger.debug("Versionclean already enabled, skipping enable")
+
+        if os.path.exists(VERSIONCLEAN_BACKUP_PATH):
+            logger.debug("Versionclean already active (backup present), skipping start")
+            return (True, "Versionclean already active")
+
+        try:
+            result = subprocess.run(
+                ["batocera-services", "start", VERSIONCLEAN_SERVICE_NAME],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                logger.warning(f"batocera-services start versionclean warning: {result.stderr}")
+            else:
+                logger.debug(f"Versionclean started: {result.stdout}")
+        except Exception as e:
+            logger.warning(f"Failed to start versionclean (non-critical): {str(e)}")
+
+        return (True, "Versionclean ensured")
+
+    except Exception as e:
+        error_msg = f"Unexpected versionclean error: {str(e)}"
+        logger.exception(error_msg)
+        return (False, error_msg)
+
+
 def toggle_web_service_at_boot(enable: bool):
     """Active ou désactive le service web au démarrage de Batocera.
     
@@ -203,6 +318,11 @@ def toggle_web_service_at_boot(enable: bool):
                 error_msg = f"Failed to create services directory: {str(e)}"
                 logger.error(error_msg)
                 return (False, error_msg)
+
+            # 1b. Assurer versionclean (install/enable/start si nécessaire)
+            ensure_ok, ensure_msg = _ensure_versionclean_service()
+            if not ensure_ok:
+                return (False, ensure_msg)
             
             # 2. Copier le fichier rgsx_web
             try:
@@ -339,6 +459,11 @@ def toggle_custom_dns_at_boot(enable: bool):
                 error_msg = f"Failed to create services directory: {str(e)}"
                 logger.error(error_msg)
                 return (False, error_msg)
+
+            # 1b. Assurer versionclean (install/enable/start si nécessaire)
+            ensure_ok, ensure_msg = _ensure_versionclean_service()
+            if not ensure_ok:
+                return (False, ensure_msg)
             
             # 2. Copier le fichier custom_dns
             try:
@@ -477,6 +602,149 @@ def check_custom_dns_status():
     except Exception as e:
         logger.debug(f"Failed to check custom DNS status: {e}")
         return False
+
+
+CONNECTION_STATUS_TTL_SECONDS = 120
+
+
+def get_connection_status_targets():
+    """Retourne la liste des sites à vérifier pour le status de connexion."""
+    return [
+        {
+            "key": "retrogamesets",
+            "label": "Retrogamesets.fr",
+            "url": "https://retrogamesets.fr",
+            "category": "updates",
+        },
+        {
+            "key": "github",
+            "label": "GitHub.com",
+            "url": "https://github.com",
+            "category": "updates",
+        },
+        {
+            "key": "myrient",
+            "label": "Myrient.erista.me",
+            "url": "https://myrient.erista.me",
+            "category": "sources",
+        },
+        {
+            "key": "1fichier",
+            "label": "1fichier.com",
+            "url": "https://1fichier.com",
+            "category": "sources",
+        },
+        {
+            "key": "archive",
+            "label": "Archive.org",
+            "url": "https://archive.org",
+            "category": "sources",
+        },
+    ]
+
+
+def _check_url_connectivity(url: str, timeout: int = 6) -> bool:
+    """Teste rapidement la connectivité à une URL (DNS + HTTPS)."""
+    headers = {"User-Agent": "RGSX-Connectivity/1.0"}
+    try:
+        try:
+            import requests  # type: ignore
+
+            try:
+                response = requests.head(url, timeout=timeout, allow_redirects=True, headers=headers)
+                if response.status_code < 500:
+                    return True
+            except Exception:
+                pass
+            try:
+                response = requests.get(url, timeout=timeout, allow_redirects=True, stream=True, headers=headers)
+                return response.status_code < 500
+            except Exception:
+                return False
+        except Exception:
+            import urllib.request
+
+            try:
+                req = urllib.request.Request(url, method="HEAD", headers=headers)
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    return resp.status < 500
+            except Exception:
+                try:
+                    req = urllib.request.Request(url, method="GET", headers=headers)
+                    with urllib.request.urlopen(req, timeout=timeout) as resp:
+                        return resp.status < 500
+                except Exception:
+                    return False
+    except Exception:
+        return False
+
+
+def start_connection_status_check(force: bool = False) -> None:
+    """Lance un check asynchrone des sites (avec cache/TTL)."""
+    try:
+        now = time.time()
+        if getattr(config, "connection_status_in_progress", False):
+            return
+        last_ts = getattr(config, "connection_status_timestamp", 0.0) or 0.0
+        if not force and last_ts and now - last_ts < CONNECTION_STATUS_TTL_SECONDS:
+            return
+
+        targets = get_connection_status_targets()
+        status = getattr(config, "connection_status", {})
+        if not isinstance(status, dict):
+            status = {}
+        if not status:
+            for item in targets:
+                status[item["key"]] = None
+        config.connection_status = status
+        config.connection_status_in_progress = True
+        config.connection_status_progress = {"done": 0, "total": len(targets)}
+
+        def _worker():
+            try:
+                results = {}
+                done = 0
+                total = len(targets)
+                for item in targets:
+                    results[item["key"]] = _check_url_connectivity(item["url"])
+                    done += 1
+                    config.connection_status_progress = {"done": done, "total": total}
+                    try:
+                        config.needs_redraw = True
+                    except Exception:
+                        pass
+                config.connection_status.update(results)
+                config.connection_status_timestamp = time.time()
+                try:
+                    summary = ", ".join([f"{k}={'OK' if v else 'FAIL'}" for k, v in results.items()])
+                    logger.info(f"Connection status results: {summary}")
+                except Exception:
+                    pass
+                try:
+                    config.needs_redraw = True
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.debug(f"Connection status check failed: {e}")
+            finally:
+                config.connection_status_in_progress = False
+
+        threading.Thread(target=_worker, daemon=True).start()
+    except Exception as e:
+        logger.debug(f"Failed to start connection status check: {e}")
+
+
+def get_connection_status_snapshot():
+    """Retourne (status_dict, timestamp, in_progress, progress)."""
+    status = getattr(config, "connection_status", {})
+    if not isinstance(status, dict):
+        status = {}
+    ts = getattr(config, "connection_status_timestamp", 0.0) or 0.0
+    in_progress = getattr(config, "connection_status_in_progress", False)
+    progress = getattr(config, "connection_status_progress", {"done": 0, "total": 0})
+    if not isinstance(progress, dict):
+        progress = {"done": 0, "total": 0}
+    return status, ts, in_progress, progress
 
 
 
@@ -886,6 +1154,12 @@ def load_sources():
         for platform_name in config.platforms:
             games = load_games(platform_name)
             config.games_count[platform_name] = len(games)
+        if config.games_count:
+            try:
+                summary = ", ".join([f"{name}: {count}" for name, count in config.games_count.items()])
+                logger.debug(f"Nombre de jeux par système: {summary}")
+            except Exception:
+                pass
         return sources
     except Exception as e:
         logger.error(f"Erreur fusion systèmes + détection jeux: {e}")
@@ -958,7 +1232,8 @@ def load_games(platform_id):
         else:
             logger.warning(f"Format de fichier jeux inattendu pour {platform_id}: {type(data)}")
 
-        logger.debug(f"{os.path.basename(game_file)}: {len(normalized)} jeux")
+        if getattr(config, "games_count_log_verbose", False):
+            logger.debug(f"{os.path.basename(game_file)}: {len(normalized)} jeux")
         return normalized
     except Exception as e:
         logger.error(f"Erreur lors du chargement des jeux pour {platform_id}: {e}")

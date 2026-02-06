@@ -1,0 +1,69 @@
+#!/bin/bash
+# BATOCERA SERVICE
+# name: Version Clean Service
+# description: Clean batocera-version output (hide extra services)
+# author: batocera-unofficial-addons
+# depends:
+# version: 1.0
+
+SERVICE_NAME="versionclean"
+TARGET="/usr/bin/batocera-version"
+BACKUP="${TARGET}.bak"
+
+case "$1" in
+    start)
+        # If we've already backed up, assume it's already "cleaned"
+        if [ -f "$BACKUP" ]; then
+            echo "${SERVICE_NAME}: already started (backup exists at ${BACKUP})."
+            exit 0
+        fi
+
+        echo "${SERVICE_NAME}: backing up original ${TARGET} to ${BACKUP}..."
+        cp "$TARGET" "$BACKUP"
+
+        echo "${SERVICE_NAME}: writing clean version script to ${TARGET}..."
+        cat << 'EOF' > "$TARGET"
+#!/bin/bash
+
+# Clean batocera-version
+# - "batocera-version --extra" -> "none"
+# - "batocera-version"         -> contents of /usr/share/batocera/batocera.version
+
+if test "$1" = "--extra"; then
+    echo "none"
+    exit 0
+fi
+
+cat /usr/share/batocera/batocera.version
+EOF
+
+        chmod +x "$TARGET"
+        echo "${SERVICE_NAME}: clean version applied."
+        ;;
+
+    stop)
+        if [ -f "$BACKUP" ]; then
+            echo "${SERVICE_NAME}: restoring original ${TARGET} from ${BACKUP}..."
+            cp "$BACKUP" "$TARGET"
+            rm "$BACKUP"
+            echo "${SERVICE_NAME}: restore complete."
+        else
+            echo "${SERVICE_NAME}: no backup found, nothing to restore."
+        fi
+        ;;
+
+    status)
+        if [ -f "$BACKUP" ]; then
+            echo "${SERVICE_NAME}: CLEAN VERSION ACTIVE (backup present)."
+        else
+            echo "${SERVICE_NAME}: ORIGINAL VERSION ACTIVE."
+        fi
+        ;;
+
+    *)
+        echo "Usage: $0 {start|stop|status}"
+        exit 1
+        ;;
+esac
+
+exit 0

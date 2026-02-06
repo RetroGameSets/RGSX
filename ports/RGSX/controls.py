@@ -17,7 +17,8 @@ from utils import (
     save_music_config, load_api_keys, _get_dest_folder_name,
     extract_zip, extract_rar, find_file_with_or_without_extension, toggle_web_service_at_boot, check_web_service_status,
     restart_application, generate_support_zip, load_sources,
-    ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string
+    ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string,
+    start_connection_status_check
 )
 from history import load_history, clear_history, add_to_history, save_history
 from language import _, get_available_languages, set_language  
@@ -54,6 +55,7 @@ VALID_STATES = [
     "pause_games_menu",         # sous-menu Games (source mode, update/redownload cache)
     "pause_settings_menu",      # sous-menu Settings (music on/off, symlink toggle, api keys status)
     "pause_api_keys_status",    # sous-menu API Keys (affichage statut des clés)
+    "pause_connection_status",  # sous-menu Connection status (statut accès sites)
     # Nouveaux menus historique
     "history_game_options",     # menu options pour un jeu de l'historique
     "history_show_folder",      # afficher le dossier de téléchargement
@@ -74,6 +76,8 @@ VALID_STATES = [
 ]
 
 def validate_menu_state(state):
+    if not state:
+        return "platform"
     if state not in VALID_STATES:
         logger.debug(f"État invalide {state}, retour à platform")
         return "platform"
@@ -2074,21 +2078,23 @@ def handle_controls(event, sources, joystick, screen):
         elif config.menu_state == "pause_settings_menu":
             sel = getattr(config, 'pause_settings_selection', 0)
             # Calculer le nombre total d'options selon le système
-            # Liste des options : music, symlink, auto_extract, roms_folder, [web_service], [custom_dns], api keys, back
-            total = 6  # music, symlink, auto_extract, roms_folder, api keys, back (Windows)
+            # Liste des options : music, symlink, auto_extract, roms_folder, [web_service], [custom_dns], api keys, connection_status, back
+            total = 7  # music, symlink, auto_extract, roms_folder, api keys, connection_status, back (Windows)
             auto_extract_index = 2
             roms_folder_index = 3
             web_service_index = -1
             custom_dns_index = -1
             api_keys_index = 4
-            back_index = 5
+            connection_status_index = 5
+            back_index = 6
             
             if config.OPERATING_SYSTEM == "Linux":
-                total = 8  # music, symlink, auto_extract, roms_folder, web_service, custom_dns, api keys, back
+                total = 9  # music, symlink, auto_extract, roms_folder, web_service, custom_dns, api keys, connection_status, back
                 web_service_index = 4
                 custom_dns_index = 5
                 api_keys_index = 6
-                back_index = 7
+                connection_status_index = 7
+                back_index = 8
             
             if is_input_matched(event, "up"):
                 config.pause_settings_selection = (sel - 1) % total
@@ -2208,6 +2214,11 @@ def handle_controls(event, sources, joystick, screen):
                 elif sel == api_keys_index and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_api_keys_status"
                     config.needs_redraw = True
+                # Option Connection Status
+                elif sel == connection_status_index and is_input_matched(event, "confirm"):
+                    start_connection_status_check(force=True)
+                    config.menu_state = "pause_connection_status"
+                    config.needs_redraw = True
                 # Option Back (dernière option)
                 elif sel == back_index and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_menu"
@@ -2219,6 +2230,12 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
 
         elif config.menu_state == "pause_api_keys_status":
+            if is_input_matched(event, "cancel") or is_input_matched(event, "confirm") or is_input_matched(event, "start"):
+                config.menu_state = "pause_settings_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+                config.needs_redraw = True
+
+        elif config.menu_state == "pause_connection_status":
             if is_input_matched(event, "cancel") or is_input_matched(event, "confirm") or is_input_matched(event, "start"):
                 config.menu_state = "pause_settings_menu"
                 config.last_state_change_time = pygame.time.get_ticks()

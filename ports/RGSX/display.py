@@ -5,10 +5,12 @@ import os
 import io
 import platform
 import random
+from datetime import datetime
 import config
 from utils import (truncate_text_middle, wrap_text, load_system_image, truncate_text_end,
                    check_web_service_status, check_custom_dns_status, load_api_keys,
-                   _get_dest_folder_name, find_file_with_or_without_extension)
+                   _get_dest_folder_name, find_file_with_or_without_extension,
+                   get_connection_status_targets, get_connection_status_snapshot)
 import logging
 import math
 from history import load_history, is_game_downloaded  
@@ -1965,6 +1967,9 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
             ("clear_history", _("settings_roms_folder_default")),
             ("cancel", _("controls_cancel_back")),
         ],
+        "pause_connection_status": [
+            ("cancel", _("controls_cancel_back")),
+        ],
     }
     
     # Cas spécial : pause_settings_menu avec option roms_folder sélectionnée
@@ -2948,6 +2953,7 @@ def draw_pause_settings_menu(screen, selected_index):
         custom_dns_txt = f"{_('settings_custom_dns')} : < {custom_dns_status} >"
     
     api_keys_txt = _("menu_api_keys_status") if _ else "API Keys"
+    connection_status_txt = _("menu_connection_status") if _ else "Connection status"
     back_txt = _("menu_back") if _ else "Back"
     
     # Construction de la liste des options
@@ -2956,7 +2962,7 @@ def draw_pause_settings_menu(screen, selected_index):
         options.append(web_service_txt)
     if custom_dns_txt:  # Ajouter seulement si Linux/Batocera
         options.append(custom_dns_txt)
-    options.extend([api_keys_txt, back_txt])
+    options.extend([api_keys_txt, connection_status_txt, back_txt])
     
     # Index de l'option Dossier ROMs
     roms_folder_index = 3
@@ -2974,6 +2980,7 @@ def draw_pause_settings_menu(screen, selected_index):
         instruction_keys.append("instruction_settings_custom_dns")
     instruction_keys.extend([
         "instruction_settings_api_keys",
+        "instruction_settings_connection_status",
         "instruction_generic_back",
     ])
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
@@ -3082,6 +3089,147 @@ def draw_pause_api_keys_status(screen):
     # Positionné un peu plus haut pour aérer
     hint_rect = hint_surf.get_rect(center=(config.screen_width//2, menu_y + menu_height - 30))
     screen.blit(hint_surf, hint_rect)
+
+
+def draw_pause_connection_status(screen):
+    screen.blit(OVERLAY, (0, 0))
+    status_map, last_ts, in_progress, progress = get_connection_status_snapshot()
+    targets = get_connection_status_targets()
+
+    title = _("connection_status_title") if _ else "Connection status"
+    cat_updates = _("connection_status_category_updates") if _ else "Updates"
+    cat_sources = _("connection_status_category_sources") if _ else "Sources"
+
+    # Group rows by category
+    categories_order = ["updates", "sources"]
+    category_labels = {
+        "updates": cat_updates,
+        "sources": cat_sources,
+    }
+    rows = []  # list of (type, data)
+    for cat in categories_order:
+        cat_items = [t for t in targets if t.get("category") == cat]
+        if not cat_items:
+            continue
+        rows.append(("header", category_labels.get(cat, cat)))
+        for item in cat_items:
+            rows.append(("item", item))
+
+    # Title surface (used for sizing)
+    title_surface = config.font.render(title, True, THEME_COLORS["text"])
+
+    # Dimensions
+    row_height = config.small_font.get_height() + 14
+    header_row_height = config.small_font.get_height() + 10
+    title_height = 60
+    footer_height = 55
+    content_height = 0
+    for row_type, row_data in rows:
+        content_height += header_row_height if row_type == "header" else row_height
+
+    # Measure max text width to size the menu
+    max_text_width = title_surface.get_width()
+    for row_type, row_data in rows:
+        if row_type == "header":
+            w = config.small_font.size(str(row_data))[0]
+        else:
+            label = row_data.get("label") or row_data.get("key", "")
+            w = config.small_font.size(str(label))[0]
+        if w > max_text_width:
+            max_text_width = w
+
+    circle_area_width = 46  # status circle + gap
+    inner_padding = 70
+    menu_width = min(int(config.screen_width * 0.70), max(360, max_text_width + circle_area_width + inner_padding))
+    menu_height = title_height + content_height + footer_height
+    menu_x = (config.screen_width - menu_width) // 2
+    menu_y = (config.screen_height - menu_height) // 2
+
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=22)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (menu_x, menu_y, menu_width, menu_height), 2, border_radius=22)
+
+    # Title
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, menu_y + 34))
+    screen.blit(title_surface, title_rect)
+
+    # Columns
+    col_site_x = menu_x + 40
+    col_status_x = menu_x + int(menu_width * 0.70)
+
+    y = menu_y + title_height - 5
+    for row_type, data in rows:
+        if row_type == "header":
+            header_text = data
+            header_surf = config.small_font.render(header_text, True, THEME_COLORS.get("text_dim", THEME_COLORS["text"]))
+            screen.blit(header_surf, (col_site_x, y))
+            # separator line
+            sep_y = y + header_row_height - 6
+            pygame.draw.line(screen, THEME_COLORS["border"], (menu_x + 25, sep_y), (menu_x + menu_width - 25, sep_y), 1)
+            y += header_row_height
+            continue
+
+        item = data
+        key = item.get("key")
+        label = item.get("label") or item.get("key", "")
+
+        status_val = status_map.get(key)
+        if status_val is True:
+            circle_color = (60, 170, 60)
+            circle_bg = (30, 70, 30)
+        elif status_val is False:
+            circle_color = (180, 55, 55)
+            circle_bg = (70, 25, 25)
+        else:
+            circle_color = (140, 140, 140)
+            circle_bg = (60, 60, 60)
+
+        # Site label (indent to distinguish from category title)
+        label_surf = config.small_font.render(label, True, THEME_COLORS["text"])
+        screen.blit(label_surf, (col_site_x + 18, y))
+
+        # Status circle
+        radius = 14
+        center_x = col_status_x + radius
+        center_y = y + config.small_font.get_height() // 2
+        pygame.draw.circle(screen, circle_bg, (center_x, center_y), radius)
+        pygame.draw.circle(screen, circle_color, (center_x, center_y), radius, 2)
+
+        # Separator
+        sep_y = y + row_height - 8
+        pygame.draw.line(screen, THEME_COLORS["border"], (menu_x + 25, sep_y), (menu_x + menu_width - 25, sep_y), 1)
+        y += row_height
+
+    # Footer hint
+    hint_font = config.tiny_font if hasattr(config, "tiny_font") else config.small_font
+    if in_progress:
+        done = int(progress.get("done", 0)) if isinstance(progress, dict) else 0
+        total = int(progress.get("total", 0)) if isinstance(progress, dict) else 0
+        if _ and _("connection_status_progress") != "connection_status_progress":
+            try:
+                hint_txt = _("connection_status_progress").format(done=done, total=total)
+            except Exception:
+                hint_txt = _("connection_status_checking") if _ else "Checking..."
+        else:
+            hint_txt = f"Checking... {done}/{total}" if total else ("Checking..." if not _ else _("connection_status_checking"))
+    elif last_ts:
+        try:
+            time_str = datetime.fromtimestamp(last_ts).strftime("%H:%M:%S")
+        except Exception:
+            time_str = ""
+        if _ and _("connection_status_last_check") != "connection_status_last_check":
+            try:
+                hint_txt = _("connection_status_last_check").format(time=time_str)
+            except Exception:
+                hint_txt = f"Last check: {time_str}" if time_str else ""
+        else:
+            hint_txt = f"Last check: {time_str}" if time_str else ""
+    else:
+        hint_txt = ""
+
+    if hint_txt:
+        hint_surf = hint_font.render(hint_txt, True, THEME_COLORS.get("text_dim", THEME_COLORS["text"]))
+        hint_rect = hint_surf.get_rect(center=(config.screen_width // 2, menu_y + menu_height - 26))
+        screen.blit(hint_surf, hint_rect)
 
 
 def draw_filter_platforms_menu(screen):
