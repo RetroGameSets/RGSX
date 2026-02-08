@@ -1,4 +1,4 @@
-import requests
+import requests  # type: ignore
 import subprocess
 import os
 import sys
