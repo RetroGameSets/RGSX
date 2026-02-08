@@ -1,4 +1,5 @@
 import shutil
+import requests  # type: ignore
 import re
 import json
 import os
@@ -648,7 +649,7 @@ def _check_url_connectivity(url: str, timeout: int = 6) -> bool:
     headers = {"User-Agent": "RGSX-Connectivity/1.0"}
     try:
         try:
-            import requests  # type: ignore
+           
 
             try:
                 response = requests.head(url, timeout=timeout, allow_redirects=True, headers=headers)
@@ -927,7 +928,7 @@ def check_extension_before_download(url, platform, game_name):
 
         is_supported = is_extension_supported(sanitized_name, platform, extensions_data)
         extension = os.path.splitext(sanitized_name)[1].lower()
-        is_archive = extension in (".zip", ".rar")
+        is_archive = extension in (".zip", ".rar", ".7z")
 
         # Déterminer si le système (dossier) est connu dans extensions_data
         dest_folder_name = _get_dest_folder_name(platform)
@@ -1838,6 +1839,95 @@ def extract_rar(rar_path, dest_dir, url):
             except Exception as e:
                 logger.error(f"Erreur lors de la suppression de {rar_path}: {str(e)}")
 
+
+def extract_7z(archive_path, dest_dir, url):
+    """Extrait le contenu d'un fichier 7z dans le dossier cible."""
+    try:
+        os.makedirs(dest_dir, exist_ok=True)
+
+        if config.OPERATING_SYSTEM == "Windows":
+            seven_z_cmd = config.SEVEN_Z_EXE
+        else:
+            seven_z_cmd = config.SEVEN_Z_LINUX
+            try:
+                if os.path.exists(seven_z_cmd) and not os.access(seven_z_cmd, os.X_OK):
+                    logger.warning("7zz n'est pas exécutable, correction des permissions...")
+                    os.chmod(seven_z_cmd, 0o755)
+            except Exception as e:
+                logger.error(f"Erreur lors de la vérification des permissions de 7zz: {e}")
+
+        if not os.path.exists(seven_z_cmd):
+            return False, "7z non trouvé - vérifiez que 7z.exe (Windows) ou 7zz (Linux) est présent dans assets/progs"
+
+        # Capture état initial
+        before_dirs = _capture_directories_before_extraction(dest_dir)
+        before_items = _capture_all_items_before_extraction(dest_dir)
+        iso_before = set()
+        for root, dirs, files in os.walk(dest_dir):
+            for file in files:
+                if file.lower().endswith('.iso'):
+                    iso_before.add(os.path.abspath(os.path.join(root, file)))
+
+        # Calcul taille totale via 7z l -slt (best effort)
+        total_size = 0
+        try:
+            list_cmd = [seven_z_cmd, "l", "-slt", archive_path]
+            result = subprocess.run(list_cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                current_size = None
+                is_dir = False
+                for line in result.stdout.splitlines():
+                    line = line.strip()
+                    if not line:
+                        if current_size is not None and not is_dir:
+                            total_size += current_size
+                        current_size = None
+                        is_dir = False
+                        continue
+                    if line.startswith("Attributes ="):
+                        attrs = line.split("=", 1)[1].strip()
+                        if "D" in attrs:
+                            is_dir = True
+                    elif line.startswith("Size ="):
+                        try:
+                            current_size = int(line.split("=", 1)[1].strip())
+                        except Exception:
+                            current_size = None
+                if current_size is not None and not is_dir:
+                    total_size += current_size
+        except Exception as e:
+            logger.debug(f"Impossible de calculer la taille 7z: {e}")
+
+        if url not in getattr(config, 'download_progress', {}):
+            config.download_progress[url] = {}
+        config.download_progress[url].update({
+            "downloaded_size": 0,
+            "total_size": total_size,
+            "status": "Extracting",
+            "progress_percent": 0
+        })
+        config.needs_redraw = True
+
+        extract_cmd = [seven_z_cmd, "x", archive_path, f"-o{dest_dir}", "-y"]
+        logger.debug(f"Commande d'extraction 7z: {' '.join(extract_cmd)}")
+        result = subprocess.run(extract_cmd, capture_output=True, text=True)
+        if result.returncode > 2:
+            error_msg = result.stderr.strip() or f"Erreur extraction 7z (code {result.returncode})"
+            logger.error(error_msg)
+            return False, error_msg
+        if result.returncode != 0:
+            logger.warning(f"7z a retourné un avertissement (code {result.returncode}): {result.stderr}")
+
+        # Gestion plateformes spéciales
+        success, error_msg = _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before, url, before_items)
+        if not success:
+            return False, error_msg
+
+        return _finalize_extraction(archive_path, dest_dir, url)
+    except Exception as e:
+        logger.error(f"Erreur lors de l'extraction 7z: {str(e)}")
+        return False, _("utils_extraction_failed").format(str(e))
+
 def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archive_name=None):
     """Gère le traitement spécifique des jeux PS3.
    PS3 Redump (ps3): Décryptage ISO + extraction dans dossier .ps3
@@ -1894,7 +1984,6 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archi
                 key_zip_path = os.path.join(dest_dir, f"_temp_key_{key_zip_name}")
                 
                 try:
-                    import requests
                     response = requests.get(key_url, stream=True, timeout=30)
                     response.raise_for_status()
                     
@@ -2688,6 +2777,57 @@ def load_api_keys(force: bool = False):
             'realdebrid': getattr(config, 'API_KEY_REALDEBRID', ''),
             'reloaded': False
         }
+
+
+def load_archive_org_cookie(force: bool = False) -> str:
+    """Charge le cookie Archive.org depuis un fichier texte.
+
+    - Fichier: config.ARCHIVE_ORG_COOKIE_PATH
+    - Accepte soit une ligne brute de cookie, soit une ligne "Cookie: ..."
+    - Utilise un cache mtime pour éviter les relectures
+    """
+    try:
+        path = getattr(config, 'ARCHIVE_ORG_COOKIE_PATH', '')
+        if not path:
+            return ""
+        cache_attr = '_archive_cookie_cache'
+        if not hasattr(config, cache_attr):
+            setattr(config, cache_attr, {'mtime': None, 'value': ''})
+        cache_data = getattr(config, cache_attr)
+
+        # Créer le fichier vide si absent
+        try:
+            if not os.path.exists(path):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write("")
+        except Exception as ce:
+            logger.error(f"Impossible de préparer le fichier cookie archive.org: {ce}")
+            return ""
+
+        try:
+            mtime = os.path.getmtime(path)
+        except Exception:
+            mtime = None
+
+        if force or (mtime is not None and mtime != cache_data.get('mtime')):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    value = f.read().strip()
+            except Exception as re:
+                logger.error(f"Erreur lecture cookie archive.org: {re}")
+                value = ""
+
+            if value.lower().startswith("cookie:"):
+                value = value.split(":", 1)[1].strip()
+
+            cache_data['mtime'] = mtime
+            cache_data['value'] = value
+
+        return cache_data.get('value', '') or ""
+    except Exception as e:
+        logger.error(f"Erreur load_archive_org_cookie: {e}")
+        return ""
 
 
 def save_api_keys(api_keys: dict):

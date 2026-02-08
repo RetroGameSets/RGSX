@@ -15,7 +15,7 @@ try:
 except Exception:
     pygame = None  # type: ignore
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
-from utils import sanitize_filename, extract_zip, extract_rar, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys
+from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys, load_archive_org_cookie
 from history import save_history
 from display import show_toast
 import logging
@@ -32,10 +32,44 @@ from language import _  # Import de la fonction de traduction
 import re
 import html as html_module
 from urllib.parse import urljoin, unquote
+import urllib.parse
 
 
 
 logger = logging.getLogger(__name__)
+
+
+def _redact_headers(headers: dict) -> dict:
+    """Return a copy of headers with sensitive fields redacted for logs."""
+    if not isinstance(headers, dict):
+        return {}
+    safe = headers.copy()
+    if 'Cookie' in safe and safe['Cookie']:
+        safe['Cookie'] = '<redacted>'
+    return safe
+
+
+def _split_archive_org_path(url: str):
+    """Parse archive.org download URL and return (identifier, archive_name, inner_path)."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        parts = parsed.path.split('/download/', 1)
+        if len(parts) != 2:
+            return None, None, None
+        after = parts[1]
+        identifier = after.split('/', 1)[0]
+        rest = after[len(identifier):]
+        if rest.startswith('/'):
+            rest = rest[1:]
+        rest_decoded = urllib.parse.unquote(rest)
+        if '/' not in rest_decoded:
+            return identifier, None, None
+        first_seg, remainder = rest_decoded.split('/', 1)
+        if first_seg.lower().endswith(('.zip', '.rar', '.7z')):
+            return identifier, first_seg, remainder
+        return identifier, None, None
+    except Exception:
+        return None, None, None
 
 # --- File d'attente de téléchargements (worker) ---
 def download_queue_worker():
@@ -821,6 +855,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
         cancel_events[task_id] = threading.Event()
     
     def download_thread():
+        nonlocal url
         try:
             # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "Downloading"
             # pour que l'interface web puisse afficher le téléchargement en cours
@@ -1059,14 +1094,67 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             download_headers = headers.copy()
             download_headers['Accept'] = 'application/octet-stream, */*'
             download_headers['Referer'] = 'https://myrient.erista.me/'
+            archive_cookie = load_archive_org_cookie()
+            archive_alt_urls = []
+            meta_json = None
 
-            # Préparation spécifique archive.org : récupérer quelques pages pour obtenir cookies éventuels
+            # Préparation spécifique archive.org : normaliser URL + récupérer cookies/metadata
             if 'archive.org/download/' in url:
                 try:
-                    pre_id = url.split('/download/')[1].split('/')[0]
-                    session.get('https://archive.org/robots.txt', timeout=20)
-                    session.get(f'https://archive.org/metadata/{pre_id}', timeout=20)
+                    parsed = urllib.parse.urlsplit(url)
+                    parts = parsed.path.split('/download/', 1)
+                    pre_id = None
+                    rest_decoded = None
+                    if len(parts) == 2:
+                        after = parts[1]
+                        pre_id = after.split('/', 1)[0]
+                        rest = after[len(pre_id):]
+                        if rest.startswith('/'):
+                            rest = rest[1:]
+                        rest_decoded = urllib.parse.unquote(rest)
+                        rest_encoded = urllib.parse.quote(rest_decoded, safe='/') if rest_decoded else ''
+                        new_path = f"/download/{pre_id}/" + rest_encoded
+                        url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, new_path, parsed.query, parsed.fragment))
+                        logger.debug(f"URL archive.org normalisée: {url}")
+                    if not pre_id:
+                        pre_id = url.split('/download/')[1].split('/')[0]
+
+                    download_headers['Referer'] = f"https://archive.org/details/{pre_id}"
+                    download_headers['Origin'] = 'https://archive.org'
+                    if archive_cookie:
+                        download_headers['Cookie'] = archive_cookie
+                    if archive_cookie:
+                        # Apply cookie to session for redirects to ia*.us.archive.org
+                        for pair in archive_cookie.split(';'):
+                            if '=' in pair:
+                                name, value = pair.split('=', 1)
+                                session.cookies.set(name.strip(), value.strip(), domain='.archive.org')
+
+                    session.get('https://archive.org/robots.txt', timeout=20, headers={'Cookie': archive_cookie} if archive_cookie else None)
+                    meta_resp = session.get(f'https://archive.org/metadata/{pre_id}', timeout=20, headers={'Cookie': archive_cookie} if archive_cookie else None)
+                    if meta_resp.status_code == 200:
+                        try:
+                            meta_json = meta_resp.json()
+                        except Exception:
+                            meta_json = None
                     logger.debug(f"Pré-chargement cookies/metadata archive.org pour {pre_id}")
+
+                    # Construire des URLs alternatives pour archive interne
+                    identifier, archive_name, inner_path = _split_archive_org_path(url)
+                    if identifier and archive_name and inner_path:
+                        # Variante sans préfixe archive
+                        archive_alt_urls.append(f"https://archive.org/download/{identifier}/" + urllib.parse.quote(inner_path, safe='/'))
+                        # Variante filename
+                        archive_alt_urls.append(f"https://archive.org/download/{identifier}/{archive_name}?filename=" + urllib.parse.quote(inner_path, safe='/'))
+                        # Variante view_archive.php via serveur/dir metadata
+                        if meta_json:
+                            server = meta_json.get('server')
+                            directory = meta_json.get('dir')
+                            if server and directory:
+                                archive_path = f"{directory}/{archive_name}"
+                                view_url = f"https://{server}/view_archive.php?archive=" + urllib.parse.quote(archive_path, safe='/') + "&file=" + urllib.parse.quote(inner_path, safe='/')
+                                # Prioriser view_archive.php (cas valide observe dans le navigateur)
+                                archive_alt_urls.insert(0, view_url)
                 except Exception as e:
                     logger.debug(f"Pré-chargement archive.org ignoré: {e}")
             
@@ -1087,19 +1175,22 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             header_variants = [
                 download_headers,
                 {  # Variante sans Referer spécifique
-                    'User-Agent': headers['User-Agent'],
+                    'User-Agent': headers.get('User-Agent', download_headers.get('User-Agent', 'Mozilla/5.0')),
                     'Accept': 'application/octet-stream,*/*;q=0.8',
-                    'Accept-Language': headers['Accept-Language'],
-                    'Connection': 'keep-alive'
+                    'Accept-Language': headers.get('Accept-Language', 'en-US,en;q=0.5'),
+                    'Connection': 'keep-alive',
+                    **({'Cookie': archive_cookie} if archive_cookie else {})
                 },
                 {  # Variante minimaliste type curl
                     'User-Agent': 'curl/8.4.0',
-                    'Accept': '*/*'
+                    'Accept': '*/*',
+                    **({'Cookie': archive_cookie} if archive_cookie else {})
                 },
                 {  # Variante avec Referer archive.org
-                    'User-Agent': headers['User-Agent'],
+                    'User-Agent': headers.get('User-Agent', download_headers.get('User-Agent', 'Mozilla/5.0')),
                     'Accept': '*/*',
-                    'Referer': 'https://archive.org/'
+                    'Referer': 'https://archive.org/',
+                    **({'Cookie': archive_cookie} if archive_cookie else {})
                 }
             ]
             response = None
@@ -1117,7 +1208,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         # Mettre à jour le fichier web
                 # Plus besoin de update_web_progress
                     
-                    logger.debug(f"Tentative téléchargement {attempt}/{len(header_variants)} avec headers: {hv}")
+                    logger.debug(f"Tentative téléchargement {attempt}/{len(header_variants)} avec headers: {_redact_headers(hv)}")
                     # Timeout plus long pour archive.org, avec tuple (connect_timeout, read_timeout)
                     timeout_val = (60, 90) if 'archive.org' in url else 30
                     r = session.get(url, stream=True, timeout=timeout_val, allow_redirects=True, headers=hv)
@@ -1161,13 +1252,36 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         time.sleep(2)
             
             if response is None:
+                if archive_alt_urls and (last_status in (401, 403) or last_error_type in ("timeout", "connection", "request")):
+                    for alt_url in archive_alt_urls:
+                        try:
+                            timeout_val = (45, 90)
+                            logger.debug(f"Tentative archive.org alt URL: {alt_url}")
+                            alt_headers = download_headers.copy()
+                            try:
+                                alt_host = urllib.parse.urlsplit(alt_url).netloc
+                                if alt_host.startswith("ia") and alt_host.endswith(".archive.org"):
+                                    alt_headers["Referer"] = f"https://{alt_host}/"
+                                    alt_headers["Origin"] = "https://archive.org"
+                            except Exception:
+                                pass
+                            r = session.get(alt_url, stream=True, timeout=timeout_val, allow_redirects=True, headers=alt_headers)
+                            if r.status_code not in (401, 403):
+                                r.raise_for_status()
+                                response = r
+                                url = alt_url
+                                break
+                        except Exception as e:
+                            logger.debug(f"Alt URL archive.org échec: {e}")
                 # Fallback metadata archive.org pour message clair
                 if 'archive.org/download/' in url:
                     try:
                         identifier = url.split('/download/')[1].split('/')[0]
-                        meta_resp = session.get(f'https://archive.org/metadata/{identifier}', timeout=30)
-                        if meta_resp.status_code == 200:
-                            meta_json = meta_resp.json()
+                        if meta_json is None:
+                            meta_resp = session.get(f'https://archive.org/metadata/{identifier}', timeout=30)
+                            if meta_resp.status_code == 200:
+                                meta_json = meta_resp.json()
+                        if meta_json:
                             if meta_json.get('is_dark'):
                                 raise requests.HTTPError(f"Item archive.org restreint (is_dark=true): {identifier}")
                             if not meta_json.get('files'):
@@ -1176,7 +1290,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             available = [f.get('name') for f in meta_json.get('files', [])][:10]
                             raise requests.HTTPError(f"Accès refusé (HTTP {last_status}). Fichiers disponibles exemples: {available}")
                         else:
-                            raise requests.HTTPError(f"HTTP {last_status} & metadata {meta_resp.status_code} pour {identifier}")
+                            raise requests.HTTPError(f"HTTP {last_status} & metadata indisponible pour {identifier}")
                     except requests.HTTPError:
                         raise
                     except Exception as e:
@@ -1365,6 +1479,21 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         logger.error(f"Exception lors de l'extraction RAR: {str(e)}")
                         result[0] = False
                         result[1] = f"Erreur extraction RAR {game_name}: {str(e)}"
+                elif extension == ".7z":
+                    try:
+                        success, msg = extract_7z(dest_path, dest_dir, url)
+                        if success:
+                            logger.debug(f"Extraction 7z réussie: {msg}")
+                            result[0] = True
+                            result[1] = _("network_download_extract_ok").format(game_name)
+                        else:
+                            logger.error(f"Erreur extraction 7z: {msg}")
+                            result[0] = False
+                            result[1] = _("network_extraction_failed").format(msg)
+                    except Exception as e:
+                        logger.error(f"Exception lors de l'extraction 7z: {str(e)}")
+                        result[0] = False
+                        result[1] = f"Erreur extraction 7z {game_name}: {str(e)}"
                 else:
                     logger.warning(f"Type d'archive non supporté: {extension}")
                     result[0] = True
@@ -2401,6 +2530,21 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                 logger.error(f"Exception lors de l'extraction RAR: {str(e)}")
                                 result[0] = False
                                 result[1] = f"Erreur extraction RAR {game_name}: {str(e)}"
+                        elif extension == ".7z":
+                            try:
+                                success, msg = extract_7z(dest_path, dest_dir, url)
+                                logger.debug(f"Extraction 7z terminée: {msg}")
+                                if success:
+                                    result[0] = True
+                                    result[1] = _("network_download_extract_ok").format(game_name)
+                                else:
+                                    logger.error(f"Erreur extraction 7z: {msg}")
+                                    result[0] = False
+                                    result[1] = _("network_extraction_failed").format(msg)
+                            except Exception as e:
+                                logger.error(f"Exception lors de l'extraction 7z: {str(e)}")
+                                result[0] = False
+                                result[1] = f"Erreur extraction 7z {game_name}: {str(e)}"
                         else:
                             logger.warning(f"Type d'archive non supporté: {extension}")
                             result[0] = True
