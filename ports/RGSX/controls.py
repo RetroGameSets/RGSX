@@ -31,6 +31,8 @@ from rgsx_settings import (
 from accessibility import save_accessibility_settings
 from scraper import get_game_metadata, download_image_to_surface
 
+from pathlib import Path
+
 logger = logging.getLogger(__name__)
 
 # Extensions d'archives pour lesquelles on ignore l'avertissement d'extension non supportée
@@ -326,6 +328,29 @@ def _launch_next_queued_download():
         if config.download_queue:
             _launch_next_queued_download()
 
+def filter_games_by_search_query():
+    base_games = config.games
+    if config.game_filter_obj and config.game_filter_obj.is_active():
+        base_games = config.game_filter_obj.apply_filters(config.games)
+
+    platform = config.platforms[config.current_platform]
+    platform_name = config.platform_names.get(platform, platform)
+    fbneo_selected = platform_name == 'Final Burn Neo'
+    if not fbneo_selected:
+        return [game for game in base_games if config.search_query.lower() in game[0].lower()]
+    
+    #fbneo filter using 'full game name' instead 'rom file name'
+    filtered_games = []
+    for game in base_games:
+        rom_name = Path(game[0]).stem
+        if rom_name in config.fbneo_games:
+            fbneo_full_name = config.fbneo_games[rom_name]["full name"]
+            if config.search_query.lower() in fbneo_full_name.lower():
+                filtered_games.append(game)
+        
+    return filtered_games
+    ...
+
 def handle_controls(event, sources, joystick, screen):
     """Gère un événement clavier/joystick/souris et la répétition automatique.
     Retourne 'quit', 'download', 'redownload', ou None."""  
@@ -563,10 +588,7 @@ def handle_controls(event, sources, joystick, screen):
                 elif is_input_matched(event, "confirm"):
                     config.search_query += keyboard_layout[row][col]
                     # Appliquer d'abord les filtres avancés si actifs, puis le filtre par nom
-                    base_games = config.games
-                    if config.game_filter_obj and config.game_filter_obj.is_active():
-                        base_games = config.game_filter_obj.apply_filters(config.games)
-                    config.filtered_games = [game for game in base_games if config.search_query.lower() in game[0].lower()]
+                    config.filtered_games = filter_games_by_search_query()
                     config.current_game = 0
                     config.scroll_offset = 0
                     config.needs_redraw = True
@@ -575,10 +597,7 @@ def handle_controls(event, sources, joystick, screen):
                     if config.search_query:
                         config.search_query = config.search_query[:-1]
                         # Appliquer d'abord les filtres avancés si actifs, puis le filtre par nom
-                        base_games = config.games
-                        if config.game_filter_obj and config.game_filter_obj.is_active():
-                            base_games = config.game_filter_obj.apply_filters(config.games)
-                        config.filtered_games = [game for game in base_games if config.search_query.lower() in game[0].lower()]
+                        config.filtered_games = filter_games_by_search_query()
                         config.current_game = 0
                         config.scroll_offset = 0
                         config.needs_redraw = True
@@ -586,10 +605,7 @@ def handle_controls(event, sources, joystick, screen):
                 elif is_input_matched(event, "space"):
                     config.search_query += " "
                     # Appliquer d'abord les filtres avancés si actifs, puis le filtre par nom
-                    base_games = config.games
-                    if config.game_filter_obj and config.game_filter_obj.is_active():
-                        base_games = config.game_filter_obj.apply_filters(config.games)
-                    config.filtered_games = [game for game in base_games if config.search_query.lower() in game[0].lower()]
+                    config.filtered_games = filter_games_by_search_query()
                     config.current_game = 0
                     config.scroll_offset = 0
                     config.needs_redraw = True
@@ -642,10 +658,7 @@ def handle_controls(event, sources, joystick, screen):
                     if event.unicode.isalnum() or event.unicode == ' ':
                         config.search_query += event.unicode
                         # Appliquer d'abord les filtres avancés si actifs, puis le filtre par nom
-                        base_games = config.games
-                        if config.game_filter_obj and config.game_filter_obj.is_active():
-                            base_games = config.game_filter_obj.apply_filters(config.games)
-                        config.filtered_games = [game for game in base_games if config.search_query.lower() in game[0].lower()]
+                        config.filtered_games = filter_games_by_search_query()
                         config.current_game = 0
                         config.scroll_offset = 0
                         config.needs_redraw = True
@@ -655,10 +668,7 @@ def handle_controls(event, sources, joystick, screen):
                         if config.search_query:
                             config.search_query = config.search_query[:-1]
                             # Appliquer d'abord les filtres avancés si actifs, puis le filtre par nom
-                            base_games = config.games
-                            if config.game_filter_obj and config.game_filter_obj.is_active():
-                                base_games = config.game_filter_obj.apply_filters(config.games)
-                            config.filtered_games = [game for game in base_games if config.search_query.lower() in game[0].lower()]
+                            config.filtered_games = filter_games_by_search_query()
                             config.current_game = 0
                             config.scroll_offset = 0
                             config.needs_redraw = True
