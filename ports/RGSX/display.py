@@ -1207,16 +1207,25 @@ def draw_game_list(screen):
     #logger.debug(f"[DRAW_GAME_LIST] Called - platform={config.current_platform}, search_mode={config.search_mode}, filter_active={config.filter_active}")
     platform = config.platforms[config.current_platform]
     platform_name = config.platform_names.get(platform, platform)
-    games = config.filtered_games if config.filter_active or config.search_mode else config.games
-    game_count = len(games)
-    #logger.debug(f"[DRAW_GAME_LIST] Games count={game_count}, current_game={config.current_game}, filtered_games={len(config.filtered_games) if config.filtered_games else 0}, config.games={len(config.games) if config.games else 0}")
 
     fbneo_selected = platform_name == 'Final Burn Neo'
-    if games and fbneo_selected:
+    if fbneo_selected:
         fbneo_game_list_path = os.path.join(config.SAVE_FOLDER, FBNEO_GAME_LIST)
         download_fbneo_list(fbneo_game_list_path) # download the fbneo game list if necessary - 10 MB file
         config.fbneo_games = parse_fbneo_list(fbneo_game_list_path)
+        for game in config.games:
+            clean_name = game.display_name
+            if clean_name in config.fbneo_games:
+                fbneo_game = config.fbneo_games[clean_name]
+                game.display_name = fbneo_game["full name"]
         ...
+
+    if config.game_filter_obj:
+        config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+
+    games = config.filtered_games if config.filter_active or config.search_mode else config.games
+    game_count = len(games)
+    #logger.debug(f"[DRAW_GAME_LIST] Games count={game_count}, current_game={config.current_game}, filtered_games={len(config.filtered_games) if config.filtered_games else 0}, config.games={len(config.games) if config.games else 0}")
 
     if not games:
         logger.debug("Aucune liste de jeux disponible")
@@ -1364,17 +1373,9 @@ def draw_game_list(screen):
 
     for i in range(config.scroll_offset, min(config.scroll_offset + items_per_page, len(games))):
         item = games[i]
-        if isinstance(item, (list, tuple)) and item:
-            game_name = item[0]
-            size_val = item[2] if len(item) > 2 else None
-        else:
-            game_name = str(item)
-            size_val = None
-        
-        if fbneo_selected:
-            rom_name = Path(game_name).stem
-            game_name = config.fbneo_games[rom_name]["full name"]
-       
+        game_name = item.display_name
+        size_val = item.size
+      
         # Vérifier si le jeu est déjà téléchargé
         is_downloaded = is_game_downloaded(platform_name, game_name)
         

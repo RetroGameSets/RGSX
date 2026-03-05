@@ -8,7 +8,7 @@ import datetime
 import threading
 import logging
 import config
-from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE, CONTROLS_CONFIG_PATH
+from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE, CONTROLS_CONFIG_PATH, Game
 from display import draw_validation_transition, show_toast
 from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel
 from utils import (
@@ -328,25 +328,16 @@ def _launch_next_queued_download():
         if config.download_queue:
             _launch_next_queued_download()
 
-def filter_games_by_search_query():
+def filter_games_by_search_query() -> list[Game]:
     base_games = config.games
     if config.game_filter_obj and config.game_filter_obj.is_active():
         base_games = config.game_filter_obj.apply_filters(config.games)
-
-    platform = config.platforms[config.current_platform]
-    platform_name = config.platform_names.get(platform, platform)
-    fbneo_selected = platform_name == 'Final Burn Neo'
-    if not fbneo_selected:
-        return [game for game in base_games if config.search_query.lower() in game[0].lower()]
-    
-    #fbneo filter using 'full game name' instead 'rom file name'
+ 
     filtered_games = []
     for game in base_games:
-        rom_name = Path(game[0]).stem
-        if rom_name in config.fbneo_games:
-            fbneo_full_name = config.fbneo_games[rom_name]["full name"]
-            if config.search_query.lower() in fbneo_full_name.lower():
-                filtered_games.append(game)
+        game_name = game.display_name 
+        if config.search_query.lower() in game_name.lower():
+            filtered_games.append(game)
         
     return filtered_games
     ...
@@ -534,7 +525,7 @@ def handle_controls(event, sources, joystick, screen):
 
         # Jeux
         elif config.menu_state == "game":
-            games = config.filtered_games if config.filter_active or config.search_mode else config.games
+            games: list[Game] = config.filtered_games if config.filter_active or config.search_mode else config.games
             if config.search_mode and getattr(config, 'joystick', False):
                 keyboard_layout = [
                     ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
@@ -736,8 +727,8 @@ def handle_controls(event, sources, joystick, screen):
                     if games:
                         idx = config.current_game
                         game = games[idx]
-                        url = game[1]
-                        game_name = game[0]
+                        url = game.url
+                        game_name = game.name
                         platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
                         
                         pending_download = check_extension_before_download(url, platform, game_name)
@@ -3194,8 +3185,8 @@ def handle_controls(event, sources, joystick, screen):
                         # Déclencher le téléchargement normal
                         games = config.filtered_games if config.filter_active or config.search_mode else config.games
                         if games:
-                            url = games[config.current_game][1]
-                            game_name = games[config.current_game][0]
+                            url = games[config.current_game].url
+                            game_name = games[config.current_game].name
                             platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
                             logger.debug(f"Appui court sur confirm ({press_duration}ms), téléchargement pour {game_name}, URL: {url}")
                             
@@ -3326,8 +3317,8 @@ def handle_controls(event, sources, joystick, screen):
                         # Déclencher le téléchargement normal (même code que pour KEYUP)
                         games = config.filtered_games if config.filter_active or config.search_mode else config.games
                         if games:
-                            url = games[config.current_game][1]
-                            game_name = games[config.current_game][0]
+                            url = games[config.current_game].url
+                            game_name = games[config.current_game].name
                             platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
                             logger.debug(f"Appui court sur confirm ({press_duration}ms), téléchargement pour {game_name}, URL: {url}")
                             
