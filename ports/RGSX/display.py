@@ -21,6 +21,11 @@ from rgsx_settings import (load_rgsx_settings, get_light_mode, get_show_unsuppor
                             get_hide_premium_systems, get_symlink_option)
 from game_filters import GameFilters  
 
+import json
+from pathlib import Path
+from typing import Dict, Any
+import urllib.request
+
 logger = logging.getLogger(__name__)
 
 OVERLAY = None  # Initialisé dans init_display()
@@ -1154,6 +1159,48 @@ def draw_platform_grid(screen):
         for key in keys_to_remove:
             del platform_images_cache[key]
 
+
+
+FBNEO_GAME_LIST = "fbneo_gamelist.txt"
+
+def download_fbneo_list(path_to_save: str) -> None:
+    url = "https://raw.githubusercontent.com/libretro/FBNeo/master/gamelist.txt"
+    path = Path(path_to_save)
+
+    if not path.exists():
+        logger.debug("Downloading fbneo gamelist.txt from github ...")
+        urllib.request.urlretrieve(url, path)
+
+    logger.debug("Download finished:", path)
+    ...
+
+def parse_fbneo_list(path: str) -> Dict[str, Any]:
+    games : Dict[str, Any] = {}
+    headers = None
+
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip()
+
+            if line.startswith("+"):
+                continue
+
+            if "|" not in line:
+                continue
+
+            parts = [p.strip() for p in line.split("|")[1:-1]]
+
+            if headers is None:
+                headers = parts
+                continue
+
+            row = dict(zip(headers, parts))
+
+            name = row["name"]
+            games[name] = row
+
+    return games
+
 # Liste des jeux
 def draw_game_list(screen):
     """Affiche la liste des jeux avec un style moderne."""
@@ -1163,6 +1210,13 @@ def draw_game_list(screen):
     games = config.filtered_games if config.filter_active or config.search_mode else config.games
     game_count = len(games)
     #logger.debug(f"[DRAW_GAME_LIST] Games count={game_count}, current_game={config.current_game}, filtered_games={len(config.filtered_games) if config.filtered_games else 0}, config.games={len(config.games) if config.games else 0}")
+
+    fbneo_selected = platform_name == 'Final Burn Neo'
+    if games and fbneo_selected:
+        fbneo_game_list_path = os.path.join(config.SAVE_FOLDER, FBNEO_GAME_LIST)
+        download_fbneo_list(fbneo_game_list_path) # download the fbneo game list if necessary - 10 MB file
+        config.fbneo_games = parse_fbneo_list(fbneo_game_list_path)
+        ...
 
     if not games:
         logger.debug("Aucune liste de jeux disponible")
@@ -1317,6 +1371,10 @@ def draw_game_list(screen):
             game_name = str(item)
             size_val = None
         
+        if fbneo_selected:
+            rom_name = Path(game_name).stem
+            game_name = config.fbneo_games[rom_name]["full name"]
+       
         # Vérifier si le jeu est déjà téléchargé
         is_downloaded = is_game_downloaded(platform_name, game_name)
         
