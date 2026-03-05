@@ -156,9 +156,6 @@ class GameFilters:
             r'\([^\)]*PRERELEASE[^\)]*\)',
             r'\([^\)]*UNFINISHED[^\)]*\)',
             r'\([^\)]*WIP[^\)]*\)',
-            r'\[[^\]]*BETA[^\]]*\]',
-            r'\[[^\]]*DEMO[^\]]*\]',
-            r'\[[^\]]*TEST[^\]]*\]'
         ]
         return any(re.search(pattern, name) for pattern in non_release_patterns)
     
