@@ -526,7 +526,7 @@ async def main():
                 # Appui long détecté, ouvrir le scraper
                 games = config.filtered_games if config.filter_active or config.search_mode else config.games
                 if games:
-                    game_name = games[config.current_game][0]
+                    game_name = games[config.current_game].name
                     platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
                     
                     config.previous_menu_state = "game"
@@ -835,12 +835,9 @@ async def main():
                     logger.debug("Action quit détectée, arrêt de l'application")
                 elif action == "download" and config.menu_state == "game" and config.filtered_games:
                     game = config.filtered_games[config.current_game]
-                    if isinstance(game, (list, tuple)):
-                        game_name = game[0]
-                        url = game[1] if len(game) > 1 else None
-                    else:  # fallback str
-                        game_name = str(game)
-                        url = None
+                    game_name = game.name
+                    url = game.url
+
                     # Nouveau schéma: config.platforms contient déjà platform_name (string)
                     platform_name = config.platforms[config.current_platform]
                     if url:

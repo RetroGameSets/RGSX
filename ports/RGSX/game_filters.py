@@ -9,6 +9,8 @@ import re
 import logging
 from typing import List, Tuple, Dict, Any
 
+from config import Game
+
 logger = logging.getLogger(__name__)
 
 
@@ -156,9 +158,7 @@ class GameFilters:
             r'\([^\)]*PRERELEASE[^\)]*\)',
             r'\([^\)]*UNFINISHED[^\)]*\)',
             r'\([^\)]*WIP[^\)]*\)',
-            r'\[[^\]]*BETA[^\]]*\]',
-            r'\[[^\]]*DEMO[^\]]*\]',
-            r'\[[^\]]*TEST[^\]]*\]'
+            r'\([^\)]*BOOTLEG[^\)]*\)',
         ]
         return any(re.search(pattern, name) for pattern in non_release_patterns)
     
@@ -211,7 +211,7 @@ class GameFilters:
         
         return best_priority
     
-    def apply_filters(self, games: List[Tuple]) -> List[Tuple]:
+    def apply_filters(self, games: list[Game]) -> list[Game]:
         """
         Applique les filtres à une liste de jeux
         games: Liste de tuples (game_name, game_url, size)
@@ -224,7 +224,7 @@ class GameFilters:
         
         # Filtrage par région
         for game in games:
-            game_name = game[0]
+            game_name = game.display_name
             
             # Vérifier les filtres de région
             if self.region_filters:
@@ -255,12 +255,12 @@ class GameFilters:
         
         return filtered_games
     
-    def _apply_one_rom_per_game(self, games: List[Tuple]) -> List[Tuple]:
+    def _apply_one_rom_per_game(self, games: List[Game]) -> List[Game]:
         """Garde seulement une ROM par jeu selon la priorité de région"""
         games_by_base = {}
         
         for game in games:
-            game_name = game[0]
+            game_name = game.display_name
             base_name = self.get_base_game_name(game_name)
             
             if base_name not in games_by_base:
@@ -276,7 +276,7 @@ class GameFilters:
             else:
                 # Trier par priorité de région
                 sorted_games = sorted(game_list, 
-                                     key=lambda g: self.get_region_priority(g[0]))
+                                     key=lambda g: self.get_region_priority(g.display_name))
                 result.append(sorted_games[0])
         
         return result

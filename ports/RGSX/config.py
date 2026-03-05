@@ -2,6 +2,15 @@
 import os
 import logging
 import platform
+from typing import Optional
+from dataclasses import dataclass
+
+@dataclass(slots=True)
+class Game:
+    name: str
+    url: str
+    size: str
+    display_name: str # name withou file extension or platform prefix
 
 # Headless mode for CLI: set env RGSX_HEADLESS=1 to avoid pygame and noisy prints
 HEADLESS = os.environ.get("RGSX_HEADLESS") == "1"
@@ -364,7 +373,8 @@ filter_platforms_dirty = False  # indique si modifications non sauvegardées
 filter_platforms_selection = []  # copie de travail des plateformes visibles (bool masque?) structure: list of (name, hidden_bool)
 
 # Affichage des jeux et sélection
-games = []  # Liste des jeux pour la plateforme actuelle
+games: list[Game] = []  # Liste des jeux pour la plateforme actuelle
+fbneo_games = {}
 current_game = 0  # Index du jeu actuellement sélectionné
 menu_state = "loading"  # État actuel de l'interface menu
 scroll_offset = 0  # Offset de défilement pour la liste des jeux
@@ -389,7 +399,7 @@ selected_language_index = 0  # Index de la langue sélectionnée dans la liste
 
 
 # Recherche et filtres
-filtered_games = []  # Liste des jeux filtrés par recherche ou filtre
+filtered_games: list[Game] = []  # Liste des jeux filtrés par recherche ou filtre
 search_mode = False  # Indicateur si le mode recherche est actif
 search_query = ""  # Chaîne de recherche saisie par l'utilisateur
 filter_active = False  # Indicateur si un filtre est appliqué

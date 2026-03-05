@@ -1,3 +1,4 @@
+from pathlib import Path
 import shutil
 import requests  # type: ignore
 import re
@@ -7,7 +8,7 @@ import logging
 import platform
 import subprocess
 import config
-from config import HEADLESS
+from config import HEADLESS, Game
 try:
     if not HEADLESS:
         import pygame  # type: ignore
@@ -1166,7 +1167,7 @@ def load_sources():
         logger.error(f"Erreur fusion systèmes + détection jeux: {e}")
         return []
 
-def load_games(platform_id):
+def load_games(platform_id:str) -> list[Game]:
     try:
         # Retrouver l'objet plateforme pour accéder éventuellement à 'folder'
         platform_dict = None
@@ -1235,7 +1236,13 @@ def load_games(platform_id):
 
         if getattr(config, "games_count_log_verbose", False):
             logger.debug(f"{os.path.basename(game_file)}: {len(normalized)} jeux")
-        return normalized
+
+        games_list: list[Game] = []
+        for name, url, size in normalized:
+            display_name = Path(name).stem
+            display_name = display_name.replace(platform_id, "")
+            games_list.append(Game(name=name, url=url, size=size, display_name=display_name))
+        return games_list
     except Exception as e:
         logger.error(f"Erreur lors du chargement des jeux pour {platform_id}: {e}")
         return []

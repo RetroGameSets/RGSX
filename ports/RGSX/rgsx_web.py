@@ -25,6 +25,7 @@ from utils import load_sources, load_games, extract_data
 from network import download_rom, download_from_1fichier
 from pathlib import Path
 from rgsx_settings import get_language
+from config import Game
 
 try:
     from watchdog.observers import Observer  # type: ignore
@@ -161,7 +162,7 @@ def get_cached_sources() -> tuple[list[dict], str, datetime]:
     return copy.deepcopy(platforms), etag, last_modified
 
 
-def get_cached_games(platform: str) -> tuple[list[tuple], str, datetime]:
+def get_cached_games(platform: str) -> tuple[list[Game], str, datetime]:
     """Return cached games list for platform with metadata."""
     now = time.time()
     with cache_lock:
@@ -696,14 +697,14 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             elif games_last_modified:
                                 latest_modified = games_last_modified
                             for game in games:
-                                game_name = game[0] if isinstance(game, (list, tuple)) else str(game)
+                                game_name = game.name
                                 game_name_lower = game_name.lower()
                                 if all(word in game_name_lower for word in search_words):
                                     matching_games.append({
                                         'game_name': game_name,
                                         'platform': platform_name,
-                                        'url': game[1] if len(game) > 1 and isinstance(game, (list, tuple)) else None,
-                                        'size': normalize_size(game[2] if len(game) > 2 and isinstance(game, (list, tuple)) else None, self._get_language_from_cookies())
+                                        'url': game.url,
+                                        'size': normalize_size(game.size, self._get_language_from_cookies())
                                     })
                         except Exception as e:
                             logger.debug(f"Erreur lors de la recherche dans {platform_name}: {e}")
@@ -750,9 +751,9 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 games, _, games_last_modified = get_cached_games(platform_name)
                 games_formatted = [
                     {
-                        'name': g[0],
-                        'url': g[1] if len(g) > 1 else None,
-                        'size': normalize_size(g[2] if len(g) > 2 else None, lang)
+                        'name': g.name,
+                        'url': g.url,
+                        'size': normalize_size(g.size, lang)
                     }
                     for g in games
                 ]
@@ -1134,7 +1135,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 if game_name_param and game_index is None:
                     game_index = None
                     for idx, game in enumerate(games):
-                        current_game_name = game[0] if isinstance(game, (list, tuple)) else str(game)
+                        current_game_name = game.name
                         if current_game_name == game_name_param:
                             game_index = idx
                             break
@@ -1155,8 +1156,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     return
                 
                 game = games[game_index]
-                game_name = game[0]
-                game_url = game[1] if len(game) > 1 else None
+                game_name = game.name
+                game_url = game.url
                 
                 if not game_url:
                     self._send_json({

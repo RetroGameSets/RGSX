@@ -17,7 +17,7 @@ import re
 import config  # paths, settings, SAVE_FOLDER, etc.
 from utils import load_api_keys as _prime_api_keys  # ensure API key files are created
 import network as network_mod  # for progress_queues access
-from utils import load_sources, load_games, is_extension_supported, load_extensions_json, sanitize_filename, extract_zip_data
+from utils import load_sources, load_games, is_extension_supported, load_extensions_json, sanitize_filename
 from history import load_history, save_history, add_to_history
 from network import download_rom, download_from_1fichier, is_1fichier_url
 from rgsx_settings import get_sources_zip_url
@@ -277,7 +277,7 @@ def cmd_games(args):
         suggestions = []  # (priority, score, game_obj)
         # 1) Substring match (full or sans extension) priority 0, score = position
         for g in games:
-            title = g[0] if isinstance(g, (list, tuple)) and g else None
+            title = g.name
             if not title:
                 continue
             t_lower = title.lower()
@@ -303,7 +303,7 @@ def cmd_games(args):
         # 2) Ordered non-contiguous tokens (priority 1)
         if q_tokens:
             for g in games:
-                title = g[0] if isinstance(g, (list, tuple)) and g else None
+                title = g.name
                 if not title:
                     continue
                 tt = _tokens(title)
@@ -313,7 +313,7 @@ def cmd_games(args):
         # 3) All tokens present, any order (priority 2), score = token set size
         if q_tokens:
             for g in games:
-                title = g[0] if isinstance(g, (list, tuple)) and g else None
+                title = g.name
                 if not title:
                     continue
                 t_tokens = set(_tokens(title))
@@ -322,12 +322,12 @@ def cmd_games(args):
         # Deduplicate by title keeping best (lowest priority, then score)
         best = {}
         for prio, score, g in suggestions:
-            title = g[0] if isinstance(g, (list, tuple)) and g else str(g)
+            title = g.name
             key = title.lower()
             cur = best.get(key)
             if cur is None or (prio, score) < (cur[0], cur[1]):
                 best[key] = (prio, score, g)
-        ranked = sorted(best.values(), key=lambda x: (x[0], x[1], (x[2][0] if isinstance(x[2], (list, tuple)) and x[2] else str(x[2])).lower()))
+        ranked = sorted(best.values(), key=lambda x: (x[0], x[1], (x[2].name if isinstance(x[2], (list, config.Game)) and x[2] else str(x[2])).lower()))
         games = [g for _, _, g in ranked]
     # Table: Name (60) | Size (12) to allow "xxxx.xx MiB"
     NAME_W = 60
@@ -344,7 +344,7 @@ def cmd_games(args):
     print(header)
     print(border)
     for g in games:
-        title = g[0] if isinstance(g, (list, tuple)) and g else str(g)
+        title = g.name
         size_val = ''
         if isinstance(g, (list, tuple)) and len(g) >= 3:
             size_val = display_size(g[2])
@@ -447,11 +447,11 @@ def cmd_download(args):
     def _tokens(s: str) -> list[str]:
         return re.findall(r"[a-z0-9]+", s.lower())
 
-    def _game_title(g) -> str | None:
-        return g[0] if isinstance(g, (list, tuple)) and g else None
+    def _game_title(g: config.Game) -> str | None:
+        return g.name
 
-    def _game_url(g) -> str | None:
-        return g[1] if isinstance(g, (list, tuple)) and len(g) > 1 else None
+    def _game_url(g: config.Game) -> str | None:
+        return g.url
 
     # 1) Exact match (case-insensitive), with and without extension
     match = None
@@ -561,8 +561,8 @@ def cmd_download(args):
                     size_val = ''
                     size_raw = None
                     for g in games:
-                        if isinstance(g, (list, tuple)) and g and g[0] == title and len(g) >= 3:
-                            size_raw = g[2]
+                        if g.name == title:
+                            size_raw = g.size
                             break
                     if size_raw is not None:
                         size_val = display_size(size_raw)
