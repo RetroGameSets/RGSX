@@ -1220,7 +1220,7 @@ def draw_game_list(screen):
                 game.display_name = fbneo_game["full name"]
         ...
 
-    if config.game_filter_obj:
+    if config.game_filter_obj and config.game_filter_obj.is_active() and not config.search_query:
         config.filtered_games = config.game_filter_obj.apply_filters(config.games)
 
     games = config.filtered_games if config.filter_active or config.search_mode else config.games
