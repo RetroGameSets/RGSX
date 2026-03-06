@@ -205,8 +205,8 @@ def get_controller_button_names():
                 for input_tag in inputConfig.findall("input"):
                     if input_tag.get("type") == "button":
                         es_name = input_tag.get("name")
-                        button_id = int(input_tag.get("id"))
-                        readable_name = es_button_names.get(es_name, es_name.upper())
+                        button_id = int(input_tag.get("id")) #type: ignore
+                        readable_name = es_button_names.get(es_name, es_name.upper()) #type: ignore
                         button_names[button_id] = readable_name
                 break
     except Exception as e:
@@ -243,7 +243,7 @@ def get_controller_axis_names():
                 for input_tag in inputConfig.findall("input"):
                     if input_tag.get("type") == "axis":
                         es_name = input_tag.get("name")
-                        axis_id = int(input_tag.get("id"))
+                        axis_id = int(input_tag.get("id")) #type: ignore
                         value = int(input_tag.get("value", "1"))
                         direction = 1 if value > 0 else -1
                         
@@ -431,7 +431,7 @@ def get_readable_input_name(event):
     """Retourne un nom lisible pour une entrée (touche, bouton, axe, hat, ou souris)"""
     if event.type == pygame.KEYDOWN:
         key_value = SDL_TO_PYGAME_KEY.get(event.key, event.key)
-        return KEY_NAMES.get(key_value, pygame.key.name(key_value) or f"Touche {key_value}")
+        return KEY_NAMES.get(key_value, pygame.key.name(key_value) or f"Touche {key_value}") #type: ignore
     elif event.type == pygame.JOYBUTTONDOWN:
         return BUTTON_NAMES.get(event.button, f"Bouton {event.button}")
     elif event.type == pygame.JOYAXISMOTION:
@@ -628,7 +628,7 @@ def map_controls(screen):
                 elif input_type == "button":
                     held_buttons.add(input_value)
                 elif input_type == "axis":
-                    held_axes[input_value[0]] = input_value[1]
+                    held_axes[input_value[0]] = input_value[1] #type: ignore
                 elif input_type == "hat":
                     held_hats[event.hat] = input_value
                 elif input_type == "mouse":

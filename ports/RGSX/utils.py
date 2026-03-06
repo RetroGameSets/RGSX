@@ -9,6 +9,8 @@ import platform
 import subprocess
 import config
 from config import HEADLESS, Game
+from game_filters import GameFilters
+
 try:
     if not HEADLESS:
         import pygame  # type: ignore
@@ -56,6 +58,7 @@ def restart_application(delay_ms: int = 2000):
     - Sets popup_restarting and schedules config.pending_restart_at = now + delay_ms.
     - Main loop (__main__) detects pending_restart_at and calls restart_application(0) to perform the execl.
     """
+    assert pygame, "pygame is None"
     try:
         # Show popup and schedule
         if hasattr(config, 'popup_message'):
@@ -1241,7 +1244,10 @@ def load_games(platform_id:str) -> list[Game]:
         for name, url, size in normalized:
             display_name = Path(name).stem
             display_name = display_name.replace(platform_id, "")
-            games_list.append(Game(name=name, url=url, size=size, display_name=display_name))
+            regions = GameFilters.get_game_regions(display_name)
+            is_non_release = GameFilters.is_non_release_game(display_name)
+            base_name = GameFilters.get_base_game_name(display_name)
+            games_list.append(Game(name=name, url=url, size=size, display_name=display_name, regions=regions, is_non_release=is_non_release, base_name=base_name))
         return games_list
     except Exception as e:
         logger.error(f"Erreur lors du chargement des jeux pour {platform_id}: {e}")
@@ -1301,6 +1307,7 @@ def truncate_text_middle(text, font, max_width, is_filename=True):
     return ''.join(left).rstrip() + ellipsis + ''.join(right).lstrip()
 
 def truncate_text_end(text, font, max_width):
+    assert pygame
     """Tronque le texte à la fin pour qu'il tienne dans max_width avec la police donnée."""
     if not isinstance(text, str):
         logger.error(f"Texte non valide: {text}")
@@ -1365,6 +1372,7 @@ def wrap_text(text, font, max_width):
     return lines
     
 def load_system_image(platform_dict):
+    assert pygame
     """Charge une image système avec la priorité suivante:
     1. platform_image explicite s'il est défini
     2. <platform_name>.png
@@ -2675,6 +2683,7 @@ def handle_xbox(dest_dir, iso_files, url=None):
 
 
 def play_random_music(music_files, music_folder, current_music=None):
+    assert pygame
     if not getattr(config, "music_enabled", True) or not is_mixer_available():
         if is_mixer_available():
             pygame.mixer.music.stop()
@@ -2689,6 +2698,7 @@ def play_random_music(music_files, music_folder, current_music=None):
         logger.debug(f"Lecture de la musique : {music_path}")
         
         def load_and_play_music():
+            assert pygame
             try:
                 if is_mixer_available():
                     pygame.mixer.music.load(music_path)
@@ -2709,6 +2719,7 @@ def play_random_music(music_files, music_folder, current_music=None):
         return current_music
 
 def set_music_popup(music_name):
+    assert pygame
     """Définit le nom de la musique à afficher dans la popup."""
     config.current_music_name = f"♬ {os.path.splitext(music_name)[0]}"  # Utilise l'emoji ♬ directement
     config.music_popup_start_time = pygame.time.get_ticks() / 1000  # Temps actuel en secondes

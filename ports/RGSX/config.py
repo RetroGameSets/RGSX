@@ -2,15 +2,20 @@
 import os
 import logging
 import platform
-from typing import Optional
+from typing import Optional, Tuple
 from dataclasses import dataclass
+
+from pygame.font import Font
 
 @dataclass(slots=True)
 class Game:
     name: str
     url: str
     size: str
-    display_name: str # name withou file extension or platform prefix
+    display_name: str # name without file extension or platform prefix
+    regions: list[str]
+    is_non_release: bool
+    base_name: str # name without file extension, Disc #, etc, used to show 'one rom per game'
 
 # Headless mode for CLI: set env RGSX_HEADLESS=1 to avoid pygame and noisy prints
 HEADLESS = os.environ.get("RGSX_HEADLESS") == "1"
@@ -398,6 +403,36 @@ custom_sources_url = {OTA_data_ZIP}  # URL personnalisée si mode custom
 selected_language_index = 0  # Index de la langue sélectionnée dans la liste
 
 
+screen_width: int = 800
+screen_height: int = 600
+current_monitor: int = 0
+selected_platform: int = 0
+current_page: int = 0
+pause_menu_total_options: int = 0
+confirm_selection: int = 0
+redownload_confirm_selection: int = 0
+gamelist_update_selection: int = 0
+support_zip_error:str = ""
+toast_message:str = ""
+toast_start_time:int = 0
+toast_duration: int  = 2000
+selected_priority_index: int = 0
+pending_restart_at:int = 0
+gamelist_update_prompted: bool = False
+nintendo_layout: bool = False
+music_folder:str
+music_files:list[str]
+current_music: str|None
+pause_origin_state:str|None
+update_triggered:bool = False
+update_result_start_time:int = 0
+update_result_message:str
+update_result_error:str
+accessibility_selected_cursor:int = 0
+current_language:str
+unsupported_platforms: list[str]
+platform_dict_by_name = {}
+
 # Recherche et filtres
 filtered_games: list[Game] = []  # Liste des jeux filtrés par recherche ou filtre
 search_mode = False  # Indicateur si le mode recherche est actif
@@ -418,7 +453,7 @@ current_loading_system = ""  # Nom du système en cours de chargement
 
 # Gestion des téléchargements et de l'historique
 history = []  # Liste des entrées d'historique avec platform, game_name, status, url, progress, message, timestamp
-pending_download = None  # Objet de téléchargement en attente
+pending_download: tuple[str, str, str, bool] | None = None # Objet de téléchargement en attente
 download_progress = {}  # Dictionnaire de progression des téléchargements actifs
 download_tasks = {}  # Dictionnaire pour les tâches de téléchargement
 download_result_message = ""  # Message de résultat du dernier téléchargement
@@ -505,15 +540,16 @@ def init_font():
     family_id = FONT_FAMILIES[current_font_family_index] if 0 <= current_font_family_index < len(FONT_FAMILIES) else "pixel"
 
 
-    def load_family(fam: str):
+    def load_family(fam: str) -> Tuple[Font, Font, Font, Font, Font]:
         """Retourne un tuple (font, title_font, search_font, progress_font, small_font)."""
         base_size = 36
         title_size = 48
         search_size = 48
         small_size = 28
+        assert pygame, f"pygame is None"
         if fam == "pixel":
             path = os.path.join(APP_FOLDER, "assets", "fonts", "Pixel-UniCode.ttf")
-            f = pygame.font.Font(path, int(base_size * font_scale))
+            f = pygame.font.Font(path, int(base_size * font_scale)) 
             t = pygame.font.Font(path, int(title_size * font_scale))
             s = pygame.font.Font(path, int(search_size * font_scale))
             p = pygame.font.Font(path, int(base_size * font_scale))
@@ -533,6 +569,8 @@ def init_font():
                 p = pygame.font.SysFont("dejavu sans", int(base_size * font_scale))
                 sm = pygame.font.SysFont("dejavu sans", int(small_size * font_scale))
             return f, t, s, p, sm
+        else:
+            raise ValueError(f"Unknown font family: {fam}")
         
 
     try:
@@ -556,7 +594,7 @@ def init_footer_font():
     family_id = FONT_FAMILIES[current_font_family_index] if 0 <= current_font_family_index < len(FONT_FAMILIES) else "pixel"
     
     footer_base_size = 20  # Taille de base pour le footer
-    
+    assert pygame, "pygame is None"
     try:
         if family_id == "pixel":
             path = os.path.join(APP_FOLDER, "assets", "fonts", "Pixel-UniCode.ttf")

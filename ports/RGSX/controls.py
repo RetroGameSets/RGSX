@@ -32,6 +32,9 @@ from accessibility import save_accessibility_settings
 from scraper import get_game_metadata, download_image_to_surface
 
 from pathlib import Path
+import urllib.request
+from typing import Dict, Any
+from game_filters import GameFilters
 
 logger = logging.getLogger(__name__)
 
@@ -342,7 +345,94 @@ def filter_games_by_search_query() -> list[Game]:
     return filtered_games
     ...
 
-def handle_controls(event, sources, joystick, screen):
+
+FBNEO_GAME_LIST = "fbneo_gamelist.txt"
+
+def download_fbneo_list(path_to_save: str) -> None:
+    url = "https://raw.githubusercontent.com/libretro/FBNeo/master/gamelist.txt"
+    path = Path(path_to_save)
+
+    if not path.exists():
+        logger.debug("Downloading fbneo gamelist.txt from github ...")
+        urllib.request.urlretrieve(url, path)
+        logger.debug("Download finished: %s", path)
+    ...
+
+def parse_fbneo_list(path: str) -> Dict[str, Any]:
+    games : Dict[str, Any] = {}
+    headers = None
+
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip()
+
+            if line.startswith("+"):
+                continue
+
+            if "|" not in line:
+                continue
+
+            parts = [p.strip() for p in line.split("|")[1:-1]]
+
+            if headers is None:
+                headers = parts
+                continue
+
+            row = dict(zip(headers, parts))
+
+            name = row["name"]
+            games[name] = row
+
+    return games
+
+
+def handle_platform_selected(screen, press_duration):
+    # Naviguer vers les jeux
+    if config.platforms:
+        
+        config.current_platform = config.selected_platform
+        config.games = load_games(config.platforms[config.current_platform])
+        platform = config.platforms[config.current_platform]
+        platform_name = config.platform_names.get(platform, platform)
+
+        fbneo_selected = platform_name == 'Final Burn Neo'
+        if fbneo_selected:
+            fbneo_game_list_path = os.path.join(config.SAVE_FOLDER, FBNEO_GAME_LIST)
+            download_fbneo_list(fbneo_game_list_path) # download the fbneo game list if necessary - 10 MB file
+            if not config.fbneo_games:
+                config.fbneo_games = parse_fbneo_list(fbneo_game_list_path)
+            for game in config.games:
+                clean_name = game.display_name
+                if clean_name in config.fbneo_games:
+                    fbneo_game = config.fbneo_games[clean_name]
+                    game.display_name = fbneo_game["full name"]
+                    game.regions = GameFilters.get_game_regions(game.display_name)
+                    game.is_non_release = GameFilters.is_non_release_game(game.display_name)
+                    game.base_name = GameFilters.get_base_game_name(game.display_name)
+            ...
+        
+        # Apply saved filters automatically if any
+        if config.game_filter_obj and config.game_filter_obj.is_active():
+            config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+            config.filter_active = True
+        else:
+            config.filtered_games = config.games
+            config.filter_active = False
+        
+        config.current_game = 0
+        config.scroll_offset = 0
+        
+        # Désactiver l'animation de transition en mode performance (light mode)
+        from rgsx_settings import get_light_mode
+        if not get_light_mode():
+            draw_validation_transition(screen, config.current_platform)
+        
+        config.menu_state = "game"
+        config.needs_redraw = True
+        logger.debug(f"Appui court sur confirm ({press_duration}ms), navigation vers les jeux de {config.platforms[config.current_platform]}")
+    ...
+
+def handle_controls(event, sources, joystick, screen): #type: ignore
     """Gère un événement clavier/joystick/souris et la répétition automatique.
     Retourne 'quit', 'download', 'redownload', ou None."""  
     action = None
@@ -3272,30 +3362,7 @@ def handle_controls(event, sources, joystick, screen):
                     press_duration = current_time - getattr(config, 'platform_confirm_press_start_time', 0)
                     # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
                     if press_duration < config.confirm_long_press_threshold and not getattr(config, 'platform_confirm_long_press_triggered', False):
-                        # Naviguer vers les jeux
-                        if config.platforms:
-                            config.current_platform = config.selected_platform
-                            config.games = load_games(config.platforms[config.current_platform])
-                            
-                            # Apply saved filters automatically if any
-                            if config.game_filter_obj and config.game_filter_obj.is_active():
-                                config.filtered_games = config.game_filter_obj.apply_filters(config.games)
-                                config.filter_active = True
-                            else:
-                                config.filtered_games = config.games
-                                config.filter_active = False
-                            
-                            config.current_game = 0
-                            config.scroll_offset = 0
-                            
-                            # Désactiver l'animation de transition en mode performance (light mode)
-                            from rgsx_settings import get_light_mode
-                            if not get_light_mode():
-                                draw_validation_transition(screen, config.current_platform)
-                            
-                            config.menu_state = "game"
-                            config.needs_redraw = True
-                            logger.debug(f"Appui court clavier sur confirm ({press_duration}ms), navigation vers les jeux de {config.platforms[config.current_platform]}")
+                        handle_platform_selected(screen, press_duration)
                     # Réinitialiser les flags platform
                     config.platform_confirm_press_start_time = 0
                     config.platform_confirm_long_press_triggered = False
@@ -3401,33 +3468,11 @@ def handle_controls(event, sources, joystick, screen):
                     press_duration = current_time - getattr(config, 'platform_confirm_press_start_time', 0)
                     # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
                     if press_duration < config.confirm_long_press_threshold and not getattr(config, 'platform_confirm_long_press_triggered', False):
-                        # Naviguer vers les jeux
-                        if config.platforms:
-                            config.current_platform = config.selected_platform
-                            config.games = load_games(config.platforms[config.current_platform])
-                            
-                            # Apply saved filters automatically if any
-                            if config.game_filter_obj and config.game_filter_obj.is_active():
-                                config.filtered_games = config.game_filter_obj.apply_filters(config.games)
-                                config.filter_active = True
-                            else:
-                                config.filtered_games = config.games
-                                config.filter_active = False
-                            
-                            config.current_game = 0
-                            config.scroll_offset = 0
-                            
-                            # Désactiver l'animation de transition en mode performance (light mode)
-                            from rgsx_settings import get_light_mode
-                            if not get_light_mode():
-                                draw_validation_transition(screen, config.current_platform)
-                            
-                            config.menu_state = "game"
-                            config.needs_redraw = True
-                            logger.debug(f"Appui court sur confirm ({press_duration}ms), navigation vers les jeux de {config.platforms[config.current_platform]}")
+                        handle_platform_selected(screen, press_duration)
                     # Réinitialiser les flags platform
                     config.platform_confirm_press_start_time = 0
                     config.platform_confirm_long_press_triggered = False
+
     
     elif event.type == pygame.JOYAXISMOTION:
         # Détection de relâchement d'axe
