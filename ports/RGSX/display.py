@@ -1212,7 +1212,8 @@ def draw_game_list(screen):
     if fbneo_selected:
         fbneo_game_list_path = os.path.join(config.SAVE_FOLDER, FBNEO_GAME_LIST)
         download_fbneo_list(fbneo_game_list_path) # download the fbneo game list if necessary - 10 MB file
-        config.fbneo_games = parse_fbneo_list(fbneo_game_list_path)
+        if not config.fbneo_games:
+            config.fbneo_games = parse_fbneo_list(fbneo_game_list_path)
         for game in config.games:
             clean_name = game.display_name
             if clean_name in config.fbneo_games:
