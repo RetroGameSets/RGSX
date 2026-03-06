@@ -3279,10 +3279,10 @@ def handle_controls(event, sources, joystick, screen): #type: ignore
                             
                             # Apply saved filters automatically if any
                             if config.game_filter_obj and config.game_filter_obj.is_active():
-                                config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                            #    config.filtered_games = config.game_filter_obj.apply_filters(config.games)
                                 config.filter_active = True
                             else:
-                                config.filtered_games = config.games
+                            #    config.filtered_games = config.games
                                 config.filter_active = False
                             
                             config.current_game = 0
@@ -3408,10 +3408,10 @@ def handle_controls(event, sources, joystick, screen): #type: ignore
                             
                             # Apply saved filters automatically if any
                             if config.game_filter_obj and config.game_filter_obj.is_active():
-                                config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                                #config.filtered_games = config.game_filter_obj.apply_filters(config.games)
                                 config.filter_active = True
                             else:
-                                config.filtered_games = config.games
+                                #config.filtered_games = config.games
                                 config.filter_active = False
                             
                             config.current_game = 0
