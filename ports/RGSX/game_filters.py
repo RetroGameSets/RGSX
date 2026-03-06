@@ -245,7 +245,7 @@ class GameFilters:
                     continue
             
             # Filtrer les non-release
-            if self.hide_non_release and self.is_non_release_game(game_name):
+            if self.hide_non_release and game.is_non_release:
                 continue
             
             filtered_games.append(game)

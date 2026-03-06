@@ -407,6 +407,7 @@ def handle_platform_selected(screen, press_duration):
                     fbneo_game = config.fbneo_games[clean_name]
                     game.display_name = fbneo_game["full name"]
                     game.regions = GameFilters.get_game_regions(game.display_name)
+                    game.is_non_release = GameFilters.is_non_release_game(game.display_name)
             ...
         
         # Apply saved filters automatically if any

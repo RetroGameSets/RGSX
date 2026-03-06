@@ -14,6 +14,7 @@ class Game:
     size: str
     display_name: str # name without file extension or platform prefix
     regions: list[str]
+    is_non_release: bool
 
 # Headless mode for CLI: set env RGSX_HEADLESS=1 to avoid pygame and noisy prints
 HEADLESS = os.environ.get("RGSX_HEADLESS") == "1"
