@@ -660,7 +660,7 @@ def cmd_download(args):
         pass
 
     # Run download with live progress
-    exit_code = asyncio.run(_run_download_with_progress(url, platform_id, title, is_zip_non_supported))
+    exit_code = asyncio.run(_run_download_with_progress(url, platform_id, title, is_zip_non_supported)) #type: ignore
     if exit_code != 0:
         sys.exit(exit_code)
 

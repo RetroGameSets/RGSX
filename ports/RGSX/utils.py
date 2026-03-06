@@ -56,6 +56,7 @@ def restart_application(delay_ms: int = 2000):
     - Sets popup_restarting and schedules config.pending_restart_at = now + delay_ms.
     - Main loop (__main__) detects pending_restart_at and calls restart_application(0) to perform the execl.
     """
+    assert pygame, "pygame is None"
     try:
         # Show popup and schedule
         if hasattr(config, 'popup_message'):
@@ -1301,6 +1302,7 @@ def truncate_text_middle(text, font, max_width, is_filename=True):
     return ''.join(left).rstrip() + ellipsis + ''.join(right).lstrip()
 
 def truncate_text_end(text, font, max_width):
+    assert pygame
     """Tronque le texte à la fin pour qu'il tienne dans max_width avec la police donnée."""
     if not isinstance(text, str):
         logger.error(f"Texte non valide: {text}")
@@ -1365,6 +1367,7 @@ def wrap_text(text, font, max_width):
     return lines
     
 def load_system_image(platform_dict):
+    assert pygame
     """Charge une image système avec la priorité suivante:
     1. platform_image explicite s'il est défini
     2. <platform_name>.png
@@ -2675,6 +2678,7 @@ def handle_xbox(dest_dir, iso_files, url=None):
 
 
 def play_random_music(music_files, music_folder, current_music=None):
+    assert pygame
     if not getattr(config, "music_enabled", True) or not is_mixer_available():
         if is_mixer_available():
             pygame.mixer.music.stop()
@@ -2689,6 +2693,7 @@ def play_random_music(music_files, music_folder, current_music=None):
         logger.debug(f"Lecture de la musique : {music_path}")
         
         def load_and_play_music():
+            assert pygame
             try:
                 if is_mixer_available():
                     pygame.mixer.music.load(music_path)
@@ -2709,6 +2714,7 @@ def play_random_music(music_files, music_folder, current_music=None):
         return current_music
 
 def set_music_popup(music_name):
+    assert pygame
     """Définit le nom de la musique à afficher dans la popup."""
     config.current_music_name = f"♬ {os.path.splitext(music_name)[0]}"  # Utilise l'emoji ♬ directement
     config.music_popup_start_time = pygame.time.get_ticks() / 1000  # Temps actuel en secondes

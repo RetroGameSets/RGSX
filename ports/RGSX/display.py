@@ -1879,7 +1879,9 @@ def draw_extension_warning(screen):
         logger.error("config.pending_download est None ou vide dans extension_warning, retour anticipé")
         return
     
-    url, platform, game_name, is_zip_non_supported = config.pending_download
+    pending = config.pending_download
+    assert pending is not None
+    url, platform, game_name, is_zip_non_supported = pending
     # Log réduit: pas de détail verbeux ici
     is_zip = is_zip_non_supported
     if not game_name:
@@ -2141,7 +2143,7 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
                     icon_surfs.append(text_surface)
         else:
             # Texte simple (pour la ligne platform)
-            text_surface = config.tiny_font.render(line_data, True, THEME_COLORS["text"])
+            text_surface = config.tiny_font.render(line_data, True, THEME_COLORS["text"]) #type: ignore
             icon_surfs.append(text_surface)
     
     # Calculer hauteur totale
@@ -2282,7 +2284,7 @@ def draw_language_menu(screen):
         text_surface = config.font.render(lang_name, True, THEME_COLORS["text"])
         available_width = button_width - 16  # Marge de 8px de chaque côté
         
-        if text_surface.get_width() > available_width:
+        if text_surface.get_width() > available_width and lang_name:
             # Tronquer le texte avec "..."
             truncated_text = lang_name
             while text_surface.get_width() > available_width and len(truncated_text) > 0:
@@ -3987,7 +3989,7 @@ def draw_support_dialog(screen):
     # Récupérer le nom du bouton "cancel/back" depuis la configuration des contrôles
     cancel_key = "SELECT"
     try:
-        from controls_mapper import get_mapped_button
+        from controls_mapper import get_mapped_button #type: ignore
         cancel_key = get_mapped_button("cancel") or "SELECT"
     except Exception:
         pass
@@ -4156,7 +4158,7 @@ def draw_toast(screen):
     screen.blit(toast_surface, (toast_x, toast_y))
 
 
-def show_toast(message, duration=2000):
+def show_toast(message:str, duration:int=2000):
     """Fonction helper pour afficher un toast de notification.
     
     Args:
@@ -4651,7 +4653,7 @@ def draw_scraper_screen(screen):
             
             # Redimensionner l'image en conservant le ratio
             image = config.scraper_image_surface
-            img_width, img_height = image.get_size()
+            img_width, img_height = image.get_size() if image else (0,0)
             
             # Calculer le ratio de redimensionnement
             width_ratio = max_image_width / img_width
@@ -4848,6 +4850,7 @@ def draw_filter_advanced(screen):
     for region in GameFilters.REGIONS:
         region_key = f"filter_region_{region.lower()}"
         region_label = _(region_key)
+        assert config.game_filter_obj, "config.game_filter_obj is None"
         filter_state = config.game_filter_obj.region_filters.get(region, 'include')  # Par défaut: include
         
         if filter_state == 'exclude':
@@ -4866,6 +4869,7 @@ def draw_filter_advanced(screen):
     options.append(('separator', ''))
     options.append(('header', _("filter_other_options")))
     
+    assert config.game_filter_obj, "config.game_filter_obj is None"
     hide_text = _("filter_hide_non_release")
     hide_status = "[X]" if config.game_filter_obj.hide_non_release else "[ ]"
     options.append(('toggle', 'hide_non_release', f"{hide_text}: {hide_status}"))
@@ -5133,6 +5137,7 @@ def draw_filter_priority_config(screen):
     if not hasattr(config, 'selected_priority_index'):
         config.selected_priority_index = 0
     
+    assert config.game_filter_obj, "config.game_filter_obj is None"
     priority_list = config.game_filter_obj.region_priority.copy()
     
     # Afficher chaque région avec sa position

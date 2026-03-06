@@ -682,7 +682,7 @@ async def main():
                 (event.type == pygame.KEYDOWN and start_config.get("type") == "key" and event.key == start_config.get("key")) or
                 (event.type == pygame.JOYBUTTONDOWN and start_config.get("type") == "button" and event.button == start_config.get("button")) or
                 (event.type == pygame.JOYAXISMOTION and start_config.get("type") == "axis" and event.axis == start_config.get("axis") and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == start_config.get("direction")) or
-                (event.type == pygame.JOYHATMOTION and start_config.get("type") == "hat" and event.value == tuple(start_config.get("value") if isinstance(start_config.get("value"), list) else start_config.get("value"))) or
+                (event.type == pygame.JOYHATMOTION and start_config.get("type") == "hat" and event.value == tuple(start_config.get("value") if isinstance(start_config.get("value"), list) else start_config.get("value")))  or #type: ignore
                 (event.type == pygame.MOUSEBUTTONDOWN and start_config.get("type") == "mouse" and event.button == start_config.get("button"))
             ):
                 if config.menu_state not in ["pause_menu", "controls_help", "controls_mapping", "history", "confirm_clear_history"]:
@@ -799,7 +799,7 @@ async def main():
                             "status": "Downloading",
                             "progress": 0,
                             "url": url,
-                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         })
                         config.current_history_item = len(config.history) - 1
                         save_history(config.history)
@@ -907,7 +907,7 @@ async def main():
                                         "progress": 0,
                                         "message": _("download_in_progress") if _ else "Download in progress",
                                         "url": url,
-                                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                     })
                                     config.current_history_item = len(config.history) - 1
                                     save_history(config.history)
@@ -953,7 +953,7 @@ async def main():
                                         "progress": 0,
                                         "message": _("download_in_progress") if _ else "Download in progress",
                                         "url": url,
-                                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                     })
                                     config.current_history_item = len(config.history) - 1
                                     save_history(config.history)

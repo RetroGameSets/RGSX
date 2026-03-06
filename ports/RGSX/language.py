@@ -114,14 +114,14 @@ def get_text(key, default=None):
             pass
         return str(default) if default is not None else str(key)
 
-def get_available_languages():
+def get_available_languages() -> list[str]:
     """Récupère la liste des langues disponibles."""
     
     if not os.path.exists(config.LANGUAGES_FOLDER):
         logger.warning(f"Dossier des langues {config.LANGUAGES_FOLDER} non trouvé")
         return []
     
-    languages = []
+    languages: list[str] = []
     for file in os.listdir(config.LANGUAGES_FOLDER):
         if file.endswith(".json"):
             lang_code = os.path.splitext(file)[0]
@@ -200,6 +200,7 @@ def draw_language_selector(screen, selected_language_index):
     
     # Fond du titre
     title_bg_rect = title_rect.inflate(40, 20)
+    assert pygame, "pygame is None"
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_bg_rect, border_radius=10)
     pygame.draw.rect(screen, THEME_COLORS["border"], title_bg_rect, 2, border_radius=10)
     screen.blit(title_surface, title_rect)
@@ -247,6 +248,7 @@ def handle_language_menu_events(event, screen):
         return
     
     # Navigation avec les touches du clavier
+    assert pygame, "pygame is None"
     if event.type == pygame.KEYDOWN:
         # Navigation vers le haut
         if event.key == pygame.K_UP:

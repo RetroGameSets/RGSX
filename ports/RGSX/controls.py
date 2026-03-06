@@ -342,7 +342,7 @@ def filter_games_by_search_query() -> list[Game]:
     return filtered_games
     ...
 
-def handle_controls(event, sources, joystick, screen):
+def handle_controls(event, sources, joystick, screen): #type: ignore
     """Gère un événement clavier/joystick/souris et la répétition automatique.
     Retourne 'quit', 'download', 'redownload', ou None."""  
     action = None
