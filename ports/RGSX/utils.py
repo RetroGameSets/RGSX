@@ -9,6 +9,8 @@ import platform
 import subprocess
 import config
 from config import HEADLESS, Game
+from game_filters import GameFilters
+
 try:
     if not HEADLESS:
         import pygame  # type: ignore
@@ -1242,7 +1244,8 @@ def load_games(platform_id:str) -> list[Game]:
         for name, url, size in normalized:
             display_name = Path(name).stem
             display_name = display_name.replace(platform_id, "")
-            games_list.append(Game(name=name, url=url, size=size, display_name=display_name))
+            regions = GameFilters.get_game_regions(display_name)
+            games_list.append(Game(name=name, url=url, size=size, display_name=display_name, regions=regions))
         return games_list
     except Exception as e:
         logger.error(f"Erreur lors du chargement des jeux pour {platform_id}: {e}")

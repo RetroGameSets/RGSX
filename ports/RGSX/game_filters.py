@@ -192,10 +192,11 @@ class GameFilters:
         
         return base
     
-    def get_region_priority(self, game_name: str) -> int:
+    def get_region_priority(self, game: Game) -> int:
         """Obtient la priorité de région pour un jeu (pour one-rom-per-game)"""
         # Utiliser la fonction de détection de régions pour être cohérent
-        game_regions = self.get_game_regions(game_name)
+        game_name = game.display_name
+        game_regions = game.regions# self.get_game_regions(game_name)
         
         # Trouver la meilleure priorité parmi toutes les régions détectées
         best_priority = len(self.region_priority)  # Par défaut: priorité la plus basse
@@ -228,7 +229,7 @@ class GameFilters:
             
             # Vérifier les filtres de région
             if self.region_filters:
-                game_regions = self.get_game_regions(game_name)
+                game_regions = game.regions# self.get_game_regions(game_name)
                 
                 # Vérifier si le jeu a au moins une région incluse
                 has_included_region = False
@@ -257,7 +258,7 @@ class GameFilters:
     
     def _apply_one_rom_per_game(self, games: List[Game]) -> List[Game]:
         """Garde seulement une ROM par jeu selon la priorité de région"""
-        games_by_base = {}
+        games_by_base: Dict[str, List[Game]] = {}
         
         for game in games:
             game_name = game.display_name
@@ -276,7 +277,7 @@ class GameFilters:
             else:
                 # Trier par priorité de région
                 sorted_games = sorted(game_list, 
-                                     key=lambda g: self.get_region_priority(g.display_name))
+                                     key=lambda g: self.get_region_priority(g))
                 result.append(sorted_games[0])
         
         return result
