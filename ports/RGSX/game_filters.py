@@ -262,7 +262,7 @@ class GameFilters:
         
         for game in games:
             game_name = game.display_name
-            base_name = self.get_base_game_name(game_name)
+            base_name = game.base_name# self.get_base_game_name(game_name)
             
             if base_name not in games_by_base:
                 games_by_base[base_name] = []

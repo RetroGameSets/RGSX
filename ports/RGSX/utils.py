@@ -1246,7 +1246,8 @@ def load_games(platform_id:str) -> list[Game]:
             display_name = display_name.replace(platform_id, "")
             regions = GameFilters.get_game_regions(display_name)
             is_non_release = GameFilters.is_non_release_game(display_name)
-            games_list.append(Game(name=name, url=url, size=size, display_name=display_name, regions=regions, is_non_release=is_non_release))
+            base_name = GameFilters.get_base_game_name(display_name)
+            games_list.append(Game(name=name, url=url, size=size, display_name=display_name, regions=regions, is_non_release=is_non_release, base_name=base_name))
         return games_list
     except Exception as e:
         logger.error(f"Erreur lors du chargement des jeux pour {platform_id}: {e}")
