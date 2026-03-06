@@ -23,8 +23,7 @@ from game_filters import GameFilters
 
 import json
 from pathlib import Path
-from typing import Dict, Any
-import urllib.request
+
 
 logger = logging.getLogger(__name__)
 
@@ -1161,68 +1160,17 @@ def draw_platform_grid(screen):
 
 
 
-FBNEO_GAME_LIST = "fbneo_gamelist.txt"
-
-def download_fbneo_list(path_to_save: str) -> None:
-    url = "https://raw.githubusercontent.com/libretro/FBNeo/master/gamelist.txt"
-    path = Path(path_to_save)
-
-    if not path.exists():
-        logger.debug("Downloading fbneo gamelist.txt from github ...")
-        urllib.request.urlretrieve(url, path)
-
-    logger.debug("Download finished:", path)
-    ...
-
-def parse_fbneo_list(path: str) -> Dict[str, Any]:
-    games : Dict[str, Any] = {}
-    headers = None
-
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.rstrip()
-
-            if line.startswith("+"):
-                continue
-
-            if "|" not in line:
-                continue
-
-            parts = [p.strip() for p in line.split("|")[1:-1]]
-
-            if headers is None:
-                headers = parts
-                continue
-
-            row = dict(zip(headers, parts))
-
-            name = row["name"]
-            games[name] = row
-
-    return games
-
 # Liste des jeux
 def draw_game_list(screen):
     """Affiche la liste des jeux avec un style moderne."""
     #logger.debug(f"[DRAW_GAME_LIST] Called - platform={config.current_platform}, search_mode={config.search_mode}, filter_active={config.filter_active}")
+    
     platform = config.platforms[config.current_platform]
     platform_name = config.platform_names.get(platform, platform)
+    
 
-    fbneo_selected = platform_name == 'Final Burn Neo'
-    if fbneo_selected:
-        fbneo_game_list_path = os.path.join(config.SAVE_FOLDER, FBNEO_GAME_LIST)
-        download_fbneo_list(fbneo_game_list_path) # download the fbneo game list if necessary - 10 MB file
-        if not config.fbneo_games:
-            config.fbneo_games = parse_fbneo_list(fbneo_game_list_path)
-        for game in config.games:
-            clean_name = game.display_name
-            if clean_name in config.fbneo_games:
-                fbneo_game = config.fbneo_games[clean_name]
-                game.display_name = fbneo_game["full name"]
-        ...
-
-    if config.game_filter_obj and config.game_filter_obj.is_active() and not config.search_query:
-        config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+    #if config.game_filter_obj and config.game_filter_obj.is_active() and not config.search_query:
+    #    config.filtered_games = config.game_filter_obj.apply_filters(config.games)
 
     games = config.filtered_games if config.filter_active or config.search_mode else config.games
     game_count = len(games)
