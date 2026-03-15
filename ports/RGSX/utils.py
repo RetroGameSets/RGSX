@@ -1827,7 +1827,7 @@ def extract_rar(rar_path, dest_dir, url):
                 os.chmod(os.path.join(root, dir_name), 0o755)
 
         # Gestion plateformes spéciales (uniquement PS3 pour RAR)
-        success, error_msg = _handle_special_platforms(dest_dir, rar_path, before_dirs)
+        success, error_msg = _handle_special_platforms(dest_dir, rar_path, before_dirs, url=url)
         if not success:
             return False, error_msg
 
@@ -1961,18 +1961,31 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archi
         # MODE PS3 : Décryptage et extraction
         # ============================================
         logger.info(f"Mode PS3  détecté pour: {archive_name}")
+
+        # L'extraction de l'archive est terminée; basculer l'UI en mode conversion/décryptage.
+        try:
+            if url:
+                if url not in getattr(config, 'download_progress', {}):
+                    config.download_progress[url] = {}
+                config.download_progress[url]["status"] = "Converting"
+                config.download_progress[url]["progress_percent"] = 0
+                config.needs_redraw = True
+
+                if isinstance(config.history, list):
+                    for entry in config.history:
+                        if entry.get("url") == url and entry.get("status") in ("Extracting", "Téléchargement", "Downloading"):
+                            entry["status"] = "Converting"
+                            entry["progress"] = 0
+                            entry["message"] = "PS3 conversion in progress"
+                            save_history(config.history)
+                            break
+        except Exception as e:
+            logger.debug(f"MAJ statut conversion PS3 ignorée: {e}")
         
         try:
-            # Construire l'URL de la clé en remplaçant le dossier
-            if url and ("Sony%20-%20PlayStation%203/" in url or "Sony - PlayStation 3/" in url):
-                key_url = url.replace("Sony%20-%20PlayStation%203/", "Sony%20-%20PlayStation%203%20-%20Disc%20Keys%20TXT/")
-                key_url = key_url.replace("Sony - PlayStation 3/", "Sony - PlayStation 3 - Disc Keys TXT/")
-            else:
-                logger.warning("URL PS3  invalide ou manquante, tentative sans clé distante")
-                key_url = None
-            
+            ps3_keys_base_url = "https://retrogamesets.fr/softs/ps3/"
             logger.debug(f"URL jeu: {url}")
-            logger.debug(f"URL clé: {key_url}")
+            logger.debug(f"Base URL des clés PS3: {ps3_keys_base_url}")
             
             # Chercher le fichier .iso déjà extrait
             iso_files = [f for f in os.listdir(dest_dir) if f.endswith('.iso') and not f.endswith('_decrypted.iso')]
@@ -1983,41 +1996,51 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archi
             iso_path = os.path.join(dest_dir, iso_file)
             logger.info(f"Fichier ISO trouvé: {iso_path}")
             
-            # Étape 1: Télécharger et extraire la clé si URL disponible
+            # Étape 1: Télécharger directement la clé .dkey depuis la nouvelle source
             dkey_path = None
-            if key_url:
-                logger.info("Téléchargement de la clé de décryption...")
-                key_zip_name = os.path.basename(archive_name) if archive_name else "key.zip"
-                key_zip_path = os.path.join(dest_dir, f"_temp_key_{key_zip_name}")
-                
+            logger.info("Téléchargement de la clé de décryption (.dkey)...")
+
+            candidate_bases = []
+
+            def _add_candidate_base(base_name):
+                if not base_name:
+                    return
+                cleaned = str(base_name).strip()
+                if not cleaned:
+                    return
+                if cleaned.lower().endswith('.dkey'):
+                    cleaned = cleaned[:-5]
+                if cleaned not in candidate_bases:
+                    candidate_bases.append(cleaned)
+
+            if archive_name:
+                _add_candidate_base(os.path.splitext(os.path.basename(archive_name))[0])
+            if extracted_basename:
+                _add_candidate_base(extracted_basename)
+            _add_candidate_base(os.path.splitext(os.path.basename(iso_file))[0])
+
+            for base_name in candidate_bases:
+                remote_name = f"{base_name}.dkey"
+                encoded_name = remote_name.replace(" ", "%20")
+                key_url = f"{ps3_keys_base_url}{encoded_name}"
+                logger.debug(f"Tentative clé distante: {key_url}")
                 try:
                     response = requests.get(key_url, stream=True, timeout=30)
-                    response.raise_for_status()
-                    
-                    with open(key_zip_path, 'wb') as f:
+                    if response.status_code != 200:
+                        logger.debug(f"Clé distante introuvable ({response.status_code}): {remote_name}")
+                        continue
+
+                    local_dkey_path = os.path.join(dest_dir, remote_name)
+                    with open(local_dkey_path, 'wb') as f:
                         for chunk in response.iter_content(chunk_size=8192):
                             if chunk:
                                 f.write(chunk)
-                    
-                    logger.info(f"Clé téléchargée: {key_zip_path}")
-                    
-                    # Extraire la clé
-                    logger.info("Extraction de la clé...")
-                    with zipfile.ZipFile(key_zip_path, 'r') as zf:
-                        dkey_files = [f for f in zf.namelist() if f.endswith('.dkey')]
-                        if not dkey_files:
-                            logger.warning("Aucun fichier .dkey trouvé dans l'archive de clé")
-                        else:
-                            dkey_file = dkey_files[0]
-                            zf.extract(dkey_file, dest_dir)
-                            dkey_path = os.path.join(dest_dir, dkey_file)
-                            logger.info(f"Clé extraite: {dkey_path}")
-                    
-                    # Supprimer le ZIP de la clé
-                    os.remove(key_zip_path)
-                    
+
+                    dkey_path = local_dkey_path
+                    logger.info(f"Clé téléchargée: {dkey_path}")
+                    break
                 except Exception as e:
-                    logger.error(f"Erreur lors du téléchargement/extraction de la clé: {e}")
+                    logger.warning(f"Échec téléchargement clé {remote_name}: {e}")
             
             # Chercher une clé .dkey si pas téléchargée
             if not dkey_path:
