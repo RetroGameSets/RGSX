@@ -3351,6 +3351,7 @@ def draw_pause_api_keys_status(screen):
     providers = [
         ("1fichier", keys.get('1fichier')),
         ("AllDebrid", keys.get('alldebrid')),
+        ("Debrid-Link", keys.get('debridlink')),
         ("RealDebrid", keys.get('realdebrid'))
     ]
     # Dimensions dynamiques en fonction du contenu
@@ -3408,6 +3409,7 @@ def draw_pause_api_keys_status(screen):
             filename_display = {
                 '1fichier': '1FichierAPI.txt',
                 'AllDebrid': 'AllDebridAPI.txt',
+                'Debrid-Link': 'DebridLinkAPI.txt',
                 'RealDebrid': 'RealDebridAPI.txt'
             }.get(provider, 'key.txt')
             empty_suffix = _("api_key_empty_suffix") if _ and _("api_key_empty_suffix") != "api_key_empty_suffix" else "empty"

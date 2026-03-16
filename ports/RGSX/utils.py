@@ -2738,24 +2738,25 @@ def set_music_popup(music_name):
     config.needs_redraw = True  # Forcer le redraw pour afficher le nom de la musique
 
 def load_api_keys(force: bool = False):
-    """Charge les clés API (1fichier, AllDebrid, RealDebrid) en une seule passe.
+    """Charge les clés API (1fichier, AllDebrid, Debrid-Link, RealDebrid) en une seule passe.
 
     - Crée les fichiers vides s'ils n'existent pas
-    - Met à jour config.API_KEY_1FICHIER, config.API_KEY_ALLDEBRID, config.API_KEY_REALDEBRID
+    - Met à jour config.API_KEY_1FICHIER, config.API_KEY_ALLDEBRID, config.API_KEY_DEBRIDLINK, config.API_KEY_REALDEBRID
     - Utilise un cache basé sur le mtime pour éviter des relectures
     - force=True ignore le cache et relit systématiquement
 
-    Retourne: { '1fichier': str, 'alldebrid': str, 'realdebrid': str, 'reloaded': bool }
+    Retourne: { '1fichier': str, 'alldebrid': str, 'debridlink': str, 'realdebrid': str, 'reloaded': bool }
     """
     try:
         paths = {
             '1fichier': getattr(config, 'API_KEY_1FICHIER_PATH', ''),
             'alldebrid': getattr(config, 'API_KEY_ALLDEBRID_PATH', ''),
+            'debridlink': getattr(config, 'API_KEY_DEBRIDLINK_PATH', ''),
             'realdebrid': getattr(config, 'API_KEY_REALDEBRID_PATH', ''),
         }
         cache_attr = '_api_keys_cache'
         if not hasattr(config, cache_attr):
-            setattr(config, cache_attr, {'1fichier_mtime': None, 'alldebrid_mtime': None, 'realdebrid_mtime': None})
+            setattr(config, cache_attr, {'1fichier_mtime': None, 'alldebrid_mtime': None, 'debridlink_mtime': None, 'realdebrid_mtime': None})
         cache_data = getattr(config, cache_attr)
         reloaded = False
 
@@ -2789,6 +2790,8 @@ def load_api_keys(force: bool = False):
                     config.API_KEY_1FICHIER = value
                 elif key_name == 'alldebrid':
                     config.API_KEY_ALLDEBRID = value
+                elif key_name == 'debridlink':
+                    config.API_KEY_DEBRIDLINK = value
                 elif key_name == 'realdebrid':
                     config.API_KEY_REALDEBRID = value
                 cache_data[cache_key] = mtime
@@ -2796,6 +2799,7 @@ def load_api_keys(force: bool = False):
         return {
             '1fichier': getattr(config, 'API_KEY_1FICHIER', ''),
             'alldebrid': getattr(config, 'API_KEY_ALLDEBRID', ''),
+            'debridlink': getattr(config, 'API_KEY_DEBRIDLINK', ''),
             'realdebrid': getattr(config, 'API_KEY_REALDEBRID', ''),
             'reloaded': reloaded
         }
@@ -2804,6 +2808,7 @@ def load_api_keys(force: bool = False):
         return {
             '1fichier': getattr(config, 'API_KEY_1FICHIER', ''),
             'alldebrid': getattr(config, 'API_KEY_ALLDEBRID', ''),
+            'debridlink': getattr(config, 'API_KEY_DEBRIDLINK', ''),
             'realdebrid': getattr(config, 'API_KEY_REALDEBRID', ''),
             'reloaded': False
         }
@@ -2861,10 +2866,10 @@ def load_archive_org_cookie(force: bool = False) -> str:
 
 
 def save_api_keys(api_keys: dict):
-    """Sauvegarde les clés API (1fichier, AllDebrid, RealDebrid) dans leurs fichiers respectifs.
+    """Sauvegarde les clés API (1fichier, AllDebrid, Debrid-Link, RealDebrid) dans leurs fichiers respectifs.
 
     Args:
-        api_keys: dict avec les clés '1fichier', 'alldebrid', 'realdebrid'
+        api_keys: dict avec les clés '1fichier', 'alldebrid', 'debridlink', 'realdebrid'
     
     Retourne: True si au moins une clé a été sauvegardée avec succès
     """
@@ -2874,6 +2879,7 @@ def save_api_keys(api_keys: dict):
     paths = {
         '1fichier': getattr(config, 'API_KEY_1FICHIER_PATH', ''),
         'alldebrid': getattr(config, 'API_KEY_ALLDEBRID_PATH', ''),
+        'debridlink': getattr(config, 'API_KEY_DEBRIDLINK_PATH', ''),
         'realdebrid': getattr(config, 'API_KEY_REALDEBRID_PATH', ''),
     }
     
@@ -2901,6 +2907,8 @@ def save_api_keys(api_keys: dict):
                 config.API_KEY_1FICHIER = value.strip()
             elif key_name == 'alldebrid':
                 config.API_KEY_ALLDEBRID = value.strip()
+            elif key_name == 'debridlink':
+                config.API_KEY_DEBRIDLINK = value.strip()
             elif key_name == 'realdebrid':
                 config.API_KEY_REALDEBRID = value.strip()
             
@@ -2926,6 +2934,9 @@ def load_api_key_1fichier(force: bool = False):  # pragma: no cover
 def load_api_key_alldebrid(force: bool = False):  # pragma: no cover
     return load_api_keys(force).get('alldebrid', '')
 
+def load_api_key_debridlink(force: bool = False):  # pragma: no cover
+    return load_api_keys(force).get('debridlink', '')
+
 def load_api_key_realdebrid(force: bool = False):  # pragma: no cover
     return load_api_keys(force).get('realdebrid', '')
 
@@ -2938,19 +2949,19 @@ def ensure_api_keys_loaded(force: bool = False):  # pragma: no cover
 # ------------------------------
 def build_provider_paths_string():
     """Retourne une chaîne listant les chemins des fichiers de clés pour affichage/erreurs."""
-    return f"{getattr(config, 'API_KEY_1FICHIER_PATH', '')} or {getattr(config, 'API_KEY_ALLDEBRID_PATH', '')} or {getattr(config, 'API_KEY_REALDEBRID_PATH', '')}"
+    return f"{getattr(config, 'API_KEY_1FICHIER_PATH', '')} or {getattr(config, 'API_KEY_ALLDEBRID_PATH', '')} or {getattr(config, 'API_KEY_DEBRIDLINK_PATH', '')} or {getattr(config, 'API_KEY_REALDEBRID_PATH', '')}"
 
 def ensure_download_provider_keys(force: bool = False):  # pragma: no cover
-    """S'assure que les clés 1fichier/AllDebrid/RealDebrid sont chargées et retourne le dict.
+    """S'assure que les clés 1fichier/AllDebrid/Debrid-Link/RealDebrid sont chargées et retourne le dict.
 
     Utilise load_api_keys (cache mtime). force=True invalide le cache.
     """
     return load_api_keys(force)
 
 def missing_all_provider_keys():  # pragma: no cover
-    """True si aucune des trois clés n'est définie."""
+    """True si aucune des clés premium n'est définie."""
     keys = load_api_keys(False)
-    return not keys.get('1fichier') and not keys.get('alldebrid') and not keys.get('realdebrid')
+    return not keys.get('1fichier') and not keys.get('alldebrid') and not keys.get('debridlink') and not keys.get('realdebrid')
 
 def provider_keys_status():  # pragma: no cover
     """Retourne un dict de présence pour debug/log."""
@@ -2958,6 +2969,7 @@ def provider_keys_status():  # pragma: no cover
     return {
         '1fichier': bool(keys.get('1fichier')),
         'alldebrid': bool(keys.get('alldebrid')),
+        'debridlink': bool(keys.get('debridlink')),
         'realdebrid': bool(keys.get('realdebrid')),
     }
 

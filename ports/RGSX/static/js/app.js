@@ -2115,6 +2115,12 @@
                             <input type="password" id="setting-api-alldebrid" value="${settings.api_keys?.alldebrid || ''}" 
                                    placeholder="Enter AllDebrid API key">
                         </div>
+
+                        <div style="margin-bottom: 15px;">
+                            <label>Debrid-Link API Key</label>
+                            <input type="password" id="setting-api-debridlink" value="${settings.api_keys?.debridlink || ''}" 
+                                   placeholder="Enter Debrid-Link API key">
+                        </div>
                         
                         <div style="margin-bottom: 20px;">
                             <label>RealDebrid API Key</label>
@@ -2187,6 +2193,7 @@
                     api_keys: {
                         '1fichier': document.getElementById('setting-api-1fichier')?.value.trim() || '',
                         'alldebrid': document.getElementById('setting-api-alldebrid')?.value.trim() || '',
+                        'debridlink': document.getElementById('setting-api-debridlink')?.value.trim() || '',
                         'realdebrid': document.getElementById('setting-api-realdebrid')?.value.trim() || ''
                     },
                     game_filters: {

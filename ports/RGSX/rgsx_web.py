@@ -883,6 +883,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     settings['api_keys'] = {
                         '1fichier': api_keys_data.get('1fichier', ''),
                         'alldebrid': api_keys_data.get('alldebrid', ''),
+                        'debridlink': api_keys_data.get('debridlink', ''),
                         'realdebrid': api_keys_data.get('realdebrid', '')
                     }
                     

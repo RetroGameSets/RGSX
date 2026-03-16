@@ -26,7 +26,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.6.0.0"
+app_version = "2.6.0.1"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 7
@@ -197,6 +197,7 @@ DOWNLOADED_GAMES_PATH = os.path.join(SAVE_FOLDER, "downloaded_games.json")
 RGSX_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
 API_KEY_1FICHIER_PATH = os.path.join(SAVE_FOLDER, "1FichierAPI.txt")
 API_KEY_ALLDEBRID_PATH = os.path.join(SAVE_FOLDER, "AllDebridAPI.txt")
+API_KEY_DEBRIDLINK_PATH = os.path.join(SAVE_FOLDER, "DebridLinkAPI.txt")
 API_KEY_REALDEBRID_PATH = os.path.join(SAVE_FOLDER, "RealDebridAPI.txt")
 ARCHIVE_ORG_COOKIE_PATH = os.path.join(APP_FOLDER, "assets", "ArchiveOrgCookie.txt")
 
@@ -457,9 +458,11 @@ scraper_game_page_url = ""  # URL de la page du jeu sur TheGamesDB
 # CLES API / PREMIUM HOSTS
 API_KEY_1FICHIER = ""
 API_KEY_ALLDEBRID = ""
+API_KEY_DEBRIDLINK = ""
 API_KEY_REALDEBRID = ""
 PREMIUM_HOST_MARKERS = [
     "1Fichier",
+    "Debrid-Link",
 ]
 hide_premium_systems = False  # Indicateur pour masquer les systèmes premium
 

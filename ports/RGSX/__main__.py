@@ -65,7 +65,7 @@ except Exception as e:
 
 logger = logging.getLogger(__name__)
 
-# Ensure API key files (1Fichier, AllDebrid, RealDebrid) exist at startup so user can fill them before any download
+# Ensure API key files (1Fichier, AllDebrid, Debrid-Link, RealDebrid) exist at startup so user can fill them before any download
 try:  # pragma: no cover
     load_api_keys(False)
 except Exception as _e:
@@ -853,7 +853,12 @@ async def main():
                                 keys_info = ensure_download_provider_keys(False)
                             except Exception as e:
                                 logger.error(f"Impossible de charger les clés via helpers: {e}")
-                                keys_info = {'1fichier': getattr(config,'API_KEY_1FICHIER',''), 'alldebrid': getattr(config,'API_KEY_ALLDEBRID',''), 'realdebrid': getattr(config,'API_KEY_REALDEBRID','')}
+                                keys_info = {
+                                    '1fichier': getattr(config,'API_KEY_1FICHIER',''),
+                                    'alldebrid': getattr(config,'API_KEY_ALLDEBRID',''),
+                                    'debridlink': getattr(config,'API_KEY_DEBRIDLINK',''),
+                                    'realdebrid': getattr(config,'API_KEY_REALDEBRID','')
+                                }
                             
                             # SUPPRIMÉ: Vérification clés API obligatoires
                             # Maintenant on a le mode gratuit en fallback automatique

@@ -1659,17 +1659,21 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
     keys_info = load_api_keys()
     config.API_KEY_1FICHIER = keys_info.get('1fichier', '')
     config.API_KEY_ALLDEBRID = keys_info.get('alldebrid', '')
+    config.API_KEY_DEBRIDLINK = keys_info.get('debridlink', '')
     config.API_KEY_REALDEBRID = keys_info.get('realdebrid', '')
     if not config.API_KEY_1FICHIER and config.API_KEY_ALLDEBRID:
         logger.debug("Clé 1fichier absente, utilisation fallback AllDebrid")
-    if not config.API_KEY_1FICHIER and not config.API_KEY_ALLDEBRID and config.API_KEY_REALDEBRID:
-        logger.debug("Clé 1fichier & AllDebrid absentes, utilisation fallback RealDebrid")
-    elif not config.API_KEY_1FICHIER and not config.API_KEY_ALLDEBRID and not config.API_KEY_REALDEBRID:
-        logger.debug("Aucune clé API disponible (1fichier, AllDebrid, RealDebrid)")
+    if not config.API_KEY_1FICHIER and not config.API_KEY_ALLDEBRID and config.API_KEY_DEBRIDLINK:
+        logger.debug("Clé 1fichier & AllDebrid absentes, utilisation fallback Debrid-Link")
+    if not config.API_KEY_1FICHIER and not config.API_KEY_ALLDEBRID and not config.API_KEY_DEBRIDLINK and config.API_KEY_REALDEBRID:
+        logger.debug("Clé 1fichier, AllDebrid & Debrid-Link absentes, utilisation fallback RealDebrid")
+    elif not config.API_KEY_1FICHIER and not config.API_KEY_ALLDEBRID and not config.API_KEY_DEBRIDLINK and not config.API_KEY_REALDEBRID:
+        logger.debug("Aucune clé API disponible (1fichier, AllDebrid, Debrid-Link, RealDebrid)")
     logger.debug(f"Début téléchargement 1fichier: {game_name} depuis {url}, is_zip_non_supported={is_zip_non_supported}, task_id={task_id}")
     logger.debug(
         f"Clé API 1fichier: {'présente' if config.API_KEY_1FICHIER else 'absente'} / "
         f"AllDebrid: {'présente' if config.API_KEY_ALLDEBRID else 'absente'} / "
+        f"Debrid-Link: {'présente' if config.API_KEY_DEBRIDLINK else 'absente'} / "
         f"RealDebrid: {'présente' if config.API_KEY_REALDEBRID else 'absente'} (reloaded={keys_info.get('reloaded')})"
     )
     result = [None, None]
@@ -1715,7 +1719,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
     if task_id not in cancel_events:
         cancel_events[task_id] = threading.Event()
 
-    provider_used = None  # '1F', 'AD', 'RD'
+    provider_used = None  # '1F', 'AD', 'DL', 'RD'
 
     def _set_provider_in_history(pfx: str):
         try:
@@ -2074,6 +2078,92 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                             logger.warning(f"AllDebrid status != success: {ad_json}")
                     except Exception as e:
                         logger.error(f"Erreur AllDebrid fallback: {e}")
+                # Tentative Debrid-Link si pas de final_url
+                if not final_url and getattr(config, 'API_KEY_DEBRIDLINK', ''):
+                    logger.debug("Tentative fallback Debrid-Link (downloader/add)")
+                    try:
+                        dl_key = config.API_KEY_DEBRIDLINK
+                        headers_dl = {
+                            "Authorization": f"Bearer {dl_key}",
+                            "Content-Type": "application/json",
+                        }
+                        payload_dl = {"url": link}
+                        dl_resp = requests.post(
+                            "https://debrid-link.com/api/v2/downloader/add",
+                            json=payload_dl,
+                            headers=headers_dl,
+                            timeout=30
+                        )
+                        dl_status = dl_resp.status_code
+                        raw_text_dl = None
+                        dl_json = None
+                        try:
+                            raw_text_dl = dl_resp.text
+                        except Exception:
+                            pass
+                        try:
+                            dl_json = dl_resp.json()
+                        except Exception:
+                            dl_json = None
+                        logger.debug(f"Réponse Debrid-Link code={dl_status} body_snippet={(raw_text_dl[:120] + '...') if raw_text_dl and len(raw_text_dl) > 120 else raw_text_dl}")
+
+                        DEBRIDLINK_ERROR_MAP = {
+                            "badToken": "DL: Invalid API key",
+                            "notDebrid": "DL: Host unavailable",
+                            "hostNotValid": "DL: Unsupported host",
+                            "fileNotFound": "DL: File not found",
+                            "fileNotAvailable": "DL: File temporarily unavailable",
+                            "badFileUrl": "DL: Invalid link",
+                            "badFilePassword": "DL: Invalid file password",
+                            "notFreeHost": "DL: Premium account only",
+                            "maintenanceHost": "DL: Host in maintenance",
+                            "noServerHost": "DL: No server available",
+                            "maxLink": "DL: Daily link limit reached",
+                            "maxLinkHost": "DL: Daily host limit reached",
+                            "maxData": "DL: Daily data limit reached",
+                            "maxDataHost": "DL: Daily host data limit reached",
+                            "disabledServerHost": "DL: Server or VPN not allowed",
+                            "floodDetected": "DL: Rate limit reached",
+                        }
+
+                        error_message = None
+                        error_message_raw = None
+                        if dl_json and isinstance(dl_json, dict):
+                            if dl_json.get('success') is True:
+                                value = dl_json.get('value') or {}
+                                if isinstance(value, dict):
+                                    final_url = value.get('downloadUrl') or value.get('downloadURL') or value.get('link') or value.get('url')
+                                    filename = value.get('name') or value.get('filename') or filename or game_name
+                            else:
+                                error_code = dl_json.get('error')
+                                if error_code:
+                                    error_message = DEBRIDLINK_ERROR_MAP.get(error_code, f"DL: {error_code}")
+                                    error_message_raw = str(error_code)
+                        if dl_status in (200, 201) and final_url:
+                            logger.debug("Débridage réussi via Debrid-Link")
+                            provider_used = 'DL'
+                            _set_provider_in_history(provider_used)
+                        elif not final_url:
+                            if not error_message:
+                                if dl_status == 401:
+                                    error_message = "DL: Unauthorized (401)"
+                                elif dl_status == 429:
+                                    error_message = "DL: Rate limited (429)"
+                                elif dl_status >= 500:
+                                    error_message = f"DL: Server error ({dl_status})"
+                                else:
+                                    error_message = f"DL: Unexpected status ({dl_status})"
+                                error_message_raw = raw_text_dl or error_message
+                            logger.warning(f"Debrid-Link fallback échec: {error_message}")
+                            result[0] = False
+                            result[1] = error_message
+                            try:
+                                if isinstance(result, list):
+                                    result.append({"raw_error_debridlink": error_message_raw})
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        logger.error(f"Exception Debrid-Link fallback: {e}")
                 # Tentative RealDebrid si pas de final_url
                 if not final_url and getattr(config, 'API_KEY_REALDEBRID', ''):
                     logger.debug("Tentative fallback RealDebrid (unlock)")
@@ -2300,9 +2390,9 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                             content_length = head_response.headers.get('content-length')
                             if content_length:
                                 remote_size = int(content_length)
-                                logger.debug(f"Taille du fichier serveur (AllDebrid/RealDebrid): {remote_size} octets")
+                                logger.debug(f"Taille du fichier serveur (AllDebrid/Debrid-Link/RealDebrid): {remote_size} octets")
                 except Exception as e:
-                    logger.debug(f"Impossible de vérifier la taille serveur (AllDebrid/RealDebrid): {e}")
+                    logger.debug(f"Impossible de vérifier la taille serveur (AllDebrid/Debrid-Link/RealDebrid): {e}")
                 
                 # Vérifier si le fichier existe déjà (exact ou avec autre extension)
                 file_found = False
