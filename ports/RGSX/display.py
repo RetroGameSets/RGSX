@@ -666,12 +666,32 @@ def draw_error_screen(screen):
 # Récupérer les noms d'affichage des contrôles
 def get_control_display(action, default):
     """Récupère le nom d'affichage d'une action depuis controls_config."""
+    keyboard_defaults = {
+        "confirm": "Enter",
+        "cancel": "Esc/Echap",
+        "left": "←",
+        "right": "→",
+        "up": "↑",
+        "down": "↓",
+        "start": "AltGR",
+        "clear_history": "X",
+        "history": "H",
+        "page_up": "Page+",
+        "page_down": "Page-",
+        "filter": "F",
+        "delete": "Backspace",
+        "space": "Espace",
+    }
+    keyboard_default = keyboard_defaults.get(action)
     if not config.controls_config:
         logger.warning(f"controls_config vide pour l'action {action}, utilisation de la valeur par défaut")
-        return default
+        return keyboard_default or default
     
     control_config = config.controls_config.get(action, {})
     control_type = control_config.get('type', '')
+
+    if getattr(config, 'keyboard', False) and control_type != 'key' and keyboard_default:
+        return keyboard_default
     
     # Si un libellé personnalisé est défini dans controls.json, on le privilégie
     custom_label = control_config.get('display')
@@ -683,7 +703,7 @@ def get_control_display(action, default):
         key_code = control_config.get('key')
         key_names = {
             pygame.K_RETURN: "Enter",
-            pygame.K_ESCAPE: "Échap",
+            pygame.K_ESCAPE: "Esc/Echap",
             pygame.K_SPACE: "Espace",
             pygame.K_UP: "↑",
             pygame.K_DOWN: "↓",
@@ -701,7 +721,7 @@ def get_control_display(action, default):
             pygame.K_RMETA: "RMeta",
             pygame.K_CAPSLOCK: "Verr Maj",
             pygame.K_NUMLOCK: "Verr Num",
-            pygame.K_SCROLLOCK: "Verr Déf",
+            pygame.K_SCROLLOCK: "Verr Def",
             pygame.K_a: "A",
             pygame.K_b: "B",
             pygame.K_c: "C",
@@ -772,7 +792,7 @@ def get_control_display(action, default):
             pygame.K_F15: "F15",
             pygame.K_INSERT: "Inser",
             pygame.K_DELETE: "Suppr",
-            pygame.K_HOME: "Début",
+            pygame.K_HOME: "Debut",
             pygame.K_END: "Fin",
             pygame.K_PAGEUP: "Page+",
             pygame.K_PAGEDOWN: "Page-",
@@ -828,6 +848,57 @@ def get_control_display(action, default):
 
 # Cache pour les images des plateformes
 platform_images_cache = {}
+
+
+def draw_header_badge(screen, lines, badge_x, badge_y, light_mode=False):
+    """Affiche une cartouche compacte de texte dans l'en-tete."""
+    header_font = config.tiny_font
+    text_surfaces = [header_font.render(line, True, THEME_COLORS["text"]) for line in lines if line]
+    if not text_surfaces:
+        return
+
+    content_width = max((surface.get_width() for surface in text_surfaces), default=0)
+    content_height = sum(surface.get_height() for surface in text_surfaces) + max(0, len(text_surfaces) - 1) * 4
+    padding_x = 12
+    padding_y = 8
+    badge_width = content_width + padding_x * 2
+    badge_height = content_height + padding_y * 2
+
+    if light_mode:
+        pygame.draw.rect(screen, THEME_COLORS["button_idle"], (badge_x, badge_y, badge_width, badge_height), border_radius=12)
+    else:
+        shadow = pygame.Surface((badge_width + 8, badge_height + 8), pygame.SRCALPHA)
+        pygame.draw.rect(shadow, (0, 0, 0, 110), (4, 4, badge_width, badge_height), border_radius=12)
+        screen.blit(shadow, (badge_x - 4, badge_y - 4))
+
+        badge_surface = pygame.Surface((badge_width, badge_height), pygame.SRCALPHA)
+        pygame.draw.rect(badge_surface, THEME_COLORS["button_idle"], (0, 0, badge_width, badge_height), border_radius=12)
+        highlight = pygame.Surface((badge_width - 6, max(10, badge_height // 3)), pygame.SRCALPHA)
+        highlight.fill((255, 255, 255, 18))
+        badge_surface.blit(highlight, (3, 3))
+        screen.blit(badge_surface, (badge_x, badge_y))
+
+    pygame.draw.rect(screen, THEME_COLORS["border"], (badge_x, badge_y, badge_width, badge_height), 2, border_radius=12)
+
+    current_y = badge_y + padding_y
+    for surface in text_surfaces:
+        line_x = badge_x + (badge_width - surface.get_width()) // 2
+        screen.blit(surface, (line_x, current_y))
+        current_y += surface.get_height() + 4
+
+
+def draw_platform_header_info(screen, light_mode=False):
+    """Affiche version et controleur connecte dans un cartouche en haut a droite."""
+    lines = [f"v{config.app_version}"]
+
+    device_name = (getattr(config, 'controller_device_name', '') or '').strip()
+    if device_name:
+        lines.append(truncate_text_end(device_name, config.tiny_font, int(config.screen_width * 0.24)))
+
+    badge_width = max(config.tiny_font.size(line)[0] for line in lines) + 24
+    badge_x = config.screen_width - badge_width - 14
+    badge_y = 10
+    draw_header_badge(screen, lines, badge_x, badge_y, light_mode)
 
 # Grille des systèmes 3x3
 def draw_platform_grid(screen):
@@ -959,11 +1030,9 @@ def draw_platform_grid(screen):
     total_pages = (len(visible_platforms) + systems_per_page - 1) // systems_per_page
     if total_pages > 1:
         page_indicator_text = _("platform_page").format(config.current_page + 1, total_pages)
-        page_indicator = config.small_font.render(page_indicator_text, True, THEME_COLORS["text"])
-        # Position en haut à gauche
-        page_x = 10
-        page_y = 10
-        screen.blit(page_indicator, (page_x, page_y))
+        draw_header_badge(screen, [page_indicator_text], 14, 10, light_mode)
+
+    draw_platform_header_info(screen, light_mode)
 
     # Calculer une seule fois la pulsation pour les éléments sélectionnés (réduite)
     if not light_mode:
@@ -1170,8 +1239,7 @@ def download_fbneo_list(path_to_save: str) -> None:
     if not path.exists():
         logger.debug("Downloading fbneo gamelist.txt from github ...")
         urllib.request.urlretrieve(url, path)
-
-    logger.debug("Download finished:", path)
+        logger.debug("Download finished: %s", path)
     ...
 
 def parse_fbneo_list(path: str) -> Dict[str, Any]:
@@ -1211,13 +1279,19 @@ def draw_game_list(screen):
     fbneo_selected = platform_name == 'Final Burn Neo'
     if fbneo_selected:
         fbneo_game_list_path = os.path.join(config.SAVE_FOLDER, FBNEO_GAME_LIST)
-        download_fbneo_list(fbneo_game_list_path) # download the fbneo game list if necessary - 10 MB file
-        config.fbneo_games = parse_fbneo_list(fbneo_game_list_path)
+        if not config.fbneo_games:
+            download_fbneo_list(fbneo_game_list_path) # download the fbneo game list if necessary - 10 MB file
+            config.fbneo_games = parse_fbneo_list(fbneo_game_list_path)
         for game in config.games:
             clean_name = game.display_name
             if clean_name in config.fbneo_games:
                 fbneo_game = config.fbneo_games[clean_name]
-                game.display_name = fbneo_game["full name"]
+                full_name = fbneo_game["full name"]
+                if game.display_name != full_name:
+                    game.display_name = full_name
+                    game.regions = None
+                    game.is_non_release = None
+                    game.base_name = None
         ...
 
     if config.game_filter_obj and config.game_filter_obj.is_active() and not config.search_query:
@@ -1346,23 +1420,30 @@ def draw_game_list(screen):
     
     pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
 
-    # Largeur colonne taille (15%) mini 120px, reste pour nom
+    # Largeur colonnes nom / ext / taille
+    ext_col_width = max(90, int(rect_width * 0.08))
     size_col_width = max(120, int(rect_width * 0.15))
-    name_col_width = rect_width - 40 - size_col_width  # padding horizontal 40
+    name_col_width = rect_width - 40 - ext_col_width - size_col_width
 
     # ---- En-tête ----
     header_name = _("game_header_name")
+    header_ext = _("game_header_ext")
     header_size = _("game_header_size")
     header_y_center = rect_y + margin_top_bottom + header_height // 2
     # Nom aligné gauche
     header_name_surface = config.small_font.render(header_name, True, THEME_COLORS["text"])
     header_name_rect = header_name_surface.get_rect()
     header_name_rect.midleft = (rect_x + 20, header_y_center)
+    # Extension centree
+    header_ext_surface = config.small_font.render(header_ext, True, THEME_COLORS["text"])
+    header_ext_rect = header_ext_surface.get_rect()
+    header_ext_rect.center = (rect_x + rect_width - 20 - size_col_width - ext_col_width // 2, header_y_center)
     # Taille alignée droite
     header_size_surface = config.small_font.render(header_size, True, THEME_COLORS["text"])
     header_size_rect = header_size_surface.get_rect()
     header_size_rect.midright = (rect_x + rect_width - 20, header_y_center)
     screen.blit(header_name_surface, header_name_rect)
+    screen.blit(header_ext_surface, header_ext_rect)
     screen.blit(header_size_surface, header_size_rect)
     # Ligne de séparation sous l'en-tête
     separator_y = rect_y + margin_top_bottom + header_height
@@ -1376,9 +1457,10 @@ def draw_game_list(screen):
         game_name = item.display_name
         size_val = item.size
       
-        # Vérifier si le jeu est déjà téléchargé
-        is_downloaded = is_game_downloaded(platform_name, game_name)
+        # Vérifier si le jeu est déjà téléchargé en comparant le nom réel sans extension
+        is_downloaded = is_game_downloaded(platform_name, item.name)
         
+        ext_text = get_display_extension(item.name)
         size_text = size_val if (isinstance(size_val, str) and size_val.strip()) else "N/A"
         color = THEME_COLORS["fond_lignes"] if i == config.current_game else THEME_COLORS["text"]
         
@@ -1389,11 +1471,14 @@ def draw_game_list(screen):
         # Utiliser une couleur verte pour les jeux téléchargés
         name_color = (100, 255, 100) if is_downloaded else color  # Vert clair si téléchargé
         name_surface = config.small_font.render(truncated_name, True, name_color)
+        ext_surface = config.small_font.render(ext_text, True, THEME_COLORS["text"])
         size_surface = config.small_font.render(size_text, True, THEME_COLORS["text"])
         row_center_y = list_start_y + (i - config.scroll_offset) * line_height + line_height // 2
         # Position nom (aligné à gauche dans la boite)
         name_rect = name_surface.get_rect()
         name_rect.midleft = (rect_x + 20, row_center_y)
+        ext_rect = ext_surface.get_rect()
+        ext_rect.center = (rect_x + rect_width - 20 - size_col_width - ext_col_width // 2, row_center_y)
         size_rect = size_surface.get_rect()
         size_rect.midright = (rect_x + rect_width - 20, row_center_y)
         if i == config.current_game:
@@ -1422,6 +1507,7 @@ def draw_game_list(screen):
             pygame.draw.rect(screen, (*THEME_COLORS["fond_lignes"][:3], 120), border_rect, width=1, border_radius=8)
         
         screen.blit(name_surface, name_rect)
+        screen.blit(ext_surface, ext_rect)
         screen.blit(size_surface, size_rect)
 
     if len(games) > items_per_page:
@@ -1447,6 +1533,205 @@ def draw_game_scrollbar(screen, scroll_offset, total_items, visible_items, x, y,
     scrollbar_height = game_area_height * (visible_items / total_items)
     scrollbar_y = y + (game_area_height - scrollbar_height) * (scroll_offset / max(1, total_items - visible_items))
     pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], (x, scrollbar_y, 15, scrollbar_height), border_radius=4)
+
+
+def get_display_extension(file_name):
+    """Retourne l'extension finale d'un nom de fichier pour affichage."""
+    if not isinstance(file_name, str) or not file_name.strip():
+        return "-"
+    suffix = Path(file_name).suffix.strip()
+    if not suffix:
+        return "-"
+    return suffix.lower()
+
+
+def draw_global_search_list(screen):
+    """Affiche la recherche globale par nom sur toutes les plateformes."""
+    query = getattr(config, 'global_search_query', '') or ''
+    results = getattr(config, 'global_search_results', []) or []
+
+    screen.blit(OVERLAY, (0, 0))
+
+    title_query = query + "_" if (getattr(config, 'joystick', False) and getattr(config, 'global_search_editing', False)) or (not getattr(config, 'joystick', False)) else query
+    title_text = _("global_search_title").format(title_query)
+    if results:
+        title_text += f" ({len(results)})"
+
+    title_surface = config.search_font.render(title_text, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
+    title_rect_inflated = title_rect.inflate(60, 30)
+    title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
+
+    shadow = pygame.Surface((title_rect_inflated.width + 10, title_rect_inflated.height + 10), pygame.SRCALPHA)
+    pygame.draw.rect(shadow, (0, 0, 0, 120), (5, 5, title_rect_inflated.width, title_rect_inflated.height), border_radius=14)
+    screen.blit(shadow, (title_rect_inflated.left - 5, title_rect_inflated.top - 5))
+
+    glow = pygame.Surface((title_rect_inflated.width + 20, title_rect_inflated.height + 20), pygame.SRCALPHA)
+    pygame.draw.rect(glow, (*THEME_COLORS["glow"][:3], 60), glow.get_rect(), border_radius=16)
+    screen.blit(glow, (title_rect_inflated.left - 10, title_rect_inflated.top - 10))
+
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
+    screen.blit(title_surface, title_rect)
+
+    if not query.strip():
+        message = _("global_search_empty_query")
+        lines = wrap_text(message, config.font, config.screen_width - 80)
+        line_height = config.font.get_height() + 5
+        text_height = len(lines) * line_height
+        margin_top_bottom = 20
+        rect_height = text_height + 2 * margin_top_bottom
+        max_text_width = max([config.font.size(line)[0] for line in lines], default=300)
+        rect_width = max_text_width + 80
+        rect_x = (config.screen_width - rect_width) // 2
+        rect_y = (config.screen_height - rect_height) // 2
+
+        pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+        pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+
+        for i, line in enumerate(lines):
+            text_surface = config.font.render(line, True, THEME_COLORS["text"])
+            text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
+            screen.blit(text_surface, text_rect)
+        return
+
+    if not results:
+        message = _("global_search_no_results").format(query)
+        lines = wrap_text(message, config.font, config.screen_width - 80)
+        line_height = config.font.get_height() + 5
+        text_height = len(lines) * line_height
+        margin_top_bottom = 20
+        rect_height = text_height + 2 * margin_top_bottom
+        max_text_width = max([config.font.size(line)[0] for line in lines], default=300)
+        rect_width = max_text_width + 80
+        rect_x = (config.screen_width - rect_width) // 2
+        rect_y = (config.screen_height - rect_height) // 2
+
+        pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+        pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+
+        for i, line in enumerate(lines):
+            text_surface = config.font.render(line, True, THEME_COLORS["text"])
+            text_rect = text_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
+            screen.blit(text_surface, text_rect)
+        return
+
+    line_height = config.small_font.get_height() + 10
+    header_height = line_height
+    margin_top_bottom = 20
+    extra_margin_top = 20
+    extra_margin_bottom = 60
+    title_height = config.title_font.get_height() + 20
+    available_height = config.screen_height - title_height - extra_margin_top - extra_margin_bottom - 2 * margin_top_bottom - header_height
+    items_per_page = max(1, available_height // line_height)
+
+    rect_height = header_height + items_per_page * line_height + 2 * margin_top_bottom
+    rect_width = int(0.95 * config.screen_width)
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = title_height + extra_margin_top + (config.screen_height - title_height - extra_margin_top - extra_margin_bottom - rect_height) // 2
+
+    config.global_search_scroll_offset = max(0, min(config.global_search_scroll_offset, max(0, len(results) - items_per_page)))
+    if config.global_search_selected < config.global_search_scroll_offset:
+        config.global_search_scroll_offset = config.global_search_selected
+    elif config.global_search_selected >= config.global_search_scroll_offset + items_per_page:
+        config.global_search_scroll_offset = config.global_search_selected - items_per_page + 1
+
+    shadow_rect = pygame.Rect(rect_x + 6, rect_y + 6, rect_width, rect_height)
+    shadow_surf = pygame.Surface((rect_width + 8, rect_height + 8), pygame.SRCALPHA)
+    pygame.draw.rect(shadow_surf, (0, 0, 0, 100), (4, 4, rect_width, rect_height), border_radius=14)
+    screen.blit(shadow_surf, (rect_x - 4, rect_y - 4))
+
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    highlight = pygame.Surface((rect_width - 8, 40), pygame.SRCALPHA)
+    highlight.fill((255, 255, 255, 15))
+    screen.blit(highlight, (rect_x + 4, rect_y + 4))
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+
+    ext_col_width = max(90, int(rect_width * 0.08))
+    size_col_width = max(120, int(rect_width * 0.15))
+    platform_col_width = max(220, int(rect_width * 0.22))
+    name_col_width = rect_width - 40 - platform_col_width - ext_col_width - size_col_width
+    header_y_center = rect_y + margin_top_bottom + header_height // 2
+
+    header_platform_surface = config.small_font.render(_("history_column_system"), True, THEME_COLORS["text"])
+    header_platform_rect = header_platform_surface.get_rect()
+    header_platform_rect.midleft = (rect_x + 20, header_y_center)
+    header_name_surface = config.small_font.render(_("game_header_name"), True, THEME_COLORS["text"])
+    header_name_rect = header_name_surface.get_rect()
+    header_name_rect.midleft = (rect_x + 20 + platform_col_width, header_y_center)
+    header_ext_surface = config.small_font.render(_("game_header_ext"), True, THEME_COLORS["text"])
+    header_ext_rect = header_ext_surface.get_rect()
+    header_ext_rect.center = (rect_x + rect_width - 20 - size_col_width - ext_col_width // 2, header_y_center)
+    header_size_surface = config.small_font.render(_("game_header_size"), True, THEME_COLORS["text"])
+    header_size_rect = header_size_surface.get_rect()
+    header_size_rect.midright = (rect_x + rect_width - 20, header_y_center)
+    screen.blit(header_platform_surface, header_platform_rect)
+    screen.blit(header_name_surface, header_name_rect)
+    screen.blit(header_ext_surface, header_ext_rect)
+    screen.blit(header_size_surface, header_size_rect)
+
+    separator_y = rect_y + margin_top_bottom + header_height
+    pygame.draw.line(screen, THEME_COLORS["border"], (rect_x + 20, separator_y), (rect_x + rect_width - 20, separator_y), 2)
+    list_start_y = rect_y + margin_top_bottom + header_height
+
+    for i in range(config.global_search_scroll_offset, min(config.global_search_scroll_offset + items_per_page, len(results))):
+        item = results[i]
+        row_center_y = list_start_y + (i - config.global_search_scroll_offset) * line_height + line_height // 2
+        is_selected = i == config.global_search_selected
+        row_color = THEME_COLORS["fond_lignes"] if is_selected else THEME_COLORS["text"]
+
+        platform_text = truncate_text_end(item["platform_label"], config.small_font, platform_col_width - 10)
+        game_text = truncate_text_middle(item["display_name"], config.small_font, name_col_width - 10, is_filename=False)
+        ext_text = get_display_extension(item.get("game_name"))
+        size_value = item.get("size")
+        size_text = size_value if (isinstance(size_value, str) and size_value.strip()) else "N/A"
+
+        platform_surface = config.small_font.render(platform_text, True, row_color)
+        game_surface = config.small_font.render(game_text, True, row_color)
+        ext_surface = config.small_font.render(ext_text, True, THEME_COLORS["text"])
+        size_surface = config.small_font.render(size_text, True, THEME_COLORS["text"])
+
+        platform_rect = platform_surface.get_rect()
+        platform_rect.midleft = (rect_x + 20, row_center_y)
+        game_rect = game_surface.get_rect()
+        game_rect.midleft = (rect_x + 20 + platform_col_width, row_center_y)
+        ext_rect = ext_surface.get_rect()
+        ext_rect.center = (rect_x + rect_width - 20 - size_col_width - ext_col_width // 2, row_center_y)
+        size_rect = size_surface.get_rect()
+        size_rect.midright = (rect_x + rect_width - 20, row_center_y)
+
+        if is_selected:
+            glow_width = rect_width - 40
+            glow_height = game_rect.height + 12
+            glow_surface = pygame.Surface((glow_width + 6, glow_height + 6), pygame.SRCALPHA)
+            pygame.draw.rect(glow_surface, (*THEME_COLORS["fond_lignes"][:3], 50), (3, 3, glow_width, glow_height), border_radius=8)
+            screen.blit(glow_surface, (rect_x + 17, row_center_y - glow_height // 2 - 3))
+
+            selection_bg = pygame.Surface((glow_width, glow_height), pygame.SRCALPHA)
+            for j in range(glow_height):
+                ratio = j / glow_height
+                alpha = int(60 + 20 * ratio)
+                pygame.draw.line(selection_bg, (*THEME_COLORS["fond_lignes"][:3], alpha), (0, j), (glow_width, j))
+            screen.blit(selection_bg, (rect_x + 20, row_center_y - glow_height // 2))
+
+            border_rect = pygame.Rect(rect_x + 20, row_center_y - glow_height // 2, glow_width, glow_height)
+            pygame.draw.rect(screen, (*THEME_COLORS["fond_lignes"][:3], 120), border_rect, width=1, border_radius=8)
+
+        screen.blit(platform_surface, platform_rect)
+        screen.blit(game_surface, game_rect)
+        screen.blit(ext_surface, ext_rect)
+        screen.blit(size_surface, size_rect)
+
+    if len(results) > items_per_page:
+        draw_game_scrollbar(
+            screen,
+            config.global_search_scroll_offset,
+            len(results),
+            items_per_page,
+            rect_x + rect_width - 10,
+            rect_y,
+            rect_height
+        )
 
 def format_size(size):
     """Convertit une taille en octets en format lisible avec unités adaptées à la langue."""
@@ -1500,14 +1785,18 @@ def draw_history_list(screen):
 
     # Define column widths as percentages of available space (give more space to status/error messages)
     column_width_percentages = {
-        "platform": 0.15,   # narrower platform column
-        "game_name": 0.45,  # game name column
-        "size": 0.10,       # size column remains compact
-        "status": 0.30      # wider status column for long error codes/messages
+        "platform": 0.13,
+        "game_name": 0.25,
+        "ext": 0.08,
+        "folder": 0.12,
+        "size": 0.08,
+        "status": 0.34
     }
     available_width = int(0.95 * config.screen_width - 60)  # Total available width for columns
     col_platform_width = int(available_width * column_width_percentages["platform"])
     col_game_width = int(available_width * column_width_percentages["game_name"])
+    col_ext_width = int(available_width * column_width_percentages["ext"])
+    col_folder_width = int(available_width * column_width_percentages["folder"])
     col_size_width = int(available_width * column_width_percentages["size"])
     col_status_width = int(available_width * column_width_percentages["status"])
     rect_width = int(0.95 * config.screen_width)
@@ -1586,13 +1875,15 @@ def draw_history_list(screen):
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
 
-    headers = [_("history_column_system"), _("history_column_game"), _("history_column_size"), _("history_column_status")]
+    headers = [_("history_column_system"), _("history_column_game"), _("game_header_ext"), _("history_column_folder"), _("history_column_size"), _("history_column_status")]
     header_y = rect_y + margin_top_bottom + header_height // 2
     header_x_positions = [
         rect_x + 20 + col_platform_width // 2,
         rect_x + 20 + col_platform_width + col_game_width // 2,
-        rect_x + 20 + col_platform_width + col_game_width + col_size_width // 2,
-        rect_x + 20 + col_platform_width + col_game_width + col_size_width + col_status_width // 2
+        rect_x + 20 + col_platform_width + col_game_width + col_ext_width // 2,
+        rect_x + 20 + col_platform_width + col_game_width + col_ext_width + col_folder_width // 2,
+        rect_x + 20 + col_platform_width + col_game_width + col_ext_width + col_folder_width + col_size_width // 2,
+        rect_x + 20 + col_platform_width + col_game_width + col_ext_width + col_folder_width + col_size_width + col_status_width // 2
     ]
     for header, x_pos in zip(headers, header_x_positions):
         text_surface = config.small_font.render(header, True, THEME_COLORS["text"])
@@ -1606,6 +1897,8 @@ def draw_history_list(screen):
         entry = history[i]
         platform = entry.get("platform", "Inconnu")
         game_name = entry.get("game_name", "Inconnu")
+        ext_text = get_display_extension(game_name)
+        folder_text = _get_dest_folder_name(platform)
         
         # Correction du calcul de la taille
         size = entry.get("total_size", 0)
@@ -1679,20 +1972,26 @@ def draw_history_list(screen):
             status_color = THEME_COLORS.get("text", (255, 255, 255))
 
         platform_text = truncate_text_end(platform, config.small_font, col_platform_width - 10)
-        game_text = truncate_text_end(game_name, config.small_font, col_game_width - 10)
+        game_text = truncate_text_end(str(game_name).rsplit('.', 1)[0] if '.' in str(game_name) else str(game_name), config.small_font, col_game_width - 10)
+        ext_text = truncate_text_end(ext_text, config.small_font, col_ext_width - 10)
+        folder_text = truncate_text_end(folder_text, config.small_font, col_folder_width - 10)
         size_text = truncate_text_end(size_text, config.small_font, col_size_width - 10)
         status_text = truncate_text_middle(str(status_text or ""), config.small_font, col_status_width - 10, is_filename=False)
 
         y_pos = rect_y + margin_top_bottom + header_height + idx * line_height + line_height // 2
         platform_surface = config.small_font.render(platform_text, True, color)
         game_surface = config.small_font.render(game_text, True, color)
+        ext_surface = config.small_font.render(ext_text, True, color)
+        folder_surface = config.small_font.render(folder_text, True, color)
         size_surface = config.small_font.render(size_text, True, color)  # Correction ici
         status_surface = config.small_font.render(status_text, True, status_color)
 
         platform_rect = platform_surface.get_rect(center=(header_x_positions[0], y_pos))
         game_rect = game_surface.get_rect(center=(header_x_positions[1], y_pos))
-        size_rect = size_surface.get_rect(center=(header_x_positions[2], y_pos))
-        status_rect = status_surface.get_rect(center=(header_x_positions[3], y_pos))
+        ext_rect = ext_surface.get_rect(center=(header_x_positions[2], y_pos))
+        folder_rect = folder_surface.get_rect(center=(header_x_positions[3], y_pos))
+        size_rect = size_surface.get_rect(center=(header_x_positions[4], y_pos))
+        status_rect = status_surface.get_rect(center=(header_x_positions[5], y_pos))
 
         if i == current_history_item_inverted:
             glow_surface = pygame.Surface((rect_width - 40, line_height), pygame.SRCALPHA)
@@ -1701,6 +2000,8 @@ def draw_history_list(screen):
 
         screen.blit(platform_surface, platform_rect)
         screen.blit(game_surface, game_rect)
+        screen.blit(ext_surface, ext_rect)
+        screen.blit(folder_surface, folder_rect)
         screen.blit(size_surface, size_rect)
         screen.blit(status_surface, status_rect)
 
@@ -1969,13 +2270,30 @@ def draw_extension_warning(screen):
 # Affichage des contrôles en bas de page
 def draw_controls(screen, menu_state, current_music_name=None, music_popup_start_time=0):
     """Affiche les contrôles contextuels en bas de l'écran selon le menu_state."""
+    if menu_state == "platform_search" and getattr(config, 'joystick', False) and getattr(config, 'global_search_editing', False):
+        menu_state = "platform_search_edit"
     
     # Mapping des contrôles par menu_state
     controls_map = {
         "platform": [
             ("history", _("controls_action_history")),
+            ("filter", _("controls_filter_search")),
             ("confirm", _("controls_confirm_select")),
             ("start", _("controls_action_start")),
+        ],
+        "platform_search": [
+            ("confirm", _("controls_confirm_select")),
+            ("clear_history", _("controls_action_queue")),
+            (("page_up", "page_down"), _("controls_pages")),
+            ("filter", _("controls_action_edit_search")),
+            ("cancel", _("controls_cancel_back")),
+        ],
+        "platform_search_edit": [
+            ("confirm", _("controls_action_select_char")),
+            ("delete", _("controls_action_delete")),
+            ("space", _("controls_action_space")),
+            ("filter", _("controls_action_show_results")),
+            ("cancel", _("controls_cancel_back")),
         ],
         "game": [
             ("confirm", _("controls_confirm_select")),
@@ -2046,41 +2364,9 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
     # Construire les lignes avec icônes
     icon_lines = []
     
-    # Sur la page d'accueil et la page loading afficher version et musique
-    if menu_state == "platform" or menu_state == "loading":
-        control_parts = []
-        
-        start_button = get_control_display('start', 'START')
-        # Si aucun joystick, afficher la touche entre crochets
-        if not getattr(config, 'joystick', True):
-            start_button = f"[{start_button}]"
-        start_text = _("controls_action_start")
-        control_parts.append(f"RGSX v{config.app_version} - {start_button} : {start_text}")
-        
-        # Afficher le nom du joystick s'il est détecté
-        try:
-            device_name = getattr(config, 'controller_device_name', '') or ''
-            if device_name:
-                try:
-                    joy_label = _("footer_joystick")
-                except Exception:
-                    joy_label = "Joystick: {0}"
-                if isinstance(joy_label, str) and "{0}" in joy_label:
-                    joy_text = joy_label.format(device_name)
-                else:
-                    joy_text = f"{joy_label} {device_name}" if joy_label else f"Joystick: {device_name}"
-                control_parts.append(f"| {joy_text}")
-        except Exception:
-            pass
-        
-        # Ajouter le nom de la musique si disponible
-        if config.current_music_name and config.music_popup_start_time > 0:
-            current_time = pygame.time.get_ticks() / 1000
-            if current_time - config.music_popup_start_time < 3.0:
-                control_parts.append(f"| {config.current_music_name}")
-        
-        control_text = " ".join(control_parts)
-        icon_lines.append(control_text)
+    # Sur la page loading afficher version et musique
+    if menu_state == "loading":
+        icon_lines.append(f"RGSX v{config.app_version}")
     else:
         # Pour les autres menus: affichage avec icônes et contrôles contextuels sur une seule ligne
         all_controls = []
@@ -2903,6 +3189,7 @@ def draw_pause_games_menu(screen, selected_index):
     source_label = _("games_source_rgsx") if mode == "rgsx" else _("games_source_custom")
     source_txt = f"{_('menu_games_source_prefix')}: < {source_label} >"
     update_txt = _("menu_redownload_cache")
+    scan_txt = _("menu_scan_owned_roms") if _ else "Scan owned ROMs"
     history_txt = _("menu_history") if _ else "History"
     
     # Show unsupported systems
@@ -2923,9 +3210,10 @@ def draw_pause_games_menu(screen, selected_index):
     filter_txt = _("submenu_display_filter_platforms") if _ else "Filter Platforms"
     
     back_txt = _("menu_back") if _ else "Back"
-    options = [update_txt, history_txt, source_txt, unsupported_txt, hide_premium_txt, filter_txt, back_txt]
+    options = [update_txt, scan_txt, history_txt, source_txt, unsupported_txt, hide_premium_txt, filter_txt, back_txt]
     instruction_keys = [
         "instruction_games_update_cache",
+        "instruction_games_scan_owned",
         "instruction_games_history",
         "instruction_games_source_mode",
         "instruction_display_show_unsupported",
@@ -4651,7 +4939,7 @@ def draw_scraper_screen(screen):
             
             # Redimensionner l'image en conservant le ratio
             image = config.scraper_image_surface
-            img_width, img_height = image.get_size()
+            img_width, img_height = image.get_size() if image else (0, 0)
             
             # Calculer le ratio de redimensionnement
             width_ratio = max_image_width / img_width

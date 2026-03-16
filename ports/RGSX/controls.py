@@ -20,7 +20,7 @@ from utils import (
     ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string,
     start_connection_status_check
 )
-from history import load_history, clear_history, add_to_history, save_history
+from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games
 from language import _, get_available_languages, set_language  
 from rgsx_settings import (
     get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
@@ -72,6 +72,7 @@ VALID_STATES = [
     "filter_search",            # recherche par nom (existant, mais renommé)
     "filter_advanced",          # filtrage avancé par région, etc.
     "filter_priority_config",   # configuration priorité régions pour one-rom-per-game
+    "platform_search",          # recherche globale inter-plateformes
     "platform_folder_config",   # configuration du dossier personnalisé pour une plateforme
     "folder_browser",           # navigateur de dossiers intégré
     "folder_browser_new_folder", # création d'un nouveau dossier
@@ -109,6 +110,18 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
         "delete": {"type": "key", "key": pygame.K_BACKSPACE},
         "space": {"type": "key", "key": pygame.K_SPACE}
     }
+
+    def _is_keyboard_only_config(data):
+        if not isinstance(data, dict) or not data:
+            return False
+        for action_name, mapping in data.items():
+            if action_name == "device":
+                continue
+            if not isinstance(mapping, dict):
+                return False
+            if mapping.get("type") != "key":
+                return False
+        return True
     
     try:
         # 1) Fichier utilisateur
@@ -117,21 +130,25 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
                 data = json.load(f)
                 if not isinstance(data, dict):
                     data = {}
+            keyboard_mode = (not getattr(config, 'joystick', False)) or getattr(config, 'keyboard', False)
+            if keyboard_mode and not _is_keyboard_only_config(data):
+                logging.getLogger(__name__).info("Configuration utilisateur manette ignorée en mode clavier")
+            else:
             # Compléter les actions manquantes, et sauve seulement si le fichier utilisateur existe
-            changed = False
-            for k, v in default_config.items():
-                if k not in data:
-                    data[k] = v
-                    changed = True
-            if changed:
-                try:
-                    os.makedirs(os.path.dirname(path), exist_ok=True)
-                    with open(path, "w", encoding="utf-8") as f:
-                        json.dump(data, f, indent=2)
-                    logging.getLogger(__name__).debug(f"controls.json complété avec les actions manquantes: {path}")
-                except Exception as e:
-                    logging.getLogger(__name__).warning(f"Impossible d'écrire les actions manquantes dans {path}: {e}")
-            return data
+                changed = False
+                for k, v in default_config.items():
+                    if k not in data:
+                        data[k] = v
+                        changed = True
+                if changed:
+                    try:
+                        os.makedirs(os.path.dirname(path), exist_ok=True)
+                        with open(path, "w", encoding="utf-8") as f:
+                            json.dump(data, f, indent=2)
+                        logging.getLogger(__name__).debug(f"controls.json complété avec les actions manquantes: {path}")
+                    except Exception as e:
+                        logging.getLogger(__name__).warning(f"Impossible d'écrire les actions manquantes dans {path}: {e}")
+                return data
 
         # 2) Préréglages sans copie si aucun fichier utilisateur
         try:
@@ -260,6 +277,67 @@ def is_input_matched(event, action_name):
     
     return False
 
+
+def is_global_search_input_matched(event, action_name):
+    """Fallback robuste pour la recherche globale, independant du preset courant."""
+    if is_input_matched(event, action_name):
+        return True
+
+    if event.type == pygame.KEYDOWN:
+        keyboard_fallback = {
+            "up": pygame.K_UP,
+            "down": pygame.K_DOWN,
+            "left": pygame.K_LEFT,
+            "right": pygame.K_RIGHT,
+            "confirm": pygame.K_RETURN,
+            "cancel": pygame.K_ESCAPE,
+            "filter": pygame.K_f,
+            "delete": pygame.K_BACKSPACE,
+            "space": pygame.K_SPACE,
+            "page_up": pygame.K_PAGEUP,
+            "page_down": pygame.K_PAGEDOWN,
+        }
+        if action_name in keyboard_fallback and event.key == keyboard_fallback[action_name]:
+            return True
+
+    if event.type == pygame.JOYBUTTONDOWN:
+        common_button_fallback = {
+            "confirm": {0},
+            "cancel": {1},
+            "filter": {6},
+            "start": {7},
+            "delete": {2},
+            "space": {5},
+            "page_up": {4},
+            "page_down": {5},
+        }
+        if action_name in common_button_fallback and event.button in common_button_fallback[action_name]:
+            return True
+
+    if event.type == pygame.JOYHATMOTION:
+        hat_fallback = {
+            "up": (0, 1),
+            "down": (0, -1),
+            "left": (-1, 0),
+            "right": (1, 0),
+        }
+        if action_name in hat_fallback and event.value == hat_fallback[action_name]:
+            return True
+
+    if event.type == pygame.JOYAXISMOTION:
+        axis_fallback = {
+            "left": (0, -1),
+            "right": (0, 1),
+            "up": (1, -1),
+            "down": (1, 1),
+        }
+        if action_name in axis_fallback:
+            axis_id, direction = axis_fallback[action_name]
+            if event.axis == axis_id and abs(event.value) > 0.5 and (1 if event.value > 0 else -1) == direction:
+                return True
+
+    return False
+
 def _launch_next_queued_download():
     """Lance le prochain téléchargement de la queue si aucun n'est actif.
     Gère la liaison entre le système Desktop et le système de download_rom/download_from_1fichier.
@@ -340,6 +418,217 @@ def filter_games_by_search_query() -> list[Game]:
             filtered_games.append(game)
         
     return filtered_games
+
+
+GLOBAL_SEARCH_KEYBOARD_LAYOUT = [
+    ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+    ['A', 'Z', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+    ['Q', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M'],
+    ['W', 'X', 'C', 'V', 'B', 'N']
+]
+
+
+def _get_platform_id(platform) -> str:
+    return platform.get("name") if isinstance(platform, dict) else str(platform)
+
+
+def _get_platform_label(platform_id: str) -> str:
+    return config.platform_names.get(platform_id, platform_id)
+
+
+def build_global_search_index() -> list[dict]:
+    indexed_games = []
+    for platform_index, platform in enumerate(config.platforms):
+        platform_id = _get_platform_id(platform)
+        platform_label = _get_platform_label(platform_id)
+        for game in load_games(platform_id):
+            indexed_games.append({
+                "platform_id": platform_id,
+                "platform_label": platform_label,
+                "platform_index": platform_index,
+                "game_name": game.name,
+                "display_name": game.display_name or Path(game.name).stem,
+                "url": game.url,
+                "size": game.size,
+            })
+
+    indexed_games.sort(key=lambda item: (item["platform_label"].lower(), item["display_name"].lower()))
+    return indexed_games
+
+
+def refresh_global_search_results(reset_selection: bool = True) -> None:
+    query = (config.global_search_query or "").strip().lower()
+    if not query:
+        config.global_search_results = []
+    else:
+        config.global_search_results = [
+            item for item in config.global_search_index
+            if query in item["display_name"].lower()
+        ]
+
+    if reset_selection:
+        config.global_search_selected = 0
+        config.global_search_scroll_offset = 0
+    else:
+        max_index = max(0, len(config.global_search_results) - 1)
+        config.global_search_selected = max(0, min(config.global_search_selected, max_index))
+        config.global_search_scroll_offset = max(0, min(config.global_search_scroll_offset, config.global_search_selected))
+
+
+def enter_global_search() -> None:
+    config.global_search_index = build_global_search_index()
+    config.global_search_query = ""
+    config.global_search_results = []
+    config.global_search_selected = 0
+    config.global_search_scroll_offset = 0
+    config.global_search_editing = bool(getattr(config, 'joystick', False))
+    config.selected_key = (0, 0)
+    config.previous_menu_state = "platform"
+    config.menu_state = "platform_search"
+    config.needs_redraw = True
+    logger.debug("Entree en recherche globale inter-plateformes")
+
+
+def exit_global_search() -> None:
+    config.global_search_query = ""
+    config.global_search_results = []
+    config.global_search_selected = 0
+    config.global_search_scroll_offset = 0
+    config.global_search_editing = False
+    config.selected_key = (0, 0)
+    config.menu_state = "platform"
+    config.needs_redraw = True
+
+
+def open_global_search_result(screen) -> None:
+    if not config.global_search_results:
+        return
+
+    result = config.global_search_results[config.global_search_selected]
+    platform_index = result.get("platform_index", 0)
+    if platform_index < 0 or platform_index >= len(config.platforms):
+        return
+
+    config.current_platform = platform_index
+    config.selected_platform = platform_index
+    config.current_page = platform_index // max(1, config.GRID_COLS * config.GRID_ROWS)
+
+    platform_id = result["platform_id"]
+    config.games = load_games(platform_id)
+    config.filtered_games = config.games
+    config.search_mode = False
+    config.search_query = ""
+    config.filter_active = False
+
+    target_name = result["game_name"]
+    target_display_name = result["display_name"]
+    target_index = 0
+    for index, game in enumerate(config.games):
+        if game.name == target_name:
+            target_index = index
+            break
+        if game.display_name == target_display_name:
+            target_index = index
+
+    config.current_game = target_index
+    config.scroll_offset = 0
+    config.global_search_editing = False
+
+    from rgsx_settings import get_light_mode
+    if not get_light_mode():
+        draw_validation_transition(screen, config.current_platform)
+
+    config.menu_state = "game"
+    config.needs_redraw = True
+    logger.debug(f"Ouverture du resultat global {target_display_name} sur {platform_id}")
+
+
+def trigger_global_search_download(queue_only: bool = False) -> None:
+    if not config.global_search_results:
+        return
+
+    result = config.global_search_results[config.global_search_selected]
+    url = result.get("url")
+    platform = result.get("platform_id")
+    game_name = result.get("game_name")
+    display_name = result.get("display_name") or game_name
+
+    if not url or not platform or not game_name:
+        logger.error(f"Resultat de recherche globale invalide: {result}")
+        return
+
+    pending_download = check_extension_before_download(url, platform, game_name)
+    if not pending_download:
+        logger.error(f"config.pending_download est None pour {game_name}")
+        config.needs_redraw = True
+        return
+
+    is_supported = is_extension_supported(
+        sanitize_filename(game_name),
+        platform,
+        load_extensions_json()
+    )
+    zip_ok = bool(pending_download[3])
+    allow_unknown = get_allow_unknown_extensions()
+
+    if (not is_supported and not zip_ok) and not allow_unknown:
+        config.pending_download = pending_download
+        config.pending_download_is_queue = queue_only
+        config.previous_menu_state = config.menu_state
+        config.menu_state = "extension_warning"
+        config.extension_confirm_selection = 0
+        config.needs_redraw = True
+        logger.debug(f"Extension non supportee, passage a extension_warning pour {game_name}")
+        return
+
+    if queue_only:
+        task_id = str(pygame.time.get_ticks())
+        queue_item = {
+            'url': url,
+            'platform': platform,
+            'game_name': game_name,
+            'is_zip_non_supported': pending_download[3],
+            'is_1fichier': is_1fichier_url(url),
+            'task_id': task_id,
+            'status': 'Queued'
+        }
+        config.download_queue.append(queue_item)
+
+        config.history.append({
+            'platform': platform,
+            'game_name': game_name,
+            'status': 'Queued',
+            'url': url,
+            'progress': 0,
+            'message': _("download_queued"),
+            'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'downloaded_size': 0,
+            'total_size': 0,
+            'task_id': task_id
+        })
+        save_history(config.history)
+        show_toast(f"{display_name}\n{_('download_queued')}")
+        config.needs_redraw = True
+        logger.debug(f"{game_name} ajoute a la file d'attente depuis la recherche globale. Queue size: {len(config.download_queue)}")
+
+        if not config.download_active and config.download_queue:
+            _launch_next_queued_download()
+        return
+
+    if is_1fichier_url(url):
+        ensure_download_provider_keys(False)
+        if missing_all_provider_keys():
+            logger.warning("Aucune cle API - Mode gratuit 1fichier sera utilise (attente requise)")
+        task_id = str(pygame.time.get_ticks())
+        task = asyncio.create_task(download_from_1fichier(url, platform, game_name, pending_download[3], task_id))
+    else:
+        task_id = str(pygame.time.get_ticks())
+        task = asyncio.create_task(download_rom(url, platform, game_name, pending_download[3], task_id))
+
+    config.download_tasks[task_id] = (task, url, game_name, platform)
+    show_toast(f"{_('download_started')}: {display_name}")
+    config.needs_redraw = True
+    logger.debug(f"Telechargement demarre depuis la recherche globale: {game_name} pour {platform}, task_id={task_id}")
     ...
 
 def handle_controls(event, sources, joystick, screen):
@@ -504,6 +793,8 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "history"
                 config.needs_redraw = True
                 logger.debug("Ouverture history depuis platform")
+            elif is_input_matched(event, "filter"):
+                enter_global_search()
             elif is_input_matched(event, "confirm"):
                 # Démarrer le chronomètre pour l'appui long - ne pas exécuter immédiatement
                 # L'action sera exécutée au relâchement si appui court, ou config dossier si appui long
@@ -522,6 +813,117 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "confirm_exit"
                 config.confirm_selection = 0
                 config.needs_redraw = True
+
+        elif config.menu_state == "platform_search":
+            if getattr(config, 'joystick', False) and getattr(config, 'global_search_editing', False):
+                row, col = config.selected_key
+                max_row = len(GLOBAL_SEARCH_KEYBOARD_LAYOUT) - 1
+                max_col = len(GLOBAL_SEARCH_KEYBOARD_LAYOUT[row]) - 1
+                if is_global_search_input_matched(event, "up"):
+                    if row == 0:
+                        row = max_row + (1 if col <= 5 else 0)
+                    if row > 0:
+                        config.selected_key = (row - 1, min(col, len(GLOBAL_SEARCH_KEYBOARD_LAYOUT[row - 1]) - 1))
+                        config.repeat_action = "up"
+                        config.repeat_start_time = current_time + REPEAT_DELAY
+                        config.repeat_last_action = current_time
+                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
+                        config.needs_redraw = True
+                elif is_global_search_input_matched(event, "down"):
+                    if (col <= 5 and row == max_row) or (col > 5 and row == max_row - 1):
+                        row = -1
+                    if row < max_row:
+                        config.selected_key = (row + 1, min(col, len(GLOBAL_SEARCH_KEYBOARD_LAYOUT[row + 1]) - 1))
+                        config.repeat_action = "down"
+                        config.repeat_start_time = current_time + REPEAT_DELAY
+                        config.repeat_last_action = current_time
+                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
+                        config.needs_redraw = True
+                elif is_global_search_input_matched(event, "left"):
+                    if col == 0:
+                        col = max_col + 1
+                    if col > 0:
+                        config.selected_key = (row, col - 1)
+                        config.repeat_action = "left"
+                        config.repeat_start_time = current_time + REPEAT_DELAY
+                        config.repeat_last_action = current_time
+                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
+                        config.needs_redraw = True
+                elif is_global_search_input_matched(event, "right"):
+                    if col == max_col:
+                        col = -1
+                    if col < max_col:
+                        config.selected_key = (row, col + 1)
+                        config.repeat_action = "right"
+                        config.repeat_start_time = current_time + REPEAT_DELAY
+                        config.repeat_last_action = current_time
+                        config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
+                        config.needs_redraw = True
+                elif is_global_search_input_matched(event, "confirm"):
+                    config.global_search_query += GLOBAL_SEARCH_KEYBOARD_LAYOUT[row][col]
+                    refresh_global_search_results()
+                    logger.debug(f"Recherche globale mise a jour: query={config.global_search_query}, resultats={len(config.global_search_results)}")
+                    config.needs_redraw = True
+                elif is_global_search_input_matched(event, "delete"):
+                    if config.global_search_query:
+                        config.global_search_query = config.global_search_query[:-1]
+                        refresh_global_search_results()
+                        logger.debug(f"Recherche globale suppression: query={config.global_search_query}, resultats={len(config.global_search_results)}")
+                        config.needs_redraw = True
+                elif is_global_search_input_matched(event, "space"):
+                    config.global_search_query += " "
+                    refresh_global_search_results()
+                    logger.debug(f"Recherche globale espace: query={config.global_search_query}, resultats={len(config.global_search_results)}")
+                    config.needs_redraw = True
+                elif is_global_search_input_matched(event, "filter"):
+                    config.global_search_editing = False
+                    config.needs_redraw = True
+                elif is_global_search_input_matched(event, "cancel"):
+                    exit_global_search()
+            else:
+                results = config.global_search_results
+                if is_global_search_input_matched(event, "up"):
+                    if config.global_search_selected > 0:
+                        config.global_search_selected -= 1
+                        update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else event.value)
+                        config.needs_redraw = True
+                elif is_global_search_input_matched(event, "down"):
+                    if config.global_search_selected < len(results) - 1:
+                        config.global_search_selected += 1
+                        update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else event.value)
+                        config.needs_redraw = True
+                elif is_global_search_input_matched(event, "page_up") or is_global_search_input_matched(event, "left"):
+                    config.global_search_selected = max(0, config.global_search_selected - 10)
+                    config.needs_redraw = True
+                elif is_global_search_input_matched(event, "page_down") or is_global_search_input_matched(event, "right"):
+                    config.global_search_selected = min(max(0, len(results) - 1), config.global_search_selected + 10)
+                    config.needs_redraw = True
+                elif is_global_search_input_matched(event, "confirm"):
+                    trigger_global_search_download(queue_only=False)
+                elif is_global_search_input_matched(event, "clear_history"):
+                    trigger_global_search_download(queue_only=True)
+                elif is_global_search_input_matched(event, "filter") and getattr(config, 'joystick', False):
+                    config.global_search_editing = True
+                    config.needs_redraw = True
+                elif is_global_search_input_matched(event, "cancel"):
+                    exit_global_search()
+                elif not getattr(config, 'joystick', False) and event.type == pygame.KEYDOWN:
+                    if event.unicode.isalnum() or event.unicode == ' ':
+                        config.global_search_query += event.unicode
+                        refresh_global_search_results()
+                        logger.debug(f"Recherche globale clavier: query={config.global_search_query}, resultats={len(config.global_search_results)}")
+                        config.needs_redraw = True
+                    elif is_global_search_input_matched(event, "delete"):
+                        if config.global_search_query:
+                            config.global_search_query = config.global_search_query[:-1]
+                            refresh_global_search_results()
+                            logger.debug(f"Recherche globale clavier suppression: query={config.global_search_query}, resultats={len(config.global_search_results)}")
+                            config.needs_redraw = True
+
+                if config.global_search_results:
+                    config.global_search_selected = max(0, min(config.global_search_selected, len(config.global_search_results) - 1))
+                else:
+                    config.global_search_selected = 0
 
         # Jeux
         elif config.menu_state == "game":
@@ -719,6 +1121,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.needs_redraw = True
                     logger.debug("Ouverture du menu de filtrage") 
                 elif is_input_matched(event, "history"):
+                    config.history_origin = "game"
                     config.menu_state = "history"
                     config.needs_redraw = True
                     logger.debug("Ouverture history depuis game")
@@ -2006,7 +2409,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Games
         elif config.menu_state == "pause_games_menu":
             sel = getattr(config, 'pause_games_selection', 0)
-            total = 7  # update cache, history, source, unsupported, hide premium, filter, back
+            total = 8  # update cache, scan roms, history, source, unsupported, hide premium, filter, back
             if is_input_matched(event, "up"):
                 config.pause_games_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -2019,14 +2422,25 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "reload_games_data"
                     config.redownload_confirm_selection = 0
                     config.needs_redraw = True
-                elif sel == 1 and is_input_matched(event, "confirm"):  # history
+                elif sel == 1 and is_input_matched(event, "confirm"):  # scan local roms
+                    try:
+                        added_games, scanned_platforms = scan_roms_for_downloaded_games()
+                        config.popup_message = _("popup_scan_owned_roms_done").format(added_games, scanned_platforms) if _ else f"ROM scan complete: {added_games} games added across {scanned_platforms} platforms"
+                        config.popup_timer = 4000
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur scan ROMs locaux: {e}")
+                        config.popup_message = _("popup_scan_owned_roms_error").format(str(e)) if _ else f"ROM scan error: {e}"
+                        config.popup_timer = 5000
+                        config.needs_redraw = True
+                elif sel == 2 and is_input_matched(event, "confirm"):  # history
                     config.history = load_history()
                     config.current_history_item = 0
                     config.history_scroll_offset = 0
                     config.previous_menu_state = "pause_games_menu"
                     config.menu_state = "history"
                     config.needs_redraw = True
-                elif sel == 2 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # source mode
+                elif sel == 3 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # source mode
                     try:
                         current_mode = get_sources_mode()
                         new_mode = set_sources_mode('custom' if current_mode == 'rgsx' else 'rgsx')
@@ -2041,7 +2455,7 @@ def handle_controls(event, sources, joystick, screen):
                         logger.info(f"Changement du mode des sources vers {new_mode}")
                     except Exception as e:
                         logger.error(f"Erreur changement mode sources: {e}")
-                elif sel == 3 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # unsupported toggle
+                elif sel == 4 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # unsupported toggle
                     try:
                         current = get_show_unsupported_platforms()
                         new_val = set_show_unsupported_platforms(not current)
@@ -2051,7 +2465,7 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle unsupported: {e}")
-                elif sel == 4 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # hide premium
+                elif sel == 5 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # hide premium
                     try:
                         cur = get_hide_premium_systems()
                         new_val = set_hide_premium_systems(not cur)
@@ -2060,13 +2474,13 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle hide_premium_systems: {e}")
-                elif sel == 5 and is_input_matched(event, "confirm"):  # filter platforms
+                elif sel == 6 and is_input_matched(event, "confirm"):  # filter platforms
                     config.filter_return_to = "pause_games_menu"
                     config.menu_state = "filter_platforms"
                     config.selected_filter_index = 0
                     config.filter_platforms_scroll_offset = 0
                     config.needs_redraw = True
-                elif sel == 6 and is_input_matched(event, "confirm"):  # back
+                elif sel == 7 and is_input_matched(event, "confirm"):  # back
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True

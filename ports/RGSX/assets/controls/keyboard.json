@@ -7,7 +7,7 @@
     "cancel": {
         "type": "key",
         "key": 27,
-        "display": "\u00c9chap"
+        "display": "Esc/Echap"
     },
     "up": {
         "type": "key",

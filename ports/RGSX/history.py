@@ -119,18 +119,39 @@ def clear_history():
     try:
         # Charger l'historique actuel
         current_history = load_history()
-        
-        # Conserver uniquement les entrées avec statut actif (téléchargement, extraction ou conversion en cours)
-        # Supporter les deux variantes de statut (anglais et français)
+
         active_statuses = {"Downloading", "Téléchargement", "downloading", "Extracting", "Converting", "Queued"}
-        preserved_entries = [
-            entry for entry in current_history 
-            if entry.get("status") in active_statuses
-        ]
-        
-        # Sauvegarder l'historique filtré
-        with open(history_path, "w", encoding='utf-8') as f:
-            json.dump(preserved_entries, f, indent=2, ensure_ascii=False)
+
+        active_task_ids = set(getattr(config, 'download_tasks', {}).keys())
+        active_progress_urls = set(getattr(config, 'download_progress', {}).keys())
+        queued_urls = {
+            item.get("url") for item in getattr(config, 'download_queue', [])
+            if isinstance(item, dict) and item.get("url")
+        }
+        queued_task_ids = {
+            item.get("task_id") for item in getattr(config, 'download_queue', [])
+            if isinstance(item, dict) and item.get("task_id")
+        }
+
+        def is_truly_active(entry):
+            if not isinstance(entry, dict):
+                return False
+
+            status = entry.get("status")
+            if status not in active_statuses:
+                return False
+
+            task_id = entry.get("task_id")
+            url = entry.get("url")
+
+            if status == "Queued":
+                return task_id in queued_task_ids or url in queued_urls
+
+            return task_id in active_task_ids or url in active_progress_urls
+
+        preserved_entries = [entry for entry in current_history if is_truly_active(entry)]
+
+        save_history(preserved_entries)
         
         removed_count = len(current_history) - len(preserved_entries)
         logger.info(f"Historique vidé : {history_path} ({removed_count} entrées supprimées, {len(preserved_entries)} conservées)")
@@ -139,6 +160,115 @@ def clear_history():
 
 
 # ==================== GESTION DES JEUX TÉLÉCHARGÉS ====================
+
+IGNORED_ROM_SCAN_EXTENSIONS = {
+    '.bak', '.bmp', '.db', '.gif', '.ini', '.jpeg', '.jpg', '.json', '.log', '.mp4',
+    '.nfo', '.pdf', '.png', '.srm', '.sav', '.state', '.svg', '.txt', '.webp', '.xml'
+}
+
+
+def normalize_downloaded_game_name(game_name):
+    """Normalise un nom de jeu pour les comparaisons en ignorant l'extension."""
+    if not isinstance(game_name, str):
+        return ""
+
+    normalized = os.path.basename(game_name.strip())
+    if not normalized:
+        return ""
+
+    return os.path.splitext(normalized)[0].strip().lower()
+
+
+def _normalize_downloaded_games_dict(downloaded):
+    """Normalise la structure de downloaded_games.json en restant rétrocompatible."""
+    normalized_downloaded = {}
+
+    if not isinstance(downloaded, dict):
+        return normalized_downloaded
+
+    for platform_name, games in downloaded.items():
+        if not isinstance(platform_name, str):
+            continue
+        if not isinstance(games, dict):
+            continue
+
+        normalized_games = {}
+        for game_name, metadata in games.items():
+            normalized_name = normalize_downloaded_game_name(game_name)
+            if not normalized_name:
+                continue
+            normalized_games[normalized_name] = metadata if isinstance(metadata, dict) else {}
+
+        if normalized_games:
+            normalized_downloaded[platform_name] = normalized_games
+
+    return normalized_downloaded
+
+
+def _count_downloaded_games(downloaded_games_dict):
+    return sum(len(games) for games in downloaded_games_dict.values() if isinstance(games, dict))
+
+
+def scan_roms_for_downloaded_games():
+    """Scanne les dossiers ROMs et ajoute les jeux trouvés à downloaded_games.json."""
+    from utils import load_games
+
+    downloaded = _normalize_downloaded_games_dict(getattr(config, 'downloaded_games', {}))
+    platform_dicts = list(getattr(config, 'platform_dicts', []) or [])
+
+    if not platform_dicts:
+        return 0, 0
+
+    scanned_platforms = 0
+    added_games = 0
+
+    for platform_entry in platform_dicts:
+        if not isinstance(platform_entry, dict):
+            continue
+
+        platform_name = (platform_entry.get('platform_name') or '').strip()
+        folder_name = (platform_entry.get('folder') or '').strip()
+        if not platform_name or not folder_name:
+            continue
+
+        roms_path = os.path.join(config.ROMS_FOLDER, folder_name)
+        if not os.path.isdir(roms_path):
+            continue
+
+        available_games = load_games(platform_name)
+        available_names = {
+            normalize_downloaded_game_name(game.name)
+            for game in available_games
+            if normalize_downloaded_game_name(game.name)
+        }
+        if not available_names:
+            continue
+
+        platform_games = downloaded.setdefault(platform_name, {})
+        scanned_platforms += 1
+
+        for root, _, filenames in os.walk(roms_path):
+            for filename in filenames:
+                file_ext = os.path.splitext(filename)[1].lower()
+                if file_ext in IGNORED_ROM_SCAN_EXTENSIONS:
+                    continue
+
+                normalized_name = normalize_downloaded_game_name(filename)
+                if not normalized_name or normalized_name not in available_names:
+                    continue
+
+                if normalized_name not in platform_games:
+                    platform_games[normalized_name] = {}
+                    added_games += 1
+
+    config.downloaded_games = downloaded
+    save_downloaded_games(downloaded)
+    logger.info(
+        "Scan ROMs terminé : %s jeux ajoutés sur %s plateformes",
+        added_games,
+        scanned_platforms,
+    )
+    return added_games, scanned_platforms
 
 def load_downloaded_games():
     """Charge la liste des jeux déjà téléchargés depuis downloaded_games.json."""
@@ -162,9 +292,10 @@ def load_downloaded_games():
             if not isinstance(downloaded, dict):
                 logger.warning(f"Format downloaded_games.json invalide (pas un dict)")
                 return {}
-            
-            logger.debug(f"Jeux téléchargés chargés : {sum(len(v) for v in downloaded.values())} jeux")
-            return downloaded
+
+            normalized_downloaded = _normalize_downloaded_games_dict(downloaded)
+            logger.debug(f"Jeux téléchargés chargés : {_count_downloaded_games(normalized_downloaded)} jeux")
+            return normalized_downloaded
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logger.error(f"Erreur lors de la lecture de {downloaded_path} : {e}")
         return {}
@@ -177,17 +308,18 @@ def save_downloaded_games(downloaded_games_dict):
     """Sauvegarde la liste des jeux téléchargés dans downloaded_games.json."""
     downloaded_path = getattr(config, 'DOWNLOADED_GAMES_PATH')
     try:
+        normalized_downloaded = _normalize_downloaded_games_dict(downloaded_games_dict)
         os.makedirs(os.path.dirname(downloaded_path), exist_ok=True)
         
         # Écriture atomique
         temp_path = downloaded_path + '.tmp'
         with open(temp_path, "w", encoding='utf-8') as f:
-            json.dump(downloaded_games_dict, f, indent=2, ensure_ascii=False)
+            json.dump(normalized_downloaded, f, indent=2, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
         
         os.replace(temp_path, downloaded_path)
-        logger.debug(f"Jeux téléchargés sauvegardés : {sum(len(v) for v in downloaded_games_dict.values())} jeux")
+        logger.debug(f"Jeux téléchargés sauvegardés : {_count_downloaded_games(normalized_downloaded)} jeux")
     except Exception as e:
         logger.error(f"Erreur lors de l'écriture de {downloaded_path} : {e}")
         try:
@@ -200,21 +332,22 @@ def save_downloaded_games(downloaded_games_dict):
 def mark_game_as_downloaded(platform_name, game_name, file_size=None):
     """Marque un jeu comme téléchargé."""
     downloaded = config.downloaded_games
+    normalized_name = normalize_downloaded_game_name(game_name)
+    if not normalized_name:
+        return
     
     if platform_name not in downloaded:
         downloaded[platform_name] = {}
     
-    downloaded[platform_name][game_name] = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "size": file_size or "N/A"
-    }
+    downloaded[platform_name][normalized_name] = {}
     
     # Sauvegarder immédiatement
     save_downloaded_games(downloaded)
-    logger.info(f"Jeu marqué comme téléchargé : {platform_name} / {game_name}")
+    logger.info(f"Jeu marqué comme téléchargé : {platform_name} / {normalized_name}")
 
 
 def is_game_downloaded(platform_name, game_name):
     """Vérifie si un jeu a déjà été téléchargé."""
     downloaded = config.downloaded_games
-    return platform_name in downloaded and game_name in downloaded.get(platform_name, {})
+    normalized_name = normalize_downloaded_game_name(game_name)
+    return bool(normalized_name) and platform_name in downloaded and normalized_name in downloaded.get(platform_name, {})

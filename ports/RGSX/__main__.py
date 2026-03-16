@@ -28,6 +28,7 @@ from display import (
     init_display, draw_loading_screen, draw_error_screen, draw_platform_grid,
     draw_progress_screen, draw_controls, draw_virtual_keyboard,
     draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list,
+    draw_global_search_list,
         draw_display_menu, draw_filter_menu_choice, draw_filter_advanced, draw_filter_priority_config,
     draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog,
     draw_confirm_dialog, draw_reload_games_data_dialog, draw_popup, draw_gradient,
@@ -661,6 +662,7 @@ async def main():
                                 # Basculer sur les contrôles clavier
                                 config.joystick = False
                                 config.keyboard = True
+                                config.controller_device_name = ""
                                 # Recharger la configuration des contrôles pour le clavier
                                 config.controls_config = load_controls_config()
                                 logger.info("Contrôles clavier chargés")
@@ -669,6 +671,7 @@ async def main():
                             # Basculer sur les contrôles clavier
                             config.joystick = False
                             config.keyboard = True
+                            config.controller_device_name = ""
                             # Recharger la configuration des contrôles pour le clavier
                             config.controls_config = load_controls_config()
                             logger.info("Contrôles clavier chargés")
@@ -729,6 +732,7 @@ async def main():
                 "filter_menu_choice",
                 "filter_advanced",
                 "filter_priority_config",
+                "platform_search",
             }
             if config.menu_state in SIMPLE_HANDLE_STATES:
                 action = handle_controls(event, sources, joystick, screen)
@@ -1116,6 +1120,10 @@ async def main():
                     draw_game_list(screen)
                     if getattr(config, 'joystick', False):
                         draw_virtual_keyboard(screen)
+            elif config.menu_state == "platform_search":
+                draw_global_search_list(screen)
+                if getattr(config, 'joystick', False) and getattr(config, 'global_search_editing', False):
+                    draw_virtual_keyboard(screen)
             elif config.menu_state == "download_progress":
                 draw_progress_screen(screen)
             # État download_result supprimé

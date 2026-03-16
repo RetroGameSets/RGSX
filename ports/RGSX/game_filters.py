@@ -191,11 +191,31 @@ class GameFilters:
         base = base + disc_info
         
         return base
+
+    @staticmethod
+    def get_cached_regions(game: Game) -> List[str]:
+        """Retourne les régions en les calculant une seule fois par jeu."""
+        if game.regions is None:
+            game.regions = GameFilters.get_game_regions(game.display_name)
+        return game.regions
+
+    @staticmethod
+    def get_cached_non_release(game: Game) -> bool:
+        """Retourne le flag non-release en le calculant à la demande."""
+        if game.is_non_release is None:
+            game.is_non_release = GameFilters.is_non_release_game(game.display_name)
+        return game.is_non_release
+
+    @staticmethod
+    def get_cached_base_name(game: Game) -> str:
+        """Retourne le nom de base en le calculant une seule fois par jeu."""
+        if game.base_name is None:
+            game.base_name = GameFilters.get_base_game_name(game.display_name)
+        return game.base_name
     
-    def get_region_priority(self, game_name: str) -> int:
+    def get_region_priority(self, game: Game) -> int:
         """Obtient la priorité de région pour un jeu (pour one-rom-per-game)"""
-        # Utiliser la fonction de détection de régions pour être cohérent
-        game_regions = self.get_game_regions(game_name)
+        game_regions = self.get_cached_regions(game)
         
         # Trouver la meilleure priorité parmi toutes les régions détectées
         best_priority = len(self.region_priority)  # Par défaut: priorité la plus basse
@@ -221,14 +241,13 @@ class GameFilters:
             return games
         
         filtered_games = []
+        has_region_excludes = any(state == 'exclude' for state in self.region_filters.values())
         
         # Filtrage par région
         for game in games:
-            game_name = game.display_name
-            
             # Vérifier les filtres de région
-            if self.region_filters:
-                game_regions = self.get_game_regions(game_name)
+            if has_region_excludes:
+                game_regions = self.get_cached_regions(game)
                 
                 # Vérifier si le jeu a au moins une région incluse
                 has_included_region = False
@@ -244,7 +263,7 @@ class GameFilters:
                     continue
             
             # Filtrer les non-release
-            if self.hide_non_release and self.is_non_release_game(game_name):
+            if self.hide_non_release and self.get_cached_non_release(game):
                 continue
             
             filtered_games.append(game)
@@ -260,8 +279,7 @@ class GameFilters:
         games_by_base = {}
         
         for game in games:
-            game_name = game.display_name
-            base_name = self.get_base_game_name(game_name)
+            base_name = self.get_cached_base_name(game)
             
             if base_name not in games_by_base:
                 games_by_base[base_name] = []
@@ -276,7 +294,7 @@ class GameFilters:
             else:
                 # Trier par priorité de région
                 sorted_games = sorted(game_list, 
-                                     key=lambda g: self.get_region_priority(g.display_name))
+                                     key=self.get_region_priority)
                 result.append(sorted_games[0])
         
         return result

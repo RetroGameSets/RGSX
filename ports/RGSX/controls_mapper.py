@@ -69,7 +69,7 @@ SDL_TO_PYGAME_KEY = {
 # Noms lisibles pour les touches clavier
 KEY_NAMES = {
     pygame.K_RETURN: "Enter",
-    pygame.K_ESCAPE: "Échap",
+    pygame.K_ESCAPE: "Esc/Echap",
     pygame.K_SPACE: "Espace",
     pygame.K_UP: "↑",
     pygame.K_DOWN: "↓",
@@ -87,7 +87,7 @@ KEY_NAMES = {
     pygame.K_RMETA: "RMeta",
     pygame.K_CAPSLOCK: "Verr Maj",
     pygame.K_NUMLOCK: "Verr Num",
-    pygame.K_SCROLLOCK: "Verr Déf",
+    pygame.K_SCROLLOCK: "Verr Def",
     pygame.K_a: "A",
     pygame.K_b: "B",
     pygame.K_c: "C",
@@ -158,7 +158,7 @@ KEY_NAMES = {
     pygame.K_F15: "F15",
     pygame.K_INSERT: "Inser",
     pygame.K_DELETE: "Suppr",
-    pygame.K_HOME: "Début",
+    pygame.K_HOME: "Debut",
     pygame.K_END: "Fin",
     pygame.K_PAGEUP: "Page+",
     pygame.K_PAGEDOWN: "Page-",

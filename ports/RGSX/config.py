@@ -11,6 +11,9 @@ class Game:
     url: str
     size: str
     display_name: str # name withou file extension or platform prefix
+    regions: Optional[list[str]] = None
+    is_non_release: Optional[bool] = None
+    base_name: Optional[str] = None
 
 # Headless mode for CLI: set env RGSX_HEADLESS=1 to avoid pygame and noisy prints
 HEADLESS = os.environ.get("RGSX_HEADLESS") == "1"
@@ -23,7 +26,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.5.0.6"
+app_version = "2.6.0.0"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 7
@@ -403,6 +406,12 @@ filtered_games: list[Game] = []  # Liste des jeux filtrés par recherche ou filt
 search_mode = False  # Indicateur si le mode recherche est actif
 search_query = ""  # Chaîne de recherche saisie par l'utilisateur
 filter_active = False  # Indicateur si un filtre est appliqué
+global_search_index = []  # Index de recherche global {platform, jeu} construit a l'ouverture
+global_search_results = []  # Resultats de la recherche globale inter-plateformes
+global_search_query = ""  # Texte saisi pour la recherche globale
+global_search_selected = 0  # Index du resultat global selectionne
+global_search_scroll_offset = 0  # Offset de defilement des resultats globaux
+global_search_editing = False  # True si le clavier virtuel est actif pour la recherche globale
 
 # Variables pour le filtrage avancé
 selected_filter_choice = 0  # Index dans le menu de choix de filtrage (recherche / avancé)

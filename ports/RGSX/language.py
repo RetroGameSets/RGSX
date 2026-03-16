@@ -114,14 +114,14 @@ def get_text(key, default=None):
             pass
         return str(default) if default is not None else str(key)
 
-def get_available_languages():
+def get_available_languages() -> list[str]:
     """Récupère la liste des langues disponibles."""
     
     if not os.path.exists(config.LANGUAGES_FOLDER):
         logger.warning(f"Dossier des langues {config.LANGUAGES_FOLDER} non trouvé")
         return []
     
-    languages = []
+    languages: list[str] = []
     for file in os.listdir(config.LANGUAGES_FOLDER):
         if file.endswith(".json"):
             lang_code = os.path.splitext(file)[0]
