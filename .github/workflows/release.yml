@@ -119,6 +119,16 @@ jobs:
           
           ### 📖 Documentation
           [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
+
+          ## SUPPORT US
+          Donate , Buy me a beer or a coffee :
+          if you want to support my project you can look here 🙂 https://bit.ly/donate-to-rgsx
+
+          Affiliate links :
+          hi all if you want to buy a premium account, you can use affiliated links here to support dev of RGSX without donate anything :
+          DEBRID-LINK.FR : https://debrid-link.fr/id/ow1DD
+          1FICHIER.COM : https://1fichier.com/?af=3186111
+          REAL-DEBRID.FR : http://real-debrid.com/?id=8441
           RELEASE_EOF
           
           echo "✓ Release notes generated"
