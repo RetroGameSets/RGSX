@@ -32,7 +32,7 @@ from display import (
         draw_display_menu, draw_filter_menu_choice, draw_filter_advanced, draw_filter_priority_config,
     draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog,
     draw_confirm_dialog, draw_reload_games_data_dialog, draw_popup, draw_gradient,
-    draw_toast, show_toast, THEME_COLORS
+    draw_toast, show_toast, THEME_COLORS, sync_display_metrics
 )
 from language import _
 from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates, cancel_all_downloads, download_queue_worker
@@ -45,7 +45,7 @@ from utils import (
 )
 from history import load_history, save_history, load_downloaded_games
 from config import OTA_data_ZIP
-from rgsx_settings import get_sources_mode, get_custom_sources_url, get_sources_zip_url
+from rgsx_settings import get_sources_mode, get_custom_sources_url, get_sources_zip_url, get_display_fullscreen
 from accessibility import  load_accessibility_settings
 
 # Configuration du logging
@@ -430,7 +430,7 @@ def stop_web_server():
 
 # Boucle principale
 async def main():
-    global current_music, music_files, music_folder, joystick
+    global current_music, music_files, music_folder, joystick, screen
     logger.debug("Début main")
     
     # Charger les filtres de jeux sauvegardés
@@ -608,6 +608,27 @@ async def main():
             if event.type == pygame.USEREVENT + 1:  # Événement de fin de musique
                 logger.debug("Fin de la musique détectée, lecture d'une nouvelle musique aléatoire")
                 current_music = play_random_music(music_files, music_folder, current_music)
+                continue
+
+            resize_events = {
+                getattr(pygame, 'VIDEORESIZE', -1),
+                getattr(pygame, 'WINDOWSIZECHANGED', -2),
+                getattr(pygame, 'WINDOWRESIZED', -3),
+            }
+            if event.type in resize_events and not get_display_fullscreen():
+                try:
+                    if event.type == getattr(pygame, 'VIDEORESIZE', -1):
+                        new_width = max(640, int(getattr(event, 'w', config.screen_width)))
+                        new_height = max(360, int(getattr(event, 'h', config.screen_height)))
+                        screen = pygame.display.set_mode((new_width, new_height), pygame.RESIZABLE)
+                    else:
+                        screen = pygame.display.get_surface() or screen
+
+                    sync_display_metrics(screen)
+                    config.needs_redraw = True
+                    logger.debug(f"Fenêtre redimensionnée: {config.screen_width}x{config.screen_height}")
+                except Exception as e:
+                    logger.error(f"Erreur lors du redimensionnement de la fenêtre: {e}")
                 continue
 
             if event.type == pygame.QUIT:

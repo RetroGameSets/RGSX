@@ -2212,11 +2212,27 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Display
         elif config.menu_state == "pause_display_menu":
             sel = getattr(config, 'pause_display_selection', 0)
-            # layout, font submenu, family, [monitor if multi], light, unknown, back
+            # layout, font submenu, family, [monitor if multi], [display mode on Windows], light, unknown, back
             from rgsx_settings import get_available_monitors
             monitors = get_available_monitors()
             show_monitor = len(monitors) > 1
-            total = 7 if show_monitor else 6  # dynamic total based on monitor count
+            show_display_mode = getattr(config, 'OPERATING_SYSTEM', '') == "Windows"
+
+            monitor_index = 3 if show_monitor else None
+            display_mode_index = 4 if show_monitor else 3
+            if not show_display_mode:
+                display_mode_index = None
+
+            next_index = 3
+            if show_monitor:
+                next_index += 1
+            if show_display_mode:
+                next_index += 1
+
+            light_index = next_index
+            unknown_index = light_index + 1
+            back_index = unknown_index + 1
+            total = back_index + 1
             if is_input_matched(event, "up"):
                 config.pause_display_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -2274,8 +2290,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur changement font family: {e}")
-                # 3 monitor selection (only if multiple monitors)
-                elif sel == 3 and show_monitor and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # Monitor selection (only if multiple monitors)
+                elif monitor_index is not None and sel == monitor_index and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         from rgsx_settings import get_display_monitor, set_display_monitor
                         current = get_display_monitor()
@@ -2286,8 +2302,19 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur changement moniteur: {e}")
-                # light mode toggle (index 4 if show_monitor, else 3)
-                elif ((sel == 4 and show_monitor) or (sel == 3 and not show_monitor)) and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # Display mode toggle (Windows only)
+                elif display_mode_index is not None and sel == display_mode_index and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                    try:
+                        from rgsx_settings import get_display_fullscreen, set_display_fullscreen
+                        current = get_display_fullscreen()
+                        set_display_fullscreen(not current)
+                        config.popup_message = _("display_mode_restart_required") if _ else "Restart required to apply screen mode"
+                        config.popup_timer = 3000
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Erreur toggle fullscreen/windowed: {e}")
+                # Light mode toggle
+                elif sel == light_index and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         from rgsx_settings import get_light_mode, set_light_mode
                         current = get_light_mode()
@@ -2297,8 +2324,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle light mode: {e}")
-                # allow unknown extensions (index 5 if show_monitor, else 4)
-                elif ((sel == 5 and show_monitor) or (sel == 4 and not show_monitor)) and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                # Allow unknown extensions
+                elif sel == unknown_index and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
                         current = get_allow_unknown_extensions()
                         new_val = set_allow_unknown_extensions(not current)
@@ -2307,8 +2334,8 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle allow_unknown_extensions: {e}")
-                # back (index 6 if show_monitor, else 5)
-                elif ((sel == 6 and show_monitor) or (sel == 5 and not show_monitor)) and is_input_matched(event, "confirm"):
+                # Back
+                elif sel == back_index and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True

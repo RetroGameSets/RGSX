@@ -30,6 +30,24 @@ logger = logging.getLogger(__name__)
 
 OVERLAY = None  # Initialisé dans init_display()
 
+
+def sync_display_metrics(screen=None):
+    """Synchronise les dimensions globales et l'overlay avec la fenêtre courante."""
+    global OVERLAY
+
+    if screen is None:
+        screen = pygame.display.get_surface()
+    if screen is None:
+        return None
+
+    screen_width, screen_height = screen.get_size()
+    config.screen_width = screen_width
+    config.screen_height = screen_height
+
+    OVERLAY = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+    OVERLAY.fill((5, 10, 20, 160))
+    return screen
+
 # --- Helpers: SVG icons for controls (local cache, optional cairosvg) ---
 _HELP_ICON_CACHE = {}
 
@@ -280,6 +298,7 @@ def init_display():
     settings = load_rgsx_settings()
     logger.debug(f"Settings chargés: display={settings.get('display', {})}")
     target_monitor = settings.get("display", {}).get("monitor", 0)
+    is_fullscreen = get_display_fullscreen(settings)
     
     
     # Vérifier les variables d'environnement (priorité sur les settings)
@@ -328,14 +347,24 @@ def init_display():
         screen_width = display_info.current_w
         screen_height = display_info.current_h
     
-    # Créer la fenêtre en plein écran
-    flags = pygame.FULLSCREEN
-    # Sur Linux/Batocera, utiliser SCALED pour respecter la résolution forcée d'EmulationStation
-    if platform.system() == "Linux":
-        flags |= pygame.SCALED
-    # Sur certains systèmes Windows, NOFRAME aide pour le multi-écran
-    elif platform.system() == "Windows":
-        flags |= pygame.NOFRAME
+    # Créer la fenêtre selon le mode d'affichage configuré.
+    if is_fullscreen:
+        flags = pygame.FULLSCREEN
+        # Sur Linux/Batocera, utiliser SCALED pour respecter la résolution forcée d'EmulationStation
+        if platform.system() == "Linux":
+            flags |= pygame.SCALED
+        # Sur certains systèmes Windows, NOFRAME aide pour le multi-écran
+        elif platform.system() == "Windows":
+            flags |= pygame.NOFRAME
+    else:
+        flags = pygame.RESIZABLE
+        if platform.system() == "Windows":
+            os.environ["SDL_VIDEO_CENTERED"] = "1"
+
+        desktop_width = screen_width
+        desktop_height = screen_height
+        screen_width = min(desktop_width, max(960, int(desktop_width * 0.9)))
+        screen_height = min(desktop_height, max(540, int(desktop_height * 0.9)))
     
     try:
         screen = pygame.display.set_mode((screen_width, screen_height), flags, display=target_monitor)
@@ -345,15 +374,16 @@ def init_display():
     except Exception as e:
         logger.error(f"Error creating display on monitor {target_monitor}: {e}")
         screen = pygame.display.set_mode((screen_width, screen_height), flags)
-    
-    config.screen_width = screen_width
-    config.screen_height = screen_height
+
+    screen = sync_display_metrics(screen)
+    screen_width, screen_height = screen.get_size()
+
     config.current_monitor = target_monitor
-    
-    # Initialisation de OVERLAY avec effet glassmorphism
-    OVERLAY = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
-    OVERLAY.fill((5, 10, 20, 160))  # Bleu très foncé semi-transparent pour effet verre
-    logger.debug(f"Écran initialisé: {screen_width}x{screen_height} sur moniteur {target_monitor}")
+
+    logger.debug(
+        f"Écran initialisé: {screen_width}x{screen_height} sur moniteur {target_monitor} "
+        f"({'fullscreen' if is_fullscreen else 'windowed'})"
+    )
     return screen
 
 # Fond d'écran dégradé
@@ -2995,6 +3025,13 @@ def draw_pause_display_menu(screen, selected_index):
         monitor_info = monitors[current_monitor] if current_monitor < num_monitors else monitors[0]
         monitor_value = f"{monitor_info['name']} ({monitor_info['resolution']})"
         monitor_txt = f"{_('display_monitor') if _ else 'Monitor'}: < {monitor_value} >"
+
+    # Display mode - Windows only
+    show_display_mode_option = getattr(config, 'OPERATING_SYSTEM', '') == "Windows"
+    if show_display_mode_option:
+        is_fullscreen = get_display_fullscreen()
+        display_mode_value = _("display_fullscreen") if is_fullscreen else _("display_windowed")
+        display_mode_txt = f"{_('display_mode') if _ else 'Screen mode'}: < {display_mode_value} >"
     
     # Allow unknown extensions
     allow_unknown = get_allow_unknown_extensions()
@@ -3011,8 +3048,7 @@ def draw_pause_display_menu(screen, selected_index):
 
     back_txt = _("menu_back") if _ else "Back"
     
-    # Build options list - conditional monitor option
-    # layout, font submenu, family, [monitor if multi], light, unknown, back
+    # Build options list - conditional monitor and display mode options
     font_submenu_txt = f"{_('submenu_display_font_size') if _ else 'Font Size'} >"
     options = [layout_txt, font_submenu_txt, font_family_txt]
     instruction_keys = [
@@ -3024,6 +3060,10 @@ def draw_pause_display_menu(screen, selected_index):
     if show_monitor_option:
         options.append(monitor_txt)
         instruction_keys.append("instruction_display_monitor")
+
+    if show_display_mode_option:
+        options.append(display_mode_txt)
+        instruction_keys.append("instruction_display_mode")
     
     options.extend([light_txt, unknown_txt, back_txt])
     instruction_keys.extend([

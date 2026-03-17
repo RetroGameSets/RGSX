@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+import re
 import config
 from datetime import datetime
 
@@ -168,7 +169,7 @@ IGNORED_ROM_SCAN_EXTENSIONS = {
 
 
 def normalize_downloaded_game_name(game_name):
-    """Normalise un nom de jeu pour les comparaisons en ignorant l'extension."""
+    """Normalise un nom de jeu pour les comparaisons en ignorant extension et tags."""
     if not isinstance(game_name, str):
         return ""
 
@@ -176,7 +177,10 @@ def normalize_downloaded_game_name(game_name):
     if not normalized:
         return ""
 
-    return os.path.splitext(normalized)[0].strip().lower()
+    normalized = os.path.splitext(normalized)[0]
+    normalized = re.sub(r'\s*[\[(][^\])]*[\])]', '', normalized)
+    normalized = re.sub(r'\s+', ' ', normalized)
+    return normalized.strip().lower()
 
 
 def _normalize_downloaded_games_dict(downloaded):
