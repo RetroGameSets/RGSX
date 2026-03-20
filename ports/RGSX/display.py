@@ -5,6 +5,7 @@ import os
 import io
 import platform
 import random
+import shutil
 from datetime import datetime
 import config
 from utils import (truncate_text_middle, wrap_text, load_system_image, truncate_text_end,
@@ -241,6 +242,145 @@ def _render_icons_line(actions, text, target_col_width, font, text_color, icon_s
         surf.blit(ls, (text_x, y))
         y += ls.get_height() + 4
     return surf
+
+
+def _render_icons_line_singleline(actions, text, target_col_width, font, text_color, icon_size=28, icon_gap=8, icon_text_gap=12):
+    """Version mono-ligne pour le footer: réduit d'abord, tronque ensuite, sans retour à la ligne."""
+    if not getattr(config, 'joystick', True):
+        action_labels = []
+        for action_name in actions:
+            label = get_control_display(action_name, action_name.upper())
+            action_labels.append(f"[{label}]")
+        full_text = " ".join(action_labels) + " : " + text
+        fitted_text = truncate_text_end(full_text, font, target_col_width)
+        text_surface = font.render(fitted_text, True, text_color)
+        surf = pygame.Surface(text_surface.get_size(), pygame.SRCALPHA)
+        surf.blit(text_surface, (0, 0))
+        return surf
+
+    icon_surfs = []
+    for action_name in actions:
+        surf = get_help_icon_surface(action_name, icon_size)
+        if surf is not None:
+            icon_surfs.append(surf)
+
+    if not icon_surfs:
+        fitted_text = truncate_text_end(text, font, target_col_width)
+        text_surface = font.render(fitted_text, True, text_color)
+        surf = pygame.Surface(text_surface.get_size(), pygame.SRCALPHA)
+        surf.blit(text_surface, (0, 0))
+        return surf
+
+    icons_width = sum(s.get_width() for s in icon_surfs) + (len(icon_surfs) - 1) * icon_gap
+    if icons_width + icon_text_gap > target_col_width:
+        scale = (target_col_width - icon_text_gap) / max(1, icons_width)
+        scale = max(0.5, min(1.0, scale))
+        resized_surfs = []
+        for surf in icon_surfs:
+            new_size = (max(1, int(surf.get_width() * scale)), max(1, int(surf.get_height() * scale)))
+            resized_surfs.append(pygame.transform.smoothscale(surf, new_size))
+        icon_surfs = resized_surfs
+        icons_width = sum(s.get_width() for s in icon_surfs) + (len(icon_surfs) - 1) * icon_gap
+
+    text_area_width = max(24, target_col_width - icons_width - icon_text_gap)
+    fitted_text = truncate_text_end(text, font, text_area_width)
+    text_surface = font.render(fitted_text, True, text_color)
+
+    total_width = min(target_col_width, icons_width + icon_text_gap + text_surface.get_width())
+    total_height = max(max((s.get_height() for s in icon_surfs), default=0), text_surface.get_height())
+    surf = pygame.Surface((total_width, total_height), pygame.SRCALPHA)
+
+    x = 0
+    icon_y_center = total_height // 2
+    for idx, icon_surf in enumerate(icon_surfs):
+        rect = icon_surf.get_rect()
+        y = icon_y_center - rect.height // 2
+        surf.blit(icon_surf, (x, y))
+        x += rect.width + (icon_gap if idx < len(icon_surfs) - 1 else 0)
+
+    text_x = x + icon_text_gap
+    text_y = (total_height - text_surface.get_height()) // 2
+    surf.blit(text_surface, (text_x, text_y))
+    return surf
+
+
+def _render_combined_footer_controls(all_controls, max_width, text_color):
+    footer_scale = config.accessibility_settings.get("footer_font_scale", 1.0)
+    nominal_size = max(10, int(20 * footer_scale))
+    candidate_sizes = []
+    for size in range(nominal_size, 9, -2):
+        if size not in candidate_sizes:
+            candidate_sizes.append(size)
+    if 10 not in candidate_sizes:
+        candidate_sizes.append(10)
+
+    for font_size in candidate_sizes:
+        font = _get_badge_font(font_size)
+        ratio = font_size / max(1, nominal_size)
+        icon_size = max(12, int(20 * footer_scale * ratio))
+        icon_gap = max(2, int(6 * ratio))
+        icon_text_gap = max(4, int(10 * ratio))
+        control_gap = max(8, int(20 * ratio))
+
+        rendered_controls = []
+        total_width = 0
+        for _, actions, label in all_controls:
+            surf = _render_icons_line_singleline(
+                actions,
+                label,
+                max_width,
+                font,
+                text_color,
+                icon_size=icon_size,
+                icon_gap=icon_gap,
+                icon_text_gap=icon_text_gap,
+            )
+            rendered_controls.append(surf)
+            total_width += surf.get_width()
+
+        total_width += max(0, len(rendered_controls) - 1) * control_gap
+        if total_width <= max_width:
+            total_height = max((surf.get_height() for surf in rendered_controls), default=1)
+            combined = pygame.Surface((total_width, total_height), pygame.SRCALPHA)
+            x_pos = 0
+            for idx, surf in enumerate(rendered_controls):
+                combined.blit(surf, (x_pos, (total_height - surf.get_height()) // 2))
+                x_pos += surf.get_width() + (control_gap if idx < len(rendered_controls) - 1 else 0)
+            return combined
+
+    font = _get_badge_font(candidate_sizes[-1])
+    icon_size = 12
+    icon_gap = 2
+    icon_text_gap = 4
+    control_gap = 8
+    remaining_width = max_width
+    rendered_controls = []
+    for idx, (_, actions, label) in enumerate(all_controls):
+        controls_left = len(all_controls) - idx
+        target_width = max(40, remaining_width // max(1, controls_left))
+        surf = _render_icons_line_singleline(
+            actions,
+            label,
+            target_width,
+            font,
+            text_color,
+            icon_size=icon_size,
+            icon_gap=icon_gap,
+            icon_text_gap=icon_text_gap,
+        )
+        rendered_controls.append(surf)
+        remaining_width -= surf.get_width() + control_gap
+
+    total_width = min(max_width, sum(surf.get_width() for surf in rendered_controls) + max(0, len(rendered_controls) - 1) * control_gap)
+    total_height = max((surf.get_height() for surf in rendered_controls), default=1)
+    combined = pygame.Surface((total_width, total_height), pygame.SRCALPHA)
+    x_pos = 0
+    for idx, surf in enumerate(rendered_controls):
+        if x_pos + surf.get_width() > total_width:
+            break
+        combined.blit(surf, (x_pos, (total_height - surf.get_height()) // 2))
+        x_pos += surf.get_width() + (control_gap if idx < len(rendered_controls) - 1 else 0)
+    return combined
 
 # Couleurs modernes pour le thème
 THEME_COLORS = {
@@ -878,21 +1018,94 @@ def get_control_display(action, default):
 
 # Cache pour les images des plateformes
 platform_images_cache = {}
+_BADGE_FONT_CACHE = {}
 
 
-def draw_header_badge(screen, lines, badge_x, badge_y, light_mode=False):
-    """Affiche une cartouche compacte de texte dans l'en-tete."""
-    header_font = config.tiny_font
-    text_surfaces = [header_font.render(line, True, THEME_COLORS["text"]) for line in lines if line]
-    if not text_surfaces:
-        return
+def _get_badge_font(size):
+    size = max(10, int(size))
+    family_id = config.FONT_FAMILIES[config.current_font_family_index] if 0 <= config.current_font_family_index < len(config.FONT_FAMILIES) else "pixel"
+    cache_key = (family_id, size)
+    if cache_key in _BADGE_FONT_CACHE:
+        return _BADGE_FONT_CACHE[cache_key]
 
+    try:
+        if family_id == "pixel":
+            path = os.path.join(config.APP_FOLDER, "assets", "fonts", "Pixel-UniCode.ttf")
+            font = pygame.font.Font(path, size)
+        else:
+            try:
+                font = pygame.font.SysFont("dejavusans", size)
+            except Exception:
+                font = pygame.font.SysFont("dejavu sans", size)
+    except Exception:
+        font = config.tiny_font
+
+    _BADGE_FONT_CACHE[cache_key] = font
+    return font
+
+
+def _get_adaptive_badge_layout(lines, base_font, max_badge_width=None, padding_x=12, min_font_size=10):
+    clean_lines = [line for line in lines if isinstance(line, str) and line]
+    if not clean_lines:
+        return base_font, []
+    if not max_badge_width:
+        return base_font, clean_lines
+
+    max_text_width = max(40, max_badge_width - padding_x * 2)
+    footer_font_scale = config.accessibility_settings.get("footer_font_scale", 1.0)
+    nominal_size = max(min_font_size, int(20 * footer_font_scale))
+    candidate_sizes = []
+    for size in range(nominal_size, min_font_size - 1, -2):
+        if size not in candidate_sizes:
+            candidate_sizes.append(size)
+    if min_font_size not in candidate_sizes:
+        candidate_sizes.append(min_font_size)
+
+    for size in candidate_sizes:
+        candidate_font = _get_badge_font(size)
+        if all(candidate_font.size(line)[0] <= max_text_width for line in clean_lines):
+            return candidate_font, clean_lines
+
+    fallback_font = _get_badge_font(candidate_sizes[-1])
+    fitted_lines = [truncate_text_end(line, fallback_font, max_text_width) for line in clean_lines]
+    return fallback_font, fitted_lines
+
+
+def _fit_badge_lines(lines, font, max_badge_width=None, padding_x=12):
+    _, fitted_lines = _get_adaptive_badge_layout(lines, font, max_badge_width=max_badge_width, padding_x=padding_x)
+    return fitted_lines
+
+
+def measure_header_badge(lines, font=None, max_badge_width=None, padding_x=12, padding_y=8, line_gap=4):
+    header_font = font or config.tiny_font
+    header_font, fitted_lines = _get_adaptive_badge_layout(lines, header_font, max_badge_width=max_badge_width, padding_x=padding_x)
+    if not fitted_lines:
+        return 0, 0, []
+
+    text_surfaces = [header_font.render(line, True, THEME_COLORS["text"]) for line in fitted_lines]
     content_width = max((surface.get_width() for surface in text_surfaces), default=0)
-    content_height = sum(surface.get_height() for surface in text_surfaces) + max(0, len(text_surfaces) - 1) * 4
-    padding_x = 12
-    padding_y = 8
+    content_height = sum(surface.get_height() for surface in text_surfaces) + max(0, len(text_surfaces) - 1) * line_gap
     badge_width = content_width + padding_x * 2
     badge_height = content_height + padding_y * 2
+    return badge_width, badge_height, fitted_lines
+
+
+def draw_header_badge(screen, lines, badge_x, badge_y, light_mode=False, font=None, max_badge_width=None, padding_x=12, padding_y=8, line_gap=4):
+    """Affiche une cartouche compacte de texte dans l'en-tete."""
+    header_font = font or config.tiny_font
+    header_font, _ = _get_adaptive_badge_layout(lines, header_font, max_badge_width=max_badge_width, padding_x=padding_x)
+    badge_width, badge_height, fitted_lines = measure_header_badge(
+        lines,
+        font=header_font,
+        max_badge_width=max_badge_width,
+        padding_x=padding_x,
+        padding_y=padding_y,
+        line_gap=line_gap,
+    )
+    if not fitted_lines:
+        return
+
+    text_surfaces = [header_font.render(line, True, THEME_COLORS["text"]) for line in fitted_lines]
 
     if light_mode:
         pygame.draw.rect(screen, THEME_COLORS["button_idle"], (badge_x, badge_y, badge_width, badge_height), border_radius=12)
@@ -914,21 +1127,140 @@ def draw_header_badge(screen, lines, badge_x, badge_y, light_mode=False):
     for surface in text_surfaces:
         line_x = badge_x + (badge_width - surface.get_width()) // 2
         screen.blit(surface, (line_x, current_y))
-        current_y += surface.get_height() + 4
+        current_y += surface.get_height() + line_gap
 
 
-def draw_platform_header_info(screen, light_mode=False):
-    """Affiche version et controleur connecte dans un cartouche en haut a droite."""
+def get_platform_header_info_lines(max_badge_width=None, include_details=True):
+    """Retourne les lignes du cartouche version/controleur/IP, adaptees a une largeur max."""
     lines = [f"v{config.app_version}"]
+
+    if not include_details:
+        return _fit_badge_lines(lines, config.tiny_font, max_badge_width, padding_x=12)
 
     device_name = (getattr(config, 'controller_device_name', '') or '').strip()
     if device_name:
-        lines.append(truncate_text_end(device_name, config.tiny_font, int(config.screen_width * 0.24)))
+        lines.append(device_name)
 
-    badge_width = max(config.tiny_font.size(line)[0] for line in lines) + 24
-    badge_x = config.screen_width - badge_width - 14
+    network_ip = ""
+    system_info = getattr(config, 'SYSTEM_INFO', None)
+    if isinstance(system_info, dict):
+        network_ip = (system_info.get('network_ip', '') or '').strip()
+    if network_ip:
+        lines.append(network_ip)
+
+    return _fit_badge_lines(lines, config.tiny_font, max_badge_width, padding_x=12)
+
+
+def _format_disk_size_gb(size_bytes):
+    gb_value = size_bytes / (1024 ** 3)
+    if gb_value >= 100:
+        return f"{gb_value:.0f} GB"
+    if gb_value >= 10:
+        return f"{gb_value:.1f} GB"
+    return f"{gb_value:.2f} GB"
+
+
+def get_default_disk_space_line():
+    """Retourne l'utilisation disque du dossier ROMs par defaut sous forme 'Disk : utilise/total(percent)'."""
+    try:
+        target_path = getattr(config, 'ROMS_FOLDER', '') or ''
+        if not target_path:
+            return ""
+
+        resolved_path = os.path.abspath(target_path)
+        while resolved_path and not os.path.exists(resolved_path):
+            parent_path = os.path.dirname(resolved_path)
+            if not parent_path or parent_path == resolved_path:
+                break
+            resolved_path = parent_path
+
+        if not os.path.exists(resolved_path):
+            return ""
+
+        usage = shutil.disk_usage(resolved_path)
+        used_bytes = max(0, usage.total - usage.free)
+        used_percent = int(round((used_bytes / usage.total) * 100)) if usage.total > 0 else 0
+        return f"Disk : {_format_disk_size_gb(used_bytes)}/{_format_disk_size_gb(usage.total)}({used_percent}%)"
+    except Exception:
+        return ""
+
+
+def get_display_resolution_line():
+    """Retourne la resolution d'affichage pour le cartouche gauche de la page plateformes."""
+    try:
+        system_info = getattr(config, 'SYSTEM_INFO', None)
+        if isinstance(system_info, dict):
+            display_resolution = (system_info.get('display_resolution', '') or '').strip()
+            if display_resolution:
+                return f"Res : {display_resolution}"
+    except Exception:
+        pass
+
+    try:
+        if getattr(config, 'screen_width', 0) and getattr(config, 'screen_height', 0):
+            return f"Res : {config.screen_width}x{config.screen_height}"
+    except Exception:
+        pass
+
+    return ""
+
+
+def draw_platform_header_info(screen, light_mode=False, badge_x=None, max_badge_width=None, include_details=True):
+    """Affiche version, controleur connecte et IP reseau dans un cartouche en haut a droite."""
+    lines = get_platform_header_info_lines(max_badge_width, include_details=include_details)
+    badge_width, _, fitted_lines = measure_header_badge(lines, font=config.tiny_font, max_badge_width=max_badge_width)
+    if not fitted_lines:
+        return
+    if badge_x is None:
+        badge_x = config.screen_width - badge_width - 14
     badge_y = 10
-    draw_header_badge(screen, lines, badge_x, badge_y, light_mode)
+    draw_header_badge(screen, fitted_lines, badge_x, badge_y, light_mode, font=config.tiny_font, max_badge_width=max_badge_width)
+
+
+def get_platform_header_badge_layout(screen_width, left_lines=None, right_lines=None, center_min_width=None, header_margin_x=14, header_gap=None):
+    """Calcule une repartition responsive des 3 cartouches d'en-tete avec priorite au cartouche droit."""
+    if header_gap is None:
+        header_gap = max(10, int(screen_width * 0.01))
+    if center_min_width is None:
+        center_min_width = max(160, int(screen_width * 0.18))
+
+    left_lines = left_lines or []
+    right_lines = right_lines or []
+
+    available_width = screen_width - 2 * header_margin_x
+    gap_count = (1 if left_lines else 0) + (1 if right_lines else 0)
+    available_without_gaps = max(120, available_width - gap_count * header_gap)
+
+    left_target = max(160, int(screen_width * 0.28)) if left_lines else 0
+    right_target = max(220, int(screen_width * 0.26)) if right_lines else 0
+
+    if left_lines and right_lines:
+        max_side_total = max(120, available_without_gaps - center_min_width)
+        desired_side_total = left_target + right_target
+        if desired_side_total > max_side_total:
+            scale = max_side_total / desired_side_total if desired_side_total > 0 else 1.0
+            left_target = max(140, int(left_target * scale))
+            right_target = max(180, int(right_target * scale))
+
+            overflow = left_target + right_target - max_side_total
+            if overflow > 0:
+                left_reduction = min(overflow, max(0, left_target - 140))
+                left_target -= left_reduction
+                overflow -= left_reduction
+            if overflow > 0:
+                right_target = max(160, right_target - overflow)
+
+    elif left_lines:
+        left_target = max(160, min(left_target, available_without_gaps - center_min_width))
+    elif right_lines:
+        right_target = max(180, min(right_target, available_without_gaps - center_min_width))
+
+    return {
+        "header_gap": header_gap,
+        "center_min_width": center_min_width,
+        "left_max_width": left_target,
+        "right_max_width": right_target,
+    }
 
 # Grille des systèmes 3x3
 def draw_platform_grid(screen):
@@ -960,14 +1292,109 @@ def draw_platform_grid(screen):
     except Exception:
         game_count = 0
     title_text = f"{platform_name}  ({game_count})" if game_count > 0 else f"{platform_name}"
-    title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
-    title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
-    title_rect_inflated = title_rect.inflate(60, 30)
-    title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
+
+    header_margin_x = 14
+    center_badge_min_width = max(160, int(config.screen_width * 0.18))
+    header_y = 10
+    num_cols = getattr(config, 'GRID_COLS', 3)
+    num_rows = getattr(config, 'GRID_ROWS', 4)
+
+    total_pages = 0
+    left_badge_lines = []
+    left_badge_width = 0
+    left_badge_height = 0
+    page_indicator_text = ""
 
     # Effet de pulsation subtil pour le titre - calculé une seule fois par frame
     current_time = pygame.time.get_ticks()
-    
+
+    # Filtrage éventuel des systèmes premium selon réglage
+    try:
+        from rgsx_settings import get_hide_premium_systems
+        hide_premium = get_hide_premium_systems()
+    except Exception:
+        hide_premium = False
+    premium_markers = getattr(config, 'PREMIUM_HOST_MARKERS', [])
+    if hide_premium and premium_markers:
+        visible_platforms = [p for p in config.platforms if not any(m.lower() in p.lower() for m in premium_markers)]
+    else:
+        visible_platforms = list(config.platforms)
+
+    # Ajuster selected_platform et current_platform/page si liste réduite
+    if config.selected_platform >= len(visible_platforms):
+        config.selected_platform = max(0, len(visible_platforms) - 1)
+    systems_per_page = num_cols * num_rows
+    if systems_per_page <= 0:
+        systems_per_page = 1
+    config.current_page = config.selected_platform // systems_per_page if systems_per_page else 0
+
+    total_pages = (len(visible_platforms) + systems_per_page - 1) // systems_per_page
+    left_badge_candidate_lines = []
+    if total_pages > 1:
+        page_indicator_text = _("platform_page").format(config.current_page + 1, total_pages)
+        left_badge_candidate_lines.append(page_indicator_text)
+
+    disk_space_line = get_default_disk_space_line()
+    if disk_space_line:
+        left_badge_candidate_lines.append(disk_space_line)
+
+    display_resolution_line = get_display_resolution_line()
+    if display_resolution_line:
+        left_badge_candidate_lines.append(display_resolution_line)
+
+    right_badge_raw_lines = get_platform_header_info_lines(None, include_details=True)
+    header_layout = get_platform_header_badge_layout(
+        config.screen_width,
+        left_lines=left_badge_candidate_lines,
+        right_lines=right_badge_raw_lines,
+        center_min_width=center_badge_min_width,
+        header_margin_x=header_margin_x,
+    )
+    header_gap = header_layout["header_gap"]
+    left_badge_max_width = header_layout["left_max_width"]
+    right_badge_max_width = header_layout["right_max_width"]
+
+    left_badge_width, left_badge_height, left_badge_lines = measure_header_badge(
+        left_badge_candidate_lines,
+        font=config.tiny_font,
+        max_badge_width=left_badge_max_width,
+    )
+
+    right_badge_lines = get_platform_header_info_lines(right_badge_max_width, include_details=True)
+    right_badge_width, right_badge_height, right_badge_lines = measure_header_badge(
+        right_badge_lines,
+        font=config.tiny_font,
+        max_badge_width=right_badge_max_width,
+    )
+
+    center_left = header_margin_x + (left_badge_width + header_gap if left_badge_lines else 0)
+    center_right = config.screen_width - header_margin_x - (right_badge_width + header_gap if right_badge_lines else 0)
+    center_badge_max_width = max(center_badge_min_width, center_right - center_left)
+
+    center_font_candidates = [config.title_font, config.search_font, config.font, config.small_font]
+    center_font = config.small_font
+    center_line = title_text
+    center_padding_x = 18
+    center_padding_y = 10
+    center_line_gap = 4
+
+    for candidate_font in center_font_candidates:
+        raw_width = candidate_font.size(title_text)[0] + center_padding_x * 2
+        if raw_width <= center_badge_max_width:
+            center_font = candidate_font
+            center_line = title_text
+            break
+    else:
+        center_font = center_font_candidates[-1]
+        center_line = truncate_text_end(title_text, center_font, max(80, center_badge_max_width - center_padding_x * 2))
+
+    title_surface = center_font.render(center_line, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect()
+    title_rect_inflated = title_rect.inflate(center_padding_x * 2, center_padding_y * 2)
+    title_rect_inflated.x = center_left + max(0, (center_badge_max_width - title_rect_inflated.width) // 2)
+    title_rect_inflated.y = header_y
+    title_rect.center = title_rect_inflated.center
+
     if not light_mode:
         # Mode normal : effets visuels complets
         pulse_factor = 0.08 * (1 + math.sin(current_time / 400))
@@ -1011,10 +1438,17 @@ def draw_platform_grid(screen):
     # Configuration de la grille - calculée une seule fois
     margin_left = int(config.screen_width * 0.026)
     margin_right = int(config.screen_width * 0.026)
-    margin_top = int(config.screen_height * 0.140)
-    margin_bottom = int(config.screen_height * 0.0648)
-    num_cols = getattr(config, 'GRID_COLS', 3)
-    num_rows = getattr(config, 'GRID_ROWS', 4)
+    header_bottom = title_rect_inflated.bottom
+    if left_badge_lines:
+        header_bottom = max(header_bottom, header_y + left_badge_height)
+    if right_badge_lines:
+        header_bottom = max(header_bottom, header_y + right_badge_height)
+    header_clearance = max(20, int(config.screen_height * 0.03))
+    margin_top = max(int(config.screen_height * 0.140), header_bottom + header_clearance)
+    footer_height = 70
+    min_footer_gap = max(12, int(config.screen_height * 0.018))
+    footer_reserved = max(footer_height + min_footer_gap, int(config.screen_height * 0.118))
+    margin_bottom = footer_reserved
     systems_per_page = num_cols * num_rows
 
     available_width = config.screen_width - margin_left - margin_right
@@ -1034,35 +1468,37 @@ def draw_platform_grid(screen):
     cell_padding = int(cell_size * 0.15)  # 15% d'espacement
 
     x_positions = [margin_left + col_width * i + col_width // 2 for i in range(num_cols)]
-    y_positions = [margin_top + row_height * i + row_height // 2 for i in range(num_rows)]
 
-    # Filtrage éventuel des systèmes premium selon réglage
-    try:
-        from rgsx_settings import get_hide_premium_systems
-        hide_premium = get_hide_premium_systems()
-    except Exception:
-        hide_premium = False
-    premium_markers = getattr(config, 'PREMIUM_HOST_MARKERS', [])
-    if hide_premium and premium_markers:
-        visible_platforms = [p for p in config.platforms if not any(m.lower() in p.lower() for m in premium_markers)]
+    first_row_center = margin_top + row_height // 2
+    last_row_center = config.screen_height - margin_bottom - row_height // 2
+    if num_rows <= 1:
+        y_positions = [margin_top + available_height // 2]
+    elif last_row_center <= first_row_center:
+        y_positions = [margin_top + row_height * i + row_height // 2 for i in range(num_rows)]
     else:
-        visible_platforms = list(config.platforms)
+        row_step = (last_row_center - first_row_center) / (num_rows - 1)
+        y_positions = [int(first_row_center + row_step * i) for i in range(num_rows)]
 
-    # Ajuster selected_platform et current_platform/page si liste réduite
-    if config.selected_platform >= len(visible_platforms):
-        config.selected_platform = max(0, len(visible_platforms) - 1)
-    # Recalcule la page courante en fonction de selected_platform
-    systems_per_page = num_cols * num_rows
-    if systems_per_page <= 0:
-        systems_per_page = 1
-    config.current_page = config.selected_platform // systems_per_page if systems_per_page else 0
+    if left_badge_lines:
+        draw_header_badge(
+            screen,
+            left_badge_lines,
+            header_margin_x,
+            header_y,
+            light_mode,
+            font=config.tiny_font,
+            max_badge_width=left_badge_max_width,
+        )
 
-    total_pages = (len(visible_platforms) + systems_per_page - 1) // systems_per_page
-    if total_pages > 1:
-        page_indicator_text = _("platform_page").format(config.current_page + 1, total_pages)
-        draw_header_badge(screen, [page_indicator_text], 14, 10, light_mode)
-
-    draw_platform_header_info(screen, light_mode)
+    if right_badge_lines:
+        right_badge_x = config.screen_width - right_badge_width - header_margin_x
+        draw_platform_header_info(
+            screen,
+            light_mode,
+            badge_x=right_badge_x,
+            max_badge_width=right_badge_max_width,
+            include_details=True,
+        )
 
     # Calculer une seule fois la pulsation pour les éléments sélectionnés (réduite)
     if not light_mode:
@@ -1378,12 +1814,76 @@ def draw_game_list(screen):
 
     screen.blit(OVERLAY, (0, 0))
 
+    header_margin_x = 14
+    header_y = 10
+    left_badge_lines = []
+    left_badge_width = 0
+    right_badge_lines = get_platform_header_info_lines(None, include_details=False)
+
+    disk_space_line = get_default_disk_space_line()
+    if disk_space_line:
+        left_badge_candidate_lines = [disk_space_line]
+    else:
+        left_badge_candidate_lines = []
+
+    header_layout = get_platform_header_badge_layout(
+        config.screen_width,
+        left_lines=left_badge_candidate_lines,
+        right_lines=right_badge_lines,
+        center_min_width=max(180, int(config.screen_width * 0.18)),
+        header_margin_x=header_margin_x,
+    )
+    header_gap = header_layout["header_gap"]
+    left_badge_max_width = header_layout["left_max_width"]
+    right_badge_max_width = header_layout["right_max_width"]
+
+    if left_badge_candidate_lines:
+        left_badge_width, left_badge_height, left_badge_lines = measure_header_badge(
+            left_badge_candidate_lines,
+            font=config.tiny_font,
+            max_badge_width=left_badge_max_width,
+        )
+
+    right_badge_lines = get_platform_header_info_lines(right_badge_max_width, include_details=False)
+    right_badge_width, right_badge_height, right_badge_lines = measure_header_badge(
+        right_badge_lines,
+        font=config.tiny_font,
+        max_badge_width=right_badge_max_width,
+    )
+
+    title_left = header_margin_x + (left_badge_width + header_gap if left_badge_lines else 0)
+    title_right = config.screen_width - header_margin_x - (right_badge_width + header_gap if right_badge_lines else 0)
+    title_badge_max_width = max(180, title_right - title_left)
+
+    def _build_game_header_title(title_text_value, font_candidates, text_color, border_color=None):
+        padding_x = 18
+        padding_y = 10
+        selected_font = font_candidates[-1]
+        selected_text = title_text_value
+        for candidate_font in font_candidates:
+            raw_width = candidate_font.size(title_text_value)[0] + padding_x * 2
+            if raw_width <= title_badge_max_width:
+                selected_font = candidate_font
+                selected_text = title_text_value
+                break
+        else:
+            selected_text = truncate_text_end(title_text_value, selected_font, max(80, title_badge_max_width - padding_x * 2))
+
+        title_surface_local = selected_font.render(selected_text, True, text_color)
+        title_rect_local = title_surface_local.get_rect()
+        title_rect_inflated_local = title_rect_local.inflate(padding_x * 2, padding_y * 2)
+        title_rect_inflated_local.x = title_left + max(0, (title_badge_max_width - title_rect_inflated_local.width) // 2)
+        title_rect_inflated_local.y = header_y
+        title_rect_local.center = title_rect_inflated_local.center
+        return title_surface_local, title_rect_local, title_rect_inflated_local, border_color or THEME_COLORS["border"]
+
     if config.search_mode:
         search_text = _("game_search").format(config.search_query + "_")
-        title_surface = config.search_font.render(search_text, True, THEME_COLORS["text"])
-        title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
-        title_rect_inflated = title_rect.inflate(60, 30)
-        title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
+        title_surface, title_rect, title_rect_inflated, title_border_color = _build_game_header_title(
+            search_text,
+            [config.search_font, config.font, config.small_font],
+            THEME_COLORS["text"],
+        )
         
         # Ombre pour le titre de recherche
         shadow = pygame.Surface((title_rect_inflated.width + 10, title_rect_inflated.height + 10), pygame.SRCALPHA)
@@ -1396,7 +1896,7 @@ def draw_game_list(screen):
         screen.blit(glow, (title_rect_inflated.left - 10, title_rect_inflated.top - 10))
         
         pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)
-        pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
+        pygame.draw.rect(screen, title_border_color, title_rect_inflated, 2, border_radius=12)
         screen.blit(title_surface, title_rect)
     elif config.filter_active:
         # Afficher le nom de la plateforme avec indicateur de filtre actif
@@ -1406,12 +1906,14 @@ def draw_game_list(screen):
             filter_indicator = f" - {_('game_filter').format(config.search_query)}"
         
         title_text = _("game_count").format(platform_name, game_count) + filter_indicator
-        title_surface = config.title_font.render(title_text, True, THEME_COLORS["green"])
-        title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
-        title_rect_inflated = title_rect.inflate(60, 30)
-        title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
+        title_surface, title_rect, title_rect_inflated, title_border_color = _build_game_header_title(
+            title_text,
+            [config.title_font, config.search_font, config.font, config.small_font],
+            THEME_COLORS["green"],
+            border_color=THEME_COLORS["border_selected"],
+        )
         pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)
-        pygame.draw.rect(screen, THEME_COLORS["border_selected"], title_rect_inflated, 3, border_radius=12)
+        pygame.draw.rect(screen, title_border_color, title_rect_inflated, 3, border_radius=12)
         screen.blit(title_surface, title_rect)
     else:
         # Ajouter indicateur de filtre actif si filtres avancés sont actifs
@@ -1420,10 +1922,11 @@ def draw_game_list(screen):
             filter_indicator = " (Active Filter)"
         
         title_text = _("game_count").format(platform_name, game_count) + filter_indicator
-        title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
-        title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
-        title_rect_inflated = title_rect.inflate(60, 30)
-        title_rect_inflated.topleft = ((config.screen_width - title_rect_inflated.width) // 2, 10)
+        title_surface, title_rect, title_rect_inflated, title_border_color = _build_game_header_title(
+            title_text,
+            [config.title_font, config.search_font, config.font, config.small_font],
+            THEME_COLORS["text"],
+        )
         
         # Ombre et glow pour titre normal
         shadow = pygame.Surface((title_rect_inflated.width + 10, title_rect_inflated.height + 10), pygame.SRCALPHA)
@@ -1431,8 +1934,29 @@ def draw_game_list(screen):
         screen.blit(shadow, (title_rect_inflated.left - 5, title_rect_inflated.top - 5))
         
         pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_rect_inflated, border_radius=12)
-        pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
+        pygame.draw.rect(screen, title_border_color, title_rect_inflated, 2, border_radius=12)
         screen.blit(title_surface, title_rect)
+
+    if left_badge_lines:
+        draw_header_badge(
+            screen,
+            left_badge_lines,
+            header_margin_x,
+            header_y,
+            False,
+            font=config.tiny_font,
+            max_badge_width=left_badge_max_width,
+        )
+
+    if right_badge_lines:
+        right_badge_x = config.screen_width - right_badge_width - header_margin_x
+        draw_platform_header_info(
+            screen,
+            False,
+            badge_x=right_badge_x,
+            max_badge_width=right_badge_max_width,
+            include_details=False,
+        )
 
     # Ombre portée pour le cadre principal
     shadow_rect = pygame.Rect(rect_x + 6, rect_y + 6, rect_width, rect_height)
@@ -1579,6 +2103,7 @@ def draw_global_search_list(screen):
     """Affiche la recherche globale par nom sur toutes les plateformes."""
     query = getattr(config, 'global_search_query', '') or ''
     results = getattr(config, 'global_search_results', []) or []
+    keyboard_active = bool(getattr(config, 'joystick', False) and getattr(config, 'global_search_editing', False))
 
     screen.blit(OVERLAY, (0, 0))
 
@@ -1604,6 +2129,24 @@ def draw_global_search_list(screen):
     pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
     screen.blit(title_surface, title_rect)
 
+    reserved_bottom = config.screen_height - 40
+    if keyboard_active:
+        key_width = int(config.screen_width * 0.03125)
+        key_height = int(config.screen_height * 0.0556)
+        key_spacing = int(config.screen_width * 0.0052)
+        keyboard_layout = [10, 10, 10, 6]
+        keyboard_width = keyboard_layout[0] * (key_width + key_spacing) - key_spacing
+        keyboard_height = len(keyboard_layout) * (key_height + key_spacing) - key_spacing
+        start_x = (config.screen_width - keyboard_width) // 2
+        search_bottom_y = int(config.screen_height * 0.111) + (config.search_font.get_height() + 40) // 2
+        controls_y = config.screen_height - int(config.screen_height * 0.037)
+        available_height = controls_y - search_bottom_y
+        start_y = search_bottom_y + (available_height - keyboard_height - 40) // 2
+        reserved_bottom = start_y - 24
+
+    message_zone_top = title_rect_inflated.bottom + 24
+    message_zone_bottom = max(message_zone_top + 80, reserved_bottom)
+
     if not query.strip():
         message = _("global_search_empty_query")
         lines = wrap_text(message, config.font, config.screen_width - 80)
@@ -1614,7 +2157,8 @@ def draw_global_search_list(screen):
         max_text_width = max([config.font.size(line)[0] for line in lines], default=300)
         rect_width = max_text_width + 80
         rect_x = (config.screen_width - rect_width) // 2
-        rect_y = (config.screen_height - rect_height) // 2
+        available_message_height = max(rect_height, message_zone_bottom - message_zone_top)
+        rect_y = message_zone_top + max(0, (available_message_height - rect_height) // 2)
 
         pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
         pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
@@ -1635,7 +2179,8 @@ def draw_global_search_list(screen):
         max_text_width = max([config.font.size(line)[0] for line in lines], default=300)
         rect_width = max_text_width + 80
         rect_x = (config.screen_width - rect_width) // 2
-        rect_y = (config.screen_height - rect_height) // 2
+        available_message_height = max(rect_height, message_zone_bottom - message_zone_top)
+        rect_y = message_zone_top + max(0, (available_message_height - rect_height) // 2)
 
         pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
         pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
@@ -2430,23 +2975,11 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
             if line_data[0] == "icons_combined":
                 # Combiner tous les contrôles sur une seule ligne
                 all_controls = line_data[1]
-                combined_surf = pygame.Surface((max_width, 50), pygame.SRCALPHA)
-                x_pos = 10
-                for action_tuple in all_controls:
-                    ignored, actions, label = action_tuple
-                    try:
-                        surf = _render_icons_line(actions, label, max_width - x_pos - 10, config.tiny_font, THEME_COLORS["text"], icon_size=scaled_icon_size, icon_gap=scaled_icon_gap, icon_text_gap=scaled_icon_text_gap)
-                        if x_pos + surf.get_width() > max_width - 10:
-                            break  # Pas assez de place
-                        combined_surf.blit(surf, (x_pos, (50 - surf.get_height()) // 2))
-                        x_pos += surf.get_width() + 20  # Espacement entre contrôles
-                    except Exception:
-                        pass
-                # Redimensionner la surface au contenu réel
-                if x_pos > 10:
-                    final_surf = pygame.Surface((x_pos - 10, 50), pygame.SRCALPHA)
-                    final_surf.blit(combined_surf, (0, 0), (0, 0, x_pos - 10, 50))
+                try:
+                    final_surf = _render_combined_footer_controls(all_controls, max_width - 20, THEME_COLORS["text"])
                     icon_surfs.append(final_surf)
+                except Exception:
+                    pass
             elif line_data[0] == "icons" and len(line_data) == 3:
                 ignored, actions, label = line_data
                 try:

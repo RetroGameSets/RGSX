@@ -33,6 +33,8 @@ import tempfile
 logger = logging.getLogger(__name__)
 # Désactiver les logs DEBUG de urllib3 e requests pour supprimer les messages de connexion HTTP
 
+_games_cache = {}
+
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("requests").setLevel(logging.WARNING)
 
@@ -1195,8 +1197,14 @@ def load_games(platform_id:str) -> list[Game]:
                 game_file = c
                 break
         if not game_file:
+            _games_cache.pop(platform_id, None)
             logger.warning(f"Aucun fichier de jeux trouvé pour {platform_id} (candidats: {candidates})")
             return []
+
+        game_mtime_ns = os.stat(game_file).st_mtime_ns
+        cached_entry = _games_cache.get(platform_id)
+        if cached_entry and cached_entry.get("path") == game_file and cached_entry.get("mtime_ns") == game_mtime_ns:
+            return cached_entry["games"]
 
         with open(game_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -1242,8 +1250,15 @@ def load_games(platform_id:str) -> list[Game]:
             display_name = Path(name).stem
             display_name = display_name.replace(platform_id, "")
             games_list.append(Game(name=name, url=url, size=size, display_name=display_name))
+
+        _games_cache[platform_id] = {
+            "path": game_file,
+            "mtime_ns": game_mtime_ns,
+            "games": games_list,
+        }
         return games_list
     except Exception as e:
+        _games_cache.pop(platform_id, None)
         logger.error(f"Erreur lors du chargement des jeux pour {platform_id}: {e}")
         return []
 

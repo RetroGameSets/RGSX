@@ -442,12 +442,14 @@ def build_global_search_index() -> list[dict]:
         platform_id = _get_platform_id(platform)
         platform_label = _get_platform_label(platform_id)
         for game in load_games(platform_id):
+            display_name = game.display_name or Path(game.name).stem
             indexed_games.append({
                 "platform_id": platform_id,
                 "platform_label": platform_label,
                 "platform_index": platform_index,
                 "game_name": game.name,
-                "display_name": game.display_name or Path(game.name).stem,
+                "display_name": display_name,
+                "search_name": display_name.lower(),
                 "url": game.url,
                 "size": game.size,
             })
@@ -463,7 +465,7 @@ def refresh_global_search_results(reset_selection: bool = True) -> None:
     else:
         config.global_search_results = [
             item for item in config.global_search_index
-            if query in item["display_name"].lower()
+            if query in item.get("search_name", item["display_name"].lower())
         ]
 
     if reset_selection:
@@ -476,7 +478,10 @@ def refresh_global_search_results(reset_selection: bool = True) -> None:
 
 
 def enter_global_search() -> None:
-    config.global_search_index = build_global_search_index()
+    index_signature = tuple(config.platforms)
+    if not getattr(config, 'global_search_index', None) or getattr(config, 'global_search_index_signature', None) != index_signature:
+        config.global_search_index = build_global_search_index()
+        config.global_search_index_signature = index_signature
     config.global_search_query = ""
     config.global_search_results = []
     config.global_search_selected = 0

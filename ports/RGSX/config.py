@@ -2,6 +2,7 @@
 import os
 import logging
 import platform
+import socket
 from typing import Optional
 from dataclasses import dataclass
 
@@ -26,10 +27,10 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.6.0.3"
+app_version = "2.6.1.0"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
-GAMELIST_UPDATE_DAYS = 7
+GAMELIST_UPDATE_DAYS = 1
 
 
 def get_application_root():
@@ -250,6 +251,30 @@ SYSTEM_INFO = {
 def get_batocera_system_info():
     """Récupère les informations système via la commande batocera-info."""
     global SYSTEM_INFO
+
+    def get_local_network_ip():
+        try:
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                udp_socket.connect(("8.8.8.8", 80))
+                local_ip = udp_socket.getsockname()[0]
+                if local_ip and not local_ip.startswith("127."):
+                    return local_ip
+            finally:
+                udp_socket.close()
+        except Exception:
+            pass
+
+        try:
+            hostname = socket.gethostname()
+            local_ip = socket.gethostbyname(hostname)
+            if local_ip and not local_ip.startswith("127."):
+                return local_ip
+        except Exception:
+            pass
+
+        return ""
+
     try:
         import subprocess
         result = subprocess.run(['batocera-info'], capture_output=True, text=True, timeout=5)
@@ -305,6 +330,7 @@ def get_batocera_system_info():
     SYSTEM_INFO["system"] = f"{platform.system()} {platform.release()}"
     SYSTEM_INFO["architecture"] = platform.machine()
     SYSTEM_INFO["cpu_model"] = platform.processor() or "Unknown"
+    SYSTEM_INFO["network_ip"] = get_local_network_ip()
     
     return False
 
