@@ -795,7 +795,11 @@ def draw_loading_screen(screen):
             screen.blit(text_surface, text_rect)
 
     loading_y = rect_y + rect_height + int(config.screen_height * 0.0926)
-    text = config.small_font.render(truncate_text_middle(f"{config.current_loading_system}", config.small_font, config.screen_width - 2 * margin_horizontal), True, THEME_COLORS["text"])
+    text = config.small_font.render(
+        truncate_text_middle(f"{config.current_loading_system}", config.small_font, config.screen_width - 2 * margin_horizontal, is_filename=False),
+        True,
+        THEME_COLORS["text"]
+    )
     text_rect = text.get_rect(center=(config.screen_width // 2, loading_y))
     screen.blit(text, text_rect)
 
@@ -805,9 +809,24 @@ def draw_loading_screen(screen):
 
     bar_width = int(config.screen_width * 0.2083)
     bar_height = int(config.screen_height * 0.037)
+    bar_y = loading_y + int(config.screen_height * 0.0926)
     progress_width = (bar_width * config.loading_progress) / 100
-    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (config.screen_width // 2 - bar_width // 2, loading_y + int(config.screen_height * 0.0926), bar_width, bar_height), border_radius=8)
-    pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], (config.screen_width // 2 - bar_width // 2, loading_y + int(config.screen_height * 0.0926), progress_width, bar_height), border_radius=8)
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (config.screen_width // 2 - bar_width // 2, bar_y, bar_width, bar_height), border_radius=8)
+    pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], (config.screen_width // 2 - bar_width // 2, bar_y, progress_width, bar_height), border_radius=8)
+
+    detail_lines = getattr(config, 'loading_detail_lines', []) or []
+    detail_y = bar_y + bar_height + 14
+    max_detail_width = config.screen_width - 2 * margin_horizontal
+    rendered_lines = []
+    for detail_line in detail_lines:
+        if not detail_line:
+            continue
+        rendered_lines.extend(wrap_text(str(detail_line), config.small_font, max_detail_width))
+
+    for index, detail_line in enumerate(rendered_lines[:3]):
+        detail_surface = config.small_font.render(detail_line, True, THEME_COLORS["title_text"])
+        detail_rect = detail_surface.get_rect(center=(config.screen_width // 2, detail_y + index * (config.small_font.get_height() + 4)))
+        screen.blit(detail_surface, detail_rect)
 
 # Écran d'erreur
 def draw_error_screen(screen):
@@ -5398,6 +5417,7 @@ def draw_text_file_viewer(screen):
     content = getattr(config, 'text_file_content', '')
     filename = getattr(config, 'text_file_name', 'Unknown')
     scroll_offset = getattr(config, 'text_file_scroll_offset', 0)
+    viewer_mode = getattr(config, 'text_file_mode', '')
     
     # Dimensions
     margin = 40
@@ -5474,6 +5494,11 @@ def draw_text_file_viewer(screen):
         position_surface = config.small_font.render(position_text, True, THEME_COLORS["title_text"])
         position_rect = position_surface.get_rect(right=rect_x + rect_width - 30, bottom=rect_y + rect_height - 10)
         screen.blit(position_surface, position_rect)
+
+        if viewer_mode == 'ota_update':
+            hint_surface = config.small_font.render("Confirm: Update", True, THEME_COLORS["text_selected"])
+            hint_rect = hint_surface.get_rect(left=rect_x + 30, bottom=rect_y + rect_height - 10)
+            screen.blit(hint_surface, hint_rect)
     else:
         # Aucun contenu
         no_content_text = "Empty file"

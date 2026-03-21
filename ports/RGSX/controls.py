@@ -1832,60 +1832,6 @@ def handle_controls(event, sources, joystick, screen):
         elif config.menu_state == "text_file_viewer":
             content = getattr(config, 'text_file_content', '')
             if content:
-                lines = content.split('\n')
-                line_height = config.small_font.get_height() + 2
-                
-                # Calculer le nombre de lignes visibles (approximation)
-                controls_y = config.screen_height - int(config.screen_height * 0.037)
-                margin = 40
-                header_height = 60
-                content_area_height = controls_y - 2 * margin - 10 - header_height - 20
-                visible_lines = int(content_area_height / line_height)
-                
-                scroll_offset = getattr(config, 'text_file_scroll_offset', 0)
-                max_scroll = max(0, len(lines) - visible_lines)
-                
-                if is_input_matched(event, "up"):
-                    config.text_file_scroll_offset = max(0, scroll_offset - 1)
-                    update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
-                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
-                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
-                                    event.value)
-                    config.needs_redraw = True
-                elif is_input_matched(event, "down"):
-                    config.text_file_scroll_offset = min(max_scroll, scroll_offset + 1)
-                    update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
-                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
-                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
-                                    event.value)
-                    config.needs_redraw = True
-                elif is_input_matched(event, "page_up"):
-                    config.text_file_scroll_offset = max(0, scroll_offset - visible_lines)
-                    update_key_state("page_up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
-                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
-                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
-                                    event.value)
-                    config.needs_redraw = True
-                elif is_input_matched(event, "page_down"):
-                    config.text_file_scroll_offset = min(max_scroll, scroll_offset + visible_lines)
-                    update_key_state("page_down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
-                                    event.button if event.type == pygame.JOYBUTTONDOWN else 
-                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
-                                    event.value)
-                    config.needs_redraw = True
-                elif is_input_matched(event, "cancel") or is_input_matched(event, "confirm"):
-                    config.menu_state = validate_menu_state(config.previous_menu_state)
-                    config.needs_redraw = True
-            else:
-                # Si pas de contenu, retourner au menu précédent
-                if is_input_matched(event, "cancel") or is_input_matched(event, "confirm"):
-                    config.menu_state = validate_menu_state(config.previous_menu_state)
-                    config.needs_redraw = True
-
-        # Visualiseur de fichiers texte
-        elif config.menu_state == "text_file_viewer":
-            content = getattr(config, 'text_file_content', '')
-            if content:
                 from utils import wrap_text
                 
                 # Calculer les dimensions
@@ -1912,6 +1858,7 @@ def handle_controls(event, sources, joystick, screen):
                 
                 scroll_offset = getattr(config, 'text_file_scroll_offset', 0)
                 max_scroll = max(0, len(wrapped_lines) - visible_lines)
+                viewer_mode = getattr(config, 'text_file_mode', '')
                 
                 if is_input_matched(event, "up"):
                     config.text_file_scroll_offset = max(0, scroll_offset - 1)
@@ -1941,7 +1888,11 @@ def handle_controls(event, sources, joystick, screen):
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
                                     event.value)
                     config.needs_redraw = True
-                elif is_input_matched(event, "cancel") or is_input_matched(event, "confirm"):
+                elif viewer_mode == "ota_update" and is_input_matched(event, "confirm"):
+                    config.startup_update_confirmed = True
+                    config.menu_state = "loading"
+                    config.needs_redraw = True
+                elif viewer_mode != "ota_update" and (is_input_matched(event, "cancel") or is_input_matched(event, "confirm")):
                     config.menu_state = validate_menu_state(config.previous_menu_state)
                     config.needs_redraw = True
             else:

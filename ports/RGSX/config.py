@@ -27,7 +27,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.6.1.2"
+app_version = "2.6.1.3"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 1
@@ -494,6 +494,10 @@ hide_premium_systems = False  # Indicateur pour masquer les systèmes premium
 
 # Variables diverses
 update_checked = False
+pending_update_version = ""
+startup_update_confirmed = False
+text_file_mode = ""
+loading_detail_lines = []
 extension_confirm_selection = 0  # Index de sélection pour confirmation d'extension
 controls_config = {}  # Configuration des contrôles personnalisés
 selected_key = (0, 0)  # Position du curseur dans le clavier virtuel

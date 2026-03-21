@@ -479,6 +479,211 @@ def test_internet():
         return True
 
 
+def _normalize_release_notes(raw_notes):
+    if not raw_notes:
+        return ""
+    notes = html_module.unescape(str(raw_notes))
+    notes = notes.replace("\r\n", "\n").replace("\r", "\n")
+    notes = re.sub(r"\n{3,}", "\n\n", notes)
+    return notes.strip()
+
+
+def _extract_changelog_section(raw_text):
+    text = _normalize_release_notes(raw_text)
+    if not text:
+        return ""
+
+    lines = text.split("\n")
+    heading_re = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+    changelog_start = None
+    changelog_level = None
+
+    for index, line in enumerate(lines):
+        match = heading_re.match(line.strip())
+        if not match:
+            continue
+        if "changelog" in match.group(2).lower():
+            changelog_start = index + 1
+            changelog_level = len(match.group(1))
+            break
+
+    if changelog_start is None:
+        return text
+
+    extracted = []
+    for line in lines[changelog_start:]:
+        stripped = line.strip()
+        if stripped == "---":
+            break
+        match = heading_re.match(stripped)
+        if match and len(match.group(1)) <= changelog_level:
+            break
+        extracted.append(line)
+
+    return _normalize_release_notes("\n".join(extracted))
+
+
+def _fetch_recent_release_changelogs(limit=5):
+    repo = getattr(config, "GITHUB_REPO", "RetroGameSets/RGSX")
+    api_url = f"https://api.github.com/repos/{repo}/releases"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "RGSX",
+    }
+
+    response = requests.get(api_url, headers=headers, timeout=10)
+    response.raise_for_status()
+
+    releases = response.json()
+    if not isinstance(releases, list):
+        return []
+
+    changelogs = []
+    for release in releases:
+        if not isinstance(release, dict) or release.get("draft"):
+            continue
+
+        version_label = (
+            release.get("tag_name")
+            or release.get("name")
+            or release.get("published_at")
+            or "Unknown"
+        )
+        release_body = _extract_changelog_section(release.get("body", ""))
+        if not release_body:
+            release_body = "Changelog unavailable"
+
+        changelogs.append({
+            "version": str(version_label).strip(),
+            "body": release_body,
+        })
+
+        if len(changelogs) >= limit:
+            break
+
+    return changelogs
+
+
+def _build_recent_changelog_text(latest_version, limit=5):
+    changelogs = _fetch_recent_release_changelogs(limit=limit)
+    title = _("network_update_available").format(latest_version) if _ else f"Update available: {latest_version}"
+    intro = f"{title}\n\nLast {len(changelogs) if changelogs else limit} changelogs:\n"
+
+    if not changelogs:
+        return f"{intro}\nChangelog unavailable"
+
+    blocks = []
+    for item in changelogs:
+        blocks.append(f"=== {item['version']} ===\n{item['body']}")
+
+    return intro + "\n\n".join(blocks) + "\n\nPress Confirm to install the update."
+
+
+def _format_size(num_bytes):
+    value = float(max(0, num_bytes))
+    units = ["B", "KB", "MB", "GB"]
+    unit_index = 0
+    while value >= 1024 and unit_index < len(units) - 1:
+        value /= 1024.0
+        unit_index += 1
+    if unit_index == 0:
+        return f"{int(value)} {units[unit_index]}"
+    return f"{value:.1f} {units[unit_index]}"
+
+
+def _set_loading_details(*lines):
+    config.loading_detail_lines = [str(line) for line in lines if line]
+    config.needs_redraw = True
+
+
+def _safe_remove_file(file_path, retries=8, delay=0.25):
+    if not file_path or not os.path.exists(file_path):
+        return True
+
+    last_error = None
+    for _ in range(retries):
+        try:
+            os.remove(file_path)
+            return True
+        except PermissionError as error:
+            last_error = error
+            time.sleep(delay)
+        except FileNotFoundError:
+            return True
+        except Exception as error:
+            last_error = error
+            break
+
+    if last_error is not None:
+        logger.warning(f"Impossible de supprimer temporairement {file_path}: {last_error}")
+    return False
+
+
+async def apply_pending_update(latest_version):
+    UPDATE_ZIP = OTA_UPDATE_ZIP
+    logger.debug(f"URL de mise à jour : {UPDATE_ZIP} (version {latest_version})")
+
+    config.current_loading_system = _("network_update_available").format(latest_version)
+    config.loading_progress = 10.0
+    _set_loading_details("Preparing update...")
+    logger.debug(f"Téléchargement du ZIP de mise à jour : {UPDATE_ZIP}")
+
+    os.makedirs(UPDATE_FOLDER, exist_ok=True)
+    update_zip_path = os.path.join(UPDATE_FOLDER, f"RGSX_update_v{latest_version}.zip")
+    logger.debug(f"Téléchargement de {UPDATE_ZIP} vers {update_zip_path}")
+
+    with requests.get(UPDATE_ZIP, stream=True, timeout=10) as r:
+        r.raise_for_status()
+        total_size = int(r.headers.get('content-length', 0))
+        downloaded = 0
+        start_time = time.time()
+        with open(update_zip_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    config.loading_progress = 10.0 + (40.0 * downloaded / total_size) if total_size > 0 else 10.0
+                    elapsed = max(time.time() - start_time, 0.001)
+                    speed = downloaded / elapsed
+                    progress_line = f"Download: {_format_size(downloaded)} / {_format_size(total_size)}" if total_size > 0 else f"Download: {_format_size(downloaded)}"
+                    _set_loading_details(progress_line, f"Speed: {_format_size(speed)}/s")
+                    await asyncio.sleep(0)
+    logger.debug(f"ZIP téléchargé : {update_zip_path}")
+
+    config.current_loading_system = _("network_extracting_update")
+    config.loading_progress = 60.0
+    _set_loading_details(f"Archive: {_format_size(os.path.getsize(update_zip_path))}")
+    success, message = await asyncio.to_thread(extract_update, update_zip_path, APP_FOLDER, UPDATE_ZIP)
+    if not success:
+        logger.error(f"Échec de l'extraction : {message}")
+        return False, _("network_extraction_failed").format(message)
+
+    if _safe_remove_file(update_zip_path):
+        logger.debug(f"Fichier ZIP {update_zip_path} supprimé")
+
+    config.current_loading_system = _("network_update_completed")
+    config.loading_progress = 100.0
+    _set_loading_details("Update installed successfully")
+    logger.debug("Mise à jour terminée avec succès")
+
+    config.menu_state = "restart_popup"
+    config.update_result_message = _("network_update_success").format(latest_version)
+    config.popup_message = config.update_result_message
+    config.popup_timer = 2000
+    config.update_result_error = False
+    config.update_result_start_time = pygame.time.get_ticks() if pygame is not None else 0
+    config.needs_redraw = True
+    logger.debug("Affichage de la popup de mise à jour réussie, redémarrage imminent")
+
+    try:
+        from utils import restart_application
+        restart_application(2000)
+    except Exception as e:
+        logger.error(f"Erreur lors du redémarrage après mise à jour: {e}")
+
+    return True, _("network_update_success_message")
+
+
 async def check_for_updates():
     try:
         logger.debug("Vérification de la version disponible sur le serveur")
@@ -614,75 +819,27 @@ async def check_for_updates():
             logger.info("Version distante inférieure ou égale – skip mise à jour (anti-downgrade)")
             return True, _("network_no_update_available") if _ else "No update (local >= remote)"
 
-        # À ce stade latest_version est strictement > version locale
-        # Utiliser l'URL RGSX_latest.zip qui pointe toujours vers la dernière version sur GitHub
-        UPDATE_ZIP = OTA_UPDATE_ZIP
-        logger.debug(f"URL de mise à jour : {UPDATE_ZIP} (version {latest_version})")
-
         if latest_version != config.app_version:
-            config.current_loading_system = _("network_update_available").format(latest_version)
-            config.loading_progress = 10.0
-            config.needs_redraw = True
-            logger.debug(f"Téléchargement du ZIP de mise à jour : {UPDATE_ZIP}")
-
-            # Créer le dossier UPDATE_FOLDER s'il n'existe pas
-            os.makedirs(UPDATE_FOLDER, exist_ok=True)
-            update_zip_path = os.path.join(UPDATE_FOLDER, f"RGSX_update_v{latest_version}.zip")
-            logger.debug(f"Téléchargement de {UPDATE_ZIP} vers {update_zip_path}")
-
-            # Télécharger le ZIP
-            with requests.get(UPDATE_ZIP, stream=True, timeout=10) as r:
-                r.raise_for_status()
-                total_size = int(r.headers.get('content-length', 0))
-                downloaded = 0
-                with open(update_zip_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            config.loading_progress = 10.0 + (40.0 * downloaded / total_size) if total_size > 0 else 10.0
-                            config.needs_redraw = True
-                            await asyncio.sleep(0)
-            logger.debug(f"ZIP téléchargé : {update_zip_path}")
-
-            # Extraire le contenu du ZIP dans APP_FOLDER
-            config.current_loading_system = _("network_extracting_update")
-            config.loading_progress = 60.0
-            config.needs_redraw = True
-            success, message = extract_update(update_zip_path, APP_FOLDER, UPDATE_ZIP)
-            if not success:
-                logger.error(f"Échec de l'extraction : {message}")
-                return False, _("network_extraction_failed").format(message)
-
-            # Supprimer le fichier ZIP après extraction
-            if os.path.exists(update_zip_path):
-                os.remove(update_zip_path)
-                logger.debug(f"Fichier ZIP {update_zip_path} supprimé")
-
-            config.current_loading_system = _("network_update_completed")
-            config.loading_progress = 100.0
-            config.needs_redraw = True
-            logger.debug("Mise à jour terminée avec succès")
-
-            # Configurer la popup puis redémarrer automatiquement
-            config.menu_state = "restart_popup"
-            config.update_result_message = _("network_update_success").format(latest_version)
-            config.popup_message = config.update_result_message
-            config.popup_timer = 2000
-            config.update_result_error = False
-            config.update_result_start_time = pygame.time.get_ticks() if pygame is not None else 0
-            config.needs_redraw = True
-            logger.debug(f"Affichage de la popup de mise à jour réussie, redémarrage imminent")
-
             try:
-                from utils import restart_application
-                restart_application(2000)
-            except Exception as e:
-                logger.error(f"Erreur lors du redémarrage après mise à jour: {e}")
+                changelog_text = _build_recent_changelog_text(latest_version, limit=5)
+            except Exception as changelog_error:
+                logger.warning(f"Impossible de récupérer les changelogs récents: {changelog_error}")
+                changelog_text = "Changelog unavailable"
 
-            return True, _("network_update_success_message")
+            config.pending_update_version = latest_version
+            config.startup_update_confirmed = False
+            config.text_file_name = f"RGSX {latest_version}"
+            config.text_file_content = changelog_text
+            config.text_file_scroll_offset = 0
+            config.text_file_mode = "ota_update"
+            config.previous_menu_state = "loading"
+            config.menu_state = "text_file_viewer"
+            config.update_checked = True
+            config.needs_redraw = True
+            return True, _("network_update_available").format(latest_version)
         else:
             logger.debug("Aucune mise à jour disponible")
+            config.update_checked = True
             return True, _("network_no_update_available")
 
     except Exception as e:
@@ -704,9 +861,20 @@ def extract_update(zip_path, dest_dir, source_url):
         # Extraire le ZIP
         skipped_files = []
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            file_infos = [info for info in zip_ref.infolist() if not info.is_dir()]
+            total_bytes = sum(max(0, info.file_size) for info in file_infos)
+            extracted_bytes = 0
             for file_info in zip_ref.infolist():
                 try:
                     zip_ref.extract(file_info, dest_dir)
+                    if not file_info.is_dir():
+                        extracted_bytes += max(0, file_info.file_size)
+                        if total_bytes > 0:
+                            config.loading_progress = 60.0 + (40.0 * extracted_bytes / total_bytes)
+                        _set_loading_details(
+                            f"Extracting: {_format_size(extracted_bytes)} / {_format_size(total_bytes)}" if total_bytes > 0 else f"Extracting: {file_info.filename}",
+                            file_info.filename
+                        )
                 except PermissionError as e:
                     logger.warning(f"Impossible d'extraire {file_info.filename}: {str(e)}")
                     skipped_files.append(file_info.filename)

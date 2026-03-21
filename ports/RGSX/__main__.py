@@ -35,7 +35,7 @@ from display import (
     draw_toast, show_toast, THEME_COLORS, sync_display_metrics
 )
 from language import _
-from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates, cancel_all_downloads, download_queue_worker
+from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates, apply_pending_update, cancel_all_downloads, download_queue_worker
 from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls
 from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
@@ -99,6 +99,9 @@ _run_windows_gamelist_update()
 try:
     config.update_checked = False
     config.gamelist_update_prompted = False  # Flag pour ne pas redemander la mise à jour plusieurs fois
+    config.pending_update_version = ""
+    config.startup_update_confirmed = False
+    config.text_file_mode = ""
 except Exception:
     pass
 
@@ -457,6 +460,7 @@ async def main():
     
     running = True
     loading_step = "none"
+    ota_update_task = None
     sources = []
     config.last_state_change_time = 0
     config.debounce_delay = 50
@@ -487,6 +491,9 @@ async def main():
 
         # Forcer redraw toutes les 100 ms dans download_progress
         if config.menu_state == "download_progress" and current_time - last_redraw_time >= 100:
+            config.needs_redraw = True
+            last_redraw_time = current_time
+        if config.menu_state == "loading" and current_time - last_redraw_time >= 100:
             config.needs_redraw = True
             last_redraw_time = current_time
         # Forcer redraw toutes les 100 ms dans history avec téléchargement actif
@@ -1357,6 +1364,10 @@ async def main():
                     config.error_message = message or _("error_check_updates_failed")
                     config.needs_redraw = True
                     logger.debug(f"Erreur OTA : {message}")
+                elif getattr(config, "pending_update_version", ""):
+                    loading_step = "await_ota_confirmation"
+                    config.needs_redraw = True
+                    continue
                 else:
                     loading_step = "check_data"
                     config.current_loading_system = _("loading_downloading_games_images")
@@ -1364,6 +1375,38 @@ async def main():
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
                     continue  # Passer immédiatement à check_data
+            elif loading_step == "await_ota_confirmation":
+                if not getattr(config, "startup_update_confirmed", False):
+                    await asyncio.sleep(0.01)
+                    continue
+
+                latest_version = getattr(config, "pending_update_version", "")
+                config.startup_update_confirmed = False
+                ota_update_task = asyncio.create_task(apply_pending_update(latest_version))
+                loading_step = "apply_ota_update"
+                config.needs_redraw = True
+                continue
+            elif loading_step == "apply_ota_update":
+                if ota_update_task is None:
+                    loading_step = "check_data"
+                    continue
+                if not ota_update_task.done():
+                    await asyncio.sleep(0.01)
+                    continue
+
+                success, message = await ota_update_task
+                ota_update_task = None
+                if not success:
+                    config.menu_state = "error"
+                    config.error_message = message or _("error_check_updates_failed")
+                    config.needs_redraw = True
+                else:
+                    config.pending_update_version = ""
+                    config.text_file_mode = ""
+                    config.text_file_content = ""
+                    config.loading_detail_lines = []
+                    config.needs_redraw = True
+                continue
             elif loading_step == "check_data":
                 is_data_empty = not os.path.exists(config.GAMES_FOLDER) or not any(os.scandir(config.GAMES_FOLDER))
                 if is_data_empty:
