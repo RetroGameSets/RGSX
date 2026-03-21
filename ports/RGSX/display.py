@@ -2906,6 +2906,7 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
         ],
         "folder_browser": [
             ("confirm", _("folder_browser_enter")),
+            (("page_up", "page_down"), _("controls_pages")),
             ("history", _("folder_browser_select")),
             ("clear_history", _("folder_new_folder")),
             ("cancel", _("controls_cancel_back")),
@@ -4720,8 +4721,17 @@ def draw_folder_browser(screen):
     list_y = panel_y + 100
     list_height = panel_height - 180
     item_height = max(35, config.small_font.get_height() + 10)
-    visible_items = min(visible_items, list_height // item_height)
+    visible_items = max(1, list_height // item_height)
     config.folder_browser_visible_items = visible_items
+
+    max_scroll_offset = max(0, len(items) - visible_items)
+    if scroll_offset > max_scroll_offset:
+        scroll_offset = max_scroll_offset
+        config.folder_browser_scroll_offset = scroll_offset
+
+    if selection >= len(items) and items:
+        selection = len(items) - 1
+        config.folder_browser_selection = selection
     
     # Afficher les éléments visibles
     for i in range(visible_items):

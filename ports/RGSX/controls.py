@@ -2999,6 +2999,25 @@ def handle_controls(event, sources, joystick, screen):
                     if config.folder_browser_selection >= config.folder_browser_scroll_offset + config.folder_browser_visible_items:
                         config.folder_browser_scroll_offset = config.folder_browser_selection - config.folder_browser_visible_items + 1
                 config.needs_redraw = True
+            elif is_input_matched(event, "page_up"):
+                jump_size = 10
+                if config.folder_browser_selection > 0:
+                    config.folder_browser_selection = max(0, config.folder_browser_selection - jump_size)
+                    config.folder_browser_scroll_offset = min(
+                        config.folder_browser_scroll_offset,
+                        config.folder_browser_selection
+                    )
+                config.needs_redraw = True
+            elif is_input_matched(event, "page_down"):
+                jump_size = 10
+                if config.folder_browser_selection < len(config.folder_browser_items) - 1:
+                    config.folder_browser_selection = min(
+                        len(config.folder_browser_items) - 1,
+                        config.folder_browser_selection + jump_size
+                    )
+                    if config.folder_browser_selection >= config.folder_browser_scroll_offset + config.folder_browser_visible_items:
+                        config.folder_browser_scroll_offset = config.folder_browser_selection - config.folder_browser_visible_items + 1
+                config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
                 if config.folder_browser_items:
                     selected_item = config.folder_browser_items[config.folder_browser_selection]
