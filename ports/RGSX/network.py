@@ -15,7 +15,7 @@ try:
 except Exception:
     pygame = None  # type: ignore
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
-from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys, load_archive_org_cookie
+from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys, load_archive_org_cookie, get_clean_display_name
 from history import save_history
 from display import show_toast
 import logging
@@ -874,6 +874,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     entry["downloaded_size"] = 0
                     entry["platform"] = platform
                     entry["game_name"] = game_name
+                    entry["display_name"] = get_clean_display_name(game_name, platform)
                     entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     entry["task_id"] = task_id
                     break
@@ -883,6 +884,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 config.history.append({
                     "platform": platform,
                     "game_name": game_name,
+                    "display_name": get_clean_display_name(game_name, platform),
                     "url": url,
                     "status": "Downloading",
                     "progress": 0,
@@ -1766,6 +1768,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     entry["downloaded_size"] = 0
                     entry["platform"] = platform
                     entry["game_name"] = game_name
+                    entry["display_name"] = get_clean_display_name(game_name, platform)
                     entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     entry["task_id"] = task_id
                     break
@@ -1775,6 +1778,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 config.history.append({
                     "platform": platform,
                     "game_name": game_name,
+                    "display_name": get_clean_display_name(game_name, platform),
                     "url": url,
                     "status": "Downloading",
                     "progress": 0,

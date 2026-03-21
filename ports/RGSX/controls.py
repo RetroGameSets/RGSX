@@ -15,10 +15,11 @@ from utils import (
     load_games, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
     save_music_config, load_api_keys, _get_dest_folder_name,
-    extract_zip, extract_rar, find_file_with_or_without_extension, toggle_web_service_at_boot, check_web_service_status,
+    extract_zip, extract_rar, find_file_with_or_without_extension, find_matching_files, toggle_web_service_at_boot, check_web_service_status,
     restart_application, generate_support_zip, load_sources,
     ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string,
-    start_connection_status_check
+    start_connection_status_check, get_clean_display_name, get_existing_history_matches,
+    move_files_to_directory
 )
 from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games
 from language import _, get_available_languages, set_language  
@@ -556,7 +557,7 @@ def trigger_global_search_download(queue_only: bool = False) -> None:
     url = result.get("url")
     platform = result.get("platform_id")
     game_name = result.get("game_name")
-    display_name = result.get("display_name") or game_name
+    display_name = result.get("display_name") or get_clean_display_name(game_name, platform)
 
     if not url or not platform or not game_name:
         logger.error(f"Resultat de recherche globale invalide: {result}")
@@ -602,6 +603,7 @@ def trigger_global_search_download(queue_only: bool = False) -> None:
         config.history.append({
             'platform': platform,
             'game_name': game_name,
+            'display_name': display_name,
             'status': 'Queued',
             'url': url,
             'progress': 0,
@@ -1176,6 +1178,7 @@ def handle_controls(event, sources, joystick, screen):
                                 config.history.append({
                                     'platform': platform,
                                     'game_name': game_name,
+                                    'display_name': get_clean_display_name(game_name, platform),
                                     'status': 'Queued',
                                     'url': url,
                                     'progress': 0,
@@ -1248,6 +1251,7 @@ def handle_controls(event, sources, joystick, screen):
                             config.history.append({
                                 'platform': platform,
                                 'game_name': game_name,
+                                'display_name': get_clean_display_name(game_name, platform),
                                 'status': 'Queued',
                                 'url': url,
                                 'progress': 0,
@@ -1488,6 +1492,13 @@ def handle_controls(event, sources, joystick, screen):
                 dest_folder = _get_dest_folder_name(platform)
                 base_path = os.path.join(config.ROMS_FOLDER, dest_folder)
                 file_exists, actual_filename, actual_path = find_file_with_or_without_extension(base_path, game_name)
+                actual_matches = find_matching_files(base_path, game_name)
+                if not actual_matches:
+                    actual_matches = get_existing_history_matches(entry)
+                    if actual_matches:
+                        actual_filename, actual_path = actual_matches[0]
+                        file_exists = True
+                config.history_actual_matches = actual_matches
                 
                 # Stocker les informations pour les autres handlers
                 config.history_actual_filename = actual_filename
@@ -1747,7 +1758,47 @@ def handle_controls(event, sources, joystick, screen):
 
         # Affichage du dossier de téléchargement
         elif config.menu_state == "history_show_folder":
-            if is_input_matched(event, "confirm") or is_input_matched(event, "cancel"):
+            if is_input_matched(event, "clear_history"):
+                if not config.history or config.current_history_item >= len(config.history):
+                    config.menu_state = "history"
+                    config.needs_redraw = True
+                else:
+                    entry = config.history[config.current_history_item]
+                    actual_matches = getattr(config, 'history_actual_matches', None) or []
+                    if not actual_matches:
+                        actual_matches = get_existing_history_matches(entry)
+
+                    start_path = None
+                    if actual_matches:
+                        start_path = os.path.dirname(actual_matches[0][1])
+                    else:
+                        actual_path = getattr(config, 'history_actual_path', None)
+                        if actual_path and os.path.exists(actual_path):
+                            start_path = os.path.dirname(actual_path)
+
+                    if not start_path or not os.path.isdir(start_path):
+                        start_path = config.ROMS_FOLDER
+
+                    config.folder_browser_path = start_path
+                    config.folder_browser_selection = 0
+                    config.folder_browser_scroll_offset = 0
+                    config.folder_browser_mode = "history_move"
+                    config.platform_config_name = entry.get("display_name") or get_clean_display_name(entry.get("game_name", ""), entry.get("platform", ""))
+
+                    try:
+                        items = [".."]
+                        for item in sorted(os.listdir(start_path)):
+                            full_path = os.path.join(start_path, item)
+                            if os.path.isdir(full_path):
+                                items.append(item)
+                        config.folder_browser_items = items
+                    except Exception as e:
+                        logger.error(f"Erreur lecture dossier {start_path}: {e}")
+                        config.folder_browser_items = [".."]
+
+                    config.menu_state = "folder_browser"
+                    config.needs_redraw = True
+            elif is_input_matched(event, "confirm") or is_input_matched(event, "cancel"):
                 config.menu_state = validate_menu_state(config.previous_menu_state)
                 config.needs_redraw = True
 
@@ -3001,6 +3052,34 @@ def handle_controls(event, sources, joystick, screen):
                     # Informer qu'un redémarrage est nécessaire
                     config.popup_message = _("roms_folder_set_restart").format(selected_path) if _ else f"ROMs folder set: {selected_path}\nRestart required!"
                     config.menu_state = "pause_settings_menu"
+                elif browser_mode == "history_move":
+                    entry = config.history[config.current_history_item] if config.history and config.current_history_item < len(config.history) else None
+                    actual_matches = getattr(config, 'history_actual_matches', None) or []
+                    if not actual_matches and entry:
+                        actual_matches = get_existing_history_matches(entry)
+
+                    source_paths = [match_path for _, match_path in actual_matches]
+                    if not source_paths:
+                        actual_path = getattr(config, 'history_actual_path', None)
+                        if actual_path:
+                            source_paths = [actual_path]
+
+                    success, moved_matches, error_message = move_files_to_directory(source_paths, selected_path)
+                    if success:
+                        config.history_actual_matches = moved_matches
+                        if moved_matches:
+                            config.history_actual_filename, config.history_actual_path = moved_matches[0]
+                        if entry is not None:
+                            entry["moved_paths"] = [path for _, path in moved_matches]
+                            save_history(config.history)
+                        config.popup_message = _("history_move_success").format(len(moved_matches), selected_path) if _ else f"Moved {len(moved_matches)} file(s) to {selected_path}"
+                        config.popup_timer = 3000
+                        logger.info(f"Déplacement historique terminé vers {selected_path}: {len(moved_matches)} fichier(s)")
+                    else:
+                        config.popup_message = _("history_move_error").format(error_message) if _ else f"Move error: {error_message}"
+                        config.popup_timer = 4000
+                        logger.error(f"Erreur déplacement historique vers {selected_path}: {error_message}")
+                    config.menu_state = "history_show_folder"
                 else:
                     # Mode dossier plateforme
                     from rgsx_settings import set_platform_custom_path
@@ -3016,6 +3095,8 @@ def handle_controls(event, sources, joystick, screen):
                 browser_mode = getattr(config, 'folder_browser_mode', 'platform')
                 if browser_mode == "roms_root":
                     config.menu_state = "pause_settings_menu"
+                elif browser_mode == "history_move":
+                    config.menu_state = "history_show_folder"
                 else:
                     config.menu_state = "platform_folder_config"
                 config.needs_redraw = True

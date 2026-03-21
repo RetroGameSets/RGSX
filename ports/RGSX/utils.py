@@ -33,6 +33,34 @@ import tempfile
 logger = logging.getLogger(__name__)
 # Désactiver les logs DEBUG de urllib3 e requests pour supprimer les messages de connexion HTTP
 
+
+def get_clean_display_name(raw_name, platform_id=None):
+    """Return a user-facing game title from a raw file/path entry."""
+    text = str(raw_name or "").strip()
+    if not text:
+        return ""
+
+    normalized = text.replace("\\", "/")
+    leaf_name = normalized.rsplit("/", 1)[-1]
+    display_name = Path(leaf_name).stem.strip()
+
+    prefixes = []
+    if platform_id:
+        prefixes.append(str(platform_id).strip())
+        platform_label = getattr(config, "platform_names", {}).get(platform_id)
+        if platform_label:
+            prefixes.append(str(platform_label).strip())
+
+    for prefix in prefixes:
+        if not prefix:
+            continue
+        pattern = rf"^{re.escape(prefix)}[\s\-_:]+"
+        updated_name = re.sub(pattern, "", display_name, flags=re.IGNORECASE).strip()
+        if updated_name:
+            display_name = updated_name
+
+    return display_name.strip(" -_/")
+
 _games_cache = {}
 
 logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -1247,8 +1275,7 @@ def load_games(platform_id:str) -> list[Game]:
 
         games_list: list[Game] = []
         for name, url, size in normalized:
-            display_name = Path(name).stem
-            display_name = display_name.replace(platform_id, "")
+            display_name = get_clean_display_name(name, platform_id)
             games_list.append(Game(name=name, url=url, size=size, display_name=display_name))
 
         _games_cache[platform_id] = {
@@ -3035,26 +3062,150 @@ def normalize_platform_name(platform):
     return platform.lower().replace(" ", "")
 
 
+def find_matching_files(base_path, filename):
+    """Return all matching files for a requested download name within a ROM folder."""
+    if not base_path or not os.path.exists(base_path):
+        return []
+
+    candidate_name = Path(str(filename or "")).name
+    requested_stem, requested_ext = os.path.splitext(candidate_name)
+    requested_normalized = re.sub(r'\s+', ' ', re.sub(r'\s*[\[(][^\])]*[\])]', '', requested_stem)).strip().lower()
+    archive_exts = {'.zip', '.7z', '.rar', '.tar', '.gz', '.xz', '.bz2'}
+    matches = []
+    seen_paths = set()
+
+    full_path = os.path.join(base_path, candidate_name)
+    if os.path.exists(full_path) and os.path.isfile(full_path):
+        seen_paths.add(os.path.normcase(full_path))
+        matches.append((1000, candidate_name, full_path))
+
+    for existing_file in os.listdir(base_path):
+        existing_path = os.path.join(base_path, existing_file)
+        if not os.path.isfile(existing_path):
+            continue
+
+        normalized_path = os.path.normcase(existing_path)
+        if normalized_path in seen_paths:
+            continue
+
+        existing_stem, existing_ext = os.path.splitext(existing_file)
+        score = None
+
+        if requested_stem and existing_stem == requested_stem:
+            score = 900
+        else:
+            existing_normalized = re.sub(r'\s+', ' ', re.sub(r'\s*[\[(][^\])]*[\])]', '', existing_stem)).strip().lower()
+            if requested_normalized and existing_normalized and existing_normalized == requested_normalized:
+                score = 0
+                if requested_ext and existing_ext.lower() == requested_ext.lower():
+                    score += 4
+                if existing_ext.lower() not in archive_exts:
+                    score += 3
+                score -= abs(len(existing_stem) - len(requested_stem))
+
+        if score is not None:
+            seen_paths.add(normalized_path)
+            matches.append((score, existing_file, existing_path))
+
+    matches.sort(key=lambda item: item[0], reverse=True)
+    return [(actual_filename, actual_path) for _, actual_filename, actual_path in matches]
+
+
+def get_existing_history_matches(entry):
+    """Return persisted moved paths that still exist for a history entry."""
+    if not isinstance(entry, dict):
+        return []
+
+    moved_paths = entry.get("moved_paths", []) or []
+    matches = []
+    seen_paths = set()
+
+    for raw_path in moved_paths:
+        if not raw_path:
+            continue
+
+        actual_path = os.path.abspath(str(raw_path))
+        normalized_path = os.path.normcase(actual_path)
+        if normalized_path in seen_paths or not os.path.isfile(actual_path):
+            continue
+
+        seen_paths.add(normalized_path)
+        matches.append((os.path.basename(actual_path), actual_path))
+
+    return matches
+
+
+def move_files_to_directory(file_paths, destination_dir):
+    """Move files to a destination directory, avoiding name collisions."""
+    if not destination_dir:
+        return False, [], "Destination directory is empty"
+
+    if not any(file_paths or []):
+        return False, [], "No files to move"
+
+    try:
+        os.makedirs(destination_dir, exist_ok=True)
+    except Exception as e:
+        logger.error(f"Impossible de créer le dossier de destination {destination_dir}: {e}")
+        return False, [], str(e)
+
+    moved_matches = []
+    seen_sources = set()
+    reserved_targets = set()
+
+    for raw_source in file_paths:
+        if not raw_source:
+            continue
+
+        source_path = os.path.abspath(str(raw_source))
+        normalized_source = os.path.normcase(source_path)
+        if normalized_source in seen_sources:
+            continue
+        seen_sources.add(normalized_source)
+
+        if not os.path.isfile(source_path):
+            error_message = f"File not found: {source_path}"
+            logger.warning(error_message)
+            return False, moved_matches, error_message
+
+        source_name = os.path.basename(source_path)
+        target_path = os.path.join(destination_dir, source_name)
+        target_root, target_ext = os.path.splitext(target_path)
+        suffix = 1
+
+        while os.path.normcase(target_path) in reserved_targets or (
+            os.path.exists(target_path)
+            and os.path.normcase(target_path) != os.path.normcase(source_path)
+        ):
+            target_path = f"{target_root} ({suffix}){target_ext}"
+            suffix += 1
+
+        reserved_targets.add(os.path.normcase(target_path))
+
+        try:
+            if os.path.normcase(source_path) != os.path.normcase(target_path):
+                shutil.move(source_path, target_path)
+                logger.info(f"Fichier déplacé: {source_path} -> {target_path}")
+            else:
+                logger.debug(f"Déplacement ignoré, même chemin source/destination: {source_path}")
+            moved_matches.append((os.path.basename(target_path), target_path))
+        except Exception as e:
+            logger.error(f"Erreur lors du déplacement de {source_path} vers {target_path}: {e}")
+            return False, moved_matches, str(e)
+
+    return True, moved_matches, None
+
+
 def find_file_with_or_without_extension(base_path, filename):
     """
     Cherche un fichier, avec son extension ou sans (cherche jeuxxx.* si jeuxxx.zip n'existe pas).
     Retourne (file_exists, actual_filename, actual_path).
     """
-    # 1. Tester d'abord le fichier tel quel
-    full_path = os.path.join(base_path, filename)
-    if os.path.exists(full_path):
-        return True, filename, full_path
-    
-    # 2. Si pas trouvé et que le fichier a une extension, chercher sans extension
-    name_without_ext, ext = os.path.splitext(filename)
-    if ext:  # Si le fichier a une extension
-        # Chercher tous les fichiers commençant par le nom sans extension
-        if os.path.exists(base_path):
-            for existing_file in os.listdir(base_path):
-                existing_name, _ = os.path.splitext(existing_file)
-                if existing_name == name_without_ext:
-                    found_path = os.path.join(base_path, existing_file)
-                    return True, existing_file, found_path
-    
-    # 3. Fichier non trouvé
-    return False, filename, full_path
+    candidate_name = Path(str(filename or "")).name
+    full_path = os.path.join(base_path, candidate_name)
+    matches = find_matching_files(base_path, candidate_name)
+    if matches:
+        actual_filename, actual_path = matches[0]
+        return True, actual_filename, actual_path
+
+    return False, candidate_name, full_path

@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 import config
 from history import load_history, save_history
-from utils import load_sources, load_games, extract_data
+from utils import load_sources, load_games, extract_data, get_clean_display_name
 from network import download_rom, download_from_1fichier
 from pathlib import Path
 from rgsx_settings import get_language
@@ -1243,6 +1243,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     queue_history_entry = {
                         'platform': platform,
                         'game_name': game_name,
+                        'display_name': get_clean_display_name(game_name, platform),
                         'status': 'Queued',
                         'url': game_url,
                         'progress': 0,
@@ -1280,6 +1281,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     download_history_entry = {
                         'platform': platform,
                         'game_name': game_name,
+                        'display_name': get_clean_display_name(game_name, platform),
                         'status': 'Downloading',
                         'url': game_url,
                         'progress': 0,

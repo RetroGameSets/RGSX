@@ -10,8 +10,9 @@ from datetime import datetime
 import config
 from utils import (truncate_text_middle, wrap_text, load_system_image, truncate_text_end,
                    check_web_service_status, check_custom_dns_status, load_api_keys,
-                   _get_dest_folder_name, find_file_with_or_without_extension,
-                   get_connection_status_targets, get_connection_status_snapshot)
+                   _get_dest_folder_name, find_file_with_or_without_extension, find_matching_files,
+                   get_connection_status_targets, get_connection_status_snapshot,
+                   get_clean_display_name, get_existing_history_matches)
 import logging
 import math
 from history import load_history, is_game_downloaded  
@@ -2358,14 +2359,14 @@ def draw_history_list(screen):
     pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
     screen.blit(title_surface, title_rect)
 
-    # Define column widths as percentages of available space (give more space to status/error messages)
+    # Prioritize the game title by shrinking size/status columns.
     column_width_percentages = {
         "platform": 0.13,
-        "game_name": 0.25,
-        "ext": 0.08,
-        "folder": 0.12,
-        "size": 0.08,
-        "status": 0.34
+        "game_name": 0.40,
+        "ext": 0.07,
+        "folder": 0.16,
+        "size": 0.06,
+        "status": 0.18
     }
     available_width = int(0.95 * config.screen_width - 60)  # Total available width for columns
     col_platform_width = int(available_width * column_width_percentages["platform"])
@@ -2471,8 +2472,9 @@ def draw_history_list(screen):
     for idx, i in enumerate(range(config.history_scroll_offset, min(config.history_scroll_offset + items_per_page, len(history)))):
         entry = history[i]
         platform = entry.get("platform", "Inconnu")
-        game_name = entry.get("game_name", "Inconnu")
-        ext_text = get_display_extension(game_name)
+        raw_game_name = entry.get("game_name", "Inconnu")
+        game_name = entry.get("display_name") or get_clean_display_name(raw_game_name, platform)
+        ext_text = get_display_extension(raw_game_name)
         folder_text = _get_dest_folder_name(platform)
         
         # Correction du calcul de la taille
@@ -2547,7 +2549,7 @@ def draw_history_list(screen):
             status_color = THEME_COLORS.get("text", (255, 255, 255))
 
         platform_text = truncate_text_end(platform, config.small_font, col_platform_width - 10)
-        game_text = truncate_text_end(str(game_name).rsplit('.', 1)[0] if '.' in str(game_name) else str(game_name), config.small_font, col_game_width - 10)
+        game_text = truncate_text_middle(str(game_name), config.small_font, col_game_width - 10, is_filename=False)
         ext_text = truncate_text_end(ext_text, config.small_font, col_ext_width - 10)
         folder_text = truncate_text_end(folder_text, config.small_font, col_folder_width - 10)
         size_text = truncate_text_end(size_text, config.small_font, col_size_width - 10)
@@ -2881,6 +2883,11 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
             ("confirm", _("history_game_options_title")),
             ("clear_history", _("controls_action_clear_history")),
             ("history", _("controls_action_close_history")),
+            ("cancel", _("controls_cancel_back")),
+        ],
+        "history_show_folder": [
+            ("confirm", _("button_OK")),
+            ("clear_history", _("history_move_action")),
             ("cancel", _("controls_cancel_back")),
         ],
         "scraper": [
@@ -4692,6 +4699,8 @@ def draw_folder_browser(screen):
     # Titre selon le mode
     if browser_mode == "roms_root":
         title = _("folder_browser_title_roms_root") if _ else "Select default ROMs folder"
+    elif browser_mode == "history_move":
+        title = _("folder_browser_title_history_move") if _ else "Select destination folder"
     else:
         title = _("folder_browser_title").format(platform_name) if _ else f"Select folder for {platform_name}"
     title_text = config.font.render(title, True, THEME_COLORS["text"])
@@ -5046,6 +5055,12 @@ def draw_history_game_options(screen):
     dest_folder = _get_dest_folder_name(platform)
     base_path = os.path.join(config.ROMS_FOLDER, dest_folder)
     file_exists, actual_filename, actual_path = find_file_with_or_without_extension(base_path, game_name)
+    actual_matches = find_matching_files(base_path, game_name)
+    if not actual_matches:
+        actual_matches = get_existing_history_matches(entry)
+        if actual_matches:
+            actual_filename, actual_path = actual_matches[0]
+            file_exists = True
     
     # Déterminer les options disponibles selon le statut
     options = []
@@ -5156,6 +5171,7 @@ def draw_history_show_folder(screen):
     # Utiliser le chemin réel trouvé (avec ou sans extension)
     actual_path = getattr(config, 'history_actual_path', None)
     actual_filename = getattr(config, 'history_actual_filename', None)
+    actual_matches = getattr(config, 'history_actual_matches', None) or []
     
     if not actual_path or not actual_filename:
         # Fallback si pas trouvé
@@ -5164,7 +5180,7 @@ def draw_history_show_folder(screen):
         actual_filename = game_name
     
     # Vérifier si le fichier existe
-    file_exists = os.path.exists(actual_path)
+    file_exists = bool(actual_matches) or os.path.exists(actual_path)
     
     # Message
     title = _("history_folder_path_label") if _ else "Destination path:"
@@ -5175,8 +5191,18 @@ def draw_history_show_folder(screen):
     margin_top_bottom = 30
     rect_width = min(config.screen_width - 100, 800)
     
-    # Wrapper le chemin avec la bonne largeur (largeur de la boîte - marges)
-    path_wrapped = wrap_text(actual_path, config.small_font, rect_width - 80)
+    # Wrapper les chemins avec la bonne largeur (largeur de la boîte - marges)
+    if actual_matches:
+        path_wrapped = []
+        for index, (match_filename, match_path) in enumerate(actual_matches, start=1):
+            wrapped_match = wrap_text(match_path, config.small_font, rect_width - 80)
+            if wrapped_match:
+                path_wrapped.append(f"{index}. {wrapped_match[0]}")
+                path_wrapped.extend(wrapped_match[1:])
+            else:
+                path_wrapped.append(f"{index}. {match_path}")
+    else:
+        path_wrapped = wrap_text(actual_path, config.small_font, rect_width - 80)
     
     # Ajouter un message si le fichier n'existe pas
     warning_lines = []
