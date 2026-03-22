@@ -148,3 +148,14 @@ jobs:
             dist/RGSX_full_latest.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Send changelog to Discord
+        run: |
+          CHANGELOG=$(git log -1 --format=%B ${{ github.ref_name }} | sed ':a;N;$!ba;s/\n/\\n/g')
+
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d "{
+            \"content\": \"📦 **RGSX ${{ github.ref_name }}**\n\n📝 **Changelog :**\n${CHANGELOG}\"
+          }" \
+          ${{ secrets.DISCORD_WEBHOOK }}
