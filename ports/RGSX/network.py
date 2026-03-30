@@ -39,6 +39,21 @@ import urllib.parse
 logger = logging.getLogger(__name__)
 
 
+def _build_browser_download_headers(referer: str | None = None, accept: str = 'application/octet-stream,*/*;q=0.8') -> dict:
+    """Build browser-like headers for file downloads that reject minimal clients."""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': accept,
+        'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
+        'Accept-Encoding': 'identity',
+        'Connection': 'keep-alive',
+        'DNT': '1',
+    }
+    if referer:
+        headers['Referer'] = referer
+    return headers
+
+
 def _redact_headers(headers: dict) -> dict:
     """Return a copy of headers with sensitive fields redacted for logs."""
     if not isinstance(headers, dict):
@@ -1913,6 +1928,25 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
         logger.debug(f"Thread téléchargement 1fichier démarré pour {url}, task_id={task_id}")
         # Assurer l'accès à provider_used dans cette closure (lecture/écriture)
         nonlocal provider_used
+
+        def _refresh_alldebrid_final_url(current_link):
+            """Request a fresh AllDebrid unlock URL after transient download failures."""
+            ad_key = getattr(config, 'API_KEY_ALLDEBRID', '')
+            if not ad_key:
+                return None, None
+            params = {'agent': 'RGSX', 'apikey': ad_key, 'link': current_link}
+            refresh_resp = requests.get("https://api.alldebrid.com/v4/link/unlock", params=params, timeout=30)
+            refresh_resp.raise_for_status()
+            refresh_json = refresh_resp.json()
+            if refresh_json.get('status') != 'success':
+                logger.warning(f"AllDebrid refresh status != success: {refresh_json}")
+                return None, None
+            refresh_data = refresh_json.get('data', {})
+            return (
+                refresh_data.get('link') or refresh_data.get('download') or refresh_data.get('streamingLink'),
+                refresh_data.get('filename'),
+            )
+
         try:
             cancel_ev = cancel_events.get(task_id)
             link = url.split('&af=')[0]
@@ -2552,17 +2586,23 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     filename = game_name
                 sanitized_filename = sanitize_filename(filename)
                 dest_path = os.path.join(dest_dir, sanitized_filename)
+
+                provider_download_session = requests.Session()
+                provider_download_headers = _build_browser_download_headers()
+                provider_download_session.headers.update(provider_download_headers)
                 
                 # Essayer de récupérer la taille du serveur via HEAD request
                 remote_size = None
                 try:
-                    if final_url:
-                        head_response = requests.head(final_url, timeout=10, allow_redirects=True)
+                    if final_url and provider_used not in {'AD', 'DL', 'RD'}:
+                        head_response = provider_download_session.head(final_url, timeout=10, allow_redirects=True)
                         if head_response.status_code == 200:
                             content_length = head_response.headers.get('content-length')
                             if content_length:
                                 remote_size = int(content_length)
                                 logger.debug(f"Taille du fichier serveur (AllDebrid/Debrid-Link/RealDebrid): {remote_size} octets")
+                    elif final_url:
+                        logger.debug(f"Saut du HEAD préliminaire pour provider {provider_used}: URL temporaire potentiellement sensible ({final_url})")
                 except Exception as e:
                     logger.debug(f"Impossible de vérifier la taille serveur (AllDebrid/Debrid-Link/RealDebrid): {e}")
                 
@@ -2650,13 +2690,39 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             lock = threading.Lock()
             retries = 10
             retry_delay = 10
+            download_header_variants = [
+                provider_download_headers,
+                _build_browser_download_headers(accept='*/*'),
+                {
+                    'User-Agent': 'curl/8.4.0',
+                    'Accept': '*/*',
+                    'Accept-Encoding': 'identity',
+                    'Connection': 'keep-alive',
+                },
+            ]
             logger.debug(f"Initialisation progression avec taille inconnue pour task_id={task_id}")
             progress_queues[task_id].put((task_id, 0, 0))  # Taille initiale inconnue
             for attempt in range(retries):
                 logger.debug(f"Début tentative {attempt + 1} pour télécharger {final_url}")
                 try:
-                    with requests.get(final_url, stream=True, headers={'User-Agent': 'Mozilla/5.0'}, timeout=30) as response:
+                    attempt_headers = download_header_variants[min(attempt, len(download_header_variants) - 1)]
+                    logger.debug(f"Headers tentative {attempt + 1}: {_redact_headers(attempt_headers)}")
+                    with provider_download_session.get(final_url, stream=True, headers=attempt_headers, timeout=(30, 120), allow_redirects=True) as response:
                         logger.debug(f"Réponse GET reçue, code: {response.status_code}")
+                        if response.status_code == 503 and provider_used == 'AD' and attempt < retries - 1:
+                            logger.warning("AllDebrid a renvoyé 503 sur l'URL débridée, tentative de régénération du lien")
+                            try:
+                                refreshed_url, refreshed_filename = _refresh_alldebrid_final_url(link)
+                                if refreshed_url:
+                                    if refreshed_url != final_url:
+                                        logger.debug(f"Nouvelle URL AllDebrid obtenue: {refreshed_url}")
+                                    final_url = refreshed_url
+                                if refreshed_filename:
+                                    filename = refreshed_filename
+                                    sanitized_filename = sanitize_filename(filename)
+                                    dest_path = os.path.join(dest_dir, sanitized_filename)
+                            except Exception as refresh_error:
+                                logger.warning(f"Impossible de régénérer le lien AllDebrid après 503: {refresh_error}")
                         response.raise_for_status()
                         total_size = int(response.headers.get('content-length', 0))
                         logger.debug(f"Taille totale: {total_size} octets")
