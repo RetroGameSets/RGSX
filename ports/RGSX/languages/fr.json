@@ -17,6 +17,7 @@
     "error_no_internet": "Pas de connexion Internet. Vérifiez votre réseau.",
     "error_api_key": "Attention il faut renseigner sa clé API (premium only) dans le fichier {0}",
     "error_invalid_download_data": "Données de téléchargement invalides",
+    "popup_torrent_in_maintenance": "Torrent en maintenance, veuillez patienter",
     "error_delete_sources": "Erreur lors de la suppression du fichier systems_list.json ou dossiers",
     "platform_no_platform": "Aucune plateforme",
     "platform_page": "Page {0}/{1}",

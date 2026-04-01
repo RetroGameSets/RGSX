@@ -1050,7 +1050,8 @@ async def main():
                         if success:
                             toast_msg = f"[OK] {game_name}\n{_('download_completed') if _ else 'Download completed'}"
                         else:
-                            toast_msg = f"[ERROR] {game_name}\n{_('download_failed') if _ else 'Download failed'}"
+                            toast_body = message or (_('download_failed') if _ else 'Download failed')
+                            toast_msg = f"[ERROR] {game_name}\n{toast_body}"
                         show_toast(toast_msg, 3000)
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
@@ -1072,7 +1073,8 @@ async def main():
                         config.download_progress.clear()
                         config.pending_download = None
                         # Afficher un toast au lieu de changer de page
-                        toast_msg = f"[ERROR] {game_name}\n{_('download_failed') if _ else 'Download failed'}"
+                        toast_body = message or (_('download_failed') if _ else 'Download failed')
+                        toast_msg = f"[ERROR] {game_name}\n{toast_body}"
                         show_toast(toast_msg, 3000)
                         config.needs_redraw = True
                         del config.download_tasks[task_id]
@@ -1111,7 +1113,8 @@ async def main():
                             if success:
                                 toast_msg = f"[OK] {game_name}\n{_('download_completed') if _ else 'Download completed'}"
                             else:
-                                toast_msg = f"[ERROR] {game_name}\n{_('download_failed') if _ else 'Download failed'}"
+                                toast_body = message or (_('download_failed') if _ else 'Download failed')
+                                toast_msg = f"[ERROR] {game_name}\n{toast_body}"
                             show_toast(toast_msg, 3000)
                             config.needs_redraw = True
                             logger.debug(f"[DOWNLOAD_TASK] Toast displayed after completion, task_id={task_id}")

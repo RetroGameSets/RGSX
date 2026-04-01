@@ -5,6 +5,8 @@ import sys
 import threading
 import zipfile
 import asyncio
+import shutil
+from collections import deque
 import config
 from config import HEADLESS
 try:
@@ -15,7 +17,7 @@ try:
 except Exception:
     pygame = None  # type: ignore
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
-from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys, load_archive_org_cookie, get_clean_display_name
+from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys, load_archive_org_cookie, get_clean_display_name, parse_torrent_download_url
 from history import save_history
 from display import show_toast
 import logging
@@ -33,10 +35,240 @@ import re
 import html as html_module
 from urllib.parse import urljoin, unquote
 import urllib.parse
+import tempfile
 
 
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_aria2c_command():
+    if config.OPERATING_SYSTEM == "Windows":
+        candidates = [config.ARIA2C_EXE, "aria2c.exe", "aria2c"]
+    else:
+        candidates = [config.ARIA2C_LINUX, "aria2c"]
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if os.path.isabs(candidate):
+            if os.path.exists(candidate):
+                try:
+                    if config.OPERATING_SYSTEM != "Windows" and not os.access(candidate, os.X_OK):
+                        os.chmod(candidate, 0o755)
+                except Exception:
+                    pass
+                return candidate
+        else:
+            resolved = shutil.which(candidate)
+            if resolved:
+                return resolved
+    raise FileNotFoundError("aria2c unavailable for torrent downloads")
+
+
+def _download_torrent_manifest_to_file(source_url: str) -> str:
+    headers = _build_browser_download_headers(referer="https://archive.org/", accept="*/*")
+    response = requests.get(source_url, timeout=30, headers=headers)
+    response.raise_for_status()
+    fd, temp_path = tempfile.mkstemp(prefix="rgsx_torrent_", suffix=".torrent")
+    with os.fdopen(fd, 'wb') as handle:
+        handle.write(response.content)
+    return temp_path
+
+
+def _find_torrent_downloaded_file(download_root: str, relative_path: str, fallback_name: str) -> str | None:
+    normalized_parts = [p for p in relative_path.replace('\\', '/').split('/') if p not in ('', '.')]
+    expected = os.path.join(download_root, *normalized_parts) if normalized_parts else os.path.join(download_root, fallback_name)
+    if os.path.exists(expected):
+        return expected
+
+    fallback_basename = os.path.basename(relative_path) or fallback_name
+    for current_root, _, files in os.walk(download_root):
+        for file_name in files:
+            if file_name == fallback_basename:
+                return os.path.join(current_root, file_name)
+    return None
+
+
+def _parse_aria2_size_to_bytes(token: str | None) -> int | None:
+    if not token or not isinstance(token, str):
+        return None
+    match = re.match(r"^([0-9]+(?:\.[0-9]+)?)(KiB|MiB|GiB|TiB|B)?$", token.strip())
+    if not match:
+        return None
+    value = float(match.group(1))
+    unit = (match.group(2) or "B").upper()
+    multipliers = {
+        "B": 1,
+        "KIB": 1024,
+        "MIB": 1024 ** 2,
+        "GIB": 1024 ** 3,
+        "TIB": 1024 ** 4,
+    }
+    return int(value * multipliers.get(unit, 1))
+
+
+def _parse_aria2_progress_line(line: str, total_size: int) -> dict[str, float | int] | None:
+    if not line or "[#" not in line:
+        return None
+
+    result: dict[str, float | int] = {}
+
+    progress_match = re.search(r"\s([0-9]+(?:\.[0-9]+)?(?:KiB|MiB|GiB|TiB|B))\/([0-9]+(?:\.[0-9]+)?(?:KiB|MiB|GiB|TiB|B))\((\d+)%\)", line)
+    if progress_match:
+        downloaded_bytes = _parse_aria2_size_to_bytes(progress_match.group(1))
+        total_bytes = _parse_aria2_size_to_bytes(progress_match.group(2))
+        percent = int(progress_match.group(3))
+        if downloaded_bytes is not None:
+            result["downloaded"] = downloaded_bytes
+        elif total_size > 0:
+            result["downloaded"] = int(total_size * (percent / 100.0))
+        if total_bytes is not None and total_bytes > 0:
+            result["total"] = total_bytes
+
+    speed_match = re.search(r"DL:([0-9]+(?:\.[0-9]+)?(?:KiB|MiB|GiB|TiB|B))", line)
+    if speed_match:
+        speed_bytes = _parse_aria2_size_to_bytes(speed_match.group(1))
+        if speed_bytes is not None:
+            result["speed_mib_s"] = speed_bytes / (1024 * 1024)
+
+    if not result:
+        return None
+    return result
+
+
+def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: str, dest_path: str, task_id: str, cancel_ev, progress_queue) -> tuple[bool, str]:
+    source_url = str(torrent_meta.get("source_url") or "")
+    relative_path = str(torrent_meta.get("relative_path") or os.path.basename(dest_path))
+    file_index = int(torrent_meta.get("file_index") or 1)
+    total_size = int(torrent_meta.get("size_bytes") or 0)
+    aria2c_cmd = _resolve_aria2c_command()
+
+    temp_manifest = _download_torrent_manifest_to_file(source_url)
+    temp_root = os.path.join(dest_dir, f".rgsx_torrent_{task_id}")
+    os.makedirs(temp_root, exist_ok=True)
+
+    if total_size > 0:
+        progress_queue.put((task_id, 0, total_size, 0.0))
+
+    cmd = [
+        aria2c_cmd,
+        "--seed-time=0",
+        "--file-allocation=none",
+        "--allow-overwrite=true",
+        "--auto-file-renaming=false",
+        f"--select-file={file_index}",
+        f"--dir={temp_root}",
+        "--summary-interval=1",
+        "--download-result=hide",
+        temp_manifest,
+    ]
+    logger.info(f"Téléchargement torrent aria2c: index={file_index}, source={source_url}, dest={dest_path}")
+
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+
+    aria2_output = deque(maxlen=40)
+    aria2_progress = {"downloaded": 0, "total": total_size, "speed_mib_s": 0.0}
+
+    def _consume_aria2_stdout() -> None:
+        if not process.stdout:
+            return
+        for raw_line in iter(process.stdout.readline, ''):
+            line = raw_line.strip()
+            if not line:
+                continue
+            aria2_output.append(line)
+            logger.debug(f"[aria2c:{task_id}] {line}")
+            parsed_progress = _parse_aria2_progress_line(line, total_size)
+            if parsed_progress:
+                aria2_progress.update(parsed_progress)
+
+    stdout_thread = threading.Thread(target=_consume_aria2_stdout, daemon=True)
+    stdout_thread.start()
+
+    last_size = 0
+    last_time = time.time()
+    try:
+        while process.poll() is None:
+            if cancel_ev is not None and cancel_ev.is_set():
+                try:
+                    process.terminate()
+                    process.wait(timeout=5)
+                except Exception:
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+                raise RuntimeError(_("download_canceled") if _ else "Download canceled")
+
+            current_path = _find_torrent_downloaded_file(temp_root, relative_path, os.path.basename(dest_path))
+            current_size = os.path.getsize(current_path) if current_path and os.path.exists(current_path) else 0
+            current_time = time.time()
+            elapsed = max(current_time - last_time, 0.001)
+            file_speed = max(0.0, (current_size - last_size) / elapsed / (1024 * 1024))
+            reported_total = int(aria2_progress.get("total") or total_size or 0)
+            reported_size = max(current_size, int(aria2_progress.get("downloaded") or 0))
+            reported_speed = max(file_speed, float(aria2_progress.get("speed_mib_s") or 0.0))
+            if reported_total > 0:
+                progress_queue.put((task_id, reported_size, reported_total, reported_speed))
+            last_size = max(last_size, current_size)
+            last_time = current_time
+            time.sleep(0.2)
+
+        stdout_thread.join(timeout=2)
+        remaining_output = "\n".join(aria2_output).strip()
+
+        if process.returncode != 0:
+            raise RuntimeError(remaining_output or f"aria2c exited with code {process.returncode}")
+
+        downloaded_path = _find_torrent_downloaded_file(temp_root, relative_path, os.path.basename(dest_path))
+        if not downloaded_path or not os.path.exists(downloaded_path):
+            raise FileNotFoundError(f"Downloaded torrent file not found for {relative_path}")
+
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        os.replace(downloaded_path, dest_path)
+
+        try:
+            shutil.rmtree(temp_root, ignore_errors=True)
+        except Exception:
+            pass
+        try:
+            os.remove(temp_manifest)
+        except Exception:
+            pass
+
+        final_size = os.path.getsize(dest_path) if os.path.exists(dest_path) else total_size
+        if final_size > 0:
+            progress_queue.put((task_id, final_size, max(total_size, final_size), 0.0))
+        return True, _("network_download_ok").format(os.path.basename(dest_path))
+    except Exception:
+        try:
+            if process.poll() is None:
+                process.kill()
+        except Exception:
+            pass
+        try:
+            stdout_thread.join(timeout=1)
+        except Exception:
+            pass
+        try:
+            shutil.rmtree(temp_root, ignore_errors=True)
+        except Exception:
+            pass
+        try:
+            os.remove(temp_manifest)
+        except Exception:
+            pass
+        raise
 
 
 def _build_browser_download_headers(referer: str | None = None, accept: str = 'application/octet-stream,*/*;q=0.8') -> dict:
@@ -998,6 +1230,11 @@ def cancel_all_downloads():
 
 async def download_rom(url, platform, game_name, is_zip_non_supported=False, task_id=None):
     logger.debug(f"Début téléchargement: {game_name} depuis {url}, zip non supporté={is_zip_non_supported}, task_id={task_id}")
+    if parse_torrent_download_url(url) is not None:
+        message = _("popup_torrent_in_maintenance") if _ else "Torrent under maintenance, please wait"
+        logger.info(f"Téléchargement torrent provisoirement désactivé pour {game_name}: {url}")
+        return False, message
+
     result = [None, None]
     
     # Vérifier si cette URL est déjà en cours de téléchargement (prévenir les doublons)
@@ -1118,480 +1355,535 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             sanitized_name = sanitize_filename(game_name)
             dest_path = os.path.join(dest_dir, f"{sanitized_name}")
             logger.debug(f"Chemin destination: {dest_path}")
+
+            torrent_meta = parse_torrent_download_url(url)
+            if torrent_meta is not None:
+                if url not in config.download_progress:
+                    config.download_progress[url] = {
+                        "downloaded_size": 0,
+                        "total_size": int(torrent_meta.get("size_bytes") or 0),
+                        "status": "Downloading",
+                        "progress_percent": 0,
+                        "speed": 0,
+                        "game_name": game_name,
+                        "platform": platform
+                    }
+
+                if os.path.exists(dest_path):
+                    local_size = os.path.getsize(dest_path)
+                    expected_size = int(torrent_meta.get("size_bytes") or 0)
+                    if expected_size <= 0 or local_size == expected_size:
+                        logger.info(f"Le fichier torrent {dest_path} existe déjà, téléchargement ignoré")
+                        result[0] = True
+                        result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                        for entry in config.history:
+                            if entry.get("url") == url:
+                                entry["status"] = "Download_OK"
+                                entry["progress"] = 100
+                                entry["message"] = result[1]
+                                save_history(config.history)
+                                break
+                        try:
+                            show_toast(result[1])
+                        except Exception:
+                            pass
+                        with urls_lock:
+                            urls_in_progress.discard(url)
+                        try:
+                            notify_download_finished()
+                        except Exception:
+                            pass
+                        return result[0], result[1]
+
+                success, message = _download_torrent_with_aria2(
+                    torrent_meta,
+                    dest_dir,
+                    dest_path,
+                    task_id,
+                    cancel_ev,
+                    progress_queues[task_id],
+                )
+                result[0] = success
+                result[1] = message
+
+                if success and os.path.exists(dest_path):
+                    os.chmod(dest_path, 0o644)
+                logger.debug(f"Téléchargement torrent terminé: {dest_path}")
+                # Réutiliser la suite existante pour extraction auto si nécessaire
+            else:
             
-            # Créer la session AVANT la vérification du fichier existant
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1'
-            }
-            
-            session = requests.Session()
-            session.headers.update(headers)
-            
-            # Vérifier si le fichier existe déjà (exact ou avec autre extension)
-            file_found = False
-            if os.path.exists(dest_path):
-                logger.info(f"Le fichier {dest_path} existe déjà, vérification de la taille...")
+                # Créer la session AVANT la vérification du fichier existant
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1'
+                }
                 
-                # Vérifier la taille du fichier local
-                local_size = os.path.getsize(dest_path)
-                logger.debug(f"Taille du fichier local: {local_size} octets")
+                session = requests.Session()
+                session.headers.update(headers)
                 
-                # Essayer de récupérer la taille du serveur via HEAD request
-                remote_size = None
-                try:
-                    head_response = session.head(url, timeout=10, allow_redirects=True)
-                    if head_response.status_code == 200:
-                        content_length = head_response.headers.get('content-length')
-                        if content_length:
-                            remote_size = int(content_length)
-                            logger.debug(f"Taille du fichier serveur: {remote_size} octets")
-                except Exception as e:
-                    logger.debug(f"Impossible de vérifier la taille serveur: {e}")
-                
-                # Comparer les tailles si on a obtenu la taille distante
-                if remote_size is not None and local_size != remote_size:
-                    logger.warning(f"Taille mismatch! Local: {local_size}, Remote: {remote_size} - le fichier sera re-téléchargé")
-                    # Les tailles ne correspondent pas, il faut re-télécharger
+                # Vérifier si le fichier existe déjà (exact ou avec autre extension)
+                file_found = False
+                if os.path.exists(dest_path):
+                    logger.info(f"Le fichier {dest_path} existe déjà, vérification de la taille...")
+                    
+                    # Vérifier la taille du fichier local
+                    local_size = os.path.getsize(dest_path)
+                    logger.debug(f"Taille du fichier local: {local_size} octets")
+                    
+                    # Essayer de récupérer la taille du serveur via HEAD request
+                    remote_size = None
                     try:
-                        if os.path.exists(dest_path):
-                            os.remove(dest_path)
-                            logger.info(f"Fichier incomplet supprimé: {dest_path}")
-                        else:
-                            logger.debug(f"Fichier déjà supprimé par un autre thread: {dest_path}")
-                    except FileNotFoundError:
-                        logger.debug(f"Fichier déjà supprimé (ou n'existe plus): {dest_path}")
+                        head_response = session.head(url, timeout=10, allow_redirects=True)
+                        if head_response.status_code == 200:
+                            content_length = head_response.headers.get('content-length')
+                            if content_length:
+                                remote_size = int(content_length)
+                                logger.debug(f"Taille du fichier serveur: {remote_size} octets")
                     except Exception as e:
-                        logger.error(f"Impossible de supprimer le fichier incomplet: {e}")
-                        result[0] = False
-                        result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
+                        logger.debug(f"Impossible de vérifier la taille serveur: {e}")
+                    
+                    # Comparer les tailles si on a obtenu la taille distante
+                    if remote_size is not None and local_size != remote_size:
+                        logger.warning(f"Taille mismatch! Local: {local_size}, Remote: {remote_size} - le fichier sera re-téléchargé")
+                        # Les tailles ne correspondent pas, il faut re-télécharger
+                        try:
+                            if os.path.exists(dest_path):
+                                os.remove(dest_path)
+                                logger.info(f"Fichier incomplet supprimé: {dest_path}")
+                            else:
+                                logger.debug(f"Fichier déjà supprimé par un autre thread: {dest_path}")
+                        except FileNotFoundError:
+                            logger.debug(f"Fichier déjà supprimé (ou n'existe plus): {dest_path}")
+                        except Exception as e:
+                            logger.error(f"Impossible de supprimer le fichier incomplet: {e}")
+                            result[0] = False
+                            result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
+                            with urls_lock:
+                                urls_in_progress.discard(url)
+                                logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                            return
+                        # Continuer le téléchargement normal (ne pas faire return)
+                    else:
+                        # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
+                        logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
+                        result[0] = True
+                        result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                        
+                        # Mettre à jour l'historique
+                        for entry in config.history:
+                            if entry.get("url") == url:
+                                entry["status"] = "Download_OK"
+                                entry["progress"] = 100
+                                entry["message"] = result[1]
+                                save_history(config.history)
+                                break
+                        
+                        # Afficher un toast au lieu d'ouvrir l'historique
+                        try:
+                            show_toast(result[1])
+                        except Exception as e:
+                            logger.debug(f"Impossible d'afficher le toast: {e}")
                         with urls_lock:
                             urls_in_progress.discard(url)
                             logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
-                        return
-                    # Continuer le téléchargement normal (ne pas faire return)
-                else:
-                    # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
-                    logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
-                    result[0] = True
-                    result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                        
+                        # Libérer le slot de la queue
+                        try:
+                            notify_download_finished()
+                        except Exception:
+                            pass
+                        
+                        return result[0], result[1]
+                    file_found = True
+                
+                # Vérifier si un fichier avec le même nom de base mais extension différente existe (SEULEMENT si fichier exact non trouvé)
+                if not file_found:
+                    base_name_no_ext = os.path.splitext(sanitized_name)[0]
+                    if base_name_no_ext != sanitized_name:  # Seulement si une extension était présente
+                        try:
+                            # Lister tous les fichiers dans le répertoire de destination
+                            if os.path.exists(dest_dir):
+                                for existing_file in os.listdir(dest_dir):
+                                    existing_base = os.path.splitext(existing_file)[0]
+                                    if existing_base == base_name_no_ext:
+                                        existing_path = os.path.join(dest_dir, existing_file)
+                                        logger.info(f"Un fichier avec le même nom de base existe: {existing_path}, vérification de la taille...")
+                                        
+                                        # Vérifier la taille du fichier local
+                                        local_size = os.path.getsize(existing_path)
+                                        logger.debug(f"Taille du fichier local (extension différente): {local_size} octets")
+                                        
+                                        # Essayer de récupérer la taille du serveur via HEAD request
+                                        remote_size = None
+                                        try:
+                                            head_response = session.head(url, timeout=10, allow_redirects=True)
+                                            if head_response.status_code == 200:
+                                                content_length = head_response.headers.get('content-length')
+                                                if content_length:
+                                                    remote_size = int(content_length)
+                                                    logger.debug(f"Taille du fichier serveur: {remote_size} octets")
+                                        except Exception as e:
+                                            logger.debug(f"Impossible de vérifier la taille serveur: {e}")
+                                        
+                                        # Comparer les tailles si on a obtenu la taille distante
+                                        if remote_size is not None and local_size != remote_size:
+                                            logger.warning(f"Taille mismatch (extension différente)! Local: {local_size}, Remote: {remote_size} - re-téléchargement")
+                                            # Continuer le téléchargement normal
+                                            break
+                                        else:
+                                            # Les tailles correspondent, fichier complet
+                                            logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
+                                            result[0] = True
+                                            result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
+                                            
+                                            # Mettre à jour l'historique
+                                            for entry in config.history:
+                                                if entry.get("url") == url:
+                                                    entry["status"] = "Download_OK"
+                                                    entry["progress"] = 100
+                                                    entry["message"] = result[1]
+                                                    save_history(config.history)
+                                                    break
+                                            
+                                            # Afficher un toast au lieu d'ouvrir l'historique
+                                            try:
+                                                show_toast(result[1])
+                                            except Exception as e:
+                                                logger.debug(f"Impossible d'afficher le toast: {e}")
+                                            with urls_lock:
+                                                urls_in_progress.discard(url)
+                                                logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                                            
+                                            # Libérer le slot de la queue
+                                            try:
+                                                notify_download_finished()
+                                            except Exception:
+                                                pass
+                                            
+                                            return result[0], result[1]
+                        except Exception as e:
+                            logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
+            
+                download_headers = headers.copy()
+                download_headers['Accept'] = 'application/octet-stream, */*'
+                download_headers['Referer'] = 'https://myrient.erista.me/'
+                archive_cookie = load_archive_org_cookie()
+                archive_alt_urls = []
+                meta_json = None
+
+            if torrent_meta is None:
+                # Préparation spécifique archive.org : normaliser URL + récupérer cookies/metadata
+                if 'archive.org/download/' in url:
+                    try:
+                        parsed = urllib.parse.urlsplit(url)
+                        parts = parsed.path.split('/download/', 1)
+                        pre_id = None
+                        rest_decoded = None
+                        if len(parts) == 2:
+                            after = parts[1]
+                            pre_id = after.split('/', 1)[0]
+                            rest = after[len(pre_id):]
+                            if rest.startswith('/'):
+                                rest = rest[1:]
+                            rest_decoded = urllib.parse.unquote(rest)
+                            rest_encoded = urllib.parse.quote(rest_decoded, safe='/') if rest_decoded else ''
+                            new_path = f"/download/{pre_id}/" + rest_encoded
+                            url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, new_path, parsed.query, parsed.fragment))
+                            logger.debug(f"URL archive.org normalisée: {url}")
+                        if not pre_id:
+                            pre_id = url.split('/download/')[1].split('/')[0]
+
+                        download_headers['Referer'] = f"https://archive.org/details/{pre_id}"
+                        download_headers['Origin'] = 'https://archive.org'
+                        if archive_cookie:
+                            download_headers['Cookie'] = archive_cookie
+                        if archive_cookie:
+                            # Apply cookie to session for redirects to ia*.us.archive.org
+                            for pair in archive_cookie.split(';'):
+                                if '=' in pair:
+                                    name, value = pair.split('=', 1)
+                                    session.cookies.set(name.strip(), value.strip(), domain='.archive.org')
+
+                        session.get('https://archive.org/robots.txt', timeout=20, headers={'Cookie': archive_cookie} if archive_cookie else None)
+                        meta_resp = session.get(f'https://archive.org/metadata/{pre_id}', timeout=20, headers={'Cookie': archive_cookie} if archive_cookie else None)
+                        if meta_resp.status_code == 200:
+                            try:
+                                meta_json = meta_resp.json()
+                            except Exception:
+                                meta_json = None
+                        logger.debug(f"Pré-chargement cookies/metadata archive.org pour {pre_id}")
+
+                        # Construire des URLs alternatives pour archive interne
+                        identifier, archive_name, inner_path = _split_archive_org_path(url)
+                        if identifier and archive_name and inner_path:
+                            # Variante sans préfixe archive
+                            archive_alt_urls.append(f"https://archive.org/download/{identifier}/" + urllib.parse.quote(inner_path, safe='/'))
+                            # Variante filename
+                            archive_alt_urls.append(f"https://archive.org/download/{identifier}/{archive_name}?filename=" + urllib.parse.quote(inner_path, safe='/'))
+                            # Variante view_archive.php via serveur/dir metadata
+                            if meta_json:
+                                server = meta_json.get('server')
+                                directory = meta_json.get('dir')
+                                if server and directory:
+                                    archive_path = f"{directory}/{archive_name}"
+                                    view_url = f"https://{server}/view_archive.php?archive=" + urllib.parse.quote(archive_path, safe='/') + "&file=" + urllib.parse.quote(inner_path, safe='/')
+                                    # Prioriser view_archive.php (cas valide observe dans le navigateur)
+                                    archive_alt_urls.insert(0, view_url)
+                    except Exception as e:
+                        logger.debug(f"Pré-chargement archive.org ignoré: {e}")
+                
+                # Initialiser la progression pour afficher les tentatives
+                if url not in config.download_progress:
+                    config.download_progress[url] = {
+                        "downloaded_size": 0,
+                        "total_size": 0,
+                        "status": "Connecting",
+                        "progress_percent": 0,
+                        "speed": 0,
+                        "game_name": game_name,
+                        "platform": platform
+                    }
+                # Plus besoin d'update_web_progress - history.json est mis à jour automatiquement
+                
+                # Tentatives multiples avec variations d'en-têtes pour contourner certains 401/403 (archive.org / hotlink protection)
+                header_variants = [
+                    download_headers,
+                    {  # Variante sans Referer spécifique
+                        'User-Agent': headers.get('User-Agent', download_headers.get('User-Agent', 'Mozilla/5.0')),
+                        'Accept': 'application/octet-stream,*/*;q=0.8',
+                        'Accept-Language': headers.get('Accept-Language', 'en-US,en;q=0.5'),
+                        'Connection': 'keep-alive',
+                        **({'Cookie': archive_cookie} if archive_cookie else {})
+                    },
+                    {  # Variante minimaliste type curl
+                        'User-Agent': 'curl/8.4.0',
+                        'Accept': '*/*',
+                        **({'Cookie': archive_cookie} if archive_cookie else {})
+                    },
+                    {  # Variante avec Referer archive.org
+                        'User-Agent': headers.get('User-Agent', download_headers.get('User-Agent', 'Mozilla/5.0')),
+                        'Accept': '*/*',
+                        'Referer': 'https://archive.org/',
+                        **({'Cookie': archive_cookie} if archive_cookie else {})
+                    }
+                ]
+                response = None
+                last_status = None
+                last_error = None
+                last_error_type = None
+                
+                for attempt, hv in enumerate(header_variants, start=1):
+                    try:
+                        # Mettre à jour la progression pour afficher la tentative en cours
+                        if url in config.download_progress:
+                            config.download_progress[url]["status"] = f"Try {attempt}/{len(header_variants)}"
+                            config.download_progress[url]["progress_percent"] = 0
+                            config.needs_redraw = True
+                        
+                        logger.debug(f"Tentative téléchargement {attempt}/{len(header_variants)} avec headers: {_redact_headers(hv)}")
+                        # Timeout plus long pour archive.org, avec tuple (connect_timeout, read_timeout)
+                        timeout_val = (60, 90) if 'archive.org' in url else 30
+                        r = session.get(url, stream=True, timeout=timeout_val, allow_redirects=True, headers=hv)
+                        last_status = r.status_code
+                        logger.debug(f"Status code tentative {attempt}: {r.status_code}")
+                        if r.status_code in (401, 403):
+                            # Lire un petit bout pour voir si message utile
+                            try:
+                                snippet = r.text[:200]
+                                logger.debug(f"Réponse {r.status_code} snippet: {snippet}")
+                            except Exception:
+                                pass
+                            continue  # Essayer variante suivante
+                        r.raise_for_status()
+                        response = r
+                        break
+                    except requests.Timeout as e:
+                        last_error = str(e)
+                        last_error_type = "timeout"
+                        logger.debug(f"Timeout tentative {attempt}: {e}")
+                    except requests.ConnectionError as e:
+                        last_error = str(e)
+                        last_error_type = "connection"
+                        logger.debug(f"Erreur connexion tentative {attempt}: {e}")
+                    except requests.HTTPError as e:
+                        last_error = str(e)
+                        last_error_type = "http"
+                        logger.debug(f"Erreur HTTP tentative {attempt}: {e}")
+                        # Si ce n'est pas une erreur auth explicite et qu'on a un code => on sort
+                        if last_status not in (401, 403):
+                            break
+                    except requests.RequestException as e:
+                        last_error = str(e)
+                        last_error_type = "request"
+                        logger.debug(f"Erreur requête tentative {attempt}: {e}")
+                        # Si ce n'est pas une erreur auth explicite et qu'on a un code => on sort
+                        if isinstance(e, requests.HTTPError) and last_status not in (401, 403):
+                            break
+                        # Délai entre tentatives pour archive.org (éviter saturation)
+                        if 'archive.org' in url and attempt < len(header_variants):
+                            time.sleep(2)
+                
+                if response is None:
+                    if archive_alt_urls and (last_status in (401, 403) or last_error_type in ("timeout", "connection", "request")):
+                        for alt_url in archive_alt_urls:
+                            try:
+                                timeout_val = (45, 90)
+                                logger.debug(f"Tentative archive.org alt URL: {alt_url}")
+                                alt_headers = download_headers.copy()
+                                try:
+                                    alt_host = urllib.parse.urlsplit(alt_url).netloc
+                                    if alt_host.startswith("ia") and alt_host.endswith(".archive.org"):
+                                        alt_headers["Referer"] = f"https://{alt_host}/"
+                                        alt_headers["Origin"] = "https://archive.org"
+                                except Exception:
+                                    pass
+                                r = session.get(alt_url, stream=True, timeout=timeout_val, allow_redirects=True, headers=alt_headers)
+                                if r.status_code not in (401, 403):
+                                    r.raise_for_status()
+                                    response = r
+                                    url = alt_url
+                                    break
+                            except Exception as e:
+                                logger.debug(f"Alt URL archive.org échec: {e}")
+                    # Fallback metadata archive.org pour message clair
+                    if 'archive.org/download/' in url:
+                        try:
+                            identifier = url.split('/download/')[1].split('/')[0]
+                            if meta_json is None:
+                                meta_resp = session.get(f'https://archive.org/metadata/{identifier}', timeout=30)
+                                if meta_resp.status_code == 200:
+                                    meta_json = meta_resp.json()
+                            if meta_json:
+                                if meta_json.get('is_dark'):
+                                    raise requests.HTTPError(f"Item archive.org restreint (is_dark=true): {identifier}")
+                                if not meta_json.get('files'):
+                                    raise requests.HTTPError(f"Item archive.org sans fichiers listés: {identifier}")
+                                # Fichier peut avoir un nom différent : informer
+                                available = [f.get('name') for f in meta_json.get('files', [])][:10]
+                                raise requests.HTTPError(f"Accès refusé (HTTP {last_status}). Fichiers disponibles exemples: {available}")
+                            else:
+                                raise requests.HTTPError(f"HTTP {last_status} & metadata indisponible pour {identifier}")
+                        except requests.HTTPError:
+                            raise
+                        except Exception as e:
+                            raise requests.HTTPError(f"HTTP {last_status} après variations; metadata échec: {e}")
                     
-                    # Mettre à jour l'historique
+                    # Construire un message d'erreur détaillé et traduit
+                    error_msg = None
+                    if last_status:
+                        # Erreurs HTTP avec codes spécifiques
+                        if last_status == 401:
+                            error_msg = _("network_auth_required").format(last_status) if _ else f"Authentication required (HTTP {last_status})"
+                        elif last_status == 403:
+                            error_msg = _("network_access_denied").format(last_status) if _ else f"Access denied (HTTP {last_status})"
+                        elif last_status >= 500:
+                            error_msg = _("network_server_error").format(last_status) if _ else f"Server error (HTTP {last_status})"
+                        else:
+                            error_msg = _("network_http_error").format(last_status) if _ else f"HTTP error {last_status}"
+                    elif last_error_type == "timeout":
+                        error_msg = _("network_timeout_error") if _ else "Connection timeout"
+                    elif last_error_type == "connection":
+                        error_msg = _("network_connection_error") if _ else "Network connection error"
+                    else:
+                        error_msg = _("network_no_response") if _ else "No response from server"
+                    
+                    # Ajouter le nombre de tentatives
+                    attempts_count = len(header_variants)
+                    full_error_msg = _("network_connection_failed").format(attempts_count) if _ else f"Connection failed after {attempts_count} attempts"
+                    full_error_msg += f" - {error_msg}"
+                    
+                    # Ajouter les détails techniques en log
+                    if last_error:
+                        logger.error(f"Détails de l'erreur: {last_error}")
+                    
+                    raise requests.HTTPError(full_error_msg)
+                
+                # Mettre à jour le statut: connexion réussie, début du téléchargement
+                if url in config.download_progress:
+                    config.download_progress[url]["status"] = "Downloading"
+                    config.needs_redraw = True
+                
+                total_size = int(response.headers.get('content-length', 0))
+                logger.debug(f"Taille totale: {total_size} octets")
+                if isinstance(config.history, list):
                     for entry in config.history:
-                        if entry.get("url") == url:
-                            entry["status"] = "Download_OK"
-                            entry["progress"] = 100
-                            entry["message"] = result[1]
+                        if "url" in entry and entry["url"] == url:
+                            entry["total_size"] = total_size  # Ajouter la taille totale
                             save_history(config.history)
                             break
-                    
-                    # Afficher un toast au lieu d'ouvrir l'historique
-                    try:
-                        show_toast(result[1])
-                    except Exception as e:
-                        logger.debug(f"Impossible d'afficher le toast: {e}")
-                    with urls_lock:
-                        urls_in_progress.discard(url)
-                        logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
-                    
+                
+                # Initialiser la progression avec task_id
+                progress_queues[task_id].put((task_id, 0, total_size))
+                logger.debug(f"Progression initiale envoyée: 0% pour {game_name}, task_id={task_id}")
+                
+                downloaded = 0
+                chunk_size = 4096
+                last_update_time = time.time()
+                last_downloaded = 0
+                update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
+                download_canceled = False
+                with open(dest_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        # Vérifier la pause (dynamiquement car l'événement peut être créé après le début)
+                        while True:
+                            pause_ev = pause_events.get(task_id)
+                            if pause_ev is None or not pause_ev.is_set():
+                                break  # Pas en pause, continuer le téléchargement
+                            if cancel_ev is not None and cancel_ev.is_set():
+                                break  # Sortir de la boucle de pause si annulation demandée
+                            time.sleep(0.1)  # Attendre en pause
+                        
+                        if cancel_ev is not None and cancel_ev.is_set():
+                            logger.debug(f"Annulation détectée, arrêt du téléchargement pour task_id={task_id}")
+                            result[0] = False
+                            result[1] = _("download_canceled") if _ else "Download canceled"
+                            download_canceled = True
+                            try:
+                                f.close()
+                            except Exception:
+                                pass
+                            try:
+                                if os.path.exists(dest_path):
+                                    os.remove(dest_path)
+                            except Exception:
+                                pass
+                            break
+                        if chunk:
+                            size_received = len(chunk)
+                            f.write(chunk)
+                            downloaded += size_received
+                            current_time = time.time()
+                            if current_time - last_update_time >= update_interval:
+                                # Calcul de la vitesse en Mo/s
+                                delta = downloaded - last_downloaded
+                                speed = delta / (current_time - last_update_time) / (1024 * 1024)
+                                last_downloaded = downloaded
+                                last_update_time = current_time
+                                progress_queues[task_id].put((task_id, downloaded, total_size, speed))
+                
+                # Forcer une dernière mise à jour de progression pour les petits fichiers
+                # (au cas où aucune mise à jour n'a été envoyée pendant la boucle)
+                if downloaded > 0 and downloaded != last_downloaded:
+                    current_time = time.time()
+                    delta = downloaded - last_downloaded
+                    elapsed = current_time - last_update_time
+                    speed = delta / elapsed / (1024 * 1024) if elapsed > 0 else 0
+                    progress_queues[task_id].put((task_id, downloaded, total_size, speed))
+                    logger.debug(f"Mise à jour finale de progression: {downloaded}/{total_size} octets")
+
+                # Si annulé, ne pas continuer avec extraction
+                if download_canceled:
                     # Libérer le slot de la queue
                     try:
                         notify_download_finished()
                     except Exception:
                         pass
-                    
-                    return result[0], result[1]
-                file_found = True
-            
-            # Vérifier si un fichier avec le même nom de base mais extension différente existe (SEULEMENT si fichier exact non trouvé)
-            if not file_found:
-                base_name_no_ext = os.path.splitext(sanitized_name)[0]
-                if base_name_no_ext != sanitized_name:  # Seulement si une extension était présente
-                    try:
-                        # Lister tous les fichiers dans le répertoire de destination
-                        if os.path.exists(dest_dir):
-                            for existing_file in os.listdir(dest_dir):
-                                existing_base = os.path.splitext(existing_file)[0]
-                                if existing_base == base_name_no_ext:
-                                    existing_path = os.path.join(dest_dir, existing_file)
-                                    logger.info(f"Un fichier avec le même nom de base existe: {existing_path}, vérification de la taille...")
-                                    
-                                    # Vérifier la taille du fichier local
-                                    local_size = os.path.getsize(existing_path)
-                                    logger.debug(f"Taille du fichier local (extension différente): {local_size} octets")
-                                    
-                                    # Essayer de récupérer la taille du serveur via HEAD request
-                                    remote_size = None
-                                    try:
-                                        head_response = session.head(url, timeout=10, allow_redirects=True)
-                                        if head_response.status_code == 200:
-                                            content_length = head_response.headers.get('content-length')
-                                            if content_length:
-                                                remote_size = int(content_length)
-                                                logger.debug(f"Taille du fichier serveur: {remote_size} octets")
-                                    except Exception as e:
-                                        logger.debug(f"Impossible de vérifier la taille serveur: {e}")
-                                    
-                                    # Comparer les tailles si on a obtenu la taille distante
-                                    if remote_size is not None and local_size != remote_size:
-                                        logger.warning(f"Taille mismatch (extension différente)! Local: {local_size}, Remote: {remote_size} - re-téléchargement")
-                                        # Continuer le téléchargement normal
-                                        break
-                                    else:
-                                        # Les tailles correspondent, fichier complet
-                                        logger.info(f"Un fichier avec le même nom de base existe déjà: {existing_path}, téléchargement ignoré")
-                                        result[0] = True
-                                        result[1] = _("network_download_ok").format(game_name) + _("download_already_extracted")
-                                        
-                                        # Mettre à jour l'historique
-                                        for entry in config.history:
-                                            if entry.get("url") == url:
-                                                entry["status"] = "Download_OK"
-                                                entry["progress"] = 100
-                                                entry["message"] = result[1]
-                                                save_history(config.history)
-                                                break
-                                        
-                                        # Afficher un toast au lieu d'ouvrir l'historique
-                                        try:
-                                            show_toast(result[1])
-                                        except Exception as e:
-                                            logger.debug(f"Impossible d'afficher le toast: {e}")
-                                        with urls_lock:
-                                            urls_in_progress.discard(url)
-                                            logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
-                                        
-                                        # Libérer le slot de la queue
-                                        try:
-                                            notify_download_finished()
-                                        except Exception:
-                                            pass
-                                        
-                                        return result[0], result[1]
-                    except Exception as e:
-                        logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
-            
-            download_headers = headers.copy()
-            download_headers['Accept'] = 'application/octet-stream, */*'
-            download_headers['Referer'] = 'https://myrient.erista.me/'
-            archive_cookie = load_archive_org_cookie()
-            archive_alt_urls = []
-            meta_json = None
-
-            # Préparation spécifique archive.org : normaliser URL + récupérer cookies/metadata
-            if 'archive.org/download/' in url:
-                try:
-                    parsed = urllib.parse.urlsplit(url)
-                    parts = parsed.path.split('/download/', 1)
-                    pre_id = None
-                    rest_decoded = None
-                    if len(parts) == 2:
-                        after = parts[1]
-                        pre_id = after.split('/', 1)[0]
-                        rest = after[len(pre_id):]
-                        if rest.startswith('/'):
-                            rest = rest[1:]
-                        rest_decoded = urllib.parse.unquote(rest)
-                        rest_encoded = urllib.parse.quote(rest_decoded, safe='/') if rest_decoded else ''
-                        new_path = f"/download/{pre_id}/" + rest_encoded
-                        url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, new_path, parsed.query, parsed.fragment))
-                        logger.debug(f"URL archive.org normalisée: {url}")
-                    if not pre_id:
-                        pre_id = url.split('/download/')[1].split('/')[0]
-
-                    download_headers['Referer'] = f"https://archive.org/details/{pre_id}"
-                    download_headers['Origin'] = 'https://archive.org'
-                    if archive_cookie:
-                        download_headers['Cookie'] = archive_cookie
-                    if archive_cookie:
-                        # Apply cookie to session for redirects to ia*.us.archive.org
-                        for pair in archive_cookie.split(';'):
-                            if '=' in pair:
-                                name, value = pair.split('=', 1)
-                                session.cookies.set(name.strip(), value.strip(), domain='.archive.org')
-
-                    session.get('https://archive.org/robots.txt', timeout=20, headers={'Cookie': archive_cookie} if archive_cookie else None)
-                    meta_resp = session.get(f'https://archive.org/metadata/{pre_id}', timeout=20, headers={'Cookie': archive_cookie} if archive_cookie else None)
-                    if meta_resp.status_code == 200:
-                        try:
-                            meta_json = meta_resp.json()
-                        except Exception:
-                            meta_json = None
-                    logger.debug(f"Pré-chargement cookies/metadata archive.org pour {pre_id}")
-
-                    # Construire des URLs alternatives pour archive interne
-                    identifier, archive_name, inner_path = _split_archive_org_path(url)
-                    if identifier and archive_name and inner_path:
-                        # Variante sans préfixe archive
-                        archive_alt_urls.append(f"https://archive.org/download/{identifier}/" + urllib.parse.quote(inner_path, safe='/'))
-                        # Variante filename
-                        archive_alt_urls.append(f"https://archive.org/download/{identifier}/{archive_name}?filename=" + urllib.parse.quote(inner_path, safe='/'))
-                        # Variante view_archive.php via serveur/dir metadata
-                        if meta_json:
-                            server = meta_json.get('server')
-                            directory = meta_json.get('dir')
-                            if server and directory:
-                                archive_path = f"{directory}/{archive_name}"
-                                view_url = f"https://{server}/view_archive.php?archive=" + urllib.parse.quote(archive_path, safe='/') + "&file=" + urllib.parse.quote(inner_path, safe='/')
-                                # Prioriser view_archive.php (cas valide observe dans le navigateur)
-                                archive_alt_urls.insert(0, view_url)
-                except Exception as e:
-                    logger.debug(f"Pré-chargement archive.org ignoré: {e}")
-            
-            # Initialiser la progression pour afficher les tentatives
-            if url not in config.download_progress:
-                config.download_progress[url] = {
-                    "downloaded_size": 0,
-                    "total_size": 0,
-                    "status": "Connecting",
-                    "progress_percent": 0,
-                    "speed": 0,
-                    "game_name": game_name,
-                    "platform": platform
-                }
-                # Plus besoin d'update_web_progress - history.json est mis à jour automatiquement
-            
-            # Tentatives multiples avec variations d'en-têtes pour contourner certains 401/403 (archive.org / hotlink protection)
-            header_variants = [
-                download_headers,
-                {  # Variante sans Referer spécifique
-                    'User-Agent': headers.get('User-Agent', download_headers.get('User-Agent', 'Mozilla/5.0')),
-                    'Accept': 'application/octet-stream,*/*;q=0.8',
-                    'Accept-Language': headers.get('Accept-Language', 'en-US,en;q=0.5'),
-                    'Connection': 'keep-alive',
-                    **({'Cookie': archive_cookie} if archive_cookie else {})
-                },
-                {  # Variante minimaliste type curl
-                    'User-Agent': 'curl/8.4.0',
-                    'Accept': '*/*',
-                    **({'Cookie': archive_cookie} if archive_cookie else {})
-                },
-                {  # Variante avec Referer archive.org
-                    'User-Agent': headers.get('User-Agent', download_headers.get('User-Agent', 'Mozilla/5.0')),
-                    'Accept': '*/*',
-                    'Referer': 'https://archive.org/',
-                    **({'Cookie': archive_cookie} if archive_cookie else {})
-                }
-            ]
-            response = None
-            last_status = None
-            last_error = None
-            last_error_type = None
-            
-            for attempt, hv in enumerate(header_variants, start=1):
-                try:
-                    # Mettre à jour la progression pour afficher la tentative en cours
-                    if url in config.download_progress:
-                        config.download_progress[url]["status"] = f"Try {attempt}/{len(header_variants)}"
-                        config.download_progress[url]["progress_percent"] = 0
-                        config.needs_redraw = True
-                        # Mettre à jour le fichier web
-                # Plus besoin de update_web_progress
-                    
-                    logger.debug(f"Tentative téléchargement {attempt}/{len(header_variants)} avec headers: {_redact_headers(hv)}")
-                    # Timeout plus long pour archive.org, avec tuple (connect_timeout, read_timeout)
-                    timeout_val = (60, 90) if 'archive.org' in url else 30
-                    r = session.get(url, stream=True, timeout=timeout_val, allow_redirects=True, headers=hv)
-                    last_status = r.status_code
-                    logger.debug(f"Status code tentative {attempt}: {r.status_code}")
-                    if r.status_code in (401, 403):
-                        # Lire un petit bout pour voir si message utile
-                        try:
-                            snippet = r.text[:200]
-                            logger.debug(f"Réponse {r.status_code} snippet: {snippet}")
-                        except Exception:
-                            pass
-                        continue  # Essayer variante suivante
-                    r.raise_for_status()
-                    response = r
-                    break
-                except requests.Timeout as e:
-                    last_error = str(e)
-                    last_error_type = "timeout"
-                    logger.debug(f"Timeout tentative {attempt}: {e}")
-                except requests.ConnectionError as e:
-                    last_error = str(e)
-                    last_error_type = "connection"
-                    logger.debug(f"Erreur connexion tentative {attempt}: {e}")
-                except requests.HTTPError as e:
-                    last_error = str(e)
-                    last_error_type = "http"
-                    logger.debug(f"Erreur HTTP tentative {attempt}: {e}")
-                    # Si ce n'est pas une erreur auth explicite et qu'on a un code => on sort
-                    if last_status not in (401, 403):
-                        break
-                except requests.RequestException as e:
-                    last_error = str(e)
-                    last_error_type = "request"
-                    logger.debug(f"Erreur requête tentative {attempt}: {e}")
-                    # Si ce n'est pas une erreur auth explicite et qu'on a un code => on sort
-                    if isinstance(e, requests.HTTPError) and last_status not in (401, 403):
-                        break
-                    # Délai entre tentatives pour archive.org (éviter saturation)
-                    if 'archive.org' in url and attempt < len(header_variants):
-                        time.sleep(2)
-            
-            if response is None:
-                if archive_alt_urls and (last_status in (401, 403) or last_error_type in ("timeout", "connection", "request")):
-                    for alt_url in archive_alt_urls:
-                        try:
-                            timeout_val = (45, 90)
-                            logger.debug(f"Tentative archive.org alt URL: {alt_url}")
-                            alt_headers = download_headers.copy()
-                            try:
-                                alt_host = urllib.parse.urlsplit(alt_url).netloc
-                                if alt_host.startswith("ia") and alt_host.endswith(".archive.org"):
-                                    alt_headers["Referer"] = f"https://{alt_host}/"
-                                    alt_headers["Origin"] = "https://archive.org"
-                            except Exception:
-                                pass
-                            r = session.get(alt_url, stream=True, timeout=timeout_val, allow_redirects=True, headers=alt_headers)
-                            if r.status_code not in (401, 403):
-                                r.raise_for_status()
-                                response = r
-                                url = alt_url
-                                break
-                        except Exception as e:
-                            logger.debug(f"Alt URL archive.org échec: {e}")
-                # Fallback metadata archive.org pour message clair
-                if 'archive.org/download/' in url:
-                    try:
-                        identifier = url.split('/download/')[1].split('/')[0]
-                        if meta_json is None:
-                            meta_resp = session.get(f'https://archive.org/metadata/{identifier}', timeout=30)
-                            if meta_resp.status_code == 200:
-                                meta_json = meta_resp.json()
-                        if meta_json:
-                            if meta_json.get('is_dark'):
-                                raise requests.HTTPError(f"Item archive.org restreint (is_dark=true): {identifier}")
-                            if not meta_json.get('files'):
-                                raise requests.HTTPError(f"Item archive.org sans fichiers listés: {identifier}")
-                            # Fichier peut avoir un nom différent : informer
-                            available = [f.get('name') for f in meta_json.get('files', [])][:10]
-                            raise requests.HTTPError(f"Accès refusé (HTTP {last_status}). Fichiers disponibles exemples: {available}")
-                        else:
-                            raise requests.HTTPError(f"HTTP {last_status} & metadata indisponible pour {identifier}")
-                    except requests.HTTPError:
-                        raise
-                    except Exception as e:
-                        raise requests.HTTPError(f"HTTP {last_status} après variations; metadata échec: {e}")
-                
-                # Construire un message d'erreur détaillé et traduit
-                error_msg = None
-                if last_status:
-                    # Erreurs HTTP avec codes spécifiques
-                    if last_status == 401:
-                        error_msg = _("network_auth_required").format(last_status) if _ else f"Authentication required (HTTP {last_status})"
-                    elif last_status == 403:
-                        error_msg = _("network_access_denied").format(last_status) if _ else f"Access denied (HTTP {last_status})"
-                    elif last_status >= 500:
-                        error_msg = _("network_server_error").format(last_status) if _ else f"Server error (HTTP {last_status})"
-                    else:
-                        error_msg = _("network_http_error").format(last_status) if _ else f"HTTP error {last_status}"
-                elif last_error_type == "timeout":
-                    error_msg = _("network_timeout_error") if _ else "Connection timeout"
-                elif last_error_type == "connection":
-                    error_msg = _("network_connection_error") if _ else "Network connection error"
-                else:
-                    error_msg = _("network_no_response") if _ else "No response from server"
-                
-                # Ajouter le nombre de tentatives
-                attempts_count = len(header_variants)
-                full_error_msg = _("network_connection_failed").format(attempts_count) if _ else f"Connection failed after {attempts_count} attempts"
-                full_error_msg += f" - {error_msg}"
-                
-                # Ajouter les détails techniques en log
-                if last_error:
-                    logger.error(f"Détails de l'erreur: {last_error}")
-                
-                raise requests.HTTPError(full_error_msg)
-            
-            # Mettre à jour le statut: connexion réussie, début du téléchargement
-            if url in config.download_progress:
-                config.download_progress[url]["status"] = "Downloading"
-                config.needs_redraw = True
-            
-            total_size = int(response.headers.get('content-length', 0))
-            logger.debug(f"Taille totale: {total_size} octets")
-            if isinstance(config.history, list):
-                for entry in config.history:
-                    if "url" in entry and entry["url"] == url:
-                        entry["total_size"] = total_size  # Ajouter la taille totale
-                        save_history(config.history)
-                        break
-            
-            # Initialiser la progression avec task_id
-            progress_queues[task_id].put((task_id, 0, total_size))
-            logger.debug(f"Progression initiale envoyée: 0% pour {game_name}, task_id={task_id}")
-            
-            downloaded = 0
-            chunk_size = 4096
-            last_update_time = time.time()
-            last_downloaded = 0
-            update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
-            download_canceled = False
-            with open(dest_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=chunk_size):
-                    # Vérifier la pause (dynamiquement car l'événement peut être créé après le début)
-                    while True:
-                        pause_ev = pause_events.get(task_id)
-                        if pause_ev is None or not pause_ev.is_set():
-                            break  # Pas en pause, continuer le téléchargement
-                        if cancel_ev is not None and cancel_ev.is_set():
-                            break  # Sortir de la boucle de pause si annulation demandée
-                        time.sleep(0.1)  # Attendre en pause
-                    
-                    if cancel_ev is not None and cancel_ev.is_set():
-                        logger.debug(f"Annulation détectée, arrêt du téléchargement pour task_id={task_id}")
-                        result[0] = False
-                        result[1] = _("download_canceled") if _ else "Download canceled"
-                        download_canceled = True
-                        try:
-                            f.close()
-                        except Exception:
-                            pass
-                        try:
-                            if os.path.exists(dest_path):
-                                os.remove(dest_path)
-                        except Exception:
-                            pass
-                        break
-                    if chunk:
-                        size_received = len(chunk)
-                        f.write(chunk)
-                        downloaded += size_received
-                        current_time = time.time()
-                        if current_time - last_update_time >= update_interval:
-                            # Calcul de la vitesse en Mo/s
-                            delta = downloaded - last_downloaded
-                            speed = delta / (current_time - last_update_time) / (1024 * 1024)
-                            last_downloaded = downloaded
-                            last_update_time = current_time
-                            progress_queues[task_id].put((task_id, downloaded, total_size, speed))
-            
-            # Forcer une dernière mise à jour de progression pour les petits fichiers
-            # (au cas où aucune mise à jour n'a été envoyée pendant la boucle)
-            if downloaded > 0 and downloaded != last_downloaded:
-                current_time = time.time()
-                delta = downloaded - last_downloaded
-                elapsed = current_time - last_update_time
-                speed = delta / elapsed / (1024 * 1024) if elapsed > 0 else 0
-                progress_queues[task_id].put((task_id, downloaded, total_size, speed))
-                logger.debug(f"Mise à jour finale de progression: {downloaded}/{total_size} octets")
-
-            # Si annulé, ne pas continuer avec extraction
-            if download_canceled:
-                # Libérer le slot de la queue
-                try:
-                    notify_download_finished()
-                except Exception:
-                    pass
-                return
+                    return
             
             os.chmod(dest_path, 0o644)
             logger.debug(f"Téléchargement terminé: {dest_path}")
@@ -3020,4 +3312,4 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
 
 def is_1fichier_url(url):
     """Détecte si l'URL est un lien 1fichier."""
-    return "1fichier.com" in url
+    return isinstance(url, str) and "1fichier.com" in url

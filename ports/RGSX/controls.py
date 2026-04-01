@@ -40,6 +40,31 @@ logger = logging.getLogger(__name__)
 ARCHIVE_EXTENSIONS = {'.zip', '.7z', '.rar', '.tar', '.gz', '.xz', '.bz2'}
 
 
+def _notify_torrent_in_maintenance(game_name: str | None = None) -> None:
+    try:
+        message = _("popup_torrent_in_maintenance")
+    except Exception:
+        message = "torrent in maintence"
+
+    show_toast(message, 3000)
+    logger.info(f"Source torrent non telechargeable pour le moment: {game_name or 'unknown game'}")
+
+
+def _has_download_url(url, game_name: str | None = None) -> bool:
+    if isinstance(url, str) and url.strip():
+        return True
+
+    _notify_torrent_in_maintenance(game_name)
+    config.needs_redraw = True
+    return False
+
+
+def _wrap_index(current_index: int, delta: int, item_count: int) -> int:
+    if item_count <= 0:
+        return 0
+    return (current_index + delta) % item_count
+
+
 # Variables globales pour la répétition
 key_states = {}  # Dictionnaire pour suivre l'état des touches
 
@@ -559,8 +584,10 @@ def trigger_global_search_download(queue_only: bool = False) -> None:
     game_name = result.get("game_name")
     display_name = result.get("display_name") or get_clean_display_name(game_name, platform)
 
-    if not url or not platform or not game_name:
+    if not platform or not game_name:
         logger.error(f"Resultat de recherche globale invalide: {result}")
+        return
+    if not _has_download_url(url, game_name):
         return
 
     pending_download = check_extension_before_download(url, platform, game_name)
@@ -1077,16 +1104,16 @@ def handle_controls(event, sources, joystick, screen):
      
             else:
                 if is_input_matched(event, "up"):
-                    if config.current_game > 0:
-                        config.current_game -= 1
+                    if games:
+                        config.current_game = _wrap_index(config.current_game, -1, len(games))
                         update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
                                         event.button if event.type == pygame.JOYBUTTONDOWN else 
                                         (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
                                         event.value)
                         config.needs_redraw = True
                 elif is_input_matched(event, "down"):
-                    if config.current_game < len(games) - 1:
-                        config.current_game += 1
+                    if games:
+                        config.current_game = _wrap_index(config.current_game, 1, len(games))
                         update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
                                         event.button if event.type == pygame.JOYBUTTONDOWN else 
                                         (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
@@ -1140,6 +1167,8 @@ def handle_controls(event, sources, joystick, screen):
                         url = game.url
                         game_name = game.name
                         platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
+                        if not _has_download_url(url, game_name):
+                            return action
                         
                         pending_download = check_extension_before_download(url, platform, game_name)
                         if pending_download:
@@ -1320,8 +1349,8 @@ def handle_controls(event, sources, joystick, screen):
             history = config.history
             if is_input_matched(event, "up"):
                 # L'historique est inversé à l'affichage, donc UP descend dans l'index (incrément)
-                if config.current_history_item < len(history) - 1:
-                    config.current_history_item += 1
+                if history:
+                    config.current_history_item = _wrap_index(config.current_history_item, 1, len(history))
                     config.repeat_action = "up"
                     config.repeat_start_time = current_time + REPEAT_DELAY
                     config.repeat_last_action = current_time
@@ -1329,8 +1358,8 @@ def handle_controls(event, sources, joystick, screen):
                     config.needs_redraw = True
             elif is_input_matched(event, "down"):
                 # L'historique est inversé à l'affichage, donc DOWN monte dans l'index (décrement)
-                if config.current_history_item > 0:
-                    config.current_history_item -= 1
+                if history:
+                    config.current_history_item = _wrap_index(config.current_history_item, -1, len(history))
                     config.repeat_action = "down"
                     config.repeat_start_time = current_time + REPEAT_DELAY
                     config.repeat_last_action = current_time
@@ -1719,7 +1748,7 @@ def handle_controls(event, sources, joystick, screen):
                         config.menu_state = "history"
                         # Réinitialiser l'entrée et relancer
                         url = entry.get("url")
-                        if url:
+                        if _has_download_url(url, game_name):
                             # Mettre à jour le statut
                             entry["status"] = "Downloading"
                             entry["progress"] = 0
@@ -3686,6 +3715,10 @@ def handle_controls(event, sources, joystick, screen):
                             game_name = games[config.current_game].name
                             platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
                             logger.debug(f"Appui court sur confirm ({press_duration}ms), téléchargement pour {game_name}, URL: {url}")
+                            if not _has_download_url(url, game_name):
+                                config.confirm_press_start_time = 0
+                                config.confirm_long_press_triggered = False
+                                return action
                             
                             # Vérifier d'abord l'extension avant d'ajouter à l'historique
                             if is_1fichier_url(url):
@@ -3818,6 +3851,10 @@ def handle_controls(event, sources, joystick, screen):
                             game_name = games[config.current_game].name
                             platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
                             logger.debug(f"Appui court sur confirm ({press_duration}ms), téléchargement pour {game_name}, URL: {url}")
+                            if not _has_download_url(url, game_name):
+                                config.confirm_press_start_time = 0
+                                config.confirm_long_press_triggered = False
+                                return action
                             
                             # Vérifier d'abord l'extension avant d'ajouter à l'historique
                             if is_1fichier_url(url):

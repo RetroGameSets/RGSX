@@ -17,6 +17,7 @@
     "error_no_internet": "Sem conexão com a Internet. Verifique sua rede.",
     "error_api_key": "Insira sua chave API (somente premium) no arquivo {0}",
     "error_invalid_download_data": "Dados de download inválidos",
+    "popup_torrent_in_maintenance": "Torrent em manutenção, aguarde",
     "error_delete_sources": "Erro ao deletar arquivo sources.json ou pastas",
     "platform_no_platform": "Sem plataforma",
     "platform_page": "Página {0}/{1}",

@@ -17,6 +17,7 @@
     "error_no_internet": "Nessuna connessione Internet. Controlla la rete.",
     "error_api_key": "Inserisci la tua API key (solo premium) nel file {0}",
     "error_invalid_download_data": "Dati di download non validi",
+    "popup_torrent_in_maintenance": "Torrent in manutenzione, attendere prego",
     "error_delete_sources": "Errore nell'eliminazione del file systems_list.json o delle cartelle",
     "platform_no_platform": "Nessuna piattaforma",
     "platform_page": "Pagina {0}/{1}",

@@ -9,8 +9,8 @@ from dataclasses import dataclass
 @dataclass(slots=True)
 class Game:
     name: str
-    url: str
-    size: str
+    url: Optional[str]
+    size: Optional[str]
     display_name: str # name withou file extension or platform prefix
     regions: Optional[list[str]] = None
     is_non_release: Optional[bool] = None
@@ -27,7 +27,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.6.1.4"
+app_version = "2.6.1.5"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 1
@@ -225,6 +225,8 @@ PS3DEC_EXE = os.path.join(APP_FOLDER,"assets", "progs", "ps3dec_win.exe")
 PS3DEC_LINUX = os.path.join(APP_FOLDER,"assets", "progs", "ps3dec_linux")
 SEVEN_Z_LINUX = os.path.join(APP_FOLDER,"assets", "progs", "7zz")
 SEVEN_Z_EXE = os.path.join(APP_FOLDER,"assets", "progs", "7z.exe")
+ARIA2C_EXE = os.path.join(APP_FOLDER,"assets", "progs", "aria2c.exe")
+ARIA2C_LINUX = os.path.join(APP_FOLDER,"assets", "progs", "aria2c")
 
 # Détection du système d'exploitation (une seule fois au démarrage)
 OPERATING_SYSTEM = platform.system()

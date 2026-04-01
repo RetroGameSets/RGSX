@@ -1161,9 +1161,10 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 game_url = game.url
                 
                 if not game_url:
+                    torrent_message = TRANSLATIONS.get('popup_torrent_in_maintenance', 'torrent in maintence')
                     self._send_json({
                         'success': False,
-                        'error': 'URL de téléchargement non disponible'
+                        'error': torrent_message
                     }, status=400)
                     return
                 

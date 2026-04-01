@@ -17,6 +17,7 @@
     "error_no_internet": "Sin conexión a Internet. Verifica tu red.",
     "error_api_key": "Atención, debes ingresar tu clave API (solo premium) en el archivo {0}",
     "error_invalid_download_data": "Datos de descarga no válidos",
+    "popup_torrent_in_maintenance": "Torrent en mantenimiento, por favor espere",
     "error_delete_sources": "Error al eliminar el archivo systems_list.json o carpetas",
     "platform_no_platform": "Ninguna plataforma",
     "platform_page": "Página {0}/{1}",

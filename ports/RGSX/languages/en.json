@@ -17,6 +17,7 @@
     "error_no_internet": "No Internet connection. Check your network.",
     "error_api_key": "Please enter your API key (premium only) in the file {0}",
     "error_invalid_download_data": "Invalid download data",
+    "popup_torrent_in_maintenance": "Torrent under maintenance, please wait",
     "error_delete_sources": "Error deleting systems_list.json file or folders",
     "platform_no_platform": "No platform",
     "platform_page": "Page {0}/{1}",
