@@ -36,6 +36,7 @@ import html as html_module
 from urllib.parse import urljoin, unquote
 import urllib.parse
 import tempfile
+import unicodedata
 
 
 
@@ -383,6 +384,92 @@ def extract_wait_seconds_1f(html_text):
             return seconds
     return 0
 
+
+def _extract_visible_text_from_html(html_text: str) -> str:
+    if not html_text:
+        return ""
+    text = re.sub(r'(?is)<script[^>]*>.*?</script>', ' ', html_text)
+    text = re.sub(r'(?is)<style[^>]*>.*?</style>', ' ', text)
+    text = re.sub(r'(?is)<[^>]+>', ' ', text)
+    text = html_module.unescape(text).replace('\xa0', ' ')
+    return re.sub(r'\s+', ' ', text).strip()
+
+
+def _normalize_1fichier_text(text: str) -> str:
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", text)
+    normalized = normalized.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r'\s+', ' ', normalized).strip().lower()
+
+
+def _translate_free_mode_message(key: str, fallback: str) -> str:
+    try:
+        translated = _(key)
+        if translated and translated != key:
+            return translated
+    except Exception:
+        pass
+    return fallback
+
+
+def _append_1fichier_upgrade_advice(message: str) -> str:
+    advice = _translate_free_mode_message(
+        "free_mode_premium_advice",
+        "For unlimited, on-demand, full-speed downloads, you need a premium account or debrid service and must enter its API key in RGSX.",
+    )
+    base_message = (message or "").strip()
+    if not base_message:
+        return advice
+    return f"{base_message}\n{advice}"
+
+
+def _extract_1fichier_free_mode_block_reason(html_text: str) -> str | None:
+    visible_text = _extract_visible_text_from_html(html_text)
+    normalized = _normalize_1fichier_text(visible_text)
+    if not normalized:
+        return None
+
+    if (
+        "telechargement gratuit est temporairement limite" in normalized
+        and "identifiez-vous immediatement" in normalized
+    ):
+        return _append_1fichier_upgrade_advice(
+            _translate_free_mode_message(
+                "free_mode_guest_slots_unavailable",
+                "1fichier: free guest download is temporarily unavailable (all slots are currently in use). Please try again later.",
+            )
+        )
+
+    if (
+        "free download is temporarily limited" in normalized
+        and "all free slots for guests are currently used" in normalized
+    ):
+        return _append_1fichier_upgrade_advice(
+            _translate_free_mode_message(
+                "free_mode_guest_slots_unavailable",
+                "1fichier: free guest download is temporarily unavailable (all slots are currently in use). Please try again later.",
+            )
+        )
+
+    if "identifiez-vous immediatement pour continuer votre telechargement" in normalized:
+        return _append_1fichier_upgrade_advice(
+            _translate_free_mode_message(
+                "free_mode_unavailable_in_app",
+                "1fichier: this download is not available in the application right now. Please try again later.",
+            )
+        )
+
+    if "sign in immediately to continue your download" in normalized:
+        return _append_1fichier_upgrade_advice(
+            _translate_free_mode_message(
+                "free_mode_unavailable_in_app",
+                "1fichier: this download is not available in the application right now. Please try again later.",
+            )
+        )
+
+    return None
+
 def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progress_callback=None, wait_callback=None, cancel_event=None):
     """
     Télécharge un fichier depuis 1fichier.com en mode gratuit (sans API key).
@@ -434,6 +521,7 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
         r = session.get(url, allow_redirects=True, timeout=30)
         r.raise_for_status()
         html = r.text
+        page_url = str(r.url)
         
         # 2. Détection compte à rebours
         wait_s = extract_wait_seconds_1f(html)
@@ -462,8 +550,12 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
                 
                 name_m = re.search(r'name=[\"\']([^\"\']+)', inp)
                 value_m = re.search(r'value=[\"\']([^\"\']*)', inp)
+                type_m = re.search(r'type=["\']([^"\']+)', inp, re.IGNORECASE)
                 
                 if name_m:
+                    input_type = type_m.group(1).strip().lower() if type_m else 'text'
+                    if input_type in {'checkbox', 'radio'} and 'checked' not in inp.lower():
+                        continue
                     name = name_m.group(1)
                     value = value_m.group(1) if value_m else ''
                     data[name] = html_module.unescape(value)
@@ -478,9 +570,15 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
             while post_attempt < max_post_attempts:
                 post_attempt += 1
                 try:
-                    r2 = session.post(str(r.url), data=data, allow_redirects=True, timeout=30)
+                    parsed_page = urllib.parse.urlparse(page_url)
+                    post_headers = {
+                        'Referer': page_url,
+                        'Origin': f"{parsed_page.scheme}://{parsed_page.netloc}" if parsed_page.scheme and parsed_page.netloc else page_url,
+                    }
+                    r2 = session.post(page_url, data=data, headers=post_headers, allow_redirects=True, timeout=30)
                     r2.raise_for_status()
                     html = r2.text
+                    page_url = str(r2.url)
                 except Exception as pe:
                     logger.debug(f"1fichier: POST attempt {post_attempt} failed: {pe}")
                     if post_attempt >= max_post_attempts:
@@ -505,6 +603,11 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
 
             if html is None:
                 return (False, None, "Erreur lors de la soumission du formulaire")
+
+            blocked_reason = _extract_1fichier_free_mode_block_reason(html)
+            if blocked_reason:
+                logger.warning(f"1fichier: free mode blocked after form submit: {blocked_reason}")
+                return (False, None, blocked_reason)
         
         # 4. Chercher lien de téléchargement
         if cancel_event and cancel_event.is_set():
@@ -529,7 +632,7 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
                 continue
 
             # Resolve relative links
-            candidate = captured_link if captured_link.startswith(('http://', 'https://')) else urljoin(str(r.url), captured_link)
+            candidate = captured_link if captured_link.startswith(('http://', 'https://')) else urljoin(page_url, captured_link)
             logger.debug(f"1fichier: Pattern {idx} matched, candidate link: {candidate}")
 
             # Quick heuristic: skip known non-download endpoints
@@ -573,6 +676,10 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
                     continue
 
         if not direct_link:
+            blocked_reason = _extract_1fichier_free_mode_block_reason(html)
+            if blocked_reason:
+                logger.warning(f"1fichier: no direct link because free mode is blocked: {blocked_reason}")
+                return (False, None, blocked_reason)
             logger.error(f"1fichier: No valid download link found. HTML preview (first 700 chars): {html[:700]}")
             return (False, None, "Lien de téléchargement introuvable")
         
@@ -2775,7 +2882,12 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     try:
                         # Créer une session requests pour le mode gratuit
                         free_session = requests.Session()
-                        free_session.headers.update({'User-Agent': 'Mozilla/5.0'})
+                        free_session.headers.update(
+                            _build_browser_download_headers(
+                                referer=link,
+                                accept='text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                            )
+                        )
                         
                         # Callbacks pour le mode gratuit
                         def log_cb(msg):
@@ -2862,7 +2974,10 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         else:
                             logger.error(f"Échec téléchargement gratuit: {error_msg}")
                             result[0] = False
-                            result[1] = f"Error Downloading with free mode: {error_msg}"
+                            if isinstance(error_msg, str) and error_msg.startswith("1fichier:"):
+                                result[1] = error_msg
+                            else:
+                                result[1] = f"Error Downloading with free mode: {error_msg}"
                             return
                     
                     except Exception as e:
