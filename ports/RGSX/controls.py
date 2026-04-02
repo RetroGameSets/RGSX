@@ -1766,6 +1766,9 @@ def handle_controls(event, sources, joystick, screen):
                                 is_zip_non_supported = pending_download[3] if len(pending_download) > 3 else False
                                 
                                 if is_1fichier_url(url):
+                                    ensure_download_provider_keys(False)
+                                    if missing_all_provider_keys():
+                                        logger.warning("Aucune clé API - Mode gratuit 1fichier sera utilisé (attente requise)")
                                     task = asyncio.create_task(download_from_1fichier(url, platform, game_name, is_zip_non_supported, task_id))
                                 else:
                                     task = asyncio.create_task(download_rom(url, platform, game_name, is_zip_non_supported, task_id))

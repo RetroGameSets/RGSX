@@ -620,19 +620,40 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
         ]
         
         direct_link = None
-        # Examine each pattern and validate the candidate link via HEAD/GET to avoid landing pages (/register, /login)
-        for idx, pattern in enumerate(patterns):
-            match = re.search(pattern, html, re.IGNORECASE)
-            if not match:
-                continue
-            try:
-                captured_link = match.group(1)
-            except IndexError:
-                logger.warning(f"1fichier: Pattern {idx} matched but no capture group(1)")
-                continue
+        candidate_entries: list[tuple[int, str]] = []
+        seen_candidates: set[str] = set()
 
-            # Resolve relative links
-            candidate = captured_link if captured_link.startswith(('http://', 'https://')) else urljoin(page_url, captured_link)
+        for anchor_match in re.finditer(r'<a[^>]+href=[\"\']([^\"\']+)[\"\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL):
+            href = html_module.unescape(anchor_match.group(1).strip())
+            anchor_text = re.sub(r'<[^>]+>', ' ', anchor_match.group(2))
+            normalized_anchor_text = _normalize_1fichier_text(anchor_text)
+            if not href or not normalized_anchor_text:
+                continue
+            if not any(token in normalized_anchor_text for token in ('download', 'telecharg', 'tlcharg', 'click', 'cliquer')):
+                continue
+            candidate = href if href.startswith(('http://', 'https://')) else urljoin(page_url, href)
+            if candidate in seen_candidates:
+                continue
+            seen_candidates.add(candidate)
+            candidate_entries.append((0, candidate))
+
+        for idx, pattern in enumerate(patterns):
+            for match in re.finditer(pattern, html, re.IGNORECASE):
+                try:
+                    captured_link = html_module.unescape(match.group(1).strip())
+                except (IndexError, AttributeError):
+                    logger.warning(f"1fichier: Pattern {idx} matched but no usable capture group(1)")
+                    continue
+                if not captured_link:
+                    continue
+                candidate = captured_link if captured_link.startswith(('http://', 'https://')) else urljoin(page_url, captured_link)
+                if candidate in seen_candidates:
+                    continue
+                seen_candidates.add(candidate)
+                candidate_entries.append((idx, candidate))
+
+        # Examine each pattern and validate the candidate link via HEAD/GET to avoid landing pages (/register, /login)
+        for idx, candidate in candidate_entries:
             logger.debug(f"1fichier: Pattern {idx} matched, candidate link: {candidate}")
 
             # Quick heuristic: skip known non-download endpoints
