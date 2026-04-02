@@ -868,6 +868,14 @@ def _extract_changelog_section(raw_text):
     if not text:
         return ""
 
+    def _is_version_heading(heading_text):
+        normalized = str(heading_text or "").strip()
+        return re.match(
+            r"^(?:release\s+)?(?:v(?:ersion)?\s*)?\d+(?:\.\d+)+(?:\s*[(:-].*)?$",
+            normalized,
+            re.IGNORECASE,
+        ) is not None
+
     lines = text.split("\n")
     heading_re = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
     changelog_start = None
@@ -891,7 +899,7 @@ def _extract_changelog_section(raw_text):
         if stripped == "---":
             break
         match = heading_re.match(stripped)
-        if match and len(match.group(1)) <= changelog_level:
+        if match and len(match.group(1)) <= changelog_level and not _is_version_heading(match.group(2)):
             break
         extracted.append(line)
 
