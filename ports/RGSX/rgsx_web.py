@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 import config
 from history import load_history, save_history
-from utils import load_sources, load_games, extract_data, get_clean_display_name
+from utils import load_sources, load_games, extract_data, get_clean_display_name, parse_torrent_download_url
 from network import download_rom, download_from_1fichier
 from pathlib import Path
 from rgsx_settings import get_language
@@ -1161,6 +1161,14 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 game_url = game.url
                 
                 if not game_url:
+                    torrent_message = TRANSLATIONS.get('popup_torrent_in_maintenance', 'torrent in maintence')
+                    self._send_json({
+                        'success': False,
+                        'error': torrent_message
+                    }, status=400)
+                    return
+
+                if parse_torrent_download_url(game_url) is not None:
                     torrent_message = TRANSLATIONS.get('popup_torrent_in_maintenance', 'torrent in maintence')
                     self._send_json({
                         'success': False,

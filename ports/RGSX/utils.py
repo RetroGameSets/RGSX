@@ -289,10 +289,10 @@ def _extract_torrent_source(item) -> tuple[str, str] | None:
     return None
 
 
-def _expand_torrent_source(item, platform_id: str) -> list[tuple[str, None, str | None]]:
+def _expand_torrent_source(item, platform_id: str) -> list[tuple[str, None, str | None]] | None:
     source = _extract_torrent_source(item)
     if not source:
-        return []
+        return None
 
     source_name, source_url = source
     try:
@@ -1480,7 +1480,7 @@ def load_games(platform_id:str) -> list[Game]:
 
         def extract_from_dict(d):
             torrent_rows = _expand_torrent_source(d, platform_id)
-            if torrent_rows:
+            if torrent_rows is not None:
                 normalized.extend(torrent_rows)
                 return
             name = d.get('game_name') or d.get('name') or d.get('title') or d.get('game')
@@ -1493,7 +1493,7 @@ def load_games(platform_id:str) -> list[Game]:
             for item in data:
                 if isinstance(item, (list, tuple)):
                     torrent_rows = _expand_torrent_source(item, platform_id)
-                    if torrent_rows:
+                    if torrent_rows is not None:
                         normalized.extend(torrent_rows)
                         continue
                     if len(item) == 0:

@@ -19,7 +19,7 @@ from utils import (
     restart_application, generate_support_zip, load_sources,
     ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string,
     start_connection_status_check, get_clean_display_name, get_existing_history_matches,
-    move_files_to_directory
+    move_files_to_directory, parse_torrent_download_url
 )
 from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games
 from language import _, get_available_languages, set_language  
@@ -52,6 +52,10 @@ def _notify_torrent_in_maintenance(game_name: str | None = None) -> None:
 
 def _has_download_url(url, game_name: str | None = None) -> bool:
     if isinstance(url, str) and url.strip():
+        if parse_torrent_download_url(url) is not None:
+            _notify_torrent_in_maintenance(game_name)
+            config.needs_redraw = True
+            return False
         return True
 
     _notify_torrent_in_maintenance(game_name)
