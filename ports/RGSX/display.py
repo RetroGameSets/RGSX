@@ -821,7 +821,7 @@ def draw_loading_screen(screen):
     for detail_line in detail_lines:
         if not detail_line:
             continue
-        rendered_lines.extend(wrap_text(str(detail_line), config.small_font, max_detail_width))
+        rendered_lines.append(truncate_text_middle(str(detail_line), config.small_font, max_detail_width, is_filename=False))
 
     for index, detail_line in enumerate(rendered_lines[:3]):
         detail_surface = config.small_font.render(detail_line, True, THEME_COLORS["title_text"])
@@ -2497,13 +2497,15 @@ def draw_history_list(screen):
         folder_text = _get_dest_folder_name(platform)
         
         # Correction du calcul de la taille
-        size = entry.get("total_size", 0)
-        color = THEME_COLORS["fond_lignes"] if i == current_history_item_inverted else THEME_COLORS["text"]
-        size_text = format_size(size)
-        
         status = entry.get("status", "Inconnu")
         progress = entry.get("progress", 0)
         progress = max(0, min(100, progress))  # Clamp progress between 0 and 100
+
+        size = entry.get("total_size", 0)
+        if (not size or int(size or 0) <= 0) and status in ["Téléchargement", "Downloading"]:
+            size = entry.get("downloaded_size", 0)
+        color = THEME_COLORS["fond_lignes"] if i == current_history_item_inverted else THEME_COLORS["text"]
+        size_text = format_size(size)
 
         # Precompute provider prefix once
         provider_prefix = entry.get("provider_prefix") or (entry.get("provider") + ":" if entry.get("provider") else "")
@@ -2512,10 +2514,14 @@ def draw_history_list(screen):
         if status in ["Téléchargement", "Downloading"]:
             # Vérifier si un message personnalisé existe (ex: mode gratuit avec attente)
             custom_message = entry.get('message', '')
+            total_size_value = int(entry.get("total_size", 0) or 0)
+            downloaded_size_value = int(entry.get("downloaded_size", 0) or 0)
             # Détecter les messages du mode gratuit (commencent par '[' dans toutes les langues)
             if custom_message and custom_message.strip().startswith('['):
                 # Utiliser le message personnalisé pour le mode gratuit
                 status_text = custom_message
+            elif total_size_value <= 0 and downloaded_size_value > 0:
+                status_text = str(status)
             else:
                 # Comportement normal: afficher le pourcentage
                 status_text = _("history_status_downloading").format(progress)

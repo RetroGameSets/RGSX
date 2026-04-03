@@ -287,6 +287,47 @@ def _build_browser_download_headers(referer: str | None = None, accept: str = 'a
     return headers
 
 
+def _default_referer_for_url(url: str) -> str | None:
+    """Return a sensible same-site referer instead of stale provider-specific values."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        if not parsed.scheme or not parsed.netloc:
+            return None
+        host = (parsed.netloc or '').lower()
+        if 'archive.org' in host and '/download/' in (parsed.path or ''):
+            identifier = parsed.path.split('/download/', 1)[1].split('/', 1)[0]
+            if identifier:
+                return f"https://archive.org/details/{identifier}"
+            return 'https://archive.org/'
+        return f"{parsed.scheme}://{parsed.netloc}/"
+    except Exception:
+        return None
+
+
+def _is_browser_challenge_response(response) -> bool:
+    """Detect browser-only challenge pages (e.g. Cloudflare) to fail fast with a clear message."""
+    if response is None:
+        return False
+    try:
+        status_code = int(getattr(response, 'status_code', 0) or 0)
+    except Exception:
+        status_code = 0
+    if status_code not in (403, 429, 503):
+        return False
+    try:
+        text = (getattr(response, 'text', '') or '')[:4000].lower()
+    except Exception:
+        text = ''
+    markers = (
+        'just a moment',
+        'cf_chl_opt',
+        'challenge-platform',
+        'enable javascript and cookies to continue',
+        'checking your browser before accessing',
+    )
+    return any(marker in text for marker in markers)
+
+
 def _redact_headers(headers: dict) -> dict:
     """Return a copy of headers with sensitive fields redacted for logs."""
     if not isinstance(headers, dict):
@@ -295,6 +336,463 @@ def _redact_headers(headers: dict) -> dict:
     if 'Cookie' in safe and safe['Cookie']:
         safe['Cookie'] = '<redacted>'
     return safe
+
+
+def _is_lolroms_url(url: str | None) -> bool:
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        host = (urllib.parse.urlsplit(url).netloc or '').lower()
+        return host.endswith('lolroms.com')
+    except Exception:
+        return False
+
+
+def _normalize_lolroms_url(url: str) -> str:
+    parsed = urllib.parse.urlsplit(url)
+    normalized_path = urllib.parse.quote(
+        urllib.parse.unquote(parsed.path or '/'),
+        safe="/@:$&'()*+,;=-._~",
+    )
+    normalized_query = urllib.parse.quote_plus(
+        urllib.parse.unquote_plus(parsed.query),
+        safe="=&:$,;+-._~!*'()",
+    ) if parsed.query else ''
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, normalized_path, normalized_query, parsed.fragment))
+
+
+def _extract_reported_total_size(output_text: str) -> int:
+    if not output_text:
+        return 0
+    patterns = [
+        r'(?im)^content-length:\s*(\d+)\s*$',
+        r'(?im)^length:\s*(\d+)(?:\s|$)',
+        r'(?im)\bcontent-length:\s*(\d+)\b',
+        r'(?im)\blength:\s*(\d+)\b',
+    ]
+    for pattern in patterns:
+        matches = re.findall(pattern, output_text)
+        if matches:
+            try:
+                return int(matches[-1])
+            except Exception:
+                continue
+    return 0
+
+
+def _build_lolroms_parent_url(url: str) -> str:
+    parsed = urllib.parse.urlsplit(_normalize_lolroms_url(url))
+    path = parsed.path or '/'
+    parent_path = path.rsplit('/', 1)[0].rstrip('/') + '/'
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parent_path, '', ''))
+
+
+def _looks_like_html_or_challenge(file_path: str) -> bool:
+    try:
+        with open(file_path, 'rb') as handle:
+            head = handle.read(2048).lower()
+        markers = (b'<html', b'<!doctype html', b'cloudflare', b'just a moment', b'cf-chl', b'challenge-platform')
+        return any(marker in head for marker in markers)
+    except Exception:
+        return True
+
+
+def _matches_expected_archive_signature(file_path: str) -> bool:
+    extension = os.path.splitext(file_path)[1].lower()
+    if extension not in {'.7z', '.zip', '.rar'}:
+        return True
+    try:
+        with open(file_path, 'rb') as handle:
+            head = handle.read(8)
+    except Exception:
+        return False
+    if extension == '.7z':
+        return head.startswith(bytes.fromhex('377abcaf271c'))
+    if extension == '.zip':
+        return head.startswith(b'PK\x03\x04') or head.startswith(b'PK\x05\x06') or head.startswith(b'PK\x07\x08')
+    if extension == '.rar':
+        return head.startswith(b'Rar!\x1a\x07\x00') or head.startswith(b'Rar!\x1a\x07\x01\x00')
+    return True
+
+
+def _resolve_lolroms_external_command() -> tuple[str | None, str | None]:
+    if config.OPERATING_SYSTEM == 'Windows':
+        candidates = [r'C:\Windows\System32\curl.exe', 'curl.exe', 'curl']
+        for candidate in candidates:
+            resolved = candidate if os.path.isabs(candidate) and os.path.exists(candidate) else shutil.which(candidate)
+            if resolved:
+                return 'curl', resolved
+        return None, None
+
+    for candidate in ('wget',):
+        resolved = shutil.which(candidate)
+        if resolved:
+            return 'wget', resolved
+    return None, None
+
+
+def _probe_lolroms_remote_size(url: str) -> int:
+    tool_kind, tool_cmd = _resolve_lolroms_external_command()
+    if not tool_kind or not tool_cmd:
+        return 0
+
+    url = _normalize_lolroms_url(url)
+    parent_url = _build_lolroms_parent_url(url)
+    browser_ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+    cookie_fd, cookie_path = tempfile.mkstemp(prefix='rgsx_lolroms_probe_', suffix='.cookies')
+    os.close(cookie_fd)
+    parent_fd, parent_output = tempfile.mkstemp(prefix='rgsx_lolroms_probe_parent_', suffix='.html')
+    os.close(parent_fd)
+
+    try:
+        if tool_kind == 'curl':
+            parent_cmd = [
+                tool_cmd,
+                '-L',
+                '--connect-timeout', '20',
+                '--silent',
+                '--show-error',
+                '--insecure',
+                '-A', browser_ua,
+                '-H', 'Accept: application/octet-stream,*/*',
+                '-H', 'Accept-Language: fr-FR,fr;q=0.9,en;q=0.8',
+                '-H', 'Referer: https://lolroms.com/',
+                '-c', cookie_path,
+                '-b', cookie_path,
+                '-o', parent_output,
+                parent_url,
+            ]
+            probe_cmd = [
+                tool_cmd,
+                '-I',
+                '-L',
+                '--connect-timeout', '20',
+                '--silent',
+                '--show-error',
+                '--insecure',
+                '-A', browser_ua,
+                '-H', 'Accept: application/octet-stream,*/*',
+                '-H', 'Accept-Language: fr-FR,fr;q=0.9,en;q=0.8',
+                '-H', f'Referer: {parent_url}',
+                '-c', cookie_path,
+                '-b', cookie_path,
+                url,
+            ]
+        else:
+            parent_cmd = [
+                tool_cmd,
+                '--timeout=60',
+                '--tries=2',
+                '--max-redirect=10',
+                '--no-verbose',
+                '--no-hsts',
+                f'--user-agent={browser_ua}',
+                '--referer=https://lolroms.com/',
+                '--header=Accept: application/octet-stream,*/*',
+                '--header=Accept-Language: fr-FR,fr;q=0.9,en;q=0.8',
+                '--no-check-certificate',
+                '--save-cookies', cookie_path,
+                '--load-cookies', cookie_path,
+                '--keep-session-cookies',
+                '-O', parent_output,
+                parent_url,
+                '--quiet',
+            ]
+            probe_cmd = [
+                tool_cmd,
+                '--spider',
+                '--server-response',
+                '--timeout=60',
+                '--tries=1',
+                '--max-redirect=10',
+                '--no-verbose',
+                '--no-hsts',
+                f'--user-agent={browser_ua}',
+                f'--referer={parent_url}',
+                '--header=Accept: application/octet-stream,*/*',
+                '--header=Accept-Language: fr-FR,fr;q=0.9,en;q=0.8',
+                '--no-check-certificate',
+                '--save-cookies', cookie_path,
+                '--load-cookies', cookie_path,
+                '--keep-session-cookies',
+                url,
+            ]
+
+        try:
+            subprocess.run(parent_cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=65)
+        except Exception:
+            pass
+
+        probe = subprocess.run(
+            probe_cmd,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=65,
+        )
+        probe_text = '\n'.join(part for part in (probe.stdout, probe.stderr) if part)
+        return _extract_reported_total_size(probe_text)
+    except Exception as exc:
+        logger.debug(f"Impossible de sonder la taille lolroms via {tool_kind}: {exc}")
+        return 0
+    finally:
+        _safe_remove_file(parent_output)
+        _safe_remove_file(cookie_path)
+
+
+def _download_lolroms_with_external_tool(url: str, dest_path: str, task_id: str | None, cancel_ev=None, progress_queue=None) -> tuple[bool | None, str | None]:
+    tool_kind, tool_cmd = _resolve_lolroms_external_command()
+    if not tool_kind or not tool_cmd:
+        return None, None
+
+    url = _normalize_lolroms_url(url)
+    parent_url = _build_lolroms_parent_url(url)
+    browser_ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+    cookie_fd, cookie_path = tempfile.mkstemp(prefix='rgsx_lolroms_', suffix='.cookies')
+    os.close(cookie_fd)
+    parent_fd, parent_output = tempfile.mkstemp(prefix='rgsx_lolroms_parent_', suffix='.html')
+    os.close(parent_fd)
+
+    def _build_cmd(target_url: str, output_path: str, referer: str, quiet_parent: bool = False, resume: bool = False):
+        if tool_kind == 'curl':
+            cmd = [
+                tool_cmd,
+                '-L',
+                '--connect-timeout', '20',
+                '--speed-time', '120',
+                '--speed-limit', '1024',
+                '--silent',
+                '--show-error',
+                '--insecure',
+                '-A', browser_ua,
+                '-H', 'Accept: application/octet-stream,*/*',
+                '-H', 'Accept-Language: fr-FR,fr;q=0.9,en;q=0.8',
+                '-H', f'Referer: {referer}',
+                '-c', cookie_path,
+                '-b', cookie_path,
+            ]
+            if resume:
+                cmd.extend(['-C', '-'])
+            cmd.extend([
+                '-o', output_path,
+                target_url,
+            ])
+            return cmd
+        cmd = [
+            tool_cmd,
+            '--timeout=60',
+            '--tries=3',
+            '--max-redirect=10',
+            '--no-verbose',
+            '--no-hsts',
+            f'--user-agent={browser_ua}',
+            f'--referer={referer}',
+            '--header=Accept: application/octet-stream,*/*',
+            '--header=Accept-Language: fr-FR,fr;q=0.9,en;q=0.8',
+            '--no-check-certificate',
+            '--save-cookies', cookie_path,
+            '--load-cookies', cookie_path,
+            '--keep-session-cookies',
+        ]
+        if resume:
+            cmd.append('--continue')
+        cmd.extend([
+            '-O', output_path,
+            target_url,
+        ])
+        if quiet_parent:
+            cmd.append('--quiet')
+        return cmd
+
+    def _should_retry_partial_download(return_code: int, stderr_text: str, stdout_text: str, current_size: int, expected_size: int) -> bool:
+        if current_size <= 0:
+            return False
+        if expected_size > 0 and current_size >= expected_size:
+            return False
+        combined = f"{stderr_text or ''}\n{stdout_text or ''}".lower()
+        if tool_kind == 'curl':
+            return return_code in {18, 28, 56} or 'end of response' in combined or 'transfer closed' in combined
+        return return_code in {4} or 'connection closed' in combined or 'read error' in combined or 'timed out' in combined
+
+    def _probe_total_size(target_url: str, referer: str) -> int:
+        try:
+            if tool_kind == 'curl':
+                probe_cmd = [
+                    tool_cmd,
+                    '-I',
+                    '-L',
+                    '--connect-timeout', '20',
+                    '--silent',
+                    '--show-error',
+                    '--insecure',
+                    '-A', browser_ua,
+                    '-H', 'Accept: application/octet-stream,*/*',
+                    '-H', 'Accept-Language: fr-FR,fr;q=0.9,en;q=0.8',
+                    '-H', f'Referer: {referer}',
+                    '-c', cookie_path,
+                    '-b', cookie_path,
+                    target_url,
+                ]
+            else:
+                probe_cmd = [
+                    tool_cmd,
+                    '--spider',
+                    '--server-response',
+                    '--timeout=60',
+                    '--tries=1',
+                    '--max-redirect=10',
+                    '--no-verbose',
+                    '--no-hsts',
+                    f'--user-agent={browser_ua}',
+                    f'--referer={referer}',
+                    '--header=Accept: application/octet-stream,*/*',
+                    '--header=Accept-Language: fr-FR,fr;q=0.9,en;q=0.8',
+                    '--no-check-certificate',
+                    '--save-cookies', cookie_path,
+                    '--load-cookies', cookie_path,
+                    '--keep-session-cookies',
+                    target_url,
+                ]
+            logger.debug(f"lolroms size probe via {tool_kind}: {' '.join(probe_cmd)}")
+            probe = subprocess.run(
+                probe_cmd,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                timeout=65,
+            )
+            probe_text = '\n'.join(part for part in (probe.stdout, probe.stderr) if part)
+            reported_total = _extract_reported_total_size(probe_text)
+            if reported_total > 0:
+                return reported_total
+        except Exception as exc:
+            logger.debug(f"lolroms size probe failed via {tool_kind}: {exc}")
+        return 0
+
+    def _run_command(cmd, watch_output: str | None = None, known_total_size: int = 0):
+        logger.debug(f"lolroms external fallback via {tool_kind}: {' '.join(cmd)}")
+        stdout_lines: list[str] = []
+        stderr_lines: list[str] = []
+        total_size_state = {"value": known_total_size}
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+        )
+
+        def _drain_stream(stream, collector: list[str]):
+            if stream is None:
+                return
+            try:
+                for line in iter(stream.readline, ''):
+                    if not line:
+                        break
+                    collector.append(line)
+                    if total_size_state["value"] <= 0:
+                        reported_total = _extract_reported_total_size(line)
+                        if reported_total > 0:
+                            total_size_state["value"] = reported_total
+            finally:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+
+        stdout_thread = threading.Thread(target=_drain_stream, args=(process.stdout, stdout_lines), daemon=True)
+        stderr_thread = threading.Thread(target=_drain_stream, args=(process.stderr, stderr_lines), daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
+
+        last_size = 0
+        last_time = time.time()
+        while process.poll() is None:
+            if cancel_ev is not None and cancel_ev.is_set():
+                try:
+                    process.terminate()
+                    process.wait(timeout=5)
+                except Exception:
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+                raise RuntimeError(_("download_canceled") if _ else 'Download canceled')
+            if watch_output and progress_queue is not None and task_id:
+                current_size = os.path.getsize(watch_output) if os.path.exists(watch_output) else 0
+                current_time = time.time()
+                elapsed = max(current_time - last_time, 0.001)
+                speed = max(0.0, (current_size - last_size) / elapsed / (1024 * 1024))
+                last_size = current_size
+                last_time = current_time
+                progress_queue.put((task_id, current_size, total_size_state["value"], speed))
+            time.sleep(0.2)
+        process.wait()
+        stdout_thread.join(timeout=2)
+        stderr_thread.join(timeout=2)
+        stdout = ''.join(stdout_lines)
+        stderr = ''.join(stderr_lines)
+        return process.returncode, stdout, stderr
+
+    try:
+        parent_cmd = _build_cmd(parent_url, parent_output, 'https://lolroms.com/', quiet_parent=True)
+        parent_code, parent_stdout, parent_stderr = _run_command(parent_cmd)
+        if parent_code != 0:
+            logger.debug(f"lolroms parent fetch failed via {tool_kind}: {parent_stderr[:300]}")
+
+        total_size = _probe_total_size(url, parent_url)
+        if total_size > 0 and progress_queue is not None and task_id:
+            progress_queue.put((task_id, 0, total_size, 0.0))
+
+        file_code = 1
+        file_stdout = ''
+        file_stderr = ''
+        max_attempts = 3
+        for attempt_index in range(max_attempts):
+            resume_download = attempt_index > 0 and os.path.exists(dest_path) and os.path.getsize(dest_path) > 0
+            if resume_download:
+                current_size = os.path.getsize(dest_path)
+                logger.debug(f"lolroms external retry via {tool_kind}: reprise tentative {attempt_index + 1}/{max_attempts} a {current_size} octets")
+            file_cmd = _build_cmd(url, dest_path, parent_url, resume=resume_download)
+            file_code, file_stdout, file_stderr = _run_command(file_cmd, watch_output=dest_path, known_total_size=total_size)
+            current_size = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
+            if file_code == 0:
+                break
+            if _should_retry_partial_download(file_code, file_stderr, file_stdout, current_size, total_size) and attempt_index < max_attempts - 1:
+                logger.debug(
+                    f"lolroms external partial transfer via {tool_kind}: tentative {attempt_index + 1} interrompue a {current_size}/{total_size or 0} octets, reprise"
+                )
+                continue
+            break
+
+        if file_code != 0:
+            if os.path.exists(dest_path):
+                current_size = os.path.getsize(dest_path)
+                if total_size > 0 and current_size >= total_size:
+                    logger.debug(f"lolroms external {tool_kind} returned code {file_code} but file size reached expected total ({current_size})")
+                else:
+                    _safe_remove_file(dest_path)
+            return False, f"lolroms external download failed via {tool_kind}: {file_stderr[:300].strip() or file_stdout[:300].strip() or 'unknown error'}"
+
+        if not os.path.exists(dest_path):
+            return False, f"lolroms external download failed via {tool_kind}: output file missing"
+        if _looks_like_html_or_challenge(dest_path):
+            _safe_remove_file(dest_path)
+            return False, f"lolroms external download via {tool_kind} returned HTML/challenge content"
+        if not _matches_expected_archive_signature(dest_path):
+            _safe_remove_file(dest_path)
+            return False, f"lolroms external download via {tool_kind} returned an invalid archive payload"
+        if total_size > 0 and progress_queue is not None and task_id:
+            final_size = os.path.getsize(dest_path)
+            progress_queue.put((task_id, final_size, max(total_size, final_size), 0.0))
+        return True, None
+    finally:
+        _safe_remove_file(parent_output)
+        _safe_remove_file(cookie_path)
 
 
 def _split_archive_org_path(url: str):
@@ -1571,17 +2069,25 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     local_size = os.path.getsize(dest_path)
                     logger.debug(f"Taille du fichier local: {local_size} octets")
                     
-                    # Essayer de récupérer la taille du serveur via HEAD request
+                    # Essayer de récupérer la taille du serveur
                     remote_size = None
-                    try:
-                        head_response = session.head(url, timeout=10, allow_redirects=True)
-                        if head_response.status_code == 200:
-                            content_length = head_response.headers.get('content-length')
-                            if content_length:
-                                remote_size = int(content_length)
-                                logger.debug(f"Taille du fichier serveur: {remote_size} octets")
-                    except Exception as e:
-                        logger.debug(f"Impossible de vérifier la taille serveur: {e}")
+                    if _is_lolroms_url(url):
+                        probed_size = _probe_lolroms_remote_size(url)
+                        if probed_size > 0:
+                            remote_size = probed_size
+                            logger.debug(f"Taille du fichier serveur via lolroms probe: {remote_size} octets")
+                        else:
+                            logger.warning("Impossible de vérifier la taille distante lolroms; le fichier local sera re-téléchargé par sécurité")
+                    else:
+                        try:
+                            head_response = session.head(url, timeout=10, allow_redirects=True)
+                            if head_response.status_code == 200:
+                                content_length = head_response.headers.get('content-length')
+                                if content_length:
+                                    remote_size = int(content_length)
+                                    logger.debug(f"Taille du fichier serveur: {remote_size} octets")
+                        except Exception as e:
+                            logger.debug(f"Impossible de vérifier la taille serveur: {e}")
                     
                     # Comparer les tailles si on a obtenu la taille distante
                     if remote_size is not None and local_size != remote_size:
@@ -1604,6 +2110,18 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                 logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
                             return
                         # Continuer le téléchargement normal (ne pas faire return)
+                    elif _is_lolroms_url(url):
+                        try:
+                            if os.path.exists(dest_path):
+                                os.remove(dest_path)
+                                logger.info(f"Fichier lolroms local non vérifiable supprimé: {dest_path}")
+                        except Exception as e:
+                            logger.error(f"Impossible de supprimer le fichier lolroms non vérifiable: {e}")
+                            result[0] = False
+                            result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
+                            with urls_lock:
+                                urls_in_progress.discard(url)
+                            return
                     else:
                         # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
                         logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
@@ -1654,22 +2172,33 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                         local_size = os.path.getsize(existing_path)
                                         logger.debug(f"Taille du fichier local (extension différente): {local_size} octets")
                                         
-                                        # Essayer de récupérer la taille du serveur via HEAD request
+                                        # Essayer de récupérer la taille du serveur
                                         remote_size = None
-                                        try:
-                                            head_response = session.head(url, timeout=10, allow_redirects=True)
-                                            if head_response.status_code == 200:
-                                                content_length = head_response.headers.get('content-length')
-                                                if content_length:
-                                                    remote_size = int(content_length)
-                                                    logger.debug(f"Taille du fichier serveur: {remote_size} octets")
-                                        except Exception as e:
-                                            logger.debug(f"Impossible de vérifier la taille serveur: {e}")
+                                        if _is_lolroms_url(url):
+                                            probed_size = _probe_lolroms_remote_size(url)
+                                            if probed_size > 0:
+                                                remote_size = probed_size
+                                                logger.debug(f"Taille du fichier serveur via lolroms probe: {remote_size} octets")
+                                            else:
+                                                logger.warning("Impossible de vérifier la taille distante lolroms (extension différente); re-téléchargement par sécurité")
+                                        else:
+                                            try:
+                                                head_response = session.head(url, timeout=10, allow_redirects=True)
+                                                if head_response.status_code == 200:
+                                                    content_length = head_response.headers.get('content-length')
+                                                    if content_length:
+                                                        remote_size = int(content_length)
+                                                        logger.debug(f"Taille du fichier serveur: {remote_size} octets")
+                                            except Exception as e:
+                                                logger.debug(f"Impossible de vérifier la taille serveur: {e}")
                                         
                                         # Comparer les tailles si on a obtenu la taille distante
                                         if remote_size is not None and local_size != remote_size:
                                             logger.warning(f"Taille mismatch (extension différente)! Local: {local_size}, Remote: {remote_size} - re-téléchargement")
                                             # Continuer le téléchargement normal
+                                            break
+                                        elif _is_lolroms_url(url):
+                                            logger.info(f"Fichier lolroms avec extension différente non vérifiable, re-téléchargement forcé: {existing_path}")
                                             break
                                         else:
                                             # Les tailles correspondent, fichier complet
@@ -1705,321 +2234,342 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         except Exception as e:
                             logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
             
-                download_headers = headers.copy()
-                download_headers['Accept'] = 'application/octet-stream, */*'
-                download_headers['Referer'] = 'https://myrient.erista.me/'
-                archive_cookie = load_archive_org_cookie()
-                archive_alt_urls = []
-                meta_json = None
+                external_lolroms_downloaded = False
+                total_size = 0
 
-            if torrent_meta is None:
-                # Préparation spécifique archive.org : normaliser URL + récupérer cookies/metadata
-                if 'archive.org/download/' in url:
-                    try:
-                        parsed = urllib.parse.urlsplit(url)
-                        parts = parsed.path.split('/download/', 1)
-                        pre_id = None
-                        rest_decoded = None
-                        if len(parts) == 2:
-                            after = parts[1]
-                            pre_id = after.split('/', 1)[0]
-                            rest = after[len(pre_id):]
-                            if rest.startswith('/'):
-                                rest = rest[1:]
-                            rest_decoded = urllib.parse.unquote(rest)
-                            rest_encoded = urllib.parse.quote(rest_decoded, safe='/') if rest_decoded else ''
-                            new_path = f"/download/{pre_id}/" + rest_encoded
-                            url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, new_path, parsed.query, parsed.fragment))
-                            logger.debug(f"URL archive.org normalisée: {url}")
-                        if not pre_id:
-                            pre_id = url.split('/download/')[1].split('/')[0]
-
-                        download_headers['Referer'] = f"https://archive.org/details/{pre_id}"
-                        download_headers['Origin'] = 'https://archive.org'
-                        if archive_cookie:
-                            download_headers['Cookie'] = archive_cookie
-                        if archive_cookie:
-                            # Apply cookie to session for redirects to ia*.us.archive.org
-                            for pair in archive_cookie.split(';'):
-                                if '=' in pair:
-                                    name, value = pair.split('=', 1)
-                                    session.cookies.set(name.strip(), value.strip(), domain='.archive.org')
-
-                        session.get('https://archive.org/robots.txt', timeout=20, headers={'Cookie': archive_cookie} if archive_cookie else None)
-                        meta_resp = session.get(f'https://archive.org/metadata/{pre_id}', timeout=20, headers={'Cookie': archive_cookie} if archive_cookie else None)
-                        if meta_resp.status_code == 200:
-                            try:
-                                meta_json = meta_resp.json()
-                            except Exception:
-                                meta_json = None
-                        logger.debug(f"Pré-chargement cookies/metadata archive.org pour {pre_id}")
-
-                        # Construire des URLs alternatives pour archive interne
-                        identifier, archive_name, inner_path = _split_archive_org_path(url)
-                        if identifier and archive_name and inner_path:
-                            # Variante sans préfixe archive
-                            archive_alt_urls.append(f"https://archive.org/download/{identifier}/" + urllib.parse.quote(inner_path, safe='/'))
-                            # Variante filename
-                            archive_alt_urls.append(f"https://archive.org/download/{identifier}/{archive_name}?filename=" + urllib.parse.quote(inner_path, safe='/'))
-                            # Variante view_archive.php via serveur/dir metadata
-                            if meta_json:
-                                server = meta_json.get('server')
-                                directory = meta_json.get('dir')
-                                if server and directory:
-                                    archive_path = f"{directory}/{archive_name}"
-                                    view_url = f"https://{server}/view_archive.php?archive=" + urllib.parse.quote(archive_path, safe='/') + "&file=" + urllib.parse.quote(inner_path, safe='/')
-                                    # Prioriser view_archive.php (cas valide observe dans le navigateur)
-                                    archive_alt_urls.insert(0, view_url)
-                    except Exception as e:
-                        logger.debug(f"Pré-chargement archive.org ignoré: {e}")
-                
-                # Initialiser la progression pour afficher les tentatives
-                if url not in config.download_progress:
-                    config.download_progress[url] = {
-                        "downloaded_size": 0,
-                        "total_size": 0,
-                        "status": "Connecting",
-                        "progress_percent": 0,
-                        "speed": 0,
-                        "game_name": game_name,
-                        "platform": platform
-                    }
-                # Plus besoin d'update_web_progress - history.json est mis à jour automatiquement
-                
-                # Tentatives multiples avec variations d'en-têtes pour contourner certains 401/403 (archive.org / hotlink protection)
-                header_variants = [
-                    download_headers,
-                    {  # Variante sans Referer spécifique
-                        'User-Agent': headers.get('User-Agent', download_headers.get('User-Agent', 'Mozilla/5.0')),
-                        'Accept': 'application/octet-stream,*/*;q=0.8',
-                        'Accept-Language': headers.get('Accept-Language', 'en-US,en;q=0.5'),
-                        'Connection': 'keep-alive',
-                        **({'Cookie': archive_cookie} if archive_cookie else {})
-                    },
-                    {  # Variante minimaliste type curl
-                        'User-Agent': 'curl/8.4.0',
-                        'Accept': '*/*',
-                        **({'Cookie': archive_cookie} if archive_cookie else {})
-                    },
-                    {  # Variante avec Referer archive.org
-                        'User-Agent': headers.get('User-Agent', download_headers.get('User-Agent', 'Mozilla/5.0')),
-                        'Accept': '*/*',
-                        'Referer': 'https://archive.org/',
-                        **({'Cookie': archive_cookie} if archive_cookie else {})
-                    }
-                ]
-                response = None
-                last_status = None
-                last_error = None
-                last_error_type = None
-                
-                for attempt, hv in enumerate(header_variants, start=1):
-                    try:
-                        # Mettre à jour la progression pour afficher la tentative en cours
+                if _is_lolroms_url(url):
+                    if url not in config.download_progress:
+                        config.download_progress[url] = {
+                            "downloaded_size": 0,
+                            "total_size": 0,
+                            "status": "Connecting",
+                            "progress_percent": 0,
+                            "speed": 0,
+                            "game_name": game_name,
+                            "platform": platform
+                        }
+                    if url in config.download_progress:
+                        config.download_progress[url]["status"] = "lolroms external"
+                        config.needs_redraw = True
+                    external_success, external_message = _download_lolroms_with_external_tool(
+                        url,
+                        dest_path,
+                        task_id,
+                        cancel_ev=cancel_ev,
+                        progress_queue=progress_queues.get(task_id),
+                    )
+                    if external_success is True:
+                        external_lolroms_downloaded = True
+                        total_size = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
                         if url in config.download_progress:
-                            config.download_progress[url]["status"] = f"Try {attempt}/{len(header_variants)}"
-                            config.download_progress[url]["progress_percent"] = 0
-                            config.needs_redraw = True
-                        
-                        logger.debug(f"Tentative téléchargement {attempt}/{len(header_variants)} avec headers: {_redact_headers(hv)}")
-                        # Timeout plus long pour archive.org, avec tuple (connect_timeout, read_timeout)
-                        timeout_val = (60, 90) if 'archive.org' in url else 30
-                        r = session.get(url, stream=True, timeout=timeout_val, allow_redirects=True, headers=hv)
-                        last_status = r.status_code
-                        logger.debug(f"Status code tentative {attempt}: {r.status_code}")
-                        if r.status_code in (401, 403):
-                            # Lire un petit bout pour voir si message utile
-                            try:
-                                snippet = r.text[:200]
-                                logger.debug(f"Réponse {r.status_code} snippet: {snippet}")
-                            except Exception:
-                                pass
-                            continue  # Essayer variante suivante
-                        r.raise_for_status()
-                        response = r
-                        break
-                    except requests.Timeout as e:
-                        last_error = str(e)
-                        last_error_type = "timeout"
-                        logger.debug(f"Timeout tentative {attempt}: {e}")
-                    except requests.ConnectionError as e:
-                        last_error = str(e)
-                        last_error_type = "connection"
-                        logger.debug(f"Erreur connexion tentative {attempt}: {e}")
-                    except requests.HTTPError as e:
-                        last_error = str(e)
-                        last_error_type = "http"
-                        logger.debug(f"Erreur HTTP tentative {attempt}: {e}")
-                        # Si ce n'est pas une erreur auth explicite et qu'on a un code => on sort
-                        if last_status not in (401, 403):
-                            break
-                    except requests.RequestException as e:
-                        last_error = str(e)
-                        last_error_type = "request"
-                        logger.debug(f"Erreur requête tentative {attempt}: {e}")
-                        # Si ce n'est pas une erreur auth explicite et qu'on a un code => on sort
-                        if isinstance(e, requests.HTTPError) and last_status not in (401, 403):
-                            break
-                        # Délai entre tentatives pour archive.org (éviter saturation)
-                        if 'archive.org' in url and attempt < len(header_variants):
-                            time.sleep(2)
-                
-                if response is None:
-                    if archive_alt_urls and (last_status in (401, 403) or last_error_type in ("timeout", "connection", "request")):
-                        for alt_url in archive_alt_urls:
-                            try:
-                                timeout_val = (45, 90)
-                                logger.debug(f"Tentative archive.org alt URL: {alt_url}")
-                                alt_headers = download_headers.copy()
-                                try:
-                                    alt_host = urllib.parse.urlsplit(alt_url).netloc
-                                    if alt_host.startswith("ia") and alt_host.endswith(".archive.org"):
-                                        alt_headers["Referer"] = f"https://{alt_host}/"
-                                        alt_headers["Origin"] = "https://archive.org"
-                                except Exception:
-                                    pass
-                                r = session.get(alt_url, stream=True, timeout=timeout_val, allow_redirects=True, headers=alt_headers)
-                                if r.status_code not in (401, 403):
-                                    r.raise_for_status()
-                                    response = r
-                                    url = alt_url
+                            config.download_progress[url]["downloaded_size"] = total_size
+                            config.download_progress[url]["total_size"] = total_size
+                            config.download_progress[url]["progress_percent"] = 100
+                            config.download_progress[url]["status"] = "Completed"
+                        if isinstance(config.history, list):
+                            for entry in config.history:
+                                if "url" in entry and entry["url"] == url:
+                                    entry["total_size"] = total_size
+                                    save_history(config.history)
                                     break
-                            except Exception as e:
-                                logger.debug(f"Alt URL archive.org échec: {e}")
-                    # Fallback metadata archive.org pour message clair
+                        logger.info(f"Téléchargement lolroms terminé via outil externe: {dest_path}")
+                    elif external_success is False:
+                        raise requests.HTTPError(external_message or "lolroms external download failed")
+
+                if not external_lolroms_downloaded:
+                    download_headers = headers.copy()
+                    download_headers['Accept'] = 'application/octet-stream, */*'
+                    default_referer = _default_referer_for_url(url)
+                    if default_referer:
+                        download_headers['Referer'] = default_referer
+                    archive_cookie = load_archive_org_cookie()
+                    archive_alt_urls = []
+                    meta_json = None
+
                     if 'archive.org/download/' in url:
                         try:
-                            identifier = url.split('/download/')[1].split('/')[0]
-                            if meta_json is None:
-                                meta_resp = session.get(f'https://archive.org/metadata/{identifier}', timeout=30)
-                                if meta_resp.status_code == 200:
-                                    meta_json = meta_resp.json()
-                            if meta_json:
-                                if meta_json.get('is_dark'):
-                                    raise requests.HTTPError(f"Item archive.org restreint (is_dark=true): {identifier}")
-                                if not meta_json.get('files'):
-                                    raise requests.HTTPError(f"Item archive.org sans fichiers listés: {identifier}")
-                                # Fichier peut avoir un nom différent : informer
-                                available = [f.get('name') for f in meta_json.get('files', [])][:10]
-                                raise requests.HTTPError(f"Accès refusé (HTTP {last_status}). Fichiers disponibles exemples: {available}")
-                            else:
-                                raise requests.HTTPError(f"HTTP {last_status} & metadata indisponible pour {identifier}")
-                        except requests.HTTPError:
-                            raise
-                        except Exception as e:
-                            raise requests.HTTPError(f"HTTP {last_status} après variations; metadata échec: {e}")
-                    
-                    # Construire un message d'erreur détaillé et traduit
-                    error_msg = None
-                    if last_status:
-                        # Erreurs HTTP avec codes spécifiques
-                        if last_status == 401:
-                            error_msg = _("network_auth_required").format(last_status) if _ else f"Authentication required (HTTP {last_status})"
-                        elif last_status == 403:
-                            error_msg = _("network_access_denied").format(last_status) if _ else f"Access denied (HTTP {last_status})"
-                        elif last_status >= 500:
-                            error_msg = _("network_server_error").format(last_status) if _ else f"Server error (HTTP {last_status})"
-                        else:
-                            error_msg = _("network_http_error").format(last_status) if _ else f"HTTP error {last_status}"
-                    elif last_error_type == "timeout":
-                        error_msg = _("network_timeout_error") if _ else "Connection timeout"
-                    elif last_error_type == "connection":
-                        error_msg = _("network_connection_error") if _ else "Network connection error"
-                    else:
-                        error_msg = _("network_no_response") if _ else "No response from server"
-                    
-                    # Ajouter le nombre de tentatives
-                    attempts_count = len(header_variants)
-                    full_error_msg = _("network_connection_failed").format(attempts_count) if _ else f"Connection failed after {attempts_count} attempts"
-                    full_error_msg += f" - {error_msg}"
-                    
-                    # Ajouter les détails techniques en log
-                    if last_error:
-                        logger.error(f"Détails de l'erreur: {last_error}")
-                    
-                    raise requests.HTTPError(full_error_msg)
-                
-                # Mettre à jour le statut: connexion réussie, début du téléchargement
-                if url in config.download_progress:
-                    config.download_progress[url]["status"] = "Downloading"
-                    config.needs_redraw = True
-                
-                total_size = int(response.headers.get('content-length', 0))
-                logger.debug(f"Taille totale: {total_size} octets")
-                if isinstance(config.history, list):
-                    for entry in config.history:
-                        if "url" in entry and entry["url"] == url:
-                            entry["total_size"] = total_size  # Ajouter la taille totale
-                            save_history(config.history)
-                            break
-                
-                # Initialiser la progression avec task_id
-                progress_queues[task_id].put((task_id, 0, total_size))
-                logger.debug(f"Progression initiale envoyée: 0% pour {game_name}, task_id={task_id}")
-                
-                downloaded = 0
-                chunk_size = 4096
-                last_update_time = time.time()
-                last_downloaded = 0
-                update_interval = 0.1  # Mettre à jour toutes les 0,1 secondes
-                download_canceled = False
-                with open(dest_path, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=chunk_size):
-                        # Vérifier la pause (dynamiquement car l'événement peut être créé après le début)
-                        while True:
-                            pause_ev = pause_events.get(task_id)
-                            if pause_ev is None or not pause_ev.is_set():
-                                break  # Pas en pause, continuer le téléchargement
-                            if cancel_ev is not None and cancel_ev.is_set():
-                                break  # Sortir de la boucle de pause si annulation demandée
-                            time.sleep(0.1)  # Attendre en pause
-                        
-                        if cancel_ev is not None and cancel_ev.is_set():
-                            logger.debug(f"Annulation détectée, arrêt du téléchargement pour task_id={task_id}")
-                            result[0] = False
-                            result[1] = _("download_canceled") if _ else "Download canceled"
-                            download_canceled = True
-                            try:
-                                f.close()
-                            except Exception:
-                                pass
-                            try:
-                                if os.path.exists(dest_path):
-                                    os.remove(dest_path)
-                            except Exception:
-                                pass
-                            break
-                        if chunk:
-                            size_received = len(chunk)
-                            f.write(chunk)
-                            downloaded += size_received
-                            current_time = time.time()
-                            if current_time - last_update_time >= update_interval:
-                                # Calcul de la vitesse en Mo/s
-                                delta = downloaded - last_downloaded
-                                speed = delta / (current_time - last_update_time) / (1024 * 1024)
-                                last_downloaded = downloaded
-                                last_update_time = current_time
-                                progress_queues[task_id].put((task_id, downloaded, total_size, speed))
-                
-                # Forcer une dernière mise à jour de progression pour les petits fichiers
-                # (au cas où aucune mise à jour n'a été envoyée pendant la boucle)
-                if downloaded > 0 and downloaded != last_downloaded:
-                    current_time = time.time()
-                    delta = downloaded - last_downloaded
-                    elapsed = current_time - last_update_time
-                    speed = delta / elapsed / (1024 * 1024) if elapsed > 0 else 0
-                    progress_queues[task_id].put((task_id, downloaded, total_size, speed))
-                    logger.debug(f"Mise à jour finale de progression: {downloaded}/{total_size} octets")
+                            parsed = urllib.parse.urlsplit(url)
+                            parts = parsed.path.split('/download/', 1)
+                            pre_id = None
+                            rest_decoded = None
+                            if len(parts) == 2:
+                                after = parts[1]
+                                pre_id = after.split('/', 1)[0]
+                                rest = after[len(pre_id):]
+                                if rest.startswith('/'):
+                                    rest = rest[1:]
+                                rest_decoded = urllib.parse.unquote(rest)
+                                rest_encoded = urllib.parse.quote(rest_decoded, safe='/') if rest_decoded else ''
+                                new_path = f"/download/{pre_id}/" + rest_encoded
+                                url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, new_path, parsed.query, parsed.fragment))
+                                logger.debug(f"URL archive.org normalisée: {url}")
+                            if not pre_id:
+                                pre_id = url.split('/download/')[1].split('/')[0]
 
-                # Si annulé, ne pas continuer avec extraction
-                if download_canceled:
-                    # Libérer le slot de la queue
-                    try:
-                        notify_download_finished()
-                    except Exception:
-                        pass
-                    return
+                            download_headers['Referer'] = f"https://archive.org/details/{pre_id}"
+                            download_headers['Origin'] = 'https://archive.org'
+                            if archive_cookie:
+                                download_headers['Cookie'] = archive_cookie
+                            if archive_cookie:
+                                for pair in archive_cookie.split(';'):
+                                    if '=' in pair:
+                                        name, value = pair.split('=', 1)
+                                        session.cookies.set(name.strip(), value.strip(), domain='.archive.org')
+
+                            session.get('https://archive.org/robots.txt', timeout=20, headers={'Cookie': archive_cookie} if archive_cookie else None)
+                            meta_resp = session.get(f'https://archive.org/metadata/{pre_id}', timeout=20, headers={'Cookie': archive_cookie} if archive_cookie else None)
+                            if meta_resp.status_code == 200:
+                                try:
+                                    meta_json = meta_resp.json()
+                                except Exception:
+                                    meta_json = None
+                            logger.debug(f"Pré-chargement cookies/metadata archive.org pour {pre_id}")
+
+                            identifier, archive_name, inner_path = _split_archive_org_path(url)
+                            if identifier and archive_name and inner_path:
+                                archive_alt_urls.append(f"https://archive.org/download/{identifier}/" + urllib.parse.quote(inner_path, safe='/'))
+                                archive_alt_urls.append(f"https://archive.org/download/{identifier}/{archive_name}?filename=" + urllib.parse.quote(inner_path, safe='/'))
+                                if meta_json:
+                                    server = meta_json.get('server')
+                                    directory = meta_json.get('dir')
+                                    if server and directory:
+                                        archive_path = f"{directory}/{archive_name}"
+                                        view_url = f"https://{server}/view_archive.php?archive=" + urllib.parse.quote(archive_path, safe='/') + "&file=" + urllib.parse.quote(inner_path, safe='/')
+                                        archive_alt_urls.insert(0, view_url)
+                        except Exception as e:
+                            logger.debug(f"Pré-chargement archive.org ignoré: {e}")
+
+                    if url not in config.download_progress:
+                        config.download_progress[url] = {
+                            "downloaded_size": 0,
+                            "total_size": 0,
+                            "status": "Connecting",
+                            "progress_percent": 0,
+                            "speed": 0,
+                            "game_name": game_name,
+                            "platform": platform
+                        }
+
+                    header_variants = [download_headers]
+                    if 'archive.org' in url:
+                        header_variants.extend([
+                            {
+                                'User-Agent': headers.get('User-Agent', download_headers.get('User-Agent', 'Mozilla/5.0')),
+                                'Accept': 'application/octet-stream,*/*;q=0.8',
+                                'Accept-Language': headers.get('Accept-Language', 'en-US,en;q=0.5'),
+                                'Connection': 'keep-alive',
+                                **({'Cookie': archive_cookie} if archive_cookie else {})
+                            },
+                            {
+                                'User-Agent': headers.get('User-Agent', download_headers.get('User-Agent', 'Mozilla/5.0')),
+                                'Accept': '*/*',
+                                'Referer': 'https://archive.org/',
+                                **({'Cookie': archive_cookie} if archive_cookie else {})
+                            }
+                        ])
+
+                    response = None
+                    last_status = None
+                    last_error = None
+                    last_error_type = None
+                    browser_challenge_detected = False
+
+                    for attempt, hv in enumerate(header_variants, start=1):
+                        try:
+                            if url in config.download_progress:
+                                config.download_progress[url]["status"] = f"Try {attempt}/{len(header_variants)}"
+                                config.download_progress[url]["progress_percent"] = 0
+                                config.needs_redraw = True
+
+                            logger.debug(f"Tentative téléchargement {attempt}/{len(header_variants)} avec headers: {_redact_headers(hv)}")
+                            timeout_val = (60, 90) if 'archive.org' in url else 30
+                            r = session.get(url, stream=True, timeout=timeout_val, allow_redirects=True, headers=hv)
+                            last_status = r.status_code
+                            logger.debug(f"Status code tentative {attempt}: {r.status_code}")
+                            if _is_browser_challenge_response(r):
+                                browser_challenge_detected = True
+                                try:
+                                    snippet = r.text[:200]
+                                    logger.debug(f"Challenge navigateur detecte tentative {attempt}: {snippet}")
+                                except Exception:
+                                    pass
+                                break
+                            if r.status_code in (401, 403):
+                                try:
+                                    snippet = r.text[:200]
+                                    logger.debug(f"Réponse {r.status_code} snippet: {snippet}")
+                                except Exception:
+                                    pass
+                                continue
+                            r.raise_for_status()
+                            response = r
+                            break
+                        except requests.Timeout as e:
+                            last_error = str(e)
+                            last_error_type = "timeout"
+                            logger.debug(f"Timeout tentative {attempt}: {e}")
+                        except requests.ConnectionError as e:
+                            last_error = str(e)
+                            last_error_type = "connection"
+                            logger.debug(f"Erreur connexion tentative {attempt}: {e}")
+                        except requests.HTTPError as e:
+                            last_error = str(e)
+                            last_error_type = "http"
+                            logger.debug(f"Erreur HTTP tentative {attempt}: {e}")
+                            if last_status not in (401, 403):
+                                break
+                        except requests.RequestException as e:
+                            last_error = str(e)
+                            last_error_type = "request"
+                            logger.debug(f"Erreur requête tentative {attempt}: {e}")
+                            if isinstance(e, requests.HTTPError) and last_status not in (401, 403):
+                                break
+                            if 'archive.org' in url and attempt < len(header_variants):
+                                time.sleep(2)
+
+                    if response is None:
+                        if browser_challenge_detected:
+                            raise requests.HTTPError(
+                                "Access blocked by a browser challenge on the source host. This source requires an interactive browser session and cannot be downloaded by the embedded Python client."
+                            )
+                        if archive_alt_urls and (last_status in (401, 403) or last_error_type in ("timeout", "connection", "request")):
+                            for alt_url in archive_alt_urls:
+                                try:
+                                    timeout_val = (45, 90)
+                                    logger.debug(f"Tentative archive.org alt URL: {alt_url}")
+                                    alt_headers = download_headers.copy()
+                                    try:
+                                        alt_host = urllib.parse.urlsplit(alt_url).netloc
+                                        if alt_host.startswith("ia") and alt_host.endswith(".archive.org"):
+                                            alt_headers["Referer"] = f"https://{alt_host}/"
+                                            alt_headers["Origin"] = "https://archive.org"
+                                    except Exception:
+                                        pass
+                                    r = session.get(alt_url, stream=True, timeout=timeout_val, allow_redirects=True, headers=alt_headers)
+                                    if r.status_code not in (401, 403):
+                                        r.raise_for_status()
+                                        response = r
+                                        url = alt_url
+                                        break
+                                except Exception as e:
+                                    logger.debug(f"Alt URL archive.org échec: {e}")
+                        if response is None and 'archive.org/download/' in url:
+                            try:
+                                identifier = url.split('/download/')[1].split('/')[0]
+                                if meta_json is None:
+                                    meta_resp = session.get(f'https://archive.org/metadata/{identifier}', timeout=30)
+                                    if meta_resp.status_code == 200:
+                                        meta_json = meta_resp.json()
+                                if meta_json:
+                                    if meta_json.get('is_dark'):
+                                        raise requests.HTTPError(f"Item archive.org restreint (is_dark=true): {identifier}")
+                                    if not meta_json.get('files'):
+                                        raise requests.HTTPError(f"Item archive.org sans fichiers listés: {identifier}")
+                                    available = [f.get('name') for f in meta_json.get('files', [])][:10]
+                                    raise requests.HTTPError(f"Accès refusé (HTTP {last_status}). Fichiers disponibles exemples: {available}")
+                                raise requests.HTTPError(f"HTTP {last_status} & metadata indisponible pour {identifier}")
+                            except requests.HTTPError:
+                                raise
+                            except Exception as e:
+                                raise requests.HTTPError(f"HTTP {last_status} après variations; metadata échec: {e}")
+
+                        error_msg = None
+                        if last_status:
+                            if last_status == 401:
+                                error_msg = _("network_auth_required").format(last_status) if _ else f"Authentication required (HTTP {last_status})"
+                            elif last_status == 403:
+                                error_msg = _("network_access_denied").format(last_status) if _ else f"Access denied (HTTP {last_status})"
+                            elif last_status >= 500:
+                                error_msg = _("network_server_error").format(last_status) if _ else f"Server error (HTTP {last_status})"
+                            else:
+                                error_msg = _("network_http_error").format(last_status) if _ else f"HTTP error {last_status}"
+                        elif last_error_type == "timeout":
+                            error_msg = _("network_timeout_error") if _ else "Connection timeout"
+                        elif last_error_type == "connection":
+                            error_msg = _("network_connection_error") if _ else "Network connection error"
+                        else:
+                            error_msg = _("network_no_response") if _ else "No response from server"
+
+                        attempts_count = len(header_variants)
+                        full_error_msg = _("network_connection_failed").format(attempts_count) if _ else f"Connection failed after {attempts_count} attempts"
+                        full_error_msg += f" - {error_msg}"
+                        if last_error:
+                            logger.error(f"Détails de l'erreur: {last_error}")
+                        raise requests.HTTPError(full_error_msg)
+
+                    if url in config.download_progress:
+                        config.download_progress[url]["status"] = "Downloading"
+                        config.needs_redraw = True
+
+                    total_size = int(response.headers.get('content-length', 0))
+                    logger.debug(f"Taille totale: {total_size} octets")
+                    if isinstance(config.history, list):
+                        for entry in config.history:
+                            if "url" in entry and entry["url"] == url:
+                                entry["total_size"] = total_size
+                                save_history(config.history)
+                                break
+
+                    progress_queues[task_id].put((task_id, 0, total_size))
+                    logger.debug(f"Progression initiale envoyée: 0% pour {game_name}, task_id={task_id}")
+
+                    downloaded = 0
+                    chunk_size = 4096
+                    last_update_time = time.time()
+                    last_downloaded = 0
+                    update_interval = 0.1
+                    download_canceled = False
+                    with open(dest_path, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=chunk_size):
+                            while True:
+                                pause_ev = pause_events.get(task_id)
+                                if pause_ev is None or not pause_ev.is_set():
+                                    break
+                                if cancel_ev is not None and cancel_ev.is_set():
+                                    break
+                                time.sleep(0.1)
+
+                            if cancel_ev is not None and cancel_ev.is_set():
+                                logger.debug(f"Annulation détectée, arrêt du téléchargement pour task_id={task_id}")
+                                result[0] = False
+                                result[1] = _("download_canceled") if _ else "Download canceled"
+                                download_canceled = True
+                                try:
+                                    f.close()
+                                except Exception:
+                                    pass
+                                try:
+                                    if os.path.exists(dest_path):
+                                        os.remove(dest_path)
+                                except Exception:
+                                    pass
+                                break
+                            if chunk:
+                                size_received = len(chunk)
+                                f.write(chunk)
+                                downloaded += size_received
+                                current_time = time.time()
+                                if current_time - last_update_time >= update_interval:
+                                    delta = downloaded - last_downloaded
+                                    speed = delta / (current_time - last_update_time) / (1024 * 1024)
+                                    last_downloaded = downloaded
+                                    last_update_time = current_time
+                                    progress_queues[task_id].put((task_id, downloaded, total_size, speed))
+
+                    if downloaded > 0 and downloaded != last_downloaded:
+                        current_time = time.time()
+                        delta = downloaded - last_downloaded
+                        elapsed = current_time - last_update_time
+                        speed = delta / elapsed / (1024 * 1024) if elapsed > 0 else 0
+                        progress_queues[task_id].put((task_id, downloaded, total_size, speed))
+                        logger.debug(f"Mise à jour finale de progression: {downloaded}/{total_size} octets")
+
+                    if download_canceled:
+                        try:
+                            notify_download_finished()
+                        except Exception:
+                            pass
+                        return
             
             os.chmod(dest_path, 0o644)
             logger.debug(f"Téléchargement terminé: {dest_path}")
@@ -2051,19 +2601,23 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
 
             if force_extract:
                 logger.debug(f"Extraction automatique nécessaire pour {dest_path}")
+                if url in config.download_progress:
+                    config.download_progress[url]["status"] = "Extracting"
+                    config.download_progress[url]["progress_percent"] = 0
+                    config.download_progress[url]["downloaded_size"] = 0
+                    config.needs_redraw = True
+                if isinstance(config.history, list):
+                    for entry in config.history:
+                        if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement"]:
+                            entry["status"] = "Extracting"
+                            entry["progress"] = 0
+                            entry["message"] = "Préparation de l'extraction..."
+                            save_history(config.history)
+                            config.needs_redraw = True
+                            break
                 extension = os.path.splitext(dest_path)[1].lower()
                 if extension == ".zip":
                     try:
-                        if isinstance(config.history, list):
-                            for entry in config.history:
-                                if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement"]:
-                                    entry["status"] = "Extracting"
-                                    entry["progress"] = 0
-                                    entry["message"] = "Préparation de l'extraction..."
-                                    save_history(config.history)
-                                    config.needs_redraw = True
-                                    break
-                        
                         success, msg = extract_zip(dest_path, dest_dir, url)
                         if success:
                             logger.debug(f"Extraction ZIP réussie: {msg}")
@@ -2158,8 +2712,9 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         if isinstance(config.history, list):
                             for entry in config.history:
                                 if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement", "Extracting", "Converting"]:
+                                    current_progress = int(entry.get("progress", 0) or 0)
                                     entry["status"] = "Download_OK" if success else "Erreur"
-                                    entry["progress"] = 100 if success else 0
+                                    entry["progress"] = 100 if success else current_progress
                                     entry["message"] = message
                                     save_history(config.history)
                                     # Marquer le jeu comme téléchargé si succès
@@ -2203,12 +2758,11 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     entry["speed"] = speed
                                     entry["progress"] = progress_percent
                                     entry["status"] = "Téléchargement"
+                                    config.needs_redraw = True
                                     # Sauvegarder toutes les 5% pour éviter trop d'I/O
                                     if progress_percent % 5 == 0 or progress_percent >= 99:
                                         save_history(config.history)
                                     break
-                                    config.needs_redraw = True
-                                    break           
             await asyncio.sleep(0.1)
         except Exception as e:
             logger.error(f"Erreur mise à jour progression: {str(e)}")
@@ -2458,6 +3012,12 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 logger.error(f"Pas de permission d'écriture dans {dest_dir}")
                 raise PermissionError(f"Pas de permission d'écriture dans {dest_dir}")
 
+            final_url = None
+            filename = game_name
+            provider_download_session = requests.Session()
+            provider_download_headers = _build_browser_download_headers()
+            provider_download_session.headers.update(provider_download_headers)
+
             # Choisir la stratégie d'accès: 1fichier direct via API, sinon AllDebrid pour débrider
             if config.API_KEY_1FICHIER:
                 logger.debug("Mode téléchargement sélectionné: 1fichier (API directe)")
@@ -2687,8 +3247,6 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 provider_used = '1F'
                 _set_provider_in_history(provider_used)
             else:
-                final_url = None
-                filename = None
                 # Tentative AllDebrid
                 if getattr(config, 'API_KEY_ALLDEBRID', ''):
                     logger.debug("Mode téléchargement sélectionné: AllDebrid (fallback 1)")
@@ -3023,10 +3581,6 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 sanitized_filename = sanitize_filename(filename)
                 dest_path = os.path.join(dest_dir, sanitized_filename)
 
-                provider_download_session = requests.Session()
-                provider_download_headers = _build_browser_download_headers()
-                provider_download_session.headers.update(provider_download_headers)
-                
                 # Essayer de récupérer la taille du serveur via HEAD request
                 remote_size = None
                 try:
@@ -3255,11 +3809,18 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     
                     if force_extract:
                         with lock:
+                            if url in config.download_progress:
+                                config.download_progress[url]["status"] = "Extracting"
+                                config.download_progress[url]["progress_percent"] = 0
+                                config.download_progress[url]["downloaded_size"] = 0
+                                config.needs_redraw = True
                             if isinstance(config.history, list):
                                 for entry in config.history:
-                                    if "url" in entry and entry["url"] == url and entry["status"] == "Téléchargement":
+                                    if "url" in entry and entry["url"] == url and entry["status"] in ["Téléchargement", "Downloading"]:
                                         entry["progress"] = 0
                                         entry["status"] = "Extracting"
+                                        entry["message"] = "Préparation de l'extraction..."
+                                        save_history(config.history)
                                         config.needs_redraw = True
                                         break
                         extension = os.path.splitext(dest_path)[1].lower()
@@ -3336,6 +3897,10 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             logger.error(f"Erreur API 1fichier: {e}")
             result[0] = False
             result[1] = _("network_api_error").format(str(e))
+        except Exception as e:
+            logger.error(f"Erreur inattendue téléchargement 1fichier: {e}", exc_info=True)
+            result[0] = False
+            result[1] = _("network_download_error").format(game_name, str(e))
 
         finally:
             logger.debug(f"Thread téléchargement 1fichier terminé pour {url}, task_id={task_id}")

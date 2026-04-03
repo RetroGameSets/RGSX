@@ -19,6 +19,8 @@ from utils import (
     restart_application, generate_support_zip, load_sources,
     ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string,
     start_connection_status_check, get_clean_display_name, get_existing_history_matches,
+    clear_torrent_manifest_cache,
+    clear_platform_game_count_cache,
     move_files_to_directory, parse_torrent_download_url
 )
 from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games
@@ -2880,6 +2882,8 @@ def handle_controls(event, sources, joystick, screen):
                                 shutil.rmtree(config.GAMES_FOLDER)
                             if os.path.exists(config.IMAGES_FOLDER):
                                 shutil.rmtree(config.IMAGES_FOLDER)
+                            clear_torrent_manifest_cache()
+                            clear_platform_game_count_cache()
                             # Mettre à jour la date
                             from rgsx_settings import set_last_gamelist_update
                             set_last_gamelist_update()
@@ -3225,6 +3229,8 @@ def handle_controls(event, sources, joystick, screen):
                             if os.path.exists(config.IMAGES_FOLDER):
                                 shutil.rmtree(config.IMAGES_FOLDER)
                                 logger.debug("Dossier images supprimé avec succès")
+                            clear_torrent_manifest_cache()
+                            clear_platform_game_count_cache()
                             # Mettre à jour la date de dernière mise à jour
                             from rgsx_settings import set_last_gamelist_update
                             set_last_gamelist_update()
