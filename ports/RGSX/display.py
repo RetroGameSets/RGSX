@@ -12,7 +12,8 @@ from utils import (truncate_text_middle, wrap_text, load_system_image, truncate_
                    check_web_service_status, check_custom_dns_status, load_api_keys,
                    _get_dest_folder_name, find_file_with_or_without_extension, find_matching_files,
                    get_connection_status_targets, get_connection_status_snapshot,
-                   get_clean_display_name, get_existing_history_matches)
+                   get_clean_display_name, get_existing_history_matches,
+                   sort_games_list)
 import logging
 import math
 from history import load_history, is_game_downloaded  
@@ -1872,7 +1873,10 @@ def draw_game_list(screen):
         ...
 
     if config.game_filter_obj and config.game_filter_obj.is_active() and not config.search_query:
-        config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+        config.filtered_games = sort_games_list(
+            config.game_filter_obj.apply_filters(config.games),
+            getattr(config, 'global_sort_option', 'name_asc'),
+        )
 
     games = config.filtered_games if config.filter_active or config.search_mode else config.games
     game_count = len(games)
@@ -5859,8 +5863,8 @@ def draw_global_sort_menu(screen):
     options = [
         _("web_sort_name_asc") if _ else "A-Z (Nom)",
         _("web_sort_name_desc") if _ else "Z-A (Nom)",
-        _("web_sort_size_asc") if _ else "Taille +- (Petit d'abord)",
-        _("web_sort_size_desc") if _ else "Taille -+ (Grand d'abord)",
+        _("web_sort_size_asc") if _ else "Taille -+ (Petit d'abord)",
+        _("web_sort_size_desc") if _ else "Taille +- (Grand d'abord)",
         _("menu_back") if _ else "Retour",
     ]
 

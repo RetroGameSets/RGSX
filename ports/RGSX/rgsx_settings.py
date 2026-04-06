@@ -85,6 +85,7 @@ def load_rgsx_settings():
     "web_service_at_boot": False,
     "last_gamelist_update": None,
     "last_gamelist_prompt_remote_update": None,
+    "global_sort_option": "name_asc",
     "platform_custom_paths": {}  # Chemins personnalisés par plateforme
     }
     
@@ -602,6 +603,29 @@ def save_game_filters(filters_dict):
     except Exception as e:
         logger.error(f"Error saving game filters: {str(e)}")
         return False
+
+
+def get_global_sort_option(settings=None):
+    """Retourne l'option de tri globale sauvegardée."""
+    allowed = {"name_asc", "name_desc", "size_asc", "size_desc"}
+    if settings is None:
+        settings = load_rgsx_settings()
+    value = str(settings.get("global_sort_option", "name_asc") or "name_asc")
+    return value if value in allowed else "name_asc"
+
+
+def set_global_sort_option(option):
+    """Sauvegarde l'option de tri globale."""
+    allowed = {"name_asc", "name_desc", "size_asc", "size_desc"}
+    normalized = str(option or "name_asc")
+    if normalized not in allowed:
+        normalized = "name_asc"
+
+    settings = load_rgsx_settings()
+    settings["global_sort_option"] = normalized
+    save_rgsx_settings(settings)
+    logger.info(f"Option de tri globale sauvegardée: {normalized}")
+    return normalized
 
 
 def get_platform_custom_path(platform_name):

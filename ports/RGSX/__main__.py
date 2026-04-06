@@ -488,7 +488,8 @@ async def main():
     # Charger les filtres de jeux sauvegardés
     try:
         from game_filters import GameFilters
-        from rgsx_settings import load_game_filters
+        from rgsx_settings import get_global_sort_option, load_game_filters
+        config.global_sort_option = get_global_sort_option()
         config.game_filter_obj = GameFilters()
         filter_dict = load_game_filters()
         if filter_dict:
@@ -496,6 +497,7 @@ async def main():
             if config.game_filter_obj.is_active():
                 config.filter_active = True
                 logger.info("Filtres de jeux chargés et actifs")
+        logger.info(f"Tri global chargé: {config.global_sort_option}")
     except Exception as e:
         logger.error(f"Erreur lors du chargement des filtres: {e}")
         config.game_filter_obj = None

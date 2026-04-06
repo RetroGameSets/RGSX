@@ -35,6 +35,85 @@ logger = logging.getLogger(__name__)
 # Désactiver les logs DEBUG de urllib3 e requests pour supprimer les messages de connexion HTTP
 
 
+def parse_game_size_to_bytes(value) -> int:
+    if isinstance(value, (int, float)):
+        return max(0, int(value))
+    if not isinstance(value, str):
+        return 0
+
+    text = value.strip().replace(',', '.')
+    if not text:
+        return 0
+
+    match = re.match(r'^([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z]+)?$', text)
+    if not match:
+        return 0
+
+    amount = float(match.group(1))
+    unit = (match.group(2) or 'B').strip().lower()
+    multipliers = {
+        'b': 1,
+        'byte': 1,
+        'bytes': 1,
+        'octet': 1,
+        'octets': 1,
+        'k': 1024,
+        'kb': 1024,
+        'kib': 1024,
+        'ko': 1024,
+        'm': 1024 ** 2,
+        'mb': 1024 ** 2,
+        'mib': 1024 ** 2,
+        'mo': 1024 ** 2,
+        'g': 1024 ** 3,
+        'gb': 1024 ** 3,
+        'gib': 1024 ** 3,
+        'go': 1024 ** 3,
+        't': 1024 ** 4,
+        'tb': 1024 ** 4,
+        'tib': 1024 ** 4,
+        'to': 1024 ** 4,
+        'p': 1024 ** 5,
+        'pb': 1024 ** 5,
+        'pib': 1024 ** 5,
+        'po': 1024 ** 5,
+    }
+    return int(amount * multipliers.get(unit, 0)) if unit in multipliers else 0
+
+
+def sort_games_list(items: list[Game], option: str = 'name_asc') -> list[Game]:
+    reverse = option in ('name_desc', 'size_desc')
+
+    if option.startswith('size_'):
+        return sorted(
+            items,
+            key=lambda game: (
+                parse_game_size_to_bytes(game.size),
+                str(game.display_name or game.name or '').lower(),
+            ),
+            reverse=reverse,
+        )
+
+    return sorted(
+        items,
+        key=lambda game: (
+            str(game.display_name or game.name or '').lower(),
+            parse_game_size_to_bytes(game.size),
+        ),
+        reverse=reverse,
+    )
+
+
+def sort_games_list_from_settings(items: list[Game]) -> list[Game]:
+    try:
+        from rgsx_settings import get_global_sort_option
+
+        option = get_global_sort_option()
+    except Exception:
+        option = 'name_asc'
+    return sort_games_list(items, option)
+
+
 def _resolve_7z_command():
     if config.OPERATING_SYSTEM == "Windows":
         return config.SEVEN_Z_EXE
@@ -1937,6 +2016,13 @@ def load_sources(allow_torrent_manifest_fetch: bool | None = None):
 
 def load_games(platform_id:str) -> list[Game]:
     try:
+        try:
+            from rgsx_settings import get_global_sort_option
+
+            current_sort_option = get_global_sort_option()
+        except Exception:
+            current_sort_option = 'name_asc'
+
         game_file, resolved_platform_dict, candidates = _resolve_game_file(platform_id)
         if not game_file:
             _games_cache.pop(platform_id, None)
@@ -1948,6 +2034,9 @@ def load_games(platform_id:str) -> list[Game]:
         game_size_bytes = game_stat.st_size
         cached_entry = _games_cache.get(platform_id)
         if cached_entry and cached_entry.get("path") == game_file and cached_entry.get("mtime_ns") == game_mtime_ns:
+            if cached_entry.get("sort_option") != current_sort_option:
+                cached_entry["games"] = sort_games_list(list(cached_entry.get("games") or []), current_sort_option)
+                cached_entry["sort_option"] = current_sort_option
             return cached_entry["games"]
 
         with open(game_file, 'r', encoding='utf-8') as f:
@@ -2013,9 +2102,12 @@ def load_games(platform_id:str) -> list[Game]:
             display_name = get_clean_display_name(name, platform_id)
             games_list.append(Game(name=name, url=url, size=size, display_name=display_name))
 
+        games_list = sort_games_list(games_list, current_sort_option)
+
         _games_cache[platform_id] = {
             "path": game_file,
             "mtime_ns": game_mtime_ns,
+            "sort_option": current_sort_option,
             "games": games_list,
         }
         _store_platform_game_count(platform_id, game_file, game_mtime_ns, game_size_bytes, len(games_list))

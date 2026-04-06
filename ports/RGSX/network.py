@@ -17,7 +17,7 @@ try:
 except Exception:
     pygame = None  # type: ignore
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
-from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys, load_archive_org_cookie, get_clean_display_name, parse_torrent_download_url, load_games
+from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, handle_ps3, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys, load_archive_org_cookie, get_clean_display_name, parse_torrent_download_url, load_games
 from history import save_history
 from display import show_toast
 import logging
@@ -41,6 +41,44 @@ import unicodedata
 
 
 logger = logging.getLogger(__name__)
+
+
+def _is_ps3_redump_target(platform_folder, platform) -> bool:
+    try:
+        ps3_platforms = {"ps3", "PlayStation 3"}
+        return platform_folder == "ps3" or platform in ps3_platforms
+    except Exception:
+        return False
+
+
+def _postprocess_downloaded_file(dest_path: str, dest_dir: str, url: str, game_name: str, is_ps3_target: bool):
+    extension = os.path.splitext(dest_path)[1].lower()
+
+    if extension == ".zip":
+        success, msg = extract_zip(dest_path, dest_dir, url)
+    elif extension == ".rar":
+        success, msg = extract_rar(dest_path, dest_dir, url)
+    elif extension == ".7z":
+        success, msg = extract_7z(dest_path, dest_dir, url)
+    elif extension == ".iso" and is_ps3_target:
+        logger.debug(f"Traitement PS3 direct ISO déclenché pour {dest_path}")
+        success, msg = handle_ps3(
+            dest_dir=dest_dir,
+            new_dirs=[],
+            extracted_basename=os.path.splitext(os.path.basename(dest_path))[0],
+            url=url,
+            archive_name=os.path.basename(dest_path),
+        )
+    else:
+        logger.warning(f"Type d'archive non supporté: {extension}")
+        return True, _("network_download_ok").format(game_name)
+
+    if success:
+        logger.debug(f"Post-traitement réussi pour {dest_path}: {msg}")
+        return True, _("network_download_extract_ok").format(game_name)
+
+    logger.error(f"Erreur post-traitement pour {dest_path}: {msg}")
+    return False, _("network_extraction_failed").format(msg)
 
 
 def _resolve_aria2c_command():
@@ -706,6 +744,7 @@ def _download_lolroms_with_external_tool(url: str, dest_path: str, task_id: str 
     os.close(cookie_fd)
     parent_fd, parent_output = tempfile.mkstemp(prefix='rgsx_lolroms_parent_', suffix='.html')
     os.close(parent_fd)
+    parent_fetch_attempted = False
 
     def _build_cmd(target_url: str, output_path: str, referer: str, quiet_parent: bool = False, resume: bool = False):
         if tool_kind == 'curl':
@@ -891,13 +930,28 @@ def _download_lolroms_with_external_tool(url: str, dest_path: str, task_id: str 
         stderr = ''.join(stderr_lines)
         return process.returncode, stdout, stderr
 
-    try:
+    def _fetch_parent_page_if_needed(force: bool = False) -> bool:
+        nonlocal parent_fetch_attempted
+        if parent_fetch_attempted and not force:
+            return False
+
+        parent_fetch_attempted = True
         parent_cmd = _build_cmd(parent_url, parent_output, 'https://lolroms.com/', quiet_parent=True)
         parent_code, parent_stdout, parent_stderr = _run_command(parent_cmd)
         if parent_code != 0:
-            logger.debug(f"lolroms parent fetch failed via {tool_kind}: {parent_stderr[:300]}")
+            logger.debug(f"lolroms parent fetch fallback failed via {tool_kind}: {parent_stderr[:300]}")
+            return False
 
+        logger.debug(f"lolroms parent fetch fallback succeeded via {tool_kind}")
+        return True
+
+    try:
         total_size = _probe_total_size(url, parent_url)
+        if total_size <= 0:
+            logger.debug(f"lolroms size probe returned 0 via {tool_kind}, trying parent fetch fallback")
+            if _fetch_parent_page_if_needed():
+                total_size = _probe_total_size(url, parent_url)
+
         if total_size > 0 and progress_queue is not None and task_id:
             progress_queue.put((task_id, 0, total_size, 0.0))
 
@@ -915,6 +969,9 @@ def _download_lolroms_with_external_tool(url: str, dest_path: str, task_id: str 
             current_size = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
             if file_code == 0:
                 break
+            if current_size <= 0 and not parent_fetch_attempted:
+                logger.debug(f"lolroms direct download failed via {tool_kind} without parent fetch, trying parent fetch fallback before retry")
+                _fetch_parent_page_if_needed()
             if _should_retry_partial_download(file_code, file_stderr, file_stdout, current_size, total_size) and attempt_index < max_attempts - 1:
                 logger.debug(
                     f"lolroms external partial transfer via {tool_kind}: tentative {attempt_index + 1} interrompue a {current_size}/{total_size or 0} octets, reprise"
@@ -943,6 +1000,12 @@ def _download_lolroms_with_external_tool(url: str, dest_path: str, task_id: str 
             final_size = os.path.getsize(dest_path)
             progress_queue.put((task_id, final_size, max(total_size, final_size), 0.0))
         return True, None
+    except RuntimeError as exc:
+        if cancel_ev is not None and cancel_ev.is_set():
+            _safe_remove_file(dest_path)
+            logger.debug(f"lolroms external download canceled, partial file removed: {dest_path}")
+            return False, str(exc)
+        raise
     finally:
         _safe_remove_file(parent_output)
         _safe_remove_file(cookie_path)
@@ -2760,14 +2823,10 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     pass
             
             # Forcer extraction pour PS3 Redump (déchiffrement et extraction ISO obligatoire)
-            if not force_extract:
-                try:
-                    ps3_platforms = {"ps3", "PlayStation 3"}
-                    if platform_folder == "ps3" or platform in ps3_platforms:
-                        force_extract = True
-                        logger.debug("Extraction forcée activée pour PS3 Redump (déchiffrement ISO)")
-                except Exception:
-                    pass
+            is_ps3_target = _is_ps3_redump_target(platform_folder, platform)
+            if not force_extract and is_ps3_target:
+                force_extract = True
+                logger.debug("Extraction forcée activée pour PS3 Redump (déchiffrement ISO)")
 
             if force_extract:
                 logger.debug(f"Extraction automatique nécessaire pour {dest_path}")
@@ -2785,56 +2844,12 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             save_history(config.history)
                             config.needs_redraw = True
                             break
-                extension = os.path.splitext(dest_path)[1].lower()
-                if extension == ".zip":
-                    try:
-                        success, msg = extract_zip(dest_path, dest_dir, url)
-                        if success:
-                            logger.debug(f"Extraction ZIP réussie: {msg}")
-                            result[0] = True
-                            result[1] = _("network_download_extract_ok").format(game_name)
-                        else:
-                            logger.error(f"Erreur extraction ZIP: {msg}")
-                            result[0] = False
-                            result[1] = _("network_extraction_failed").format(msg)
-                    except Exception as e:
-                        logger.error(f"Exception lors de l'extraction: {str(e)}")
-                        result[0] = False
-                        result[1] = f"Erreur téléchargement {game_name}: {str(e)}"
-                elif extension == ".rar":
-                    try:
-                        success, msg = extract_rar(dest_path, dest_dir, url)
-                        if success:
-                            logger.debug(f"Extraction RAR réussie: {msg}")
-                            result[0] = True
-                            result[1] = _("network_download_extract_ok").format(game_name)
-                        else:
-                            logger.error(f"Erreur extraction RAR: {msg}")
-                            result[0] = False
-                            result[1] = _("network_extraction_failed").format(msg)
-                    except Exception as e:
-                        logger.error(f"Exception lors de l'extraction RAR: {str(e)}")
-                        result[0] = False
-                        result[1] = f"Erreur extraction RAR {game_name}: {str(e)}"
-                elif extension == ".7z":
-                    try:
-                        success, msg = extract_7z(dest_path, dest_dir, url)
-                        if success:
-                            logger.debug(f"Extraction 7z réussie: {msg}")
-                            result[0] = True
-                            result[1] = _("network_download_extract_ok").format(game_name)
-                        else:
-                            logger.error(f"Erreur extraction 7z: {msg}")
-                            result[0] = False
-                            result[1] = _("network_extraction_failed").format(msg)
-                    except Exception as e:
-                        logger.error(f"Exception lors de l'extraction 7z: {str(e)}")
-                        result[0] = False
-                        result[1] = f"Erreur extraction 7z {game_name}: {str(e)}"
-                else:
-                    logger.warning(f"Type d'archive non supporté: {extension}")
-                    result[0] = True
-                    result[1] = _("network_download_ok").format(game_name)
+                try:
+                    result[0], result[1] = _postprocess_downloaded_file(dest_path, dest_dir, url, game_name, is_ps3_target)
+                except Exception as e:
+                    logger.error(f"Exception lors du post-traitement: {str(e)}")
+                    result[0] = False
+                    result[1] = f"Erreur téléchargement {game_name}: {str(e)}"
             else:
                 result[0] = True
                 result[1] = _("network_download_ok").format(game_name)
@@ -3981,14 +3996,10 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     
                     # Déterminer si extraction est nécessaire
                     force_extract = is_zip_non_supported and auto_extract_enabled
-                    if not force_extract and auto_extract_enabled:
-                        try:
-                            ps3_platforms = {"ps3", "PlayStation 3"}
-                            if platform_folder == "ps3" or platform in ps3_platforms:
-                                force_extract = True
-                                logger.debug("Extraction forcée activée pour PS3 Redump (déchiffrement ISO)")
-                        except Exception:
-                            pass
+                    is_ps3_target = _is_ps3_redump_target(platform_folder, platform)
+                    if not force_extract and auto_extract_enabled and is_ps3_target:
+                        force_extract = True
+                        logger.debug("Extraction forcée activée pour PS3 Redump (déchiffrement ISO)")
                     
                     if force_extract:
                         with lock:
@@ -4006,57 +4017,13 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         save_history(config.history)
                                         config.needs_redraw = True
                                         break
-                        extension = os.path.splitext(dest_path)[1].lower()
-                        logger.debug(f"Début extraction, type d'archive: {extension}")
-                        if extension == ".zip":
-                            try:
-                                success, msg = extract_zip(dest_path, dest_dir, url)
-                                logger.debug(f"Extraction ZIP terminée: {msg}")
-                                if success:
-                                    result[0] = True
-                                    result[1] = _("network_download_extract_ok").format(game_name)
-                                else:
-                                    logger.error(f"Erreur extraction ZIP: {msg}")
-                                    result[0] = False
-                                    result[1] = _("network_extraction_failed").format(msg)
-                            except Exception as e:
-                                logger.error(f"Exception lors de l'extraction ZIP: {str(e)}")
-                                result[0] = False
-                                result[1] = f"Erreur téléchargement {game_name}: {str(e)}"
-                        elif extension == ".rar":
-                            try:
-                                success, msg = extract_rar(dest_path, dest_dir, url)
-                                logger.debug(f"Extraction RAR terminée: {msg}")
-                                if success:
-                                    result[0] = True
-                                    result[1] = _("network_download_extract_ok").format(game_name)
-                                else:
-                                    logger.error(f"Erreur extraction RAR: {msg}")
-                                    result[0] = False
-                                    result[1] = _("network_extraction_failed").format(msg)
-                            except Exception as e:
-                                logger.error(f"Exception lors de l'extraction RAR: {str(e)}")
-                                result[0] = False
-                                result[1] = f"Erreur extraction RAR {game_name}: {str(e)}"
-                        elif extension == ".7z":
-                            try:
-                                success, msg = extract_7z(dest_path, dest_dir, url)
-                                logger.debug(f"Extraction 7z terminée: {msg}")
-                                if success:
-                                    result[0] = True
-                                    result[1] = _("network_download_extract_ok").format(game_name)
-                                else:
-                                    logger.error(f"Erreur extraction 7z: {msg}")
-                                    result[0] = False
-                                    result[1] = _("network_extraction_failed").format(msg)
-                            except Exception as e:
-                                logger.error(f"Exception lors de l'extraction 7z: {str(e)}")
-                                result[0] = False
-                                result[1] = f"Erreur extraction 7z {game_name}: {str(e)}"
-                        else:
-                            logger.warning(f"Type d'archive non supporté: {extension}")
-                            result[0] = True
-                            result[1] = _("network_download_ok").format(game_name)
+                        logger.debug(f"Début post-traitement du téléchargement: {os.path.splitext(dest_path)[1].lower()}")
+                        try:
+                            result[0], result[1] = _postprocess_downloaded_file(dest_path, dest_dir, url, game_name, is_ps3_target)
+                        except Exception as e:
+                            logger.error(f"Exception lors du post-traitement: {str(e)}")
+                            result[0] = False
+                            result[1] = f"Erreur téléchargement {game_name}: {str(e)}"
                     else:
                         logger.debug(f"Application des permissions sur {dest_path}")
                         os.chmod(dest_path, 0o644)

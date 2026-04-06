@@ -24,6 +24,8 @@ from utils import (
     clear_platform_game_count_cache,
     move_files_to_directory, parse_torrent_download_url,
     _refresh_loading_feedback,
+    parse_game_size_to_bytes,
+    sort_games_list,
 )
 from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games
 from language import _, get_available_languages, set_language  
@@ -31,7 +33,9 @@ from rgsx_settings import (
     get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
     get_show_unsupported_platforms, set_show_unsupported_platforms,
     set_allow_unknown_extensions, get_hide_premium_systems, set_hide_premium_systems,
-    get_sources_mode, set_sources_mode, set_symlink_option, get_symlink_option, load_rgsx_settings, save_rgsx_settings
+    get_sources_mode, set_sources_mode, set_symlink_option, get_symlink_option,
+    get_global_sort_option, set_global_sort_option,
+    load_rgsx_settings, save_rgsx_settings
 )
 from accessibility import save_accessibility_settings
 from scraper import get_game_metadata, download_image_to_surface
@@ -46,8 +50,8 @@ ARCHIVE_EXTENSIONS = {'.zip', '.7z', '.rar', '.tar', '.gz', '.xz', '.bz2'}
 GLOBAL_SORT_OPTIONS = [
     ("name_asc", lambda: _("web_sort_name_asc") or "A-Z (Name)"),
     ("name_desc", lambda: _("web_sort_name_desc") or "Z-A (Name)"),
-    ("size_asc", lambda: _("web_sort_size_asc") or "Size +- (Small first)"),
-    ("size_desc", lambda: _("web_sort_size_desc") or "Size -+ (Large first)"),
+    ("size_asc", lambda: _("web_sort_size_asc") or "Size -+ (Small first)"),
+    ("size_desc", lambda: _("web_sort_size_desc") or "Size +- (Large first)"),
 ]
 
 
@@ -78,47 +82,6 @@ def _wrap_index(current_index: int, delta: int, item_count: int) -> int:
     if item_count <= 0:
         return 0
     return (current_index + delta) % item_count
-
-
-def _parse_game_size_to_bytes(value) -> int:
-    if isinstance(value, (int, float)):
-        return max(0, int(value))
-    if not isinstance(value, str):
-        return 0
-
-    text = value.strip().replace(',', '.')
-    if not text:
-        return 0
-
-    match = re.match(r'^([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z]+)?$', text)
-    if not match:
-        return 0
-
-    amount = float(match.group(1))
-    unit = (match.group(2) or 'B').strip().lower()
-    multipliers = {
-        'b': 1,
-        'byte': 1,
-        'bytes': 1,
-        'octet': 1,
-        'octets': 1,
-        'kb': 1024,
-        'kib': 1024,
-        'ko': 1024,
-        'mb': 1024 ** 2,
-        'mib': 1024 ** 2,
-        'mo': 1024 ** 2,
-        'gb': 1024 ** 3,
-        'gib': 1024 ** 3,
-        'go': 1024 ** 3,
-        'tb': 1024 ** 4,
-        'tib': 1024 ** 4,
-        'to': 1024 ** 4,
-        'pb': 1024 ** 5,
-        'pib': 1024 ** 5,
-        'po': 1024 ** 5,
-    }
-    return int(amount * multipliers.get(unit, 0)) if unit in multipliers else 0
 
 
 def _sort_global_items(items: list[dict]) -> list[dict]:
@@ -156,27 +119,14 @@ def _get_global_sort_index(option: str | None = None) -> int:
 
 
 def _sort_local_games(items: list[Game]) -> list[Game]:
-    option = getattr(config, 'global_sort_option', 'name_asc') or 'name_asc'
-    reverse = option in ('name_desc', 'size_desc')
+    option = getattr(config, 'global_sort_option', 'name_asc')
+    return sort_games_list(items, option)
 
-    if option.startswith('size_'):
-        return sorted(
-            items,
-            key=lambda game: (
-                _parse_game_size_to_bytes(game.size),
-                str(game.display_name or game.name or '').lower(),
-            ),
-            reverse=reverse,
-        )
 
-    return sorted(
-        items,
-        key=lambda game: (
-            str(game.display_name or game.name or '').lower(),
-            _parse_game_size_to_bytes(game.size),
-        ),
-        reverse=reverse,
-    )
+def _apply_sorted_active_filters() -> list[Game]:
+    if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
+        return _sort_local_games(config.game_filter_obj.apply_filters(config.games))
+    return config.games
 
 
 def _build_filter_menu_entries(context: str) -> list[dict[str, str]]:
@@ -677,7 +627,7 @@ def build_global_search_index() -> list[dict]:
                 "search_name": display_name.lower(),
                 "url": game.url,
                 "size": game.size,
-                "size_bytes": _parse_game_size_to_bytes(game.size),
+                "size_bytes": parse_game_size_to_bytes(game.size),
                 "game_obj": game,
             })
 
@@ -1384,7 +1334,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.selected_key = (0, 0)
                     # Restaurer les jeux filtrés par les filtres avancés si actifs
                     if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
-                        config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                        config.filtered_games = _apply_sorted_active_filters()
                         config.filter_active = True
                     else:
                         config.filtered_games = config.games
@@ -1412,7 +1362,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.search_query = ""
                     # Restaurer les jeux filtrés par les filtres avancés si actifs
                     if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
-                        config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                        config.filtered_games = _apply_sorted_active_filters()
                         config.filter_active = True
                     else:
                         config.filtered_games = config.games
@@ -3679,7 +3629,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.search_mode = True
                     config.search_query = ""
                     if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
-                        config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                        config.filtered_games = _apply_sorted_active_filters()
                     else:
                         config.filtered_games = config.games
                     config.current_game = 0
@@ -3730,8 +3680,9 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
             elif is_input_matched(event, 'confirm'):
                 if config.global_sort_selected < len(GLOBAL_SORT_OPTIONS):
-                    config.global_sort_option = GLOBAL_SORT_OPTIONS[config.global_sort_selected][0]
+                    config.global_sort_option = set_global_sort_option(GLOBAL_SORT_OPTIONS[config.global_sort_selected][0])
                     if getattr(config, 'filter_menu_context', 'global') == 'game':
+                        config.games = _sort_local_games(config.games)
                         if config.search_query:
                             config.filtered_games = filter_games_by_search_query()
                             config.filter_active = True
@@ -3739,7 +3690,7 @@ def handle_controls(event, sources, joystick, screen):
                             config.filtered_games = _sort_local_games(config.game_filter_obj.apply_filters(config.games))
                             config.filter_active = True
                         else:
-                            config.filtered_games = _sort_local_games(config.games)
+                            config.filtered_games = config.games
                             config.filter_active = False
                         config.current_game = 0
                         config.scroll_offset = 0
@@ -3893,7 +3844,7 @@ def handle_controls(event, sources, joystick, screen):
                             config.needs_redraw = True
                         else:
                             if config.game_filter_obj.is_active():
-                                config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                                config.filtered_games = _apply_sorted_active_filters()
                                 config.filter_active = True
                             else:
                                 config.filtered_games = config.games
@@ -4241,7 +4192,7 @@ def handle_controls(event, sources, joystick, screen):
                             
                             # Apply saved filters automatically if any
                             if config.game_filter_obj and config.game_filter_obj.is_active():
-                                config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                                config.filtered_games = _apply_sorted_active_filters()
                                 config.filter_active = True
                             else:
                                 config.filtered_games = config.games
