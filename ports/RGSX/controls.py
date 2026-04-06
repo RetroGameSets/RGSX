@@ -18,7 +18,7 @@ from utils import (
     extract_zip, extract_rar, extract_7z, find_file_with_or_without_extension, find_matching_files, toggle_web_service_at_boot, check_web_service_status,
     restart_application, generate_support_zip, load_sources,
     ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string,
-    start_connection_status_check, get_clean_display_name, get_existing_history_matches,
+    start_connection_status_check, get_clean_display_name, get_existing_history_matches, remember_history_local_match,
     clear_torrent_manifest_cache,
     request_torrent_manifest_refresh,
     clear_platform_game_count_cache,
@@ -1808,11 +1808,29 @@ def handle_controls(event, sources, joystick, screen):
                 base_path = os.path.join(config.ROMS_FOLDER, dest_folder)
                 file_exists, actual_filename, actual_path = find_file_with_or_without_extension(base_path, game_name)
                 actual_matches = find_matching_files(base_path, game_name)
+                local_path = entry.get("local_path")
+                local_filename = entry.get("local_filename")
+                if not file_exists and local_path and os.path.isfile(local_path):
+                    actual_filename = os.path.basename(local_path)
+                    actual_path = local_path
+                    file_exists = True
+                    actual_matches = [(actual_filename, actual_path)]
+                    logger.debug("[HISTORY_OPTIONS] direct local_path match used: %s", actual_path)
+                elif not file_exists and local_filename:
+                    local_filename_path = os.path.join(base_path, str(local_filename))
+                    if os.path.isfile(local_filename_path):
+                        actual_filename = os.path.basename(local_filename_path)
+                        actual_path = local_filename_path
+                        file_exists = True
+                        actual_matches = [(actual_filename, actual_path)]
+                        logger.debug("[HISTORY_OPTIONS] direct local_filename match used: %s", actual_path)
                 if not actual_matches:
                     actual_matches = get_existing_history_matches(entry)
                     if actual_matches:
                         actual_filename, actual_path = actual_matches[0]
                         file_exists = True
+                if file_exists and actual_path:
+                    remember_history_local_match(entry, actual_filename, actual_path)
                 config.history_actual_matches = actual_matches
                 
                 # Stocker les informations pour les autres handlers
@@ -1852,6 +1870,31 @@ def handle_controls(event, sources, joystick, screen):
                 
                 # Option commune: retour
                 options.append("back")
+
+                diagnostics_signature = (
+                    entry.get("url", ""),
+                    status,
+                    file_exists,
+                    actual_filename or "",
+                    actual_path or "",
+                    tuple(options),
+                )
+                if getattr(config, 'history_options_diagnostics_signature', None) != diagnostics_signature:
+                    config.history_options_diagnostics_signature = diagnostics_signature
+                    logger.debug(
+                        "[HISTORY_OPTIONS] platform=%s game=%s status=%s dest_folder=%s base_path=%s file_exists=%s actual_filename=%s actual_path=%s local_path=%s moved_paths=%s options=%s",
+                        platform,
+                        game_name,
+                        status,
+                        dest_folder,
+                        base_path,
+                        file_exists,
+                        actual_filename,
+                        actual_path,
+                        entry.get("local_path"),
+                        entry.get("moved_paths"),
+                        options,
+                    )
                 
                 total_options = len(options)
                 sel = getattr(config, 'history_game_option_selection', 0)

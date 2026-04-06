@@ -43,6 +43,34 @@ import unicodedata
 logger = logging.getLogger(__name__)
 
 
+def _update_history_local_target(url: str, task_id: str, dest_path: str) -> None:
+    if not isinstance(config.history, list) or not dest_path:
+        return
+
+    absolute_path = os.path.abspath(dest_path)
+    basename = os.path.basename(absolute_path)
+    normalized_task_id = str(task_id or "")
+
+    for entry in config.history:
+        if entry.get("url") != url:
+            continue
+        entry_task_id = str(entry.get("task_id") or "")
+        if normalized_task_id and entry_task_id and entry_task_id != normalized_task_id:
+            continue
+
+        entry["local_path"] = absolute_path
+        entry["local_filename"] = basename
+
+        moved_paths = entry.get("moved_paths")
+        if not isinstance(moved_paths, list):
+            moved_paths = []
+        if absolute_path not in moved_paths:
+            moved_paths.insert(0, absolute_path)
+        entry["moved_paths"] = moved_paths
+        save_history(config.history)
+        break
+
+
 def _is_ps3_redump_target(platform_folder, platform) -> bool:
     try:
         ps3_platforms = {"ps3", "PlayStation 3"}
@@ -2235,6 +2263,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             sanitized_name = sanitize_filename(game_name)
             dest_path = os.path.join(dest_dir, f"{sanitized_name}")
             logger.debug(f"Chemin destination: {dest_path}")
+            _update_history_local_target(url, task_id, dest_path)
 
             torrent_meta = parse_torrent_download_url(url)
             if torrent_meta is not None:
@@ -3276,6 +3305,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 sanitized_filename = sanitize_filename(filename)
                 dest_path = os.path.join(dest_dir, sanitized_filename)
                 logger.debug(f"Chemin destination: {dest_path}")
+                _update_history_local_target(url, task_id, dest_path)
                 
                 # Récupérer la taille du serveur depuis l'API 1fichier
                 remote_size = None

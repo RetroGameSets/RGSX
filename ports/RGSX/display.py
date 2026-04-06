@@ -12,7 +12,7 @@ from utils import (truncate_text_middle, wrap_text, load_system_image, truncate_
                    check_web_service_status, check_custom_dns_status, load_api_keys,
                    _get_dest_folder_name, find_file_with_or_without_extension, find_matching_files,
                    get_connection_status_targets, get_connection_status_snapshot,
-                   get_clean_display_name, get_existing_history_matches,
+                   get_clean_display_name, get_existing_history_matches, remember_history_local_match,
                    sort_games_list)
 import logging
 import math
@@ -5192,11 +5192,29 @@ def draw_history_game_options(screen):
     base_path = os.path.join(config.ROMS_FOLDER, dest_folder)
     file_exists, actual_filename, actual_path = find_file_with_or_without_extension(base_path, game_name)
     actual_matches = find_matching_files(base_path, game_name)
+    local_path = entry.get("local_path")
+    local_filename = entry.get("local_filename")
+    if not file_exists and local_path and os.path.isfile(local_path):
+        actual_filename = os.path.basename(local_path)
+        actual_path = local_path
+        file_exists = True
+        actual_matches = [(actual_filename, actual_path)]
+        logger.debug("[HISTORY_OPTIONS_RENDER] direct local_path match used: %s", actual_path)
+    elif not file_exists and local_filename:
+        local_filename_path = os.path.join(base_path, str(local_filename))
+        if os.path.isfile(local_filename_path):
+            actual_filename = os.path.basename(local_filename_path)
+            actual_path = local_filename_path
+            file_exists = True
+            actual_matches = [(actual_filename, actual_path)]
+            logger.debug("[HISTORY_OPTIONS_RENDER] direct local_filename match used: %s", actual_path)
     if not actual_matches:
         actual_matches = get_existing_history_matches(entry)
         if actual_matches:
             actual_filename, actual_path = actual_matches[0]
             file_exists = True
+    if file_exists and actual_path:
+        remember_history_local_match(entry, actual_filename, actual_path)
     
     # Déterminer les options disponibles selon le statut
     options = []
@@ -5246,6 +5264,31 @@ def draw_history_game_options(screen):
         option_labels.append(_("history_option_delete_game"))
     options.append("back")
     option_labels.append(_("history_option_back"))
+
+    diagnostics_signature = (
+        entry.get("url", ""),
+        status,
+        file_exists,
+        actual_filename or "",
+        actual_path or "",
+        tuple(options),
+    )
+    if getattr(config, 'history_options_render_signature', None) != diagnostics_signature:
+        config.history_options_render_signature = diagnostics_signature
+        logger.debug(
+            "[HISTORY_OPTIONS_RENDER] platform=%s game=%s status=%s dest_folder=%s base_path=%s file_exists=%s actual_filename=%s actual_path=%s local_path=%s moved_paths=%s options=%s",
+            platform,
+            game_name,
+            status,
+            dest_folder,
+            base_path,
+            file_exists,
+            actual_filename,
+            actual_path,
+            entry.get("local_path"),
+            entry.get("moved_paths"),
+            options,
+        )
     
     # Calculer dimensions
     title = _("history_game_options_title")

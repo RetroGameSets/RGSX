@@ -3874,17 +3874,32 @@ def find_matching_files(base_path, filename):
     if not base_path or not os.path.exists(base_path):
         return []
 
-    candidate_name = Path(str(filename or "")).name
-    requested_stem, requested_ext = os.path.splitext(candidate_name)
-    requested_normalized = re.sub(r'\s+', ' ', re.sub(r'\s*[\[(][^\])]*[\])]', '', requested_stem)).strip().lower()
+    raw_filename = str(filename or "")
+    candidate_names = []
+    for candidate in (Path(raw_filename).name, sanitize_filename(raw_filename)):
+        if candidate and candidate not in candidate_names:
+            candidate_names.append(candidate)
+
+    if not candidate_names:
+        return []
+
+    requested_variants = []
+    for candidate_name in candidate_names:
+        requested_stem, requested_ext = os.path.splitext(candidate_name)
+        requested_normalized = re.sub(r'\s+', ' ', re.sub(r'\s*[\[(][^\])]*[\])]', '', requested_stem)).strip().lower()
+        requested_variants.append((candidate_name, requested_stem, requested_ext, requested_normalized))
+
     archive_exts = {'.zip', '.7z', '.rar', '.tar', '.gz', '.xz', '.bz2'}
     matches = []
     seen_paths = set()
 
-    full_path = os.path.join(base_path, candidate_name)
-    if os.path.exists(full_path) and os.path.isfile(full_path):
-        seen_paths.add(os.path.normcase(full_path))
-        matches.append((1000, candidate_name, full_path))
+    for candidate_name, _, _, _ in requested_variants:
+        full_path = os.path.join(base_path, candidate_name)
+        if os.path.exists(full_path) and os.path.isfile(full_path):
+            normalized_path = os.path.normcase(full_path)
+            if normalized_path not in seen_paths:
+                seen_paths.add(normalized_path)
+                matches.append((1000, candidate_name, full_path))
 
     for existing_file in os.listdir(base_path):
         existing_path = os.path.join(base_path, existing_file)
@@ -3898,17 +3913,21 @@ def find_matching_files(base_path, filename):
         existing_stem, existing_ext = os.path.splitext(existing_file)
         score = None
 
-        if requested_stem and existing_stem == requested_stem:
-            score = 900
-        else:
-            existing_normalized = re.sub(r'\s+', ' ', re.sub(r'\s*[\[(][^\])]*[\])]', '', existing_stem)).strip().lower()
-            if requested_normalized and existing_normalized and existing_normalized == requested_normalized:
-                score = 0
+        existing_normalized = re.sub(r'\s+', ' ', re.sub(r'\s*[\[(][^\])]*[\])]', '', existing_stem)).strip().lower()
+        for _, requested_stem, requested_ext, requested_normalized in requested_variants:
+            candidate_score = None
+            if requested_stem and existing_stem == requested_stem:
+                candidate_score = 900
+            elif requested_normalized and existing_normalized and existing_normalized == requested_normalized:
+                candidate_score = 0
                 if requested_ext and existing_ext.lower() == requested_ext.lower():
-                    score += 4
+                    candidate_score += 4
                 if existing_ext.lower() not in archive_exts:
-                    score += 3
-                score -= abs(len(existing_stem) - len(requested_stem))
+                    candidate_score += 3
+                candidate_score -= abs(len(existing_stem) - len(requested_stem))
+
+            if candidate_score is not None:
+                score = candidate_score if score is None else max(score, candidate_score)
 
         if score is not None:
             seen_paths.add(normalized_path)
@@ -3924,22 +3943,129 @@ def get_existing_history_matches(entry):
         return []
 
     moved_paths = entry.get("moved_paths", []) or []
+    local_path = entry.get("local_path")
+    local_filename = entry.get("local_filename")
+    game_name = entry.get("game_name", "")
+    if local_path:
+        moved_paths = [local_path, *moved_paths]
+
+    direct_matches = []
+    direct_candidates = []
+    if local_path:
+        direct_candidates.append(str(local_path))
+
+    platform_name = (entry.get("platform") or "").strip()
+    base_path = None
+    if platform_name:
+        try:
+            base_path = os.path.join(config.ROMS_FOLDER, _get_dest_folder_name(platform_name))
+        except Exception:
+            base_path = None
+
+    if local_filename and base_path:
+        direct_candidates.append(os.path.join(base_path, str(local_filename)))
+
+    seen_direct = set()
+    for candidate in direct_candidates:
+        actual_path = os.path.abspath(str(candidate))
+        normalized_path = os.path.normcase(actual_path)
+        if normalized_path in seen_direct:
+            continue
+        seen_direct.add(normalized_path)
+        exists = os.path.isfile(actual_path)
+        logger.debug(
+            "[HISTORY_MATCH_LOOKUP] direct_check game=%s candidate=%s exists=%s",
+            game_name,
+            actual_path,
+            exists,
+        )
+        if exists:
+            direct_matches.append((os.path.basename(actual_path), actual_path))
+
+    if direct_matches:
+        return direct_matches
+
+    candidate_paths = []
+    for raw_path in moved_paths:
+        if raw_path:
+            candidate_paths.append(str(raw_path))
+    if local_filename and base_path:
+        candidate_paths.insert(0, os.path.join(base_path, str(local_filename)))
+
     matches = []
     seen_paths = set()
 
-    for raw_path in moved_paths:
+    for raw_path in candidate_paths:
         if not raw_path:
             continue
 
-        actual_path = os.path.abspath(str(raw_path))
-        normalized_path = os.path.normcase(actual_path)
-        if normalized_path in seen_paths or not os.path.isfile(actual_path):
-            continue
+        raw_path = str(raw_path)
+        fallback_paths = [os.path.abspath(raw_path)]
+        if base_path:
+            fallback_paths.append(os.path.join(base_path, os.path.basename(raw_path)))
 
-        seen_paths.add(normalized_path)
-        matches.append((os.path.basename(actual_path), actual_path))
+        for actual_path in fallback_paths:
+            normalized_path = os.path.normcase(actual_path)
+            exists = os.path.isfile(actual_path)
+            logger.debug(
+                "[HISTORY_MATCH_LOOKUP] fallback_check game=%s candidate=%s exists=%s",
+                game_name,
+                actual_path,
+                exists,
+            )
+            if normalized_path in seen_paths or not exists:
+                continue
+
+            seen_paths.add(normalized_path)
+            matches.append((os.path.basename(actual_path), actual_path))
+            break
+
+    if not matches:
+        logger.debug(
+            "[HISTORY_MATCH_LOOKUP] no_match game=%s platform=%s base_path=%s local_path=%s local_filename=%s moved_paths=%s",
+            game_name,
+            platform_name,
+            base_path,
+            local_path,
+            local_filename,
+            moved_paths,
+        )
 
     return matches
+
+
+def remember_history_local_match(entry, actual_filename, actual_path):
+    """Persist a resolved local path for a history entry so later lookups are exact."""
+    if not isinstance(entry, dict) or not actual_path:
+        return False
+
+    absolute_path = os.path.abspath(str(actual_path))
+    filename = actual_filename or os.path.basename(absolute_path)
+    changed = False
+
+    if entry.get("local_path") != absolute_path:
+        entry["local_path"] = absolute_path
+        changed = True
+    if entry.get("local_filename") != filename:
+        entry["local_filename"] = filename
+        changed = True
+
+    moved_paths = entry.get("moved_paths")
+    if not isinstance(moved_paths, list):
+        moved_paths = []
+    if absolute_path not in moved_paths:
+        moved_paths.insert(0, absolute_path)
+        changed = True
+    entry["moved_paths"] = moved_paths
+
+    if changed:
+        try:
+            from history import save_history
+
+            save_history(config.history)
+        except Exception as e:
+            logger.debug(f"Impossible de mémoriser le chemin local de l'historique: {e}")
+    return changed
 
 
 def move_files_to_directory(file_paths, destination_dir):
