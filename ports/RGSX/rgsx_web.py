@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 import config
 from history import load_history, save_history
-from utils import load_sources, load_games, extract_data, get_clean_display_name, parse_torrent_download_url
+from utils import load_sources, load_games, extract_data, get_clean_display_name, parse_torrent_download_url, request_torrent_manifest_refresh
 from network import download_rom, download_from_1fichier
 from pathlib import Path
 from rgsx_settings import get_language
@@ -972,13 +972,18 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             os.remove(zip_path)
                         
                         if success:
+                            from rgsx_settings import get_remote_gamelist_timestamp, set_last_gamelist_update
+
+                            remote_update_dt = get_remote_gamelist_timestamp(games_zip_url)
+                            set_last_gamelist_update(remote_update_dt)
                             logger.info(f"✅ Extraction réussie: {message}")
                             deleted.append(f'extracted: {message}')
                             
                             # Maintenant charger les sources
                             invalidate_all_caches(reason='update-cache refresh')
                             logger.info("🔄 Chargement des plateformes...")
-                            refreshed_sources = load_sources()
+                            request_torrent_manifest_refresh()
+                            refreshed_sources = load_sources(allow_torrent_manifest_fetch=True)
                             if refreshed_sources is not None:
                                 with cache_lock:
                                     source_cache.update({

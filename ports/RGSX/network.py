@@ -17,7 +17,7 @@ try:
 except Exception:
     pygame = None  # type: ignore
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
-from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys, load_archive_org_cookie, get_clean_display_name, parse_torrent_download_url
+from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys, load_archive_org_cookie, get_clean_display_name, parse_torrent_download_url, load_games
 from history import save_history
 from display import show_toast
 import logging
@@ -336,6 +336,159 @@ def _redact_headers(headers: dict) -> dict:
     if 'Cookie' in safe and safe['Cookie']:
         safe['Cookie'] = '<redacted>'
     return safe
+
+
+def _parse_known_size_to_bytes(value) -> int:
+    if isinstance(value, (int, float)):
+        return max(0, int(value))
+    if not isinstance(value, str):
+        return 0
+
+    text = value.strip().replace(',', '.')
+    if not text:
+        return 0
+
+    match = re.match(r'^([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z]+)?$', text)
+    if not match:
+        return 0
+
+    amount = float(match.group(1))
+    unit = (match.group(2) or 'B').strip().lower()
+    multipliers = {
+        'b': 1,
+        'byte': 1,
+        'bytes': 1,
+        'octet': 1,
+        'octets': 1,
+        'kb': 1024,
+        'kib': 1024,
+        'ko': 1024,
+        'mb': 1024 ** 2,
+        'mib': 1024 ** 2,
+        'mo': 1024 ** 2,
+        'gb': 1024 ** 3,
+        'gib': 1024 ** 3,
+        'go': 1024 ** 3,
+        'tb': 1024 ** 4,
+        'tib': 1024 ** 4,
+        'to': 1024 ** 4,
+        'pb': 1024 ** 5,
+        'pib': 1024 ** 5,
+        'po': 1024 ** 5,
+    }
+    return int(amount * multipliers.get(unit, 0)) if unit in multipliers else 0
+
+
+def _lookup_known_game_size(platform: str, game_name: str, url: str | None = None) -> int:
+    try:
+        for game in load_games(platform):
+            if url and game.url == url:
+                return _parse_known_size_to_bytes(game.size)
+            if game.name == game_name:
+                return _parse_known_size_to_bytes(game.size)
+    except Exception as exc:
+        logger.debug(f"Impossible de déterminer la taille connue pour {platform}/{game_name}: {exc}")
+    return 0
+
+
+def _stream_response_to_path(response, dest_path: str, task_id: str | None, cancel_ev, progress_queue_obj, fallback_total_size: int = 0) -> dict[str, int | float | bool]:
+    total_size = int(response.headers.get('content-length', 0) or 0) or max(0, int(fallback_total_size or 0))
+    downloaded = 0
+    chunk_size = 4096
+    last_update_time = time.time()
+    last_downloaded = 0
+    update_interval = 0.1
+    download_canceled = False
+
+    if progress_queue_obj is not None and task_id is not None:
+        progress_queue_obj.put((task_id, 0, total_size))
+
+    with open(dest_path, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=chunk_size):
+            while True:
+                pause_ev = pause_events.get(task_id)
+                if pause_ev is None or not pause_ev.is_set():
+                    break
+                if cancel_ev is not None and cancel_ev.is_set():
+                    break
+                time.sleep(0.1)
+
+            if cancel_ev is not None and cancel_ev.is_set():
+                logger.debug(f"Annulation détectée, arrêt du téléchargement pour task_id={task_id}")
+                download_canceled = True
+                try:
+                    f.close()
+                except Exception:
+                    pass
+                try:
+                    if os.path.exists(dest_path):
+                        os.remove(dest_path)
+                except Exception:
+                    pass
+                break
+
+            if chunk:
+                size_received = len(chunk)
+                f.write(chunk)
+                downloaded += size_received
+                current_time = time.time()
+                if progress_queue_obj is not None and task_id is not None and current_time - last_update_time >= update_interval:
+                    delta = downloaded - last_downloaded
+                    speed = delta / (current_time - last_update_time) / (1024 * 1024)
+                    last_downloaded = downloaded
+                    last_update_time = current_time
+                    progress_queue_obj.put((task_id, downloaded, total_size, speed))
+
+    return {
+        'total_size': total_size,
+        'downloaded': downloaded,
+        'last_downloaded': last_downloaded,
+        'last_update_time': last_update_time,
+        'download_canceled': download_canceled,
+    }
+
+
+def _try_archive_org_alternate_urls(session, archive_alt_urls: list[str], active_url: str, download_headers: dict, dest_path: str, task_id: str | None, cancel_ev, progress_queue_obj, fallback_total_size: int = 0):
+    seen_urls = {active_url}
+    for alt_url in archive_alt_urls:
+        if not alt_url or alt_url in seen_urls:
+            continue
+        seen_urls.add(alt_url)
+        alt_response = None
+        try:
+            logger.debug(f"Réponse vide, tentative Archive.org alternative: {alt_url}")
+            alt_headers = download_headers.copy()
+            alt_host = urllib.parse.urlsplit(alt_url).netloc
+            if alt_host.startswith('ia') and alt_host.endswith('.archive.org'):
+                alt_headers['Referer'] = f"https://{alt_host}/"
+                alt_headers['Origin'] = 'https://archive.org'
+
+            alt_response = session.get(alt_url, stream=True, timeout=(45, 90), allow_redirects=True, headers=alt_headers)
+            alt_response.raise_for_status()
+            transfer = _stream_response_to_path(alt_response, dest_path, task_id, cancel_ev, progress_queue_obj, fallback_total_size=fallback_total_size)
+            if transfer['downloaded'] > 0:
+                return alt_response, alt_url, transfer
+
+            try:
+                if os.path.exists(dest_path):
+                    os.remove(dest_path)
+            except Exception:
+                pass
+        except Exception as exc:
+            logger.debug(f"Fallback Archive.org vide échoué pour {alt_url}: {exc}")
+            try:
+                if os.path.exists(dest_path):
+                    os.remove(dest_path)
+            except Exception:
+                pass
+        finally:
+            try:
+                if alt_response is not None:
+                    alt_response.close()
+            except Exception:
+                pass
+
+    return None, active_url, None
 
 
 def _is_lolroms_url(url: str | None) -> bool:
@@ -816,6 +969,33 @@ def _split_archive_org_path(url: str):
         return identifier, None, None
     except Exception:
         return None, None, None
+
+
+def _normalize_archive_org_download_path(identifier: str, rest: str) -> str:
+    """Normalize archive.org download paths while preserving encoded inner archive members."""
+    if not rest:
+        return f"/download/{identifier}"
+
+    rest = rest.lstrip('/')
+    first_sep = rest.find('/')
+    if first_sep == -1:
+        encoded_rest = urllib.parse.quote(urllib.parse.unquote(rest), safe="%:@$&'()*+,;=-._~")
+        return f"/download/{identifier}/{encoded_rest}"
+
+    archive_name_raw = rest[:first_sep]
+    member_raw = rest[first_sep + 1:]
+    archive_name = urllib.parse.unquote(archive_name_raw)
+
+    if archive_name.lower().endswith(('.zip', '.rar', '.7z')):
+        encoded_archive_name = urllib.parse.quote(archive_name, safe="%:@$&'()*+,;=-._~")
+        encoded_member = urllib.parse.quote(urllib.parse.unquote(member_raw), safe="%:@$&'()*+,;=-._~")
+        return f"/download/{identifier}/{encoded_archive_name}/{encoded_member}"
+
+    normalized_rest = urllib.parse.quote(
+        urllib.parse.unquote(rest),
+        safe="/@:$&'()*+,;=-._~",
+    )
+    return f"/download/{identifier}/{normalized_rest}"
 
 # --- File d'attente de téléchargements (worker) ---
 def download_queue_worker():
@@ -1911,6 +2091,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     def download_thread():
         nonlocal url
         try:
+            known_total_size = _lookup_known_game_size(platform, game_name, url)
             # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "Downloading"
             # pour que l'interface web puisse afficher le téléchargement en cours
             
@@ -1931,6 +2112,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     entry["display_name"] = get_clean_display_name(game_name, platform)
                     entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     entry["task_id"] = task_id
+                    if int(entry.get("total_size", 0) or 0) <= 0 and known_total_size > 0:
+                        entry["total_size"] = known_total_size
                     break
             
             # Si l'entrée n'existe pas, la créer
@@ -1943,7 +2126,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     "status": "Downloading",
                     "progress": 0,
                     "downloaded_size": 0,
-                    "total_size": 0,
+                    "total_size": known_total_size,
                     "speed": 0,
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "message": f"Téléchargement de {game_name}",
@@ -2241,7 +2424,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     if url not in config.download_progress:
                         config.download_progress[url] = {
                             "downloaded_size": 0,
-                            "total_size": 0,
+                            "total_size": known_total_size,
                             "status": "Connecting",
                             "progress_percent": 0,
                             "speed": 0,
@@ -2291,18 +2474,10 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             parsed = urllib.parse.urlsplit(url)
                             parts = parsed.path.split('/download/', 1)
                             pre_id = None
-                            rest_decoded = None
                             if len(parts) == 2:
                                 after = parts[1]
                                 pre_id = after.split('/', 1)[0]
-                                rest = after[len(pre_id):]
-                                if rest.startswith('/'):
-                                    rest = rest[1:]
-                                rest_decoded = urllib.parse.unquote(rest)
-                                rest_encoded = urllib.parse.quote(rest_decoded, safe='/') if rest_decoded else ''
-                                new_path = f"/download/{pre_id}/" + rest_encoded
-                                url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, new_path, parsed.query, parsed.fragment))
-                                logger.debug(f"URL archive.org normalisée: {url}")
+                                logger.debug(f"URL archive.org conservée: {url}")
                             if not pre_id:
                                 pre_id = url.split('/download/')[1].split('/')[0]
 
@@ -2327,8 +2502,6 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
 
                             identifier, archive_name, inner_path = _split_archive_org_path(url)
                             if identifier and archive_name and inner_path:
-                                archive_alt_urls.append(f"https://archive.org/download/{identifier}/" + urllib.parse.quote(inner_path, safe='/'))
-                                archive_alt_urls.append(f"https://archive.org/download/{identifier}/{archive_name}?filename=" + urllib.parse.quote(inner_path, safe='/'))
                                 if meta_json:
                                     server = meta_json.get('server')
                                     directory = meta_json.get('dir')
@@ -2501,8 +2674,15 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         config.download_progress[url]["status"] = "Downloading"
                         config.needs_redraw = True
 
-                    total_size = int(response.headers.get('content-length', 0))
+                    transfer = _stream_response_to_path(response, dest_path, task_id, cancel_ev, progress_queues.get(task_id), fallback_total_size=known_total_size)
+                    total_size = int(transfer['total_size'])
+                    downloaded = int(transfer['downloaded'])
+                    last_downloaded = int(transfer['last_downloaded'])
+                    last_update_time = float(transfer['last_update_time'])
+                    download_canceled = bool(transfer['download_canceled'])
+
                     logger.debug(f"Taille totale: {total_size} octets")
+                    logger.debug(f"Progression initiale envoyée: 0% pour {game_name}, task_id={task_id}")
                     if isinstance(config.history, list):
                         for entry in config.history:
                             if "url" in entry and entry["url"] == url:
@@ -2510,51 +2690,41 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                 save_history(config.history)
                                 break
 
-                    progress_queues[task_id].put((task_id, 0, total_size))
-                    logger.debug(f"Progression initiale envoyée: 0% pour {game_name}, task_id={task_id}")
+                    if downloaded <= 0 and archive_alt_urls and 'archive.org' in url:
+                        try:
+                            response.close()
+                        except Exception:
+                            pass
+                        response, fallback_url, fallback_transfer = _try_archive_org_alternate_urls(
+                            session,
+                            archive_alt_urls,
+                            url,
+                            download_headers,
+                            dest_path,
+                            task_id,
+                            cancel_ev,
+                            progress_queues.get(task_id),
+                            fallback_total_size=known_total_size,
+                        )
+                        if fallback_transfer is not None:
+                            url = fallback_url
+                            total_size = int(fallback_transfer['total_size'])
+                            downloaded = int(fallback_transfer['downloaded'])
+                            last_downloaded = int(fallback_transfer['last_downloaded'])
+                            last_update_time = float(fallback_transfer['last_update_time'])
+                            download_canceled = bool(fallback_transfer['download_canceled'])
+                            logger.debug(f"Fallback Archive.org réussi: {url}")
 
-                    downloaded = 0
-                    chunk_size = 4096
-                    last_update_time = time.time()
-                    last_downloaded = 0
-                    update_interval = 0.1
-                    download_canceled = False
-                    with open(dest_path, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=chunk_size):
-                            while True:
-                                pause_ev = pause_events.get(task_id)
-                                if pause_ev is None or not pause_ev.is_set():
-                                    break
-                                if cancel_ev is not None and cancel_ev.is_set():
-                                    break
-                                time.sleep(0.1)
-
-                            if cancel_ev is not None and cancel_ev.is_set():
-                                logger.debug(f"Annulation détectée, arrêt du téléchargement pour task_id={task_id}")
-                                result[0] = False
-                                result[1] = _("download_canceled") if _ else "Download canceled"
-                                download_canceled = True
-                                try:
-                                    f.close()
-                                except Exception:
-                                    pass
-                                try:
-                                    if os.path.exists(dest_path):
-                                        os.remove(dest_path)
-                                except Exception:
-                                    pass
-                                break
-                            if chunk:
-                                size_received = len(chunk)
-                                f.write(chunk)
-                                downloaded += size_received
-                                current_time = time.time()
-                                if current_time - last_update_time >= update_interval:
-                                    delta = downloaded - last_downloaded
-                                    speed = delta / (current_time - last_update_time) / (1024 * 1024)
-                                    last_downloaded = downloaded
-                                    last_update_time = current_time
-                                    progress_queues[task_id].put((task_id, downloaded, total_size, speed))
+                    if downloaded <= 0:
+                        try:
+                            if os.path.exists(dest_path):
+                                os.remove(dest_path)
+                        except Exception:
+                            pass
+                        content_type = response.headers.get('content-type', '') if response is not None else ''
+                        raise requests.HTTPError(
+                            f"Downloaded empty response from source (content-type={content_type or 'unknown'})"
+                        )
 
                     if downloaded > 0 and downloaded != last_downloaded:
                         current_time = time.time()
@@ -3546,14 +3716,16 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                 try:
                                     if filepath.lower().endswith('.zip'):
                                         logger.info(f"Extraction ZIP: {filepath}")
-                                        extract_zip(filepath, dest_dir)
-                                        os.remove(filepath)
-                                        logger.info("ZIP extrait et supprimé")
+                                        extract_zip(filepath, dest_dir, url)
+                                        logger.info("ZIP extrait")
                                     elif filepath.lower().endswith('.rar'):
                                         logger.info(f"Extraction RAR: {filepath}")
-                                        extract_rar(filepath, dest_dir)
-                                        os.remove(filepath)
-                                        logger.info("RAR extrait et supprimé")
+                                        extract_rar(filepath, dest_dir, url)
+                                        logger.info("RAR extrait")
+                                    elif filepath.lower().endswith('.7z'):
+                                        logger.info(f"Extraction 7z: {filepath}")
+                                        extract_7z(filepath, dest_dir, url)
+                                        logger.info("7z extrait")
                                 except Exception as e:
                                     logger.error(f"Erreur extraction: {e}")
                             
@@ -3787,6 +3959,17 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         last_downloaded = downloaded
                                         last_update_time = current_time
                                         progress_queues[task_id].put((task_id, downloaded, total_size, speed))
+
+                    if downloaded <= 0:
+                        try:
+                            if os.path.exists(dest_path):
+                                os.remove(dest_path)
+                        except Exception:
+                            pass
+                        content_type = response.headers.get('content-type', '') if response is not None else ''
+                        raise requests.HTTPError(
+                            f"Downloaded empty response from source (content-type={content_type or 'unknown'})"
+                        )
 
                     # Si annulé, ne pas continuer avec extraction
                     if download_canceled:

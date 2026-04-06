@@ -28,6 +28,93 @@ from pathlib import Path
 from typing import Dict, Any
 import urllib.request
 
+
+def _get_windows_monitor_physical_sizes() -> list[tuple[int, int]]:
+    """Return physical monitor resolutions from Win32, bypassing DPI-scaled SDL values."""
+    if platform.system() != "Windows":
+        return []
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        CCHDEVICENAME = 32
+        ENUM_CURRENT_SETTINGS = -1
+
+        class MONITORINFOEXW(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("rcMonitor", wintypes.RECT),
+                ("rcWork", wintypes.RECT),
+                ("dwFlags", wintypes.DWORD),
+                ("szDevice", wintypes.WCHAR * CCHDEVICENAME),
+            ]
+
+        class DEVMODEW(ctypes.Structure):
+            _fields_ = [
+                ("dmDeviceName", wintypes.WCHAR * CCHDEVICENAME),
+                ("dmSpecVersion", wintypes.WORD),
+                ("dmDriverVersion", wintypes.WORD),
+                ("dmSize", wintypes.WORD),
+                ("dmDriverExtra", wintypes.WORD),
+                ("dmFields", wintypes.DWORD),
+                ("dmPositionX", wintypes.LONG),
+                ("dmPositionY", wintypes.LONG),
+                ("dmDisplayOrientation", wintypes.DWORD),
+                ("dmDisplayFixedOutput", wintypes.DWORD),
+                ("dmColor", wintypes.SHORT),
+                ("dmDuplex", wintypes.SHORT),
+                ("dmYResolution", wintypes.SHORT),
+                ("dmTTOption", wintypes.SHORT),
+                ("dmCollate", wintypes.SHORT),
+                ("dmFormName", wintypes.WCHAR * 32),
+                ("dmLogPixels", wintypes.WORD),
+                ("dmBitsPerPel", wintypes.DWORD),
+                ("dmPelsWidth", wintypes.DWORD),
+                ("dmPelsHeight", wintypes.DWORD),
+                ("dmDisplayFlags", wintypes.DWORD),
+                ("dmDisplayFrequency", wintypes.DWORD),
+                ("dmICMMethod", wintypes.DWORD),
+                ("dmICMIntent", wintypes.DWORD),
+                ("dmMediaType", wintypes.DWORD),
+                ("dmDitherType", wintypes.DWORD),
+                ("dmReserved1", wintypes.DWORD),
+                ("dmReserved2", wintypes.DWORD),
+                ("dmPanningWidth", wintypes.DWORD),
+                ("dmPanningHeight", wintypes.DWORD),
+            ]
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        monitors: list[tuple[int, int]] = []
+
+        monitor_enum_proc = ctypes.WINFUNCTYPE(
+            wintypes.BOOL,
+            wintypes.HMONITOR,
+            wintypes.HDC,
+            ctypes.POINTER(wintypes.RECT),
+            wintypes.LPARAM,
+        )
+
+        def _callback(hmonitor, hdc, lprect, lparam):
+            monitor_info = MONITORINFOEXW()
+            monitor_info.cbSize = ctypes.sizeof(MONITORINFOEXW)
+            if user32.GetMonitorInfoW(hmonitor, ctypes.byref(monitor_info)):
+                devmode = DEVMODEW()
+                devmode.dmSize = ctypes.sizeof(DEVMODEW)
+                if user32.EnumDisplaySettingsW(monitor_info.szDevice, ENUM_CURRENT_SETTINGS, ctypes.byref(devmode)):
+                    width = int(devmode.dmPelsWidth or 0)
+                    height = int(devmode.dmPelsHeight or 0)
+                    if width > 0 and height > 0:
+                        monitors.append((width, height))
+                        return True
+            return True
+
+        user32.EnumDisplayMonitors(0, 0, monitor_enum_proc(_callback), 0)
+        return monitors
+    except Exception as e:
+        logger.debug(f"Résolution physique Win32 indisponible: {e}")
+        return []
+
 logger = logging.getLogger(__name__)
 
 OVERLAY = None  # Initialisé dans init_display()
@@ -470,7 +557,11 @@ def init_display():
     
     # Obtenir la résolution du moniteur cible
     try:
-        if hasattr(pygame.display, 'get_desktop_sizes') and num_displays > 1:
+        win32_sizes = _get_windows_monitor_physical_sizes()
+        if target_monitor < len(win32_sizes):
+            screen_width, screen_height = win32_sizes[target_monitor]
+            logger.debug(f"Résolution moniteur via Win32: {screen_width}x{screen_height} (monitor={target_monitor})")
+        elif hasattr(pygame.display, 'get_desktop_sizes') and num_displays > 1:
             desktop_sizes = pygame.display.get_desktop_sizes()
             if target_monitor < len(desktop_sizes):
                 screen_width, screen_height = desktop_sizes[target_monitor]
@@ -1305,10 +1396,10 @@ def draw_platform_grid(screen):
     try:
         if hasattr(config, 'games_count') and isinstance(config.games_count, dict):
             game_count = config.games_count.get(platform_name, 0)
-        # Fallback dynamique si pas dans le cache (ex: plateformes modifiées à chaud)
+        # Fallback local sans fetch réseau pour éviter un chargement implicite pendant la navigation.
         if game_count == 0 and hasattr(config, 'platform_dict_by_name'):
-            from utils import load_games  # import local pour éviter import circulaire global
-            game_count = len(load_games(platform_name))
+            from utils import get_platform_game_count  # import local pour éviter import circulaire global
+            game_count = get_platform_game_count(platform_name, allow_torrent_manifest_fetch=False)
     except Exception:
         game_count = 0
     title_text = f"{platform_name}  ({game_count})" if game_count > 0 else f"{platform_name}"
@@ -2120,15 +2211,20 @@ def get_display_extension(file_name):
 
 
 def draw_global_search_list(screen):
-    """Affiche la recherche globale par nom sur toutes les plateformes."""
+    """Affiche la vue globale unifiée (recherche, filtre, tri)."""
     query = getattr(config, 'global_search_query', '') or ''
     results = getattr(config, 'global_search_results', []) or []
     keyboard_active = bool(getattr(config, 'joystick', False) and getattr(config, 'global_search_editing', False))
+    allow_empty = bool(getattr(config, 'global_search_allow_empty', False))
+    custom_title = (getattr(config, 'global_search_title_override', '') or '').strip()
 
     screen.blit(OVERLAY, (0, 0))
 
     title_query = query + "_" if (getattr(config, 'joystick', False) and getattr(config, 'global_search_editing', False)) or (not getattr(config, 'joystick', False)) else query
-    title_text = _("global_search_title").format(title_query)
+    if custom_title:
+        title_text = custom_title if not title_query else f"{custom_title} : {title_query}"
+    else:
+        title_text = _("global_search_title").format(title_query)
     if results:
         title_text += f" ({len(results)})"
 
@@ -2167,7 +2263,7 @@ def draw_global_search_list(screen):
     message_zone_top = title_rect_inflated.bottom + 24
     message_zone_bottom = max(message_zone_top + 80, reserved_bottom)
 
-    if not query.strip():
+    if not query.strip() and not allow_empty:
         message = _("global_search_empty_query")
         lines = wrap_text(message, config.font, config.screen_width - 80)
         line_height = config.font.get_height() + 5
@@ -2954,6 +3050,9 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
         ],
         "pause_connection_status": [
             ("cancel", _("controls_cancel_back")),
+        ],
+        "support_dialog": [
+            ("start", _("controls_cancel_back")),
         ],
     }
     
@@ -3813,7 +3912,7 @@ def draw_pause_games_menu(screen, selected_index):
     hide_premium_txt = f"{hide_premium_label}: < {status_hide_premium} >"
     
     # Filter platforms
-    filter_txt = _("submenu_display_filter_platforms") if _ else "Filter Platforms"
+    filter_txt = _("submenu_display_filter_platforms") if _ else "Show/Hide Platforms"
     
     back_txt = _("menu_back") if _ else "Back"
     options = [update_txt, scan_txt, history_txt, source_txt, unsupported_txt, hide_premium_txt, filter_txt, back_txt]
@@ -4588,12 +4687,15 @@ def draw_gamelist_update_prompt(screen):
 
     screen.blit(OVERLAY, (0, 0))
     
-    from config import GAMELIST_UPDATE_DAYS
-    from rgsx_settings import get_last_gamelist_update
+    from rgsx_settings import get_last_gamelist_update, format_gamelist_update_display
     
     last_update = get_last_gamelist_update()
-    if last_update:
-        message = _("gamelist_update_prompt_with_date").format(GAMELIST_UPDATE_DAYS, last_update) if _ else f"Game list hasn't been updated for more than {GAMELIST_UPDATE_DAYS} days (last update: {last_update}). Download the latest version?"
+    remote_update = getattr(config, 'gamelist_remote_update_display', '') or ''
+    local_update = getattr(config, 'gamelist_local_update_display', '') or format_gamelist_update_display(last_update)
+    if last_update and remote_update:
+        message = _("gamelist_update_prompt_remote_newer").format(local_update, remote_update) if _ else f"A newer online game list is available (local: {local_update}, online: {remote_update}). Download the latest version?"
+    elif last_update:
+        message = _("gamelist_update_prompt_with_date").format(local_update) if _ else f"Local game list last update: {local_update}. Download the latest version?"
     else:
         message = _("gamelist_update_prompt_first_time") if _ else "Would you like to download the latest game list?"
     
@@ -4891,22 +4993,17 @@ def draw_support_dialog(screen):
 
     screen.blit(OVERLAY, (0, 0))
     
-    # Récupérer le nom du bouton "cancel/back" depuis la configuration des contrôles
-    cancel_key = "SELECT"
-    try:
-        from controls_mapper import get_mapped_button
-        cancel_key = get_mapped_button("cancel") or "SELECT"
-    except Exception:
-        pass
+    # Cet écran se ferme via l'action Start dans la navigation actuelle.
+    return_key = get_control_display("start", "Start")
     
     # Déterminer le message à afficher (succès ou erreur)
     if hasattr(config, 'support_zip_error') and config.support_zip_error:
         title = _("support_dialog_title")
-        message = _("support_dialog_error").format(config.support_zip_error, cancel_key)
+        message = _("support_dialog_error").format(config.support_zip_error, return_key)
     else:
         title = _("support_dialog_title")
         zip_path = getattr(config, 'support_zip_path', 'rgsx_support.zip')
-        message = _("support_dialog_message").format(zip_path, cancel_key)
+        message = _("support_dialog_message").format(zip_path, return_key)
     
     # Diviser le message par les retours à la ligne puis wrapper chaque segment
     raw_segments = message.split('\n') if message else []
@@ -5125,7 +5222,7 @@ def draw_history_game_options(screen):
         # Vérifier si c'est une archive ET si le fichier existe
         if actual_filename and file_exists:
             ext = os.path.splitext(actual_filename)[1].lower()
-            if ext in ['.zip', '.rar']:
+            if ext in ['.zip', '.rar', '.7z']:
                 options.append("extract_archive")
                 option_labels.append(_("history_option_extract_archive"))
             elif ext == '.txt':
@@ -5382,7 +5479,7 @@ def draw_history_confirm_delete(screen):
 
 
 def draw_history_extract_archive(screen):
-    """Affiche la confirmation d'extraction d'archive."""
+    """Affiche la confirmation d'extraction forcée d'archive."""
     screen.blit(OVERLAY, (0, 0))
     
     if not config.history or config.current_history_item >= len(config.history):
@@ -5391,7 +5488,8 @@ def draw_history_extract_archive(screen):
     entry = config.history[config.current_history_item]
     game_name = entry.get("game_name", "Unknown")
     
-    message = f"Extract archive: {game_name}?"
+    prompt = _("history_extract_archive_confirm") if _ else "Force extract archive"
+    message = f"{prompt}: {game_name}?"
     wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
     line_height = config.font.get_height() + 5
     text_height = len(wrapped_message) * line_height
@@ -5687,7 +5785,7 @@ def draw_scraper_screen(screen):
 
 
 def draw_filter_menu_choice(screen):
-    """Affiche le menu de choix entre recherche par nom et filtrage avancé"""
+    """Affiche le menu filtre unifie."""
     screen.blit(OVERLAY, (0, 0))
     
     # Titre
@@ -5697,10 +5795,8 @@ def draw_filter_menu_choice(screen):
     screen.blit(title_surface, title_rect)
     
     # Options
-    options = [
-        _("filter_search_by_name"),
-        _("filter_advanced")
-    ]
+    entries = getattr(config, 'filter_menu_entries', []) or []
+    options = [entry.get('label', '') for entry in entries]
     
     # Calculer hauteur dynamique basée sur la taille de police
     sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
@@ -5748,6 +5844,49 @@ def draw_filter_menu_choice(screen):
                 truncated_text = truncated_text[:-1]
                 text_surface = config.font.render(truncated_text + "...", True, THEME_COLORS["text"])
         
+        text_rect = text_surface.get_rect(center=(config.screen_width // 2, y + button_height // 2))
+        screen.blit(text_surface, text_rect)
+
+
+def draw_global_sort_menu(screen):
+    screen.blit(OVERLAY, (0, 0))
+
+    title = _("web_sort") if _ else "Trier"
+    title_surface = config.title_font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, 60))
+    screen.blit(title_surface, title_rect)
+
+    options = [
+        _("web_sort_name_asc") if _ else "A-Z (Nom)",
+        _("web_sort_name_desc") if _ else "Z-A (Nom)",
+        _("web_sort_size_asc") if _ else "Taille +- (Petit d'abord)",
+        _("web_sort_size_desc") if _ else "Taille -+ (Grand d'abord)",
+        _("menu_back") if _ else "Retour",
+    ]
+
+    sample_text = config.font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    button_height = max(60, font_height + 30)
+    max_text_width = 0
+    for option in options:
+        text_surface = config.font.render(option, True, THEME_COLORS["text"])
+        max_text_width = max(max_text_width, text_surface.get_width())
+    button_width = max(460, max_text_width + 80)
+    menu_y = 150
+    button_spacing = 20
+
+    for i, option in enumerate(options):
+        y = menu_y + i * (button_height + button_spacing)
+        x = (config.screen_width - button_width) // 2
+        if i == getattr(config, 'global_sort_selected', 0):
+            color = THEME_COLORS["button_selected"]
+            border_color = THEME_COLORS["border_selected"]
+        else:
+            color = THEME_COLORS["button_idle"]
+            border_color = THEME_COLORS["border"]
+        pygame.draw.rect(screen, color, (x, y, button_width, button_height), border_radius=12)
+        pygame.draw.rect(screen, border_color, (x, y, button_width, button_height), 3, border_radius=12)
+        text_surface = config.font.render(option, True, THEME_COLORS["text"])
         text_rect = text_surface.get_rect(center=(config.screen_width // 2, y + button_height // 2))
         screen.blit(text_surface, text_rect)
 

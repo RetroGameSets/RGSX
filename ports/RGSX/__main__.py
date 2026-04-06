@@ -2,6 +2,53 @@ import os
 import platform
 import warnings
 
+
+def _enable_windows_dpi_awareness_early():
+    """Enable DPI awareness before importing pygame so SDL sees physical monitor sizes."""
+    if platform.system() != "Windows":
+        return
+
+    try:
+        os.environ.setdefault("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2")
+    except Exception:
+        pass
+
+    try:
+        import ctypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        if hasattr(user32, "SetProcessDpiAwarenessContext"):
+            for awareness in (-4, -3):
+                try:
+                    if user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(awareness)):
+                        return
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    try:
+        import ctypes
+
+        shcore = ctypes.WinDLL("shcore", use_last_error=True)
+        if hasattr(shcore, "SetProcessDpiAwareness"):
+            shcore.SetProcessDpiAwareness(2)
+            return
+    except Exception:
+        pass
+
+    try:
+        import ctypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        if hasattr(user32, "SetProcessDPIAware"):
+            user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
+_enable_windows_dpi_awareness_early()
+
 # Ignorer le warning de deprecation de pkg_resources dans pygame
 warnings.filterwarnings("ignore", category=UserWarning, module="pygame.pkgdata")
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
@@ -19,6 +66,7 @@ import logging
 import requests
 import queue
 import datetime
+from datetime import timezone
 import subprocess
 import sys
 import threading
@@ -28,7 +76,7 @@ from display import (
     init_display, draw_loading_screen, draw_error_screen, draw_platform_grid,
     draw_progress_screen, draw_controls, draw_virtual_keyboard,
     draw_extension_warning, draw_pause_menu, draw_controls_help, draw_game_list,
-    draw_global_search_list,
+    draw_global_search_list, draw_global_sort_menu,
         draw_display_menu, draw_filter_menu_choice, draw_filter_advanced, draw_filter_priority_config,
     draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog,
     draw_confirm_dialog, draw_reload_games_data_dialog, draw_popup, draw_gradient,
@@ -41,7 +89,7 @@ from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
 from utils import (
     load_sources, check_extension_before_download, extract_data,
-    play_random_music, load_music_config, load_api_keys
+    play_random_music, load_music_config, load_api_keys, _refresh_loading_feedback, _format_size_bytes
 )
 from history import load_history, save_history, load_downloaded_games
 from config import OTA_data_ZIP
@@ -99,6 +147,7 @@ _run_windows_gamelist_update()
 try:
     config.update_checked = False
     config.gamelist_update_prompted = False  # Flag pour ne pas redemander la mise à jour plusieurs fois
+    config.gamelist_refreshed_this_session = False
     config.pending_update_version = ""
     config.startup_update_confirmed = False
     config.text_file_mode = ""
@@ -760,6 +809,7 @@ async def main():
                 "filter_menu_choice",
                 "filter_advanced",
                 "filter_priority_config",
+                "global_sort_menu",
                 "platform_search",
             }
             if config.menu_state in SIMPLE_HANDLE_STATES:
@@ -1199,6 +1249,8 @@ async def main():
                 draw_filter_platforms_menu(screen)
             elif config.menu_state == "filter_menu_choice":
                 draw_filter_menu_choice(screen)
+            elif config.menu_state == "global_sort_menu":
+                draw_global_sort_menu(screen)
             elif config.menu_state == "filter_advanced":
                 draw_filter_advanced(screen)
             elif config.menu_state == "filter_priority_config":
@@ -1440,6 +1492,10 @@ async def main():
                             try:
                                 success, message = extract_data(local_zip, dest_dir, local_zip)
                                 if success:
+                                    from rgsx_settings import set_last_gamelist_update
+
+                                    set_last_gamelist_update()
+                                    config.gamelist_refreshed_this_session = True
                                     logger.debug(f"Extraction locale réussie : {message}")
                                     config.loading_progress = 70.0
                                     config.needs_redraw = True
@@ -1460,17 +1516,28 @@ async def main():
                                 config.popup_timer = 5000
                             else:
                                 try:
+                                    _refresh_loading_feedback(
+                                        current_system=_("loading_download_data"),
+                                        progress=config.loading_progress,
+                                        force=True,
+                                    )
                                     with requests.get(sources_zip_url, stream=True, headers=headers, timeout=30) as response:
                                         response.raise_for_status()
                                         total_size = int(response.headers.get('content-length', 0))
                                         logger.debug(f"Taille totale du ZIP : {total_size} octets")
                                         downloaded = 0
+                                        download_started_at = time.time()
+                                        last_loading_refresh = 0.0
                                         os.makedirs(os.path.dirname(zip_path), exist_ok=True)
                                         with open(zip_path, 'wb') as f:
-                                            for chunk in response.iter_content(chunk_size=8192):
+                                            for chunk in response.iter_content(chunk_size=262144):
                                                 if chunk:
                                                     f.write(chunk)
                                                     downloaded += len(chunk)
+                                                    elapsed = max(0.001, time.time() - download_started_at)
+                                                    speed_bytes_per_second = downloaded / elapsed
+                                                    progress_detail = f"{_format_size_bytes(downloaded)} / {_format_size_bytes(total_size)}" if total_size > 0 else _format_size_bytes(downloaded)
+                                                    speed_detail = f"{speed_bytes_per_second / (1024 * 1024):.1f} MB/s"
                                                     config.download_progress[sources_zip_url] = {
                                                         "downloaded_size": downloaded,
                                                         "total_size": total_size,
@@ -1479,7 +1546,16 @@ async def main():
                                                     }
                                                     config.loading_progress = 15.0 + (35.0 * downloaded / total_size) if total_size > 0 else 15.0
                                                     config.needs_redraw = True
-                                                    await asyncio.sleep(0)
+                                                    now = time.time()
+                                                    should_refresh = (now - last_loading_refresh) >= 0.12 or (total_size > 0 and downloaded >= total_size)
+                                                    if should_refresh:
+                                                        last_loading_refresh = now
+                                                        _refresh_loading_feedback(
+                                                            current_system=_("loading_download_data"),
+                                                            progress=config.loading_progress,
+                                                            detail_lines=[progress_detail, speed_detail],
+                                                        )
+                                                        await asyncio.sleep(0)
                                         logger.debug(f"ZIP téléchargé : {zip_path}")
 
                                     config.current_loading_system = _("loading_extracting_data")
@@ -1488,6 +1564,11 @@ async def main():
                                     dest_dir = config.SAVE_FOLDER
                                     success, message = extract_data(zip_path, dest_dir, sources_zip_url)
                                     if success:
+                                        from rgsx_settings import get_remote_gamelist_timestamp, set_last_gamelist_update
+
+                                        remote_update_dt = get_remote_gamelist_timestamp(sources_zip_url)
+                                        set_last_gamelist_update(remote_update_dt)
+                                        config.gamelist_refreshed_this_session = True
                                         logger.debug(f"Extraction réussie : {message}")
                                         config.loading_progress = 70.0
                                         config.needs_redraw = True
@@ -1526,34 +1607,76 @@ async def main():
                     continue  # Passer immédiatement à load_sources
             elif loading_step == "load_sources":
                 logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
-                sources = load_sources()
+                sources = load_sources(allow_torrent_manifest_fetch=True)
                 config.loading_progress = 100.0
                 config.current_loading_system = ""
+                config.loading_detail_lines = []
                 
                 # Vérifier si une mise à jour de la liste des jeux est nécessaire (seulement si pas déjà demandé)
                 if not config.gamelist_update_prompted:
-                    from rgsx_settings import get_last_gamelist_update
-                    from config import GAMELIST_UPDATE_DAYS
-                    from datetime import datetime, timedelta
+                    if getattr(config, "gamelist_refreshed_this_session", False):
+                        logger.info("Liste des jeux déjà téléchargée/extraites pendant ce lancement, aucun prompt de mise à jour supplémentaire")
+                        config.menu_state = "platform"
+                        logger.debug(f"Fin chargement, passage à platform, progress={config.loading_progress}")
+                        continue
+
+                    from rgsx_settings import (
+                        get_last_gamelist_update,
+                        get_last_gamelist_prompt_remote_update,
+                        parse_gamelist_update_timestamp,
+                        format_gamelist_update_display,
+                        get_remote_gamelist_timestamp,
+                    )
                     
                     last_update = get_last_gamelist_update()
+                    last_prompted_remote_update = get_last_gamelist_prompt_remote_update()
+                    last_update_dt = parse_gamelist_update_timestamp(last_update)
+                    last_prompted_remote_update_dt = parse_gamelist_update_timestamp(last_prompted_remote_update)
+                    remote_sources_url = get_sources_zip_url(OTA_data_ZIP)
+                    remote_update_dt = get_remote_gamelist_timestamp(remote_sources_url)
+                    config.gamelist_local_update_display = format_gamelist_update_display(last_update)
+                    config.gamelist_remote_update_display = format_gamelist_update_display(remote_update_dt)
+                    config.gamelist_remote_update_timestamp = (
+                        remote_update_dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+                        if remote_update_dt is not None else None
+                    )
                     should_prompt_update = False
                     
-                    if last_update is None:
-                        # Première utilisation, proposer la mise à jour
-                        logger.info("Première utilisation détectée, proposition de mise à jour de la liste des jeux")
-                        should_prompt_update = True
-                    else:
-                        try:
-                            last_update_date = datetime.strptime(last_update, "%Y-%m-%d")
-                            days_since_update = (datetime.now() - last_update_date).days
-                            logger.info(f"Dernière mise à jour de la liste des jeux: {last_update} ({days_since_update} jours)")
-                            
-                            if days_since_update >= GAMELIST_UPDATE_DAYS:
-                                logger.info(f"Mise à jour de la liste des jeux recommandée (>{GAMELIST_UPDATE_DAYS} jours)")
+                    try:
+                        logger.info(
+                            f"Dernière mise à jour locale de la liste des jeux: {config.gamelist_local_update_display or last_update}"
+                        )
+                        if last_prompted_remote_update_dt is not None:
+                            logger.info(
+                                "Dernière date distante déjà proposée pour la liste des jeux: "
+                                f"{last_prompted_remote_update_dt.isoformat()}"
+                            )
+                        if remote_update_dt is not None:
+                            logger.info(
+                                f"Date distante détectée pour la liste des jeux: {config.gamelist_remote_update_display}"
+                            )
+
+                        latest_seen_update_dt = None
+                        for candidate_dt in (last_update_dt, last_prompted_remote_update_dt):
+                            if candidate_dt is None:
+                                continue
+                            if latest_seen_update_dt is None or candidate_dt > latest_seen_update_dt:
+                                latest_seen_update_dt = candidate_dt
+
+                        if remote_update_dt is not None:
+                            if latest_seen_update_dt is None:
+                                logger.info("Première vérification distante détectée, proposition de mise à jour de la liste des jeux")
                                 should_prompt_update = True
-                        except Exception as e:
-                            logger.error(f"Erreur lors de la vérification de la date de mise à jour: {e}")
+                            elif remote_update_dt > latest_seen_update_dt:
+                                logger.info("Mise à jour de la liste des jeux recommandée (fichier distant plus récent)")
+                                should_prompt_update = True
+                            else:
+                                logger.info("Même version distante déjà appliquée ou déjà proposée, aucun prompt affiché")
+                        elif last_update is None and last_prompted_remote_update is None:
+                            logger.info("Première utilisation détectée sans date distante exploitable, proposition de mise à jour de la liste des jeux")
+                            should_prompt_update = True
+                    except Exception as e:
+                        logger.error(f"Erreur lors de la vérification de la date de mise à jour: {e}")
                     
                     if should_prompt_update:
                         config.menu_state = "gamelist_update_prompt"

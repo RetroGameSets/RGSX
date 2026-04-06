@@ -15,13 +15,15 @@ from utils import (
     load_games, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
     save_music_config, load_api_keys, _get_dest_folder_name,
-    extract_zip, extract_rar, find_file_with_or_without_extension, find_matching_files, toggle_web_service_at_boot, check_web_service_status,
+    extract_zip, extract_rar, extract_7z, find_file_with_or_without_extension, find_matching_files, toggle_web_service_at_boot, check_web_service_status,
     restart_application, generate_support_zip, load_sources,
     ensure_download_provider_keys, missing_all_provider_keys, build_provider_paths_string,
     start_connection_status_check, get_clean_display_name, get_existing_history_matches,
     clear_torrent_manifest_cache,
+    request_torrent_manifest_refresh,
     clear_platform_game_count_cache,
-    move_files_to_directory, parse_torrent_download_url
+    move_files_to_directory, parse_torrent_download_url,
+    _refresh_loading_feedback,
 )
 from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games
 from language import _, get_available_languages, set_language  
@@ -40,6 +42,13 @@ logger = logging.getLogger(__name__)
 
 # Extensions d'archives pour lesquelles on ignore l'avertissement d'extension non supportée
 ARCHIVE_EXTENSIONS = {'.zip', '.7z', '.rar', '.tar', '.gz', '.xz', '.bz2'}
+
+GLOBAL_SORT_OPTIONS = [
+    ("name_asc", lambda: _("web_sort_name_asc") or "A-Z (Name)"),
+    ("name_desc", lambda: _("web_sort_name_desc") or "Z-A (Name)"),
+    ("size_asc", lambda: _("web_sort_size_asc") or "Size +- (Small first)"),
+    ("size_desc", lambda: _("web_sort_size_desc") or "Size -+ (Large first)"),
+]
 
 
 def _notify_torrent_in_maintenance(game_name: str | None = None) -> None:
@@ -69,6 +78,167 @@ def _wrap_index(current_index: int, delta: int, item_count: int) -> int:
     if item_count <= 0:
         return 0
     return (current_index + delta) % item_count
+
+
+def _parse_game_size_to_bytes(value) -> int:
+    if isinstance(value, (int, float)):
+        return max(0, int(value))
+    if not isinstance(value, str):
+        return 0
+
+    text = value.strip().replace(',', '.')
+    if not text:
+        return 0
+
+    match = re.match(r'^([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z]+)?$', text)
+    if not match:
+        return 0
+
+    amount = float(match.group(1))
+    unit = (match.group(2) or 'B').strip().lower()
+    multipliers = {
+        'b': 1,
+        'byte': 1,
+        'bytes': 1,
+        'octet': 1,
+        'octets': 1,
+        'kb': 1024,
+        'kib': 1024,
+        'ko': 1024,
+        'mb': 1024 ** 2,
+        'mib': 1024 ** 2,
+        'mo': 1024 ** 2,
+        'gb': 1024 ** 3,
+        'gib': 1024 ** 3,
+        'go': 1024 ** 3,
+        'tb': 1024 ** 4,
+        'tib': 1024 ** 4,
+        'to': 1024 ** 4,
+        'pb': 1024 ** 5,
+        'pib': 1024 ** 5,
+        'po': 1024 ** 5,
+    }
+    return int(amount * multipliers.get(unit, 0)) if unit in multipliers else 0
+
+
+def _sort_global_items(items: list[dict]) -> list[dict]:
+    option = getattr(config, 'global_sort_option', 'name_asc') or 'name_asc'
+    reverse = option in ('name_desc', 'size_desc')
+
+    if option.startswith('size_'):
+        return sorted(
+            items,
+            key=lambda item: (
+                int(item.get('size_bytes') or 0),
+                str(item.get('display_name') or '').lower(),
+                str(item.get('platform_label') or '').lower(),
+            ),
+            reverse=reverse,
+        )
+
+    return sorted(
+        items,
+        key=lambda item: (
+            str(item.get('display_name') or '').lower(),
+            str(item.get('platform_label') or '').lower(),
+            int(item.get('size_bytes') or 0),
+        ),
+        reverse=reverse,
+    )
+
+
+def _get_global_sort_index(option: str | None = None) -> int:
+    target = option or getattr(config, 'global_sort_option', 'name_asc')
+    for index, (key, _) in enumerate(GLOBAL_SORT_OPTIONS):
+        if key == target:
+            return index
+    return 0
+
+
+def _sort_local_games(items: list[Game]) -> list[Game]:
+    option = getattr(config, 'global_sort_option', 'name_asc') or 'name_asc'
+    reverse = option in ('name_desc', 'size_desc')
+
+    if option.startswith('size_'):
+        return sorted(
+            items,
+            key=lambda game: (
+                _parse_game_size_to_bytes(game.size),
+                str(game.display_name or game.name or '').lower(),
+            ),
+            reverse=reverse,
+        )
+
+    return sorted(
+        items,
+        key=lambda game: (
+            str(game.display_name or game.name or '').lower(),
+            _parse_game_size_to_bytes(game.size),
+        ),
+        reverse=reverse,
+    )
+
+
+def _build_filter_menu_entries(context: str) -> list[dict[str, str]]:
+    global_search_label = 'Recherche globale' if (_ is None or _("global_search_title") == "global_search_title") else _("global_search_title").format("").replace(" : ", "").rstrip(': ')
+    platform_search_label = 'Recherche sur cette plateforme' if (_ is None or _("platform_search_title") == "platform_search_title") else _("platform_search_title")
+    advanced_filter_label = 'Filtrer' if (_ is None or _("filter_advanced") == "filter_advanced") else _("filter_advanced")
+    sort_label = 'Trier' if (_ is None or _("web_sort") == "web_sort") else _("web_sort")
+    back_label = 'Retour' if (_ is None or _("menu_back") == "menu_back") else _("menu_back")
+
+    entries = []
+    if context == 'game':
+        entries.extend([
+            {
+                'key': 'platform_search',
+                'label': platform_search_label,
+            },
+            {
+                'key': 'global_sort',
+                'label': sort_label,
+            },
+            {
+                'key': 'global_search',
+                'label': global_search_label,
+            },
+            {
+                'key': 'global_filter',
+                'label': advanced_filter_label,
+            },
+        ])
+    else:
+        entries.extend([
+            {
+                'key': 'global_search',
+                'label': global_search_label,
+            },
+            {
+                'key': 'global_filter',
+                'label': advanced_filter_label,
+            },
+            {
+                'key': 'global_sort',
+                'label': sort_label,
+            },
+        ])
+
+    entries.append({
+        'key': 'back',
+        'label': back_label,
+    })
+    return entries
+
+
+def open_unified_filter_menu(source_state: str) -> None:
+    context = 'game' if source_state == 'game' else 'global'
+    config.filter_menu_context = context
+    config.filter_menu_entries = _build_filter_menu_entries(context)
+    config.filter_menu_return_state = validate_menu_state(source_state)
+    config.selected_filter_choice = 0
+    config.previous_menu_state = source_state
+    config.menu_state = 'filter_menu_choice'
+    config.needs_redraw = True
+    logger.debug(f"Ouverture du menu filtre unifie depuis {source_state}")
 
 
 # Variables globales pour la répétition
@@ -104,6 +274,7 @@ VALID_STATES = [
     "filter_search",            # recherche par nom (existant, mais renommé)
     "filter_advanced",          # filtrage avancé par région, etc.
     "filter_priority_config",   # configuration priorité régions pour one-rom-per-game
+    "global_sort_menu",         # menu de tri global
     "platform_search",          # recherche globale inter-plateformes
     "platform_folder_config",   # configuration du dossier personnalisé pour une plateforme
     "folder_browser",           # navigateur de dossiers intégré
@@ -448,8 +619,8 @@ def filter_games_by_search_query() -> list[Game]:
         game_name = game.display_name 
         if config.search_query.lower() in game_name.lower():
             filtered_games.append(game)
-        
-    return filtered_games
+
+    return _sort_local_games(filtered_games)
 
 
 GLOBAL_SEARCH_KEYBOARD_LAYOUT = [
@@ -468,11 +639,33 @@ def _get_platform_label(platform_id: str) -> str:
     return config.platform_names.get(platform_id, platform_id)
 
 
+def _build_global_search_loading_title() -> str:
+    fallback = "Loading..."
+    if _ is None:
+        return fallback
+    try:
+        text = _("global_search_title").format("").replace(" : ", "").rstrip(': ')
+    except Exception:
+        text = ""
+    return text or fallback
+
+
 def build_global_search_index() -> list[dict]:
     indexed_games = []
+    total_platforms = max(1, len(config.platforms))
     for platform_index, platform in enumerate(config.platforms):
         platform_id = _get_platform_id(platform)
         platform_label = _get_platform_label(platform_id)
+        _refresh_loading_feedback(
+            current_system=_build_global_search_loading_title(),
+            progress=((platform_index / total_platforms) * 100.0),
+            detail_lines=[
+                _("loading_platform_counter").format(platform_index + 1, total_platforms) if _ else f"Platform {platform_index + 1}/{total_platforms}",
+                _("loading_platform_name").format(platform_label) if _ else f"Platform: {platform_label}",
+                _("loading_read_games_resolve_sources") if _ else "Reading games and resolving sources...",
+            ],
+            force=True,
+        )
         for game in load_games(platform_id):
             display_name = game.display_name or Path(game.name).stem
             indexed_games.append({
@@ -484,21 +677,135 @@ def build_global_search_index() -> list[dict]:
                 "search_name": display_name.lower(),
                 "url": game.url,
                 "size": game.size,
+                "size_bytes": _parse_game_size_to_bytes(game.size),
+                "game_obj": game,
             })
 
-    indexed_games.sort(key=lambda item: (item["platform_label"].lower(), item["display_name"].lower()))
-    return indexed_games
+    _refresh_loading_feedback(
+        current_system=_build_global_search_loading_title(),
+        progress=100.0,
+        detail_lines=[
+            _("loading_platform_counter").format(total_platforms, total_platforms) if _ else f"Platform {total_platforms}/{total_platforms}",
+        ],
+        force=True,
+    )
+
+    return _sort_global_items(indexed_games)
+
+
+def _load_embedded_global_search_index() -> list[dict] | None:
+    cache_path = getattr(config, 'GLOBAL_SEARCH_INDEX_CACHE_PATH', '')
+    if not cache_path or not os.path.exists(cache_path):
+        return None
+
+    try:
+        with open(cache_path, 'r', encoding='utf-8') as handle:
+            payload = json.load(handle)
+    except Exception as exc:
+        logger.warning(f"Impossible de charger l'index global embarque: {exc}")
+        return None
+
+    raw_entries = payload.get('entries') if isinstance(payload, dict) else None
+    if not isinstance(raw_entries, list):
+        return None
+
+    platform_order: dict[str, int] = {}
+    for index, platform in enumerate(config.platforms):
+        platform_order[_get_platform_id(platform)] = index
+
+    indexed_games = []
+    for raw_entry in raw_entries:
+        if not isinstance(raw_entry, dict):
+            continue
+        platform_id = str(raw_entry.get('platform_id') or '').strip()
+        if not platform_id or platform_id not in platform_order:
+            continue
+
+        game_name = str(raw_entry.get('game_name') or '').strip()
+        if not game_name:
+            continue
+
+        display_name = str(raw_entry.get('display_name') or '').strip() or Path(game_name).stem
+        url = str(raw_entry.get('url') or '').strip() or None
+        size = str(raw_entry.get('size') or '').strip() or None
+        try:
+            size_bytes = int(raw_entry.get('size_bytes') or 0)
+        except (TypeError, ValueError):
+            size_bytes = 0
+
+        game_obj = Game(name=game_name, url=url, size=size, display_name=display_name)
+        indexed_games.append({
+            'platform_id': platform_id,
+            'platform_label': _get_platform_label(platform_id),
+            'platform_index': platform_order[platform_id],
+            'game_name': game_name,
+            'display_name': display_name,
+            'search_name': display_name.lower(),
+            'url': url,
+            'size': size,
+            'size_bytes': size_bytes,
+            'game_obj': game_obj,
+        })
+
+    if indexed_games:
+        logger.info(f"Index global charge depuis le cache embarque: {len(indexed_games)} jeux")
+        return _sort_global_items(indexed_games)
+    return None
+
+
+def _ensure_global_search_index(operation_title: str | None = None) -> None:
+    index_signature = tuple(config.platforms)
+    if getattr(config, 'global_search_index', None) and getattr(config, 'global_search_index_signature', None) == index_signature:
+        return
+
+    embedded_index = _load_embedded_global_search_index()
+    if embedded_index is not None:
+        config.global_search_index = embedded_index
+        config.global_search_index_signature = index_signature
+        return
+
+    previous_menu_state = getattr(config, 'menu_state', 'platform')
+    previous_loading_system = getattr(config, 'current_loading_system', '')
+    previous_loading_progress = getattr(config, 'loading_progress', 0.0)
+    previous_loading_detail_lines = list(getattr(config, 'loading_detail_lines', []) or [])
+
+    config.menu_state = "loading"
+    config.current_loading_system = operation_title or _build_global_search_loading_title()
+    config.loading_progress = 0.0
+    config.loading_detail_lines = [config.current_loading_system]
+    config.needs_redraw = True
+    _refresh_loading_feedback(force=True)
+
+    try:
+        config.global_search_index = build_global_search_index()
+        config.global_search_index_signature = index_signature
+    finally:
+        config.menu_state = previous_menu_state
+        config.current_loading_system = previous_loading_system
+        config.loading_progress = previous_loading_progress
+        config.loading_detail_lines = previous_loading_detail_lines
+        config.needs_redraw = True
 
 
 def refresh_global_search_results(reset_selection: bool = True) -> None:
     query = (config.global_search_query or "").strip().lower()
-    if not query:
-        config.global_search_results = []
-    else:
-        config.global_search_results = [
-            item for item in config.global_search_index
+    items = list(getattr(config, 'global_search_index', []) or [])
+
+    filter_obj = getattr(config, 'game_filter_obj', None)
+    if filter_obj and filter_obj.is_active():
+        item_by_game = {id(item.get('game_obj')): item for item in items}
+        filtered_games = filter_obj.apply_filters([item.get('game_obj') for item in items if item.get('game_obj') is not None])
+        items = [item_by_game[id(game)] for game in filtered_games if id(game) in item_by_game]
+
+    if query:
+        items = [
+            item for item in items
             if query in item.get("search_name", item["display_name"].lower())
         ]
+    elif not getattr(config, 'global_search_allow_empty', False):
+        items = []
+
+    config.global_search_results = _sort_global_items(items)
 
     if reset_selection:
         config.global_search_selected = 0
@@ -510,20 +817,46 @@ def refresh_global_search_results(reset_selection: bool = True) -> None:
 
 
 def enter_global_search() -> None:
-    index_signature = tuple(config.platforms)
-    if not getattr(config, 'global_search_index', None) or getattr(config, 'global_search_index_signature', None) != index_signature:
-        config.global_search_index = build_global_search_index()
-        config.global_search_index_signature = index_signature
+    _ensure_global_search_index(_build_global_search_loading_title())
     config.global_search_query = ""
     config.global_search_results = []
     config.global_search_selected = 0
     config.global_search_scroll_offset = 0
     config.global_search_editing = bool(getattr(config, 'joystick', False))
+    config.global_search_allow_empty = False
+    config.global_search_title_override = _("global_search_title").format("").replace(" : ", "").rstrip(': ') if _ else 'Recherche globale'
     config.selected_key = (0, 0)
-    config.previous_menu_state = "platform"
     config.menu_state = "platform_search"
     config.needs_redraw = True
     logger.debug("Entree en recherche globale inter-plateformes")
+
+
+def enter_global_filtered_results() -> None:
+    _ensure_global_search_index(_("filter_advanced") if _ else "Loading...")
+    config.global_search_query = ""
+    config.global_search_selected = 0
+    config.global_search_scroll_offset = 0
+    config.global_search_editing = False
+    config.global_search_allow_empty = True
+    config.global_search_title_override = _("filter_advanced") if _ else 'Filtrer'
+    refresh_global_search_results(reset_selection=True)
+    config.menu_state = "platform_search"
+    config.needs_redraw = True
+    logger.debug(f"Affichage des resultats globaux filtres: {len(config.global_search_results)}")
+
+
+def enter_global_sorted_results() -> None:
+    _ensure_global_search_index(_("web_sort") if _ else "Loading...")
+    config.global_search_query = ""
+    config.global_search_selected = 0
+    config.global_search_scroll_offset = 0
+    config.global_search_editing = False
+    config.global_search_allow_empty = True
+    config.global_search_title_override = _("web_sort") if _ else 'Trier'
+    refresh_global_search_results(reset_selection=True)
+    config.menu_state = "platform_search"
+    config.needs_redraw = True
+    logger.debug(f"Affichage des resultats globaux tries ({config.global_sort_option}): {len(config.global_search_results)}")
 
 
 def exit_global_search() -> None:
@@ -532,8 +865,10 @@ def exit_global_search() -> None:
     config.global_search_selected = 0
     config.global_search_scroll_offset = 0
     config.global_search_editing = False
+    config.global_search_allow_empty = False
+    config.global_search_title_override = ""
     config.selected_key = (0, 0)
-    config.menu_state = "platform"
+    config.menu_state = validate_menu_state(getattr(config, 'global_search_return_state', None) or getattr(config, 'previous_menu_state', None))
     config.needs_redraw = True
 
 
@@ -834,7 +1169,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 logger.debug("Ouverture history depuis platform")
             elif is_input_matched(event, "filter"):
-                enter_global_search()
+                open_unified_filter_menu("platform")
             elif is_input_matched(event, "confirm"):
                 # Démarrer le chronomètre pour l'appui long - ne pas exécuter immédiatement
                 # L'action sera exécutée au relâchement si appui court, ou config dossier si appui long
@@ -1154,12 +1489,7 @@ def handle_controls(event, sources, joystick, screen):
                                     event.value)
                     config.needs_redraw = True                    
                 elif is_input_matched(event, "filter"):
-                    # Afficher le menu de choix entre recherche et filtrage avancé
-                    config.menu_state = "filter_menu_choice"
-                    config.selected_filter_choice = 0
-                    config.previous_menu_state = "game"
-                    config.needs_redraw = True
-                    logger.debug("Ouverture du menu de filtrage") 
+                    open_unified_filter_menu("game")
                 elif is_input_matched(event, "history"):
                     config.history_origin = "game"
                     config.menu_state = "history"
@@ -1501,7 +1831,7 @@ def handle_controls(event, sources, joystick, screen):
 
         # Dialogue fichier de support
         elif config.menu_state == "support_dialog":
-            if is_input_matched(event, "confirm") or is_input_matched(event, "cancel"):
+            if is_input_matched(event, "confirm") or is_input_matched(event, "cancel") or is_input_matched(event, "start"):
                 # Retour au menu pause
                 config.menu_state = "pause_menu"
                 config.needs_redraw = True
@@ -1557,7 +1887,7 @@ def handle_controls(event, sources, joystick, screen):
                     # Vérifier si c'est une archive ET si le fichier existe
                     if actual_filename and file_exists:
                         ext = os.path.splitext(actual_filename)[1].lower()
-                        if ext in ['.zip', '.rar']:
+                        if ext in ['.zip', '.rar', '.7z']:
                             options.append("extract_archive")
                         elif ext == '.txt':
                             options.append("open_file")
@@ -2037,6 +2367,8 @@ def handle_controls(event, sources, joystick, screen):
                                         success, msg = extract_zip(file_path, dest_dir, url)
                                     elif ext == '.rar':
                                         success, msg = extract_rar(file_path, dest_dir, url)
+                                    elif ext == '.7z':
+                                        success, msg = extract_7z(file_path, dest_dir, url)
                                     else:
                                         success, msg = False, "Not an archive"
                                     
@@ -2884,9 +3216,14 @@ def handle_controls(event, sources, joystick, screen):
                                 shutil.rmtree(config.IMAGES_FOLDER)
                             clear_torrent_manifest_cache()
                             clear_platform_game_count_cache()
-                            # Mettre à jour la date
-                            from rgsx_settings import set_last_gamelist_update
-                            set_last_gamelist_update()
+                            request_torrent_manifest_refresh()
+                            # Mettre à jour la date et mémoriser la version distante déjà proposée
+                            from rgsx_settings import (
+                                set_last_gamelist_prompt_remote_update,
+                                set_last_gamelist_update,
+                            )
+                            set_last_gamelist_update(getattr(config, 'gamelist_remote_update_timestamp', None))
+                            set_last_gamelist_prompt_remote_update(getattr(config, 'gamelist_remote_update_timestamp', None))
                             config.menu_state = "restart_popup"
                             config.popup_message = _("popup_gamelist_updating") if _ else "Updating game list... Restarting..."
                             config.popup_timer = 2000
@@ -2897,18 +3234,25 @@ def handle_controls(event, sources, joystick, screen):
                             config.menu_state = "loading"
                             config.needs_redraw = True
                     else:
-                        # Pas de cache existant, juste mettre à jour la date et continuer
-                        from rgsx_settings import set_last_gamelist_update
-                        set_last_gamelist_update()
+                        # Pas de cache existant, juste mettre à jour la date et mémoriser la version distante déjà proposée
+                        from rgsx_settings import (
+                            set_last_gamelist_prompt_remote_update,
+                            set_last_gamelist_update,
+                        )
+                        set_last_gamelist_update(getattr(config, 'gamelist_remote_update_timestamp', None))
+                        set_last_gamelist_prompt_remote_update(getattr(config, 'gamelist_remote_update_timestamp', None))
                         config.menu_state = "loading"
                         config.needs_redraw = True
                 else:  # Non
                     logger.info("Utilisateur a refusé la mise à jour de la liste des jeux")
-                    # Ne pas mettre à jour la date pour redemander plus tard
+                    from rgsx_settings import set_last_gamelist_prompt_remote_update
+                    set_last_gamelist_prompt_remote_update(getattr(config, 'gamelist_remote_update_timestamp', None))
                     config.menu_state = "platform"
                     config.needs_redraw = True
             elif is_input_matched(event, "cancel"):
                 logger.info("Utilisateur a annulé le prompt de mise à jour")
+                from rgsx_settings import set_last_gamelist_prompt_remote_update
+                set_last_gamelist_prompt_remote_update(getattr(config, 'gamelist_remote_update_timestamp', None))
                 config.menu_state = "platform"
                 config.needs_redraw = True
         
@@ -3231,9 +3575,10 @@ def handle_controls(event, sources, joystick, screen):
                                 logger.debug("Dossier images supprimé avec succès")
                             clear_torrent_manifest_cache()
                             clear_platform_game_count_cache()
+                            request_torrent_manifest_refresh()
                             # Mettre à jour la date de dernière mise à jour
                             from rgsx_settings import set_last_gamelist_update
-                            set_last_gamelist_update()
+                            set_last_gamelist_update(getattr(config, 'gamelist_remote_update_timestamp', None))
                             config.menu_state = "restart_popup"
                             config.popup_message = _("popup_redownload_success")
                             config.popup_timer = 2000  # bref message
@@ -3315,18 +3660,24 @@ def handle_controls(event, sources, joystick, screen):
 
         # Menu de choix filtrage
         elif config.menu_state == "filter_menu_choice":
+            entries = getattr(config, 'filter_menu_entries', []) or _build_filter_menu_entries(getattr(config, 'filter_menu_context', 'global'))
+            return_state = validate_menu_state(getattr(config, 'filter_menu_return_state', None))
+            total_entries = max(1, len(entries))
             if is_input_matched(event, "up"):
-                config.selected_filter_choice = (config.selected_filter_choice - 1) % 2
+                config.selected_filter_choice = (config.selected_filter_choice - 1) % total_entries
                 config.needs_redraw = True
             elif is_input_matched(event, "down"):
-                config.selected_filter_choice = (config.selected_filter_choice + 1) % 2
+                config.selected_filter_choice = (config.selected_filter_choice + 1) % total_entries
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
-                if config.selected_filter_choice == 0:
-                    # Recherche par nom (mode existant)
+                selected_entry = entries[config.selected_filter_choice] if entries else {'key': 'back'}
+                selected_key = selected_entry.get('key')
+                if selected_key == 'global_search':
+                    config.global_search_return_state = return_state
+                    enter_global_search()
+                elif selected_key == 'platform_search':
                     config.search_mode = True
                     config.search_query = ""
-                    # Initialiser avec les jeux déjà filtrés par les filtres avancés si actifs
                     if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
                         config.filtered_games = config.game_filter_obj.apply_filters(config.games)
                     else:
@@ -3336,27 +3687,73 @@ def handle_controls(event, sources, joystick, screen):
                     config.selected_key = (0, 0)
                     config.menu_state = "game"
                     config.needs_redraw = True
-                    logger.debug("Entrée en mode recherche par nom")
-                else:
-                    # Filtrage avancé
+                    logger.debug("Entrée en mode recherche sur cette plateforme")
+                elif selected_key == 'global_filter':
                     from game_filters import GameFilters
                     from rgsx_settings import load_game_filters
-                    
-                    # Initialiser le filtre
+
                     if not hasattr(config, 'game_filter_obj'):
                         config.game_filter_obj = GameFilters()
                         filter_dict = load_game_filters()
                         if filter_dict:
                             config.game_filter_obj.load_from_dict(filter_dict)
-                    
+
+                    config.filter_target_scope = 'local' if getattr(config, 'filter_menu_context', 'global') == 'game' else 'saved'
+                    config.global_search_return_state = return_state
+                    config.previous_menu_state = 'filter_menu_choice'
                     config.menu_state = "filter_advanced"
                     config.selected_filter_option = 0
                     config.needs_redraw = True
-                    logger.debug("Entrée en filtrage avancé")
+                    logger.debug("Entrée en filtrage avancé global")
+                elif selected_key == 'global_sort':
+                    config.global_search_return_state = return_state
+                    config.global_sort_selected = _get_global_sort_index()
+                    config.menu_state = 'global_sort_menu'
+                    config.previous_menu_state = 'filter_menu_choice'
+                    config.needs_redraw = True
+                    logger.debug("Ouverture du menu de tri global")
+                else:
+                    config.menu_state = return_state
+                    config.needs_redraw = True
             elif is_input_matched(event, "cancel"):
-                config.menu_state = "game"
+                config.menu_state = return_state
                 config.needs_redraw = True
-                logger.debug("Retour à la liste des jeux")
+                logger.debug(f"Retour depuis menu filtre vers {config.menu_state}")
+
+        elif config.menu_state == 'global_sort_menu':
+            total_items = len(GLOBAL_SORT_OPTIONS) + 1
+            if is_input_matched(event, 'up'):
+                config.global_sort_selected = (config.global_sort_selected - 1) % total_items
+                config.needs_redraw = True
+            elif is_input_matched(event, 'down'):
+                config.global_sort_selected = (config.global_sort_selected + 1) % total_items
+                config.needs_redraw = True
+            elif is_input_matched(event, 'confirm'):
+                if config.global_sort_selected < len(GLOBAL_SORT_OPTIONS):
+                    config.global_sort_option = GLOBAL_SORT_OPTIONS[config.global_sort_selected][0]
+                    if getattr(config, 'filter_menu_context', 'global') == 'game':
+                        if config.search_query:
+                            config.filtered_games = filter_games_by_search_query()
+                            config.filter_active = True
+                        elif hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
+                            config.filtered_games = _sort_local_games(config.game_filter_obj.apply_filters(config.games))
+                            config.filter_active = True
+                        else:
+                            config.filtered_games = _sort_local_games(config.games)
+                            config.filter_active = False
+                        config.current_game = 0
+                        config.scroll_offset = 0
+                        config.menu_state = validate_menu_state(getattr(config, 'filter_menu_return_state', None))
+                        config.needs_redraw = True
+                        logger.debug(f"Tri local applique sur la liste courante ({config.global_sort_option})")
+                    else:
+                        enter_global_sorted_results()
+                else:
+                    config.menu_state = 'filter_menu_choice'
+                    config.needs_redraw = True
+            elif is_input_matched(event, 'cancel'):
+                config.menu_state = 'filter_menu_choice'
+                config.needs_redraw = True
 
         # Filtrage avancé
         elif config.menu_state == "filter_advanced":
@@ -3488,38 +3885,60 @@ def handle_controls(event, sources, joystick, screen):
                     if button_idx == 0:
                         # Apply
                         save_game_filters(config.game_filter_obj.to_dict())
-                        
-                        # Appliquer aux jeux actuels
-                        if config.game_filter_obj.is_active():
-                            config.filtered_games = config.game_filter_obj.apply_filters(config.games)
-                            config.filter_active = True
+
+                        if getattr(config, 'filter_target_scope', 'local') == 'global':
+                            enter_global_filtered_results()
+                        elif getattr(config, 'filter_target_scope', 'local') == 'saved':
+                            config.menu_state = validate_menu_state(getattr(config, 'filter_menu_return_state', None))
+                            config.needs_redraw = True
                         else:
-                            config.filtered_games = config.games
-                            config.filter_active = False
-                        
-                        config.current_game = 0
-                        config.scroll_offset = 0
-                        config.menu_state = "game"
-                        config.needs_redraw = True
+                            if config.game_filter_obj.is_active():
+                                config.filtered_games = config.game_filter_obj.apply_filters(config.games)
+                                config.filter_active = True
+                            else:
+                                config.filtered_games = config.games
+                                config.filter_active = False
+
+                            config.current_game = 0
+                            config.scroll_offset = 0
+                            config.menu_state = "game"
+                            config.needs_redraw = True
                         logger.debug("Filtres appliqués")
                     
                     elif button_idx == 1:
                         # Reset
                         config.game_filter_obj.reset()
                         save_game_filters(config.game_filter_obj.to_dict())
-                        config.filtered_games = config.games
-                        config.filter_active = False
-                        config.needs_redraw = True
+                        if getattr(config, 'filter_target_scope', 'local') == 'global':
+                            config.needs_redraw = True
+                        elif getattr(config, 'filter_target_scope', 'local') == 'saved':
+                            config.needs_redraw = True
+                        else:
+                            config.filtered_games = config.games
+                            config.filter_active = False
+                            config.needs_redraw = True
                         logger.debug("Filtres réinitialisés")
                     
                     elif button_idx == 2:
                         # Back
-                        config.menu_state = "game"
+                        scope = getattr(config, 'filter_target_scope', 'local')
+                        if scope == 'global':
+                            config.menu_state = "filter_menu_choice"
+                        elif scope == 'saved':
+                            config.menu_state = validate_menu_state(getattr(config, 'filter_menu_return_state', None))
+                        else:
+                            config.menu_state = "game"
                         config.needs_redraw = True
                         logger.debug("Retour sans appliquer les filtres")
             
             elif is_input_matched(event, "cancel"):
-                config.menu_state = "game"
+                scope = getattr(config, 'filter_target_scope', 'local')
+                if scope == 'global':
+                    config.menu_state = "filter_menu_choice"
+                elif scope == 'saved':
+                    config.menu_state = validate_menu_state(getattr(config, 'filter_menu_return_state', None))
+                else:
+                    config.menu_state = "game"
                 config.needs_redraw = True
                 logger.debug("Annulation du filtrage avancé")
 

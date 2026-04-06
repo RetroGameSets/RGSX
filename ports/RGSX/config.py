@@ -27,7 +27,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.6.2.0"
+app_version = "2.6.3.0"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 1
@@ -197,6 +197,8 @@ HISTORY_PATH = os.path.join(SAVE_FOLDER, "history.json")
 DOWNLOADED_GAMES_PATH = os.path.join(SAVE_FOLDER, "downloaded_games.json")
 TORRENT_MANIFEST_CACHE_PATH = os.path.join(SAVE_FOLDER, "torrent_manifest_cache.json")
 PLATFORM_GAME_COUNT_CACHE_PATH = os.path.join(SAVE_FOLDER, "platform_games_count_cache.json")
+GLOBAL_SEARCH_INDEX_CACHE_PATH = os.path.join(SAVE_FOLDER, "global_search_index.json")
+PENDING_TORRENT_REFRESH_MARKER_PATH = os.path.join(SAVE_FOLDER, "pending_torrent_refresh.marker")
 RGSX_SETTINGS_PATH = os.path.join(SAVE_FOLDER, "rgsx_settings.json")
 API_KEY_1FICHIER_PATH = os.path.join(SAVE_FOLDER, "1FichierAPI.txt")
 API_KEY_ALLDEBRID_PATH = os.path.join(SAVE_FOLDER, "AllDebridAPI.txt")
@@ -443,11 +445,20 @@ global_search_query = ""  # Texte saisi pour la recherche globale
 global_search_selected = 0  # Index du resultat global selectionne
 global_search_scroll_offset = 0  # Offset de defilement des resultats globaux
 global_search_editing = False  # True si le clavier virtuel est actif pour la recherche globale
+global_search_allow_empty = False  # True pour afficher tous les resultats sans requete (filtre/tri globaux)
+global_search_title_override = ""  # Titre alternatif pour la vue globale
+global_search_return_state = "platform"  # Etat de retour depuis la vue globale
+global_sort_option = "name_asc"  # Tri global courant
 
 # Variables pour le filtrage avancé
 selected_filter_choice = 0  # Index dans le menu de choix de filtrage (recherche / avancé)
 selected_filter_option = 0  # Index dans le menu de filtrage avancé
 game_filter_obj = None  # Objet GameFilters pour le filtrage avancé
+filter_menu_context = "platform"  # Contexte d'ouverture du menu filtre unifie
+filter_menu_entries = []  # Entrees du menu filtre unifie
+filter_menu_return_state = "platform"  # Etat de retour depuis le menu filtre unifie
+filter_target_scope = "local"  # Portee du filtrage avance (local/global)
+global_sort_selected = 0  # Index selectionne dans le menu de tri global
 
 # Gestion des états du menu
 needs_redraw = False  # Indicateur si l'écran doit être redessiné

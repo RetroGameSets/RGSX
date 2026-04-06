@@ -2,10 +2,40 @@ import json
 import os
 import logging
 import re
+import threading
+import time
 import config
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+
+def _atomic_write_json(target_path, payload):
+    temp_path = f"{target_path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        with open(temp_path, "w", encoding='utf-8') as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+
+        last_error = None
+        for attempt in range(5):
+            try:
+                os.replace(temp_path, target_path)
+                last_error = None
+                break
+            except PermissionError as e:
+                last_error = e
+                time.sleep(0.15 * (attempt + 1))
+
+        if last_error is not None:
+            raise last_error
+    finally:
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except Exception:
+            pass
 
 # Chemin par défaut pour history.json
 
@@ -77,24 +107,9 @@ def save_history(history):
     history_path = getattr(config, 'HISTORY_PATH')
     try:
         os.makedirs(os.path.dirname(history_path), exist_ok=True)
-        
-        # Écriture atomique : écrire dans un fichier temporaire puis renommer
-        temp_path = history_path + '.tmp'
-        with open(temp_path, "w", encoding='utf-8') as f:
-            json.dump(history, f, indent=2, ensure_ascii=False)
-            f.flush()  # Forcer l'écriture sur disque
-            os.fsync(f.fileno())  # Synchroniser avec le système de fichiers
-        
-        # Renommer atomiquement (remplace l'ancien fichier)
-        os.replace(temp_path, history_path)
+        _atomic_write_json(history_path, history)
     except Exception as e:
         logger.error(f"Erreur lors de l'écriture de {history_path} : {e}")
-        # Nettoyer le fichier temporaire en cas d'erreur
-        try:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-        except:
-            pass
 
 def add_to_history(platform, game_name, status, url=None, progress=0, message=None, timestamp=None):
     """Ajoute une entrée à l'historique."""
@@ -314,23 +329,10 @@ def save_downloaded_games(downloaded_games_dict):
     try:
         normalized_downloaded = _normalize_downloaded_games_dict(downloaded_games_dict)
         os.makedirs(os.path.dirname(downloaded_path), exist_ok=True)
-        
-        # Écriture atomique
-        temp_path = downloaded_path + '.tmp'
-        with open(temp_path, "w", encoding='utf-8') as f:
-            json.dump(normalized_downloaded, f, indent=2, ensure_ascii=False)
-            f.flush()
-            os.fsync(f.fileno())
-        
-        os.replace(temp_path, downloaded_path)
+        _atomic_write_json(downloaded_path, normalized_downloaded)
         logger.debug(f"Jeux téléchargés sauvegardés : {_count_downloaded_games(normalized_downloaded)} jeux")
     except Exception as e:
         logger.error(f"Erreur lors de l'écriture de {downloaded_path} : {e}")
-        try:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-        except:
-            pass
 
 
 def mark_game_as_downloaded(platform_name, game_name, file_size=None):

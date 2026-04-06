@@ -219,6 +219,35 @@ def clear_torrent_manifest_cache() -> None:
             logger.warning(f"Impossible de supprimer le cache torrent: {exc}")
 
 
+def request_torrent_manifest_refresh() -> None:
+    marker_path = getattr(config, 'PENDING_TORRENT_REFRESH_MARKER_PATH', '')
+    if not marker_path:
+        return
+    try:
+        os.makedirs(os.path.dirname(marker_path), exist_ok=True)
+        with open(marker_path, 'w', encoding='utf-8') as handle:
+            handle.write(datetime.now().isoformat())
+        logger.info("Rafraichissement complet des manifests torrent planifie")
+    except Exception as exc:
+        logger.warning(f"Impossible de planifier le rafraichissement torrent: {exc}")
+
+
+def is_torrent_manifest_refresh_requested() -> bool:
+    marker_path = getattr(config, 'PENDING_TORRENT_REFRESH_MARKER_PATH', '')
+    return bool(marker_path and os.path.exists(marker_path))
+
+
+def clear_torrent_manifest_refresh_request() -> None:
+    marker_path = getattr(config, 'PENDING_TORRENT_REFRESH_MARKER_PATH', '')
+    if not marker_path or not os.path.exists(marker_path):
+        return
+    try:
+        os.remove(marker_path)
+        logger.debug("Demande de rafraichissement torrent consommee")
+    except Exception as exc:
+        logger.warning(f"Impossible de supprimer le marqueur de rafraichissement torrent: {exc}")
+
+
 def _load_persistent_platform_game_count_cache() -> None:
     global _platform_game_count_cache_loaded, _platform_game_count_cache
     if _platform_game_count_cache_loaded:
@@ -240,6 +269,8 @@ def _load_persistent_platform_game_count_cache() -> None:
                         loaded_cache[platform_id] = {
                             'path': str(entry.get('path') or ''),
                             'mtime_ns': int(entry.get('mtime_ns') or 0),
+                            'file_name': str(entry.get('file_name') or ''),
+                            'size_bytes': int(entry.get('size_bytes') or 0),
                             'count': int(entry.get('count') or 0),
                         }
                 logger.info(f"Cache compteurs plateformes charge: {len(loaded_cache)} entrees")
@@ -257,7 +288,7 @@ def _save_persistent_platform_game_count_cache() -> None:
         try:
             os.makedirs(os.path.dirname(cache_path), exist_ok=True)
             payload = {
-                'version': 1,
+                'version': 2,
                 'entries': _platform_game_count_cache,
             }
             temp_path = f"{cache_path}.{os.getpid()}.{threading.get_ident()}.tmp"
@@ -320,35 +351,73 @@ def _resolve_game_file(platform_id: str):
     return None, platform_dict, candidates
 
 
-def _get_cached_platform_game_count(platform_id: str, game_file: str, game_mtime_ns: int) -> int | None:
+def _get_cached_platform_game_count(platform_id: str, game_file: str, game_mtime_ns: int, game_size_bytes: int) -> int | None:
     _load_persistent_platform_game_count_cache()
     cached_entry = _platform_game_count_cache.get(platform_id)
     if not isinstance(cached_entry, dict):
         return None
-    if cached_entry.get('path') != game_file or int(cached_entry.get('mtime_ns') or 0) != int(game_mtime_ns):
-        return None
-    return max(0, int(cached_entry.get('count') or 0))
+    cached_path = str(cached_entry.get('path') or '')
+    cached_mtime_ns = int(cached_entry.get('mtime_ns') or 0)
+    cached_file_name = str(cached_entry.get('file_name') or '')
+    cached_size_bytes = int(cached_entry.get('size_bytes') or 0)
+
+    if cached_path == game_file and cached_mtime_ns == int(game_mtime_ns):
+        return max(0, int(cached_entry.get('count') or 0))
+
+    # Portable fallback for caches embedded in games.zip.
+    if cached_file_name and cached_file_name == os.path.basename(game_file) and cached_size_bytes == int(game_size_bytes):
+        return max(0, int(cached_entry.get('count') or 0))
+
+    return None
 
 
-def _store_platform_game_count(platform_id: str, game_file: str, game_mtime_ns: int, count: int) -> None:
+def _store_platform_game_count(platform_id: str, game_file: str, game_mtime_ns: int, game_size_bytes: int, count: int) -> None:
     _load_persistent_platform_game_count_cache()
+    normalized_entry = {
+        'path': game_file,
+        'mtime_ns': int(game_mtime_ns),
+        'file_name': os.path.basename(game_file),
+        'size_bytes': int(game_size_bytes),
+        'count': max(0, int(count)),
+    }
     with _platform_game_count_cache_lock:
-        _platform_game_count_cache[platform_id] = {
-            'path': game_file,
-            'mtime_ns': int(game_mtime_ns),
-            'count': max(0, int(count)),
-        }
+        existing_entry = _platform_game_count_cache.get(platform_id)
+        if isinstance(existing_entry, dict):
+            existing_normalized = {
+                'path': str(existing_entry.get('path') or ''),
+                'mtime_ns': int(existing_entry.get('mtime_ns') or 0),
+                'file_name': str(existing_entry.get('file_name') or ''),
+                'size_bytes': int(existing_entry.get('size_bytes') or 0),
+                'count': int(existing_entry.get('count') or 0),
+            }
+            if existing_normalized == normalized_entry:
+                return
+
+        _platform_game_count_cache[platform_id] = normalized_entry
     _save_persistent_platform_game_count_cache()
 
 
-def get_platform_game_count(platform_id: str) -> int:
+def _get_torrent_entry_count(source_url: str, display_label: str | None = None, platform_id: str | None = None, allow_network_fetch: bool = True) -> int:
+    _load_persistent_torrent_manifest_cache()
+    cached = _torrent_manifest_cache.get(source_url)
+    if cached is not None:
+        return len(cached)
+    if not allow_network_fetch:
+        logger.debug(f"Comptage torrent differe (cache absent, fetch desactive): {platform_id or 'unknown'} -> {source_url}")
+        return 0
+    return len(_get_torrent_entries(source_url, display_label=display_label, platform_id=platform_id))
+
+
+def get_platform_game_count(platform_id: str, allow_torrent_manifest_fetch: bool = True) -> int:
     game_file, resolved_platform_dict, candidates = _resolve_game_file(platform_id)
     if not game_file:
         logger.warning(f"Aucun fichier de jeux trouvé pour {platform_id} (candidats: {candidates})")
         return 0
 
-    game_mtime_ns = os.stat(game_file).st_mtime_ns
-    cached_count = _get_cached_platform_game_count(platform_id, game_file, game_mtime_ns)
+    game_stat = os.stat(game_file)
+    game_mtime_ns = game_stat.st_mtime_ns
+    game_size_bytes = game_stat.st_size
+    cached_count = _get_cached_platform_game_count(platform_id, game_file, game_mtime_ns, game_size_bytes)
     if cached_count is not None:
         return cached_count
 
@@ -365,7 +434,12 @@ def get_platform_game_count(platform_id: str) -> int:
         if torrent_source is not None:
             source_name, source_url = torrent_source
             try:
-                return len(_get_torrent_entries(source_url, display_label=source_name, platform_id=platform_id))
+                return _get_torrent_entry_count(
+                    source_url,
+                    display_label=source_name,
+                    platform_id=platform_id,
+                    allow_network_fetch=allow_torrent_manifest_fetch,
+                )
             except Exception as exc:
                 logger.error(f"Erreur comptage torrent pour {platform_id} ({source_name or source_url}): {exc}")
                 return 0
@@ -391,7 +465,12 @@ def get_platform_game_count(platform_id: str) -> int:
                 if torrent_source is not None:
                     source_name, source_url = torrent_source
                     try:
-                        count += len(_get_torrent_entries(source_url, display_label=source_name, platform_id=platform_id))
+                        count += _get_torrent_entry_count(
+                            source_url,
+                            display_label=source_name,
+                            platform_id=platform_id,
+                            allow_network_fetch=allow_torrent_manifest_fetch,
+                        )
                     except Exception as exc:
                         logger.error(f"Erreur comptage torrent pour {platform_id} ({source_name or source_url}): {exc}")
                 elif len(item) > 0:
@@ -405,7 +484,7 @@ def get_platform_game_count(platform_id: str) -> int:
     else:
         logger.warning(f"Format de fichier jeux inattendu pour {platform_id}: {type(data)}")
 
-    _store_platform_game_count(platform_id, game_file, game_mtime_ns, count)
+    _store_platform_game_count(platform_id, game_file, game_mtime_ns, game_size_bytes, count)
     return count
 
 
@@ -1688,8 +1767,14 @@ def _get_dest_folder_name(platform_key: str) -> str:
 
 
 # Fonction pour charger sources.json
-def load_sources():
+def load_sources(allow_torrent_manifest_fetch: bool | None = None):
     try:
+        if allow_torrent_manifest_fetch is None:
+            allow_torrent_manifest_fetch = is_torrent_manifest_refresh_requested()
+        logger.debug(
+            "Chargement des sources (%s fetch manifest torrent)",
+            "avec" if allow_torrent_manifest_fetch else "sans",
+        )
         sources = []
         if os.path.exists(config.SOURCES_FILE):
             with open(config.SOURCES_FILE, 'r', encoding='utf-8') as f:
@@ -1823,7 +1908,10 @@ def load_sources():
                 ],
                 force=True,
             )
-            config.games_count[platform_name] = get_platform_game_count(platform_name)
+            config.games_count[platform_name] = get_platform_game_count(
+                platform_name,
+                allow_torrent_manifest_fetch=allow_torrent_manifest_fetch,
+            )
             _refresh_loading_feedback(
                 current_system=_("loading_load_systems"),
                 progress=80.0 + (index / total_platforms) * 19.0,
@@ -1839,6 +1927,8 @@ def load_sources():
                 logger.debug(f"Nombre de jeux par système: {summary}")
             except Exception:
                 pass
+        if allow_torrent_manifest_fetch:
+            clear_torrent_manifest_refresh_request()
         _refresh_loading_feedback(detail_lines=[], force=True)
         return sources
     except Exception as e:
@@ -1853,7 +1943,9 @@ def load_games(platform_id:str) -> list[Game]:
             logger.warning(f"Aucun fichier de jeux trouvé pour {platform_id} (candidats: {candidates})")
             return []
 
-        game_mtime_ns = os.stat(game_file).st_mtime_ns
+        game_stat = os.stat(game_file)
+        game_mtime_ns = game_stat.st_mtime_ns
+        game_size_bytes = game_stat.st_size
         cached_entry = _games_cache.get(platform_id)
         if cached_entry and cached_entry.get("path") == game_file and cached_entry.get("mtime_ns") == game_mtime_ns:
             return cached_entry["games"]
@@ -1926,7 +2018,7 @@ def load_games(platform_id:str) -> list[Game]:
             "mtime_ns": game_mtime_ns,
             "games": games_list,
         }
-        _store_platform_game_count(platform_id, game_file, game_mtime_ns, len(games_list))
+        _store_platform_game_count(platform_id, game_file, game_mtime_ns, game_size_bytes, len(games_list))
         return games_list
     except Exception as e:
         _games_cache.pop(platform_id, None)

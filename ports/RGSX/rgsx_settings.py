@@ -2,6 +2,11 @@
 import json
 import os
 import logging
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+
+import requests
+
 import config
 
 logger = logging.getLogger(__name__)
@@ -79,6 +84,7 @@ def load_rgsx_settings():
     "roms_folder": "",
     "web_service_at_boot": False,
     "last_gamelist_update": None,
+    "last_gamelist_prompt_remote_update": None,
     "platform_custom_paths": {}  # Chemins personnalisés par plateforme
     }
     
@@ -120,18 +126,117 @@ def get_last_gamelist_update(settings=None):
     return settings.get("last_gamelist_update", None)
 
 
+def get_last_gamelist_prompt_remote_update(settings=None):
+    """Récupère la dernière date distante déjà proposée pour la liste des jeux."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return settings.get("last_gamelist_prompt_remote_update", None)
+
+
+def parse_gamelist_update_timestamp(value):
+    """Parse legacy dates, ISO timestamps, or HTTP dates into UTC datetimes."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    try:
+        normalized = text.replace("Z", "+00:00") if text.endswith("Z") else text
+        dt = datetime.fromisoformat(normalized)
+        return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        pass
+
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except Exception:
+            pass
+
+    try:
+        dt = parsedate_to_datetime(text)
+        return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def format_gamelist_update_display(value):
+    """Return a stable YYYY-MM-DD string for UI display."""
+    dt = parse_gamelist_update_timestamp(value)
+    if dt is not None:
+        return dt.strftime("%Y-%m-%d")
+    return str(value).strip() if value is not None else ""
+
+
+def get_remote_gamelist_timestamp(url, timeout=15):
+    """Fetch the remote last modification date of the gamelist archive."""
+    if not url:
+        return None
+
+    headers = {
+        "User-Agent": "RGSX/1.0",
+        "Accept": "*/*",
+    }
+
+    try:
+        with requests.Session() as session:
+            response = session.head(url, allow_redirects=True, timeout=timeout, headers=headers)
+            if response.status_code >= 400 or not response.headers.get("Last-Modified"):
+                response.close()
+                response = session.get(url, stream=True, allow_redirects=True, timeout=timeout, headers=headers)
+
+            header_value = response.headers.get("Last-Modified")
+            remote_dt = parse_gamelist_update_timestamp(header_value)
+            response.close()
+
+        if remote_dt is not None:
+            logger.info(f"Date distante gamelist détectée: {remote_dt.isoformat()} ({url})")
+        else:
+            logger.warning(f"Impossible de lire l'en-tête Last-Modified de la gamelist pour {url}")
+        return remote_dt
+    except Exception as e:
+        logger.warning(f"Erreur détection date distante gamelist pour {url}: {e}")
+        return None
+
+
 def set_last_gamelist_update(date_string=None):
     """Définit la date de dernière mise à jour de la liste des jeux.
     Si date_string est None, utilise la date actuelle.
     """
-    from datetime import datetime
     settings = load_rgsx_settings()
-    if date_string is None:
-        date_string = datetime.now().strftime("%Y-%m-%d")
-    settings["last_gamelist_update"] = date_string
+    parsed_value = parse_gamelist_update_timestamp(date_string)
+    if parsed_value is None:
+        parsed_value = datetime.now(timezone.utc)
+    normalized = parsed_value.isoformat().replace("+00:00", "Z")
+    settings["last_gamelist_update"] = normalized
     save_rgsx_settings(settings)
-    logger.info(f"Date de dernière mise à jour de la liste des jeux: {date_string}")
-    return date_string
+    logger.info(f"Date de dernière mise à jour de la liste des jeux: {normalized}")
+    return normalized
+
+
+def set_last_gamelist_prompt_remote_update(date_string=None):
+    """Mémorise la dernière date distante déjà proposée pour la liste des jeux.
+    Si date_string est None ou invalide, efface la valeur mémorisée.
+    """
+    settings = load_rgsx_settings()
+    parsed_value = parse_gamelist_update_timestamp(date_string)
+    normalized = (
+        parsed_value.isoformat().replace("+00:00", "Z")
+        if parsed_value is not None else None
+    )
+    settings["last_gamelist_prompt_remote_update"] = normalized
+    save_rgsx_settings(settings)
+
+    if normalized is not None:
+        logger.info(f"Dernière date distante déjà proposée pour la liste des jeux: {normalized}")
+    else:
+        logger.info("Réinitialisation de la dernière date distante déjà proposée pour la liste des jeux")
+
+    return normalized
 
 
 
