@@ -2,15 +2,18 @@
 Module de scraping pour récupérer les métadonnées des jeux depuis TheGamesDB.net API v1
 """
 import logging
+import os
 import requests
 import re
 from io import BytesIO
 import pygame
+import config
 
 logger = logging.getLogger(__name__)
 
-# Clé API publique pour TheGamesDB
-API_KEY = "bdbb4a1ce5f1c12c1bcc119aeb4d4923d3887e22ad336d576e9b9e5da5ecaa3c"
+SOURCE_SUFFIXES = {"Archive", "LolRoms", "Torrent", "1Fichier"}
+THEGAMESDB_API_KEY_PATH = getattr(config, "THEGAMESDB_API_KEY_PATH", os.path.join(config.APP_FOLDER, "assets", "TheGamesDBAPI.txt"))
+
 API_BASE_URL = "https://api.thegamesdb.net/v1"
 
 # Mapping des noms de plateformes vers leurs IDs sur TheGamesDB API
@@ -141,6 +144,55 @@ PLATFORM_MAPPING = {
     "Amiga": 4911
 }
 
+SCRAPER_PLATFORM_ALIASES = {
+    "Family Computer Disk System (Famicom)": "Family Computer Disk System",
+    "Nintendo Famicom Disk System": "Family Computer Disk System",
+}
+
+
+def normalize_scraper_platform_name(platform_name):
+    """Map display platform names back to scraper-compatible base names."""
+    text = str(platform_name or "").strip()
+    if not text:
+        return ""
+
+    while True:
+        match = re.search(r'\(([^()]+)\)\s*$', text)
+        if not match:
+            break
+        suffix = match.group(1).strip()
+        if suffix in SOURCE_SUFFIXES or suffix == "RomHacks":
+            text = text[:match.start()].rstrip()
+            continue
+        break
+
+    return SCRAPER_PLATFORM_ALIASES.get(text, text)
+
+
+def get_thegamesdb_api_key():
+    """Load TheGamesDB API key from env or shared local file."""
+    env_key = os.environ.get("RGSX_THEGAMESDB_API_KEY", "").strip()
+    if env_key:
+        return env_key, "env"
+
+    try:
+        if not os.path.exists(THEGAMESDB_API_KEY_PATH):
+            os.makedirs(os.path.dirname(THEGAMESDB_API_KEY_PATH), exist_ok=True)
+            with open(THEGAMESDB_API_KEY_PATH, 'w', encoding='utf-8') as handle:
+                handle.write("")
+    except Exception as exc:
+        logger.warning(f"Impossible de préparer le fichier de clé TheGamesDB: {exc}")
+
+    try:
+        with open(THEGAMESDB_API_KEY_PATH, 'r', encoding='utf-8') as handle:
+            file_key = handle.read().strip()
+        if file_key:
+            return file_key, THEGAMESDB_API_KEY_PATH
+    except Exception as exc:
+        logger.warning(f"Impossible de lire la clé TheGamesDB: {exc}")
+
+    return "", "missing"
+
 
 def clean_game_name(game_name):
     """
@@ -180,12 +232,24 @@ def get_game_metadata(game_name, platform_name):
               Keys: image_url, game_page_url, description, genre, release_date, error
     """
     clean_name = clean_game_name(game_name)
-    logger.info(f"Recherche métadonnées pour: '{clean_name}' sur plateforme '{platform_name}'")
+    normalized_platform_name = normalize_scraper_platform_name(platform_name)
+    api_key, api_key_source = get_thegamesdb_api_key()
+
+    if not api_key:
+        logger.warning("Clé API TheGamesDB absente")
+        return {"error": "Clé API TheGamesDB manquante"}
+
+    logger.info(
+        f"Recherche métadonnées pour: '{clean_name}' sur plateforme '{platform_name}'"
+        f" -> '{normalized_platform_name}'"
+    )
     
     # Obtenir l'ID de la plateforme
-    platform_id = PLATFORM_MAPPING.get(platform_name)
+    platform_id = PLATFORM_MAPPING.get(normalized_platform_name)
     if not platform_id:
-        logger.warning(f"Plateforme '{platform_name}' non trouvée dans le mapping")
+        logger.warning(
+            f"Plateforme '{platform_name}' normalisée en '{normalized_platform_name}' non trouvée dans le mapping"
+        )
         return {"error": f"Plateforme '{platform_name}' non supportée"}
     
     try:
@@ -193,14 +257,16 @@ def get_game_metadata(game_name, platform_name):
         # Documentation: https://api.thegamesdb.net/#/Games/GamesbyName
         url = f"{API_BASE_URL}/Games/ByGameName"
         params = {
-            "apikey": API_KEY,
+            "apikey": api_key,
             "name": clean_name,
             "filter[platform]": platform_id,
             "fields": "players,publishers,genres,overview,last_updated,rating,platform,coop,youtube,os,processor,ram,hdd,video,sound,alternates",
             "include": "boxart"
         }
         
-        logger.debug(f"Requête API: {url} avec name='{clean_name}', platform={platform_id}")
+        logger.debug(
+            f"Requête API: {url} avec name='{clean_name}', platform={platform_id}, key_source={api_key_source}"
+        )
         response = requests.get(url, params=params, timeout=15)
         
         if response.status_code != 200:
@@ -247,7 +313,7 @@ def get_game_metadata(game_name, platform_name):
         try:
             images_url = f"{API_BASE_URL}/Games/Images"
             images_params = {
-                "apikey": API_KEY,
+                "apikey": api_key,
                 "games_id": game_id,
                 "filter[type]": "boxart"
             }

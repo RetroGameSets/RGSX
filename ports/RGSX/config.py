@@ -205,6 +205,7 @@ API_KEY_ALLDEBRID_PATH = os.path.join(SAVE_FOLDER, "AllDebridAPI.txt")
 API_KEY_DEBRIDLINK_PATH = os.path.join(SAVE_FOLDER, "DebridLinkAPI.txt")
 API_KEY_REALDEBRID_PATH = os.path.join(SAVE_FOLDER, "RealDebridAPI.txt")
 ARCHIVE_ORG_COOKIE_PATH = os.path.join(APP_FOLDER, "assets", "ArchiveOrgCookie.txt")
+THEGAMESDB_API_KEY_PATH = os.path.join(APP_FOLDER, "assets", "TheGamesDBAPI.txt")
 
 
 
