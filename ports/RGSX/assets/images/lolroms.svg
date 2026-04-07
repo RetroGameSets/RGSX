@@ -1,0 +1,18 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-labelledby="title desc" role="img">
+  <title id="title">LOL</title>
+  <desc id="desc">Texte LOL style gaming retro</desc>
+  
+  <!-- Lettre L (gauche) - rose/violet -->
+  <path d="M35 45 L35 155 L65 155 L65 135 L50 135 L50 45 Z" fill="#ff00ff"/>
+  
+  <!-- Lettre O (milieu) - cyan -->
+  <ellipse cx="105" cy="100" rx="29" ry="48" fill="none" stroke="#00ffff" stroke-width="19"/>
+  
+  <!-- Lettre L (droite) - rose/violet -->
+  <path d="M145 45 L145 155 L175 155 L175 135 L160 135 L160 45 Z" fill="#ff00ff"/>
+  
+  <!-- Effet néon plus prononcé -->
+  <path d="M35 45 L35 155 L65 155 L65 135 L50 135 L50 45 Z" fill="none" stroke="#ff00ff" stroke-width="9" opacity="0.85"/>
+  <ellipse cx="105" cy="100" rx="29" ry="48" fill="none" stroke="#00ffff" stroke-width="9" opacity="0.85"/>
+  <path d="M145 45 L145 155 L175 155 L175 135 L160 135 L160 45 Z" fill="none" stroke="#ff00ff" stroke-width="9" opacity="0.85"/>
+</svg>

@@ -13,7 +13,7 @@ from utils import (truncate_text_middle, wrap_text, load_system_image, truncate_
                    _get_dest_folder_name, find_file_with_or_without_extension, find_matching_files,
                    get_connection_status_targets, get_connection_status_snapshot,
                    get_clean_display_name, get_existing_history_matches, remember_history_local_match,
-                   sort_games_list)
+                   sort_games_list, get_platform_source_badge_key, get_platform_source_badge_surface)
 import logging
 import math
 from history import load_history, is_game_downloaded  
@@ -1317,6 +1317,22 @@ def get_display_resolution_line():
     return ""
 
 
+def draw_platform_source_badge(screen, platform_name, container_rect):
+    source_key = get_platform_source_badge_key(platform_name)
+    if not source_key:
+        return
+
+    badge_size = max(20, min(int(min(container_rect.width, container_rect.height) * 0.24), 44))
+    badge_surface = get_platform_source_badge_surface(source_key, badge_size)
+    if badge_surface is None:
+        return
+
+    inset = max(5, badge_size // 6)
+    badge_x = container_rect.right - badge_size - inset
+    badge_y = container_rect.top + inset
+    screen.blit(badge_surface, (badge_x, badge_y))
+
+
 def draw_platform_header_info(screen, light_mode=False, badge_x=None, max_badge_width=None, include_details=True):
     """Affiche version, controleur connecte et IP reseau dans un cartouche en haut a droite."""
     lines = get_platform_header_info_lines(max_badge_width, include_details=include_details)
@@ -1796,6 +1812,8 @@ def draw_platform_grid(screen):
                 screen.blit(temp_image, centered_image_rect)
             else:
                 screen.blit(scaled_image, centered_image_rect)
+
+        draw_platform_source_badge(screen, display_name, border_rect)
     
     # Nettoyer le cache périodiquement (garder seulement les images utilisées récemment)
     if len(platform_images_cache) > 50:  # Limite arbitraire pour éviter une croissance excessive

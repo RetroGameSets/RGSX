@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 import config
 from history import load_history, save_history
-from utils import load_sources, load_games, extract_data, get_clean_display_name, parse_torrent_download_url, request_torrent_manifest_refresh
+from utils import load_sources, load_games, extract_data, get_clean_display_name, parse_torrent_download_url, request_torrent_manifest_refresh, _resolve_platform_image_path
 from network import download_rom, download_from_1fichier
 from pathlib import Path
 from rgsx_settings import get_language
@@ -464,8 +464,12 @@ class RGSXHandler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 pass
 
-        self._set_headers('application/json', status, etag=etag, last_modified=cached_dt)
-        self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+        try:
+            self._set_headers('application/json', status, etag=etag, last_modified=cached_dt)
+            self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+        except (ConnectionAbortedError, BrokenPipeError) as e:
+            logger.debug(f"Connexion fermée par le client pendant l'envoi JSON: {e}")
+            return
     
     def _send_html(self, html, status=200, etag=None, last_modified=None):
         """Envoie une réponse HTML"""
@@ -1782,86 +1786,28 @@ DO NOT share this file publicly as it may contain sensitive information.
                     platform_dict = pd
                     break
             
-            # Dossiers où chercher les images
-            image_folders = [
-                config.IMAGES_FOLDER,  # Dossier utilisateur (saves/ports/rgsx/images)
-                os.path.join(config.APP_FOLDER, 'assets', 'images')  # Dossier app
-            ]
-            
-            # Extensions possibles
-            extensions = ['.png', '.jpg', '.jpeg', '.gif']
-            
-            # Construire la liste des noms de fichiers à chercher (ordre de priorité)
-            candidates = []
-            
-            if platform_dict:
-                # 1. platform_image explicite (priorité max)
-                platform_image_field = (platform_dict.get('platform_image') or '').strip()
-                if platform_image_field:
-                    candidates.append(platform_image_field)
-                
-                # 2. platform_name.png
-                candidates.append(platform_name)
-                
-                # 3. folder.png si disponible
-                folder_name = platform_dict.get('folder')
-                if folder_name:
-                    candidates.append(folder_name)
-            else:
-                # Pas de platform_dict trouvé, juste essayer le nom
-                candidates.append(platform_name)
-            
-            # Chercher le fichier image
-            image_path = None
-            for candidate in candidates:
-                # Retirer l'extension si déjà présente
-                candidate_base = os.path.splitext(candidate)[0]
-                
-                for folder in image_folders:
-                    if not os.path.exists(folder):
-                        continue
-                    
-                    # Essayer avec chaque extension
-                    for ext in extensions:
-                        test_path = os.path.join(folder, candidate_base + ext)
-                        if os.path.exists(test_path):
-                            image_path = test_path
-                            break
-                    
-                    if image_path:
-                        break
-                
-                if image_path:
-                    break
-            
-            # Si pas trouvé, chercher default.png
-            if not image_path:
-                for folder in image_folders:
-                    default_path = os.path.join(folder, 'default.png')
-                    if os.path.exists(default_path):
-                        image_path = default_path
-                        break
-            
-            # Envoyer l'image
+            payload_platform = platform_dict or {'platform_name': platform_name}
+            image_path = _resolve_platform_image_path(payload_platform)
+
             if image_path and os.path.exists(image_path):
-                # Déterminer le type MIME
                 ext = os.path.splitext(image_path)[1].lower()
                 mime_types = {
                     '.png': 'image/png',
                     '.jpg': 'image/jpeg',
                     '.jpeg': 'image/jpeg',
-                    '.gif': 'image/gif'
+                    '.gif': 'image/gif',
+                    '.webp': 'image/webp',
                 }
                 content_type = mime_types.get(ext, 'image/png')
-                
-                # Lire et envoyer l'image avec headers de cache
                 with open(image_path, 'rb') as f:
                     image_data = f.read()
-                
+
                 # Ajouter les headers de cache (1 heure)
                 self.send_response(200)
                 self.send_header('Content-type', content_type)
-                self.send_header('Cache-Control', 'public, max-age=3600')  # 1 heure
+                self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                self.send_header('Pragma', 'no-cache')
+                self.send_header('Expires', '0')
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 self.wfile.write(image_data)
@@ -1870,7 +1816,9 @@ DO NOT share this file publicly as it may contain sensitive information.
                 logger.warning(f"Aucune image trouvée pour {platform_name}, envoi PNG transparent")
                 self.send_response(404)
                 self.send_header('Content-type', 'image/png')
-                self.send_header('Cache-Control', 'public, max-age=3600')
+                self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                self.send_header('Pragma', 'no-cache')
+                self.send_header('Expires', '0')
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 # PNG transparent 1x1 pixel
@@ -1881,7 +1829,9 @@ DO NOT share this file publicly as it may contain sensitive information.
             logger.error(f"Erreur lors du chargement de l'image {platform_name}: {e}", exc_info=True)
             self.send_response(500)
             self.send_header('Content-type', 'image/png')
-            self.send_header('Cache-Control', 'public, max-age=60')  # Cache court pour les erreurs
+            self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            self.send_header('Pragma', 'no-cache')
+            self.send_header('Expires', '0')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             # PNG transparent en cas d'erreur

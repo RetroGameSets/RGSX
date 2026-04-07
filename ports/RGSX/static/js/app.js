@@ -2,6 +2,7 @@
         let currentPlatform = null;
         let currentGameSort = 'name_asc';  // Type de tri actuel: 'name_asc', 'name_desc', 'size_asc', 'size_desc'
         let currentGames = [];  // Stocke les jeux actuels pour le tri
+        const loggedUnparsedSizeTexts = new Set();
         let lastProgressUpdate = Date.now();
         let autoRefreshTimeout = null;
         let progressInterval = null;
@@ -208,6 +209,74 @@
                 unitIndex++;
             }
             return `${size.toFixed(1)} ${units[unitIndex]}`;
+        }
+
+        function parseSizeToBytes(sizeText) {
+            if (!sizeText) return 0;
+
+            const rawText = String(sizeText).trim();
+            let normalized = rawText.replace(/octets?/gi, 'B');
+
+            if (normalized.includes(',') && normalized.includes('.')) {
+                normalized = normalized.replace(/,/g, '');
+            } else if (normalized.includes(',')) {
+                normalized = normalized.replace(',', '.');
+            }
+
+            const match = normalized.match(/^([0-9]+(?:\.[0-9]+)?)\s*([a-zA-Z]+)/);
+            if (!match) {
+                if (!loggedUnparsedSizeTexts.has(rawText)) {
+                    loggedUnparsedSizeTexts.add(rawText);
+                    console.warn('[RGSX][sort] Taille non interpretable:', rawText);
+                }
+                return 0;
+            }
+
+            const value = parseFloat(match[1]);
+            if (Number.isNaN(value)) return 0;
+
+            const unit = match[2].toLowerCase();
+            const multipliers = {
+                b: 1,
+                byte: 1,
+                bytes: 1,
+                o: 1,
+                k: 1024,
+                ko: 1024,
+                kb: 1024,
+                kib: 1024,
+                kio: 1024,
+                m: 1024 ** 2,
+                mo: 1024 ** 2,
+                mb: 1024 ** 2,
+                mib: 1024 ** 2,
+                mio: 1024 ** 2,
+                g: 1024 ** 3,
+                go: 1024 ** 3,
+                gb: 1024 ** 3,
+                gib: 1024 ** 3,
+                gio: 1024 ** 3,
+                t: 1024 ** 4,
+                to: 1024 ** 4,
+                tb: 1024 ** 4,
+                tib: 1024 ** 4,
+                tio: 1024 ** 4,
+                p: 1024 ** 5,
+                po: 1024 ** 5,
+                pb: 1024 ** 5,
+                pib: 1024 ** 5,
+                pio: 1024 ** 5,
+            };
+
+            if (!multipliers[unit]) {
+                if (!loggedUnparsedSizeTexts.has(rawText)) {
+                    loggedUnparsedSizeTexts.add(rawText);
+                    console.warn('[RGSX][sort] Unite de taille non supportee:', rawText, '->', unit);
+                }
+                return 0;
+            }
+
+            return Math.round(value * multipliers[unit]);
         }
         
         // Appliquer les traductions à tous les éléments marqués
@@ -1071,6 +1140,38 @@
             currentGameSort = sortType;
             const items = Array.from(document.querySelectorAll('.game-item'));
             const gamesList = document.querySelector('.games-list');
+
+            if (!gamesList) {
+                console.warn('[RGSX][sort] .games-list introuvable pour le tri', sortType);
+                return;
+            }
+
+            const shouldLogSizeSort = sortType === 'size_asc' || sortType === 'size_desc';
+            const getSizeInBytes = (sizeElem) => {
+                if (!sizeElem) return 0;
+                return parseSizeToBytes(sizeElem.textContent);
+            };
+
+            if (shouldLogSizeSort) {
+                const previewBefore = items.slice(0, 5).map(item => {
+                    const sizeText = item.querySelector('.game-size')?.textContent?.trim() || '';
+                    return {
+                        name: item.querySelector('.game-name')?.textContent?.trim() || '',
+                        sizeText,
+                        sizeBytes: getSizeInBytes(item.querySelector('.game-size')),
+                    };
+                });
+                const zeroSizedCount = items.filter(item => {
+                    const sizeElem = item.querySelector('.game-size');
+                    return sizeElem && getSizeInBytes(sizeElem) === 0;
+                }).length;
+                console.debug('[RGSX][sort] Debut tri taille', {
+                    sortType,
+                    totalItems: items.length,
+                    zeroSizedCount,
+                    previewBefore,
+                });
+            }
             
             // Trier les éléments
             items.sort((a, b) => {
@@ -1079,41 +1180,15 @@
                 const sizeElemA = a.querySelector('.game-size');
                 const sizeElemB = b.querySelector('.game-size');
                 
-                // Extraire la taille en Mo (normalisée)
-                const getSizeInMo = (sizeElem) => {
-                    if (!sizeElem) return 0;
-                    const text = sizeElem.textContent;
-                    // Support des formats: "100 Mo", "2.5 Go" (français) et "100 MB", "2.5 GB" (anglais)
-                    // Plus Ko/KB, o/B, To/TB
-                    const match = text.match(/([0-9.]+)\s*(o|B|Ko|KB|Mo|MB|Go|GB|To|TB)/i);
-                    if (!match) return 0;
-                    let size = parseFloat(match[1]);
-                    const unit = match[2].toUpperCase();
-                    
-                    // Convertir tout en Mo
-                    if (unit === 'O' || unit === 'B') {
-                        size /= (1024 * 1024); // octets/bytes vers Mo
-                    } else if (unit === 'KO' || unit === 'KB') {
-                        size /= 1024; // Ko vers Mo
-                    } else if (unit === 'MO' || unit === 'MB') {
-                        // Déjà en Mo
-                    } else if (unit === 'GO' || unit === 'GB') {
-                        size *= 1024; // Go vers Mo
-                    } else if (unit === 'TO' || unit === 'TB') {
-                        size *= 1024 * 1024; // To vers Mo
-                    }
-                    return size;
-                };
-                
                 switch(sortType) {
                     case 'name_asc':
                         return nameA.localeCompare(nameB);
                     case 'name_desc':
                         return nameB.localeCompare(nameA);
                     case 'size_asc':
-                        return getSizeInMo(sizeElemA) - getSizeInMo(sizeElemB);
+                        return getSizeInBytes(sizeElemA) - getSizeInBytes(sizeElemB);
                     case 'size_desc':
-                        return getSizeInMo(sizeElemB) - getSizeInMo(sizeElemA);
+                        return getSizeInBytes(sizeElemB) - getSizeInBytes(sizeElemA);
                     default:
                         return 0;
                 }
@@ -1124,6 +1199,18 @@
             items.forEach(item => {
                 gamesList.appendChild(item);
             });
+
+            if (shouldLogSizeSort) {
+                const previewAfter = items.slice(0, 5).map(item => ({
+                    name: item.querySelector('.game-name')?.textContent?.trim() || '',
+                    sizeText: item.querySelector('.game-size')?.textContent?.trim() || '',
+                    sizeBytes: getSizeInBytes(item.querySelector('.game-size')),
+                }));
+                console.debug('[RGSX][sort] Fin tri taille', {
+                    sortType,
+                    previewAfter,
+                });
+            }
             
             // Mettre à jour les boutons de tri
             document.querySelectorAll('.sort-btn').forEach(btn => {
@@ -1150,6 +1237,7 @@
                 
                 // Construire le HTML avec les traductions
                 let searchPlaceholder = t('web_search_platform');
+                const platformImageCacheBuster = Date.now();
                 let html = `
                     <div class="search-box">
                         <input type="text" id="platform-search" placeholder="🔍 ${searchPlaceholder}" 
@@ -1164,9 +1252,9 @@
                     let gameCountText = t('web_game_count', '📦', p.games_count || 0);
                     html += `
                         <div class="platform-card" onclick='loadGames("${p.platform_name.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}")'>
-                            <img src="/api/image/${encodeURIComponent(p.platform_name)}" 
+                            <img src="/api/image/${encodeURIComponent(p.platform_name)}?v=${platformImageCacheBuster}" 
                                  alt="${p.platform_name}"
-                                 onerror="this.src='/api/image/default'">
+                                 onerror="this.src='/api/image/default?v=${platformImageCacheBuster}'">
                             <h3>${p.platform_name}</h3>
                             <div class="count">${gameCountText}</div>
                         </div>
