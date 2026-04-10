@@ -3196,7 +3196,28 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archi
             # Chercher le fichier .iso déjà extrait
             iso_files = [f for f in os.listdir(dest_dir) if f.endswith('.iso') and not f.endswith('_decrypted.iso')]
             if not iso_files:
-                return False, "Aucun fichier .iso trouvé après extraction"
+                # Vérifier si le jeu est déjà extrait dans un dossier
+                game_folders = []
+                for f in os.listdir(dest_dir):
+                    f_path = os.path.join(dest_dir, f)
+                    if os.path.isdir(f_path):
+                        if f.endswith('.ps3'):
+                            game_folders.append(f)
+                        elif os.path.exists(os.path.join(f_path, 'PS3_GAME')):
+                            game_folders.append(f)
+                if game_folders:
+                    game_folder = game_folders[0]
+                    game_folder_path = os.path.join(dest_dir, game_folder)
+                    if not game_folder.endswith('.ps3'):
+                        new_name = game_folder + '.ps3'
+                        new_path = os.path.join(dest_dir, new_name)
+                        os.rename(game_folder_path, new_path)
+                        logger.info(f"Dossier renommé: {game_folder} -> {new_name}")
+                        game_folder = new_name
+                    logger.info(f"Dossier de jeu PS3 déjà présent: {game_folder}")
+                    return True, f"Jeu PS3 déjà extrait dans {game_folder}"
+                else:
+                    return False, "Aucun fichier .iso trouvé après extraction"
             
             iso_file = iso_files[0]
             iso_path = os.path.join(dest_dir, iso_file)

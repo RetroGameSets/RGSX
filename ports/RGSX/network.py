@@ -570,6 +570,15 @@ def _get_vimm_file_size(url: str, session: requests.Session, download_info: dict
         
         head_resp = session.head(download_url, timeout=10, headers=headers, allow_redirects=True)
         if head_resp.status_code == 200:
+            # Extraire le nom réel depuis Content-Disposition
+            cd = head_resp.headers.get('content-disposition', '')
+            if cd and isinstance(download_info, dict):
+                fn_match = re.search(r'filename\*?=\"([^\"]+)\"|filename\*?=\'([^\']+)\'|filename\*?=([^\s;]+)', cd, re.IGNORECASE)
+                if fn_match:
+                    real_filename = unquote((fn_match.group(1) or fn_match.group(2) or fn_match.group(3)).strip())
+                    if real_filename:
+                        download_info['real_filename'] = real_filename
+                        logger.debug(f"Nom de fichier réel Vimm: {real_filename}")
             content_length = head_resp.headers.get('content-length')
             if content_length:
                 size = int(content_length)
@@ -2508,7 +2517,21 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                 entry["total_size"] = vimm_file_size
                                 save_history(config.history)
                                 break
-                
+
+                    # Utiliser le nom de fichier réel récupéré via Content-Disposition dans _get_vimm_file_size
+                    if vimm_download_info and vimm_download_info.get('real_filename'):
+                        real_filename = sanitize_filename(vimm_download_info['real_filename'])
+                        if real_filename and real_filename != sanitized_name:
+                            dest_path = os.path.join(dest_dir, real_filename)
+                            logger.debug(f"Nom de fichier Vimm réel utilisé: {real_filename}")
+                            _update_history_local_target(original_history_url, task_id, dest_path)
+                            display_name = os.path.splitext(real_filename)[0]
+                            for entry in config.history:
+                                if entry.get('url') == original_history_url:
+                                    entry['display_name'] = display_name
+                                    save_history(config.history)
+                                    break
+
                 # Gestion spéciale pour vimm.net
                 vimm_original_referer = None
                 if 'vimm.net' in url:
