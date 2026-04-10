@@ -374,7 +374,7 @@ if "!EXITCODE!"=="0" (
 echo [%DATE% %TIME%] ========================================== >> "%LOG_FILE%"
 echo [%DATE% %TIME%] Session ended normally >> "%LOG_FILE%"
 echo [%DATE% %TIME%] ========================================== >> "%LOG_FILE%"
-timeout /t 2 >nul
+ping -n 1 -w 5000 127.255.255.255 >nul
 exit /b 0
 
 :error
