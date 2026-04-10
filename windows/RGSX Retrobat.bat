@@ -357,8 +357,12 @@ if "!EXITCODE!"=="0" (
     echo.
     echo   %ESC%%GREEN%RGSX closed successfully.%ESC%%RESET%
     echo.
-    echo [%DATE% %TIME%] Application closed successfully >> "%LOG_FILE%"
-) else (
+    echo [%DATE% %TIME%] Application closed successfully >> "%LOG_FILE%") else if "!EXITCODE!"=="1" (
+    echo.
+    echo   %ESC%%GREEN%RGSX closed normally.%ESC%%RESET%
+    echo.
+    >> "%LOG_FILE%" echo [%DATE% %TIME%] Application closed normally >> "%LOG_FILE%"
+    goto :end) else (
     echo.
     echo   %ESC%%RED%RGSX exited with error code !EXITCODE!%ESC%%RESET%
     echo.
