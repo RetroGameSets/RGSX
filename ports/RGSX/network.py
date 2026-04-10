@@ -37,6 +37,10 @@ from urllib.parse import urljoin, unquote
 import urllib.parse
 import tempfile
 import unicodedata
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 
 
 
@@ -445,6 +449,146 @@ def _parse_known_size_to_bytes(value) -> int:
     return int(amount * multipliers.get(unit, 0)) if unit in multipliers else 0
 
 
+def _extract_vimm_download_info(html_text: str, page_url: str) -> dict[str, str | int] | None:
+    """Extract Vimm download form data with BeautifulSoup when available, else regex fallback."""
+    if not html_text:
+        return None
+
+    action = ''
+    media_id = ''
+    size_hint = 0
+    parser_name = 'regex'
+
+    if BeautifulSoup is not None:
+        try:
+            soup = BeautifulSoup(html_text, 'html.parser')
+            form = soup.find('form', id='dl_form')
+            if form is not None:
+                action = str(form.get('action') or '').strip()
+                media_id_input = form.find('input', {'name': 'mediaId'})
+                if media_id_input is not None:
+                    media_id = str(media_id_input.get('value') or '').strip()
+            size_node = soup.find(id='dl_size')
+            if size_node is not None:
+                size_hint = _parse_known_size_to_bytes(size_node.get_text(' ', strip=True))
+            if action and media_id:
+                parser_name = 'BeautifulSoup'
+        except Exception as exc:
+            logger.debug(f"Analyse BeautifulSoup vimm.net ignorée: {exc}")
+
+    if not action or not media_id:
+        form_tag_match = re.search(r'<form\b(?=[^>]*\bid\s*=\s*(["\'])dl_form\1)[^>]*>', html_text, re.IGNORECASE | re.DOTALL)
+        if form_tag_match:
+            form_tag = form_tag_match.group(0)
+            action_match = re.search(r'\baction\s*=\s*(["\'])(.*?)\1', form_tag, re.IGNORECASE | re.DOTALL)
+            if action_match:
+                action = html_module.unescape(action_match.group(2)).strip()
+
+        form_block_match = re.search(r'<form\b(?=[^>]*\bid\s*=\s*(["\'])dl_form\1)[^>]*>(.*?)</form>', html_text, re.IGNORECASE | re.DOTALL)
+        form_block = form_block_match.group(2) if form_block_match else html_text
+
+        media_match = re.search(r'<input\b[^>]*\bname\s*=\s*(["\'])mediaId\1[^>]*\bvalue\s*=\s*(["\'])(.*?)\2', form_block, re.IGNORECASE | re.DOTALL)
+        if media_match:
+            media_id = html_module.unescape(media_match.group(3)).strip()
+        else:
+            media_match = re.search(r'<input\b[^>]*\bvalue\s*=\s*(["\'])(\d+)\1[^>]*\bname\s*=\s*(["\'])mediaId\3', form_block, re.IGNORECASE | re.DOTALL)
+            if media_match:
+                media_id = html_module.unescape(media_match.group(2)).strip()
+
+        if size_hint <= 0:
+            size_match = re.search(r'\bid\s*=\s*(["\'])dl_size\1[^>]*>\s*([^<]+?)\s*<', html_text, re.IGNORECASE | re.DOTALL)
+            if size_match:
+                size_hint = _parse_known_size_to_bytes(html_module.unescape(size_match.group(2)).strip())
+
+        if not media_id:
+            js_media_match = re.search(r'\blet\s+media\s*=\s*\[\{"ID":(\d+)', html_text)
+            if js_media_match:
+                media_id = js_media_match.group(1)
+
+        if size_hint <= 0:
+            js_size_match = re.search(r'"ZippedText":"([^"]+)"', html_text)
+            if js_size_match:
+                size_hint = _parse_known_size_to_bytes(html_module.unescape(js_size_match.group(1)).strip())
+
+    if not action or not media_id:
+        return None
+
+    base_download_url = urljoin(page_url, action)
+    separator = '&' if '?' in base_download_url else '?'
+    download_url = base_download_url + separator + urllib.parse.urlencode({'mediaId': media_id})
+    return {
+        'media_id': media_id,
+        'base_download_url': base_download_url,
+        'download_url': download_url,
+        'size_hint': max(0, int(size_hint or 0)),
+        'parser': parser_name,
+    }
+
+
+def _fetch_vimm_download_info(url: str, session: requests.Session) -> dict[str, str | int] | None:
+    try:
+        if 'vimm.net' not in url:
+            return None
+        resp = session.get(url, timeout=30)
+        resp.raise_for_status()
+        info = _extract_vimm_download_info(resp.text, url)
+        if info and info.get('parser') == 'regex':
+            logger.debug("Analyse vimm.net via fallback regex (BeautifulSoup indisponible ou non nécessaire)")
+        return info
+    except Exception as e:
+        logger.debug(f"Erreur lors de la récupération des informations vimm.net: {e}")
+        return None
+
+
+def _get_vimm_file_size(url: str, session: requests.Session, download_info: dict[str, str | int] | None = None) -> int:
+    """Récupère la taille du fichier pour les URLs vimm.net avant téléchargement."""
+    try:
+        if 'vimm.net' not in url:
+            return 0
+            
+        logger.debug("Récupération de la taille du fichier vimm.net...")
+
+        if download_info is None:
+            download_info = _fetch_vimm_download_info(url, session)
+        if not download_info:
+            logger.debug("Informations de téléchargement introuvables pour vimm.net")
+            return 0
+
+        media_id = str(download_info.get('media_id') or '').strip()
+        download_url = str(download_info.get('download_url') or '').strip()
+        if not media_id or not download_url:
+            logger.debug("mediaId ou URL de téléchargement vimm.net introuvable")
+            return 0
+
+        logger.debug(f"mediaId trouvé pour taille: {media_id}")
+
+        # Faire un HEAD request pour récupérer la taille
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Referer': url
+        }
+        
+        head_resp = session.head(download_url, timeout=10, headers=headers, allow_redirects=True)
+        if head_resp.status_code == 200:
+            content_length = head_resp.headers.get('content-length')
+            if content_length:
+                size = int(content_length)
+                logger.debug(f"Taille du fichier vimm.net récupérée: {size} octets")
+                return size
+
+        size_hint = int(download_info.get('size_hint') or 0)
+        if size_hint > 0:
+            logger.debug(f"Taille du fichier vimm.net récupérée depuis la page: {size_hint} octets")
+            return size_hint
+
+        logger.debug("Impossible de récupérer la taille du fichier vimm.net")
+        return 0
+        
+    except Exception as e:
+        logger.debug(f"Erreur lors de la récupération de la taille vimm.net: {e}")
+        return 0
+
+
 def _lookup_known_game_size(platform: str, game_name: str, url: str | None = None) -> int:
     try:
         for game in load_games(platform):
@@ -498,9 +642,21 @@ def _stream_response_to_path(response, dest_path: str, task_id: str | None, canc
                 f.write(chunk)
                 downloaded += size_received
                 current_time = time.time()
-                if progress_queue_obj is not None and task_id is not None and current_time - last_update_time >= update_interval:
+                
+                # Calculer le pourcentage actuel
+                current_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
+                last_percent = int(last_downloaded / total_size * 100) if total_size > 0 else 0
+                
+                # Mettre à jour la progression si l'intervalle est atteint OU si le pourcentage a changé (ou si total_size est inconnu)
+                should_update = (progress_queue_obj is not None and task_id is not None and 
+                               (current_time - last_update_time >= update_interval or 
+                                current_percent != last_percent or 
+                                total_size == 0))
+                
+                if should_update:
                     delta = downloaded - last_downloaded
-                    speed = delta / (current_time - last_update_time) / (1024 * 1024)
+                    speed = delta / (current_time - last_update_time) / (1024 * 1024) if current_time > last_update_time else 0
+                    # logger.debug(f"[STREAM] Mise à jour progression: {downloaded}/{total_size} octets ({current_percent}%), speed={speed:.2f} MB/s, task_id={task_id}")
                     last_downloaded = downloaded
                     last_update_time = current_time
                     progress_queue_obj.put((task_id, downloaded, total_size, speed))
@@ -2135,6 +2291,9 @@ def cancel_all_downloads():
 
 async def download_rom(url, platform, game_name, is_zip_non_supported=False, task_id=None):
     logger.debug(f"Début téléchargement: {game_name} depuis {url}, zip non supporté={is_zip_non_supported}, task_id={task_id}")
+    
+    # Sauvegarder l'URL originale pour les mises à jour d'historique
+    original_history_url = url
     if parse_torrent_download_url(url) is not None:
         message = _("popup_torrent_in_maintenance") if _ else "Torrent under maintenance, please wait"
         logger.info(f"Téléchargement torrent provisoirement désactivé pour {game_name}: {url}")
@@ -2182,7 +2341,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     def download_thread():
         nonlocal url
         try:
-            known_total_size = _lookup_known_game_size(platform, game_name, url)
+            known_total_size = _lookup_known_game_size(platform, game_name, original_history_url)
             # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "Downloading"
             # pour que l'interface web puisse afficher le téléchargement en cours
             
@@ -2192,7 +2351,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             # Vérifier si l'entrée existe déjà
             entry_exists = False
             for entry in config.history:
-                if entry.get("url") == url:
+                if entry.get("url") == original_history_url:
                     entry_exists = True
                     # Réinitialiser le status à "Downloading"
                     entry["status"] = "Downloading"
@@ -2213,7 +2372,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     "platform": platform,
                     "game_name": game_name,
                     "display_name": get_clean_display_name(game_name, platform),
-                    "url": url,
+                    "url": original_history_url,
                     "status": "Downloading",
                     "progress": 0,
                     "downloaded_size": 0,
@@ -2263,7 +2422,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             sanitized_name = sanitize_filename(game_name)
             dest_path = os.path.join(dest_dir, f"{sanitized_name}")
             logger.debug(f"Chemin destination: {dest_path}")
-            _update_history_local_target(url, task_id, dest_path)
+            _update_history_local_target(original_history_url, task_id, dest_path)
 
             torrent_meta = parse_torrent_download_url(url)
             if torrent_meta is not None:
@@ -2286,7 +2445,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         result[0] = True
                         result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
                         for entry in config.history:
-                            if entry.get("url") == url:
+                            if entry.get("url") == original_history_url:
                                 entry["status"] = "Download_OK"
                                 entry["progress"] = 100
                                 entry["message"] = result[1]
@@ -2297,7 +2456,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         except Exception:
                             pass
                         with urls_lock:
-                            urls_in_progress.discard(url)
+                            urls_in_progress.discard(original_history_url)
                         try:
                             notify_download_finished()
                         except Exception:
@@ -2335,6 +2494,51 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 session = requests.Session()
                 session.headers.update(headers)
                 
+                # Récupérer la taille du fichier pour vimm.net avant de commencer
+                vimm_file_size = 0
+                vimm_download_info = None
+                if 'vimm.net' in url:
+                    vimm_download_info = _fetch_vimm_download_info(url, session)
+                    vimm_file_size = _get_vimm_file_size(url, session, vimm_download_info)
+                    if vimm_file_size > 0:
+                        logger.info(f"Taille du fichier vimm.net déterminée: {vimm_file_size} octets")
+                        # Mettre à jour l'historique avec la taille connue
+                        for entry in config.history:
+                            if entry.get("url") == original_history_url:
+                                entry["total_size"] = vimm_file_size
+                                save_history(config.history)
+                                break
+                
+                # Gestion spéciale pour vimm.net
+                vimm_original_referer = None
+                if 'vimm.net' in url:
+                    try:
+                        logger.debug("Détection URL vimm.net, récupération du mediaId...")
+                        vimm_original_referer = url  # Sauvegarder l'URL originale pour le referer
+                        if not vimm_download_info:
+                            vimm_download_info = _fetch_vimm_download_info(url, session)
+                        if not vimm_download_info:
+                            raise ValueError("Formulaire de téléchargement introuvable")
+
+                        media_id = str(vimm_download_info.get('media_id') or '').strip()
+                        download_url = str(vimm_download_info.get('base_download_url') or '').strip()
+                        final_download_url = str(vimm_download_info.get('download_url') or '').strip()
+                        if not media_id:
+                            raise ValueError("mediaId introuvable")
+                        if not download_url or not final_download_url:
+                            raise ValueError("URL de téléchargement vimm.net introuvable")
+
+                        logger.debug(f"mediaId trouvé: {media_id}")
+                        logger.debug(f"URL de téléchargement: {download_url}")
+
+                        # Modifier l'URL pour le téléchargement direct
+                        url = final_download_url
+                        logger.debug(f"URL finale pour téléchargement: {url}")
+                        
+                    except Exception as e:
+                        logger.error(f"Erreur lors du traitement vimm.net: {e}")
+                        raise
+                
                 # Vérifier si le fichier existe déjà (exact ou avec autre extension)
                 file_found = False
                 if os.path.exists(dest_path):
@@ -2346,7 +2550,10 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     
                     # Essayer de récupérer la taille du serveur
                     remote_size = None
-                    if _is_lolroms_url(url):
+                    if vimm_file_size > 0:
+                        remote_size = vimm_file_size
+                        logger.debug(f"Taille du fichier serveur via vimm.net: {remote_size} octets")
+                    elif _is_lolroms_url(url):
                         probed_size = _probe_lolroms_remote_size(url)
                         if probed_size > 0:
                             remote_size = probed_size
@@ -2381,8 +2588,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             result[0] = False
                             result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
                             with urls_lock:
-                                urls_in_progress.discard(url)
-                                logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                                urls_in_progress.discard(original_history_url)
+                                logger.debug(f"URL supprimée du set des téléchargements en cours: {original_history_url} (URLs restantes: {len(urls_in_progress)})")
                             return
                         # Continuer le téléchargement normal (ne pas faire return)
                     elif _is_lolroms_url(url):
@@ -2395,7 +2602,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             result[0] = False
                             result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
                             with urls_lock:
-                                urls_in_progress.discard(url)
+                                urls_in_progress.discard(original_history_url)
                             return
                     else:
                         # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
@@ -2405,7 +2612,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         
                         # Mettre à jour l'historique
                         for entry in config.history:
-                            if entry.get("url") == url:
+                            if entry.get("url") == original_history_url:
                                 entry["status"] = "Download_OK"
                                 entry["progress"] = 100
                                 entry["message"] = result[1]
@@ -2418,8 +2625,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         except Exception as e:
                             logger.debug(f"Impossible d'afficher le toast: {e}")
                         with urls_lock:
-                            urls_in_progress.discard(url)
-                            logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                            urls_in_progress.discard(original_history_url)
+                            logger.debug(f"URL supprimée du set des téléchargements en cours: {original_history_url} (URLs restantes: {len(urls_in_progress)})")
                         
                         # Libérer le slot de la queue
                         try:
@@ -2449,7 +2656,10 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                         
                                         # Essayer de récupérer la taille du serveur
                                         remote_size = None
-                                        if _is_lolroms_url(url):
+                                        if vimm_file_size > 0:
+                                            remote_size = vimm_file_size
+                                            logger.debug(f"Taille du fichier serveur via vimm.net (extension différente): {remote_size} octets")
+                                        elif _is_lolroms_url(url):
                                             probed_size = _probe_lolroms_remote_size(url)
                                             if probed_size > 0:
                                                 remote_size = probed_size
@@ -2483,7 +2693,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                             
                                             # Mettre à jour l'historique
                                             for entry in config.history:
-                                                if entry.get("url") == url:
+                                                if entry.get("url") == original_history_url:
                                                     entry["status"] = "Download_OK"
                                                     entry["progress"] = 100
                                                     entry["message"] = result[1]
@@ -2496,8 +2706,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                             except Exception as e:
                                                 logger.debug(f"Impossible d'afficher le toast: {e}")
                                             with urls_lock:
-                                                urls_in_progress.discard(url)
-                                                logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+                                                urls_in_progress.discard(original_history_url)
+                                                logger.debug(f"URL supprimée du set des téléchargements en cours: {original_history_url} (URLs restantes: {len(urls_in_progress)})")
                                             
                                             # Libérer le slot de la queue
                                             try:
@@ -2554,9 +2764,13 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 if not external_lolroms_downloaded:
                     download_headers = headers.copy()
                     download_headers['Accept'] = 'application/octet-stream, */*'
-                    default_referer = _default_referer_for_url(url)
-                    if default_referer:
-                        download_headers['Referer'] = default_referer
+                    # Utiliser le referer spécial pour vimm.net si défini
+                    if vimm_original_referer:
+                        download_headers['Referer'] = vimm_original_referer
+                    else:
+                        default_referer = _default_referer_for_url(url)
+                        if default_referer:
+                            download_headers['Referer'] = default_referer
                     archive_cookie = load_archive_org_cookie()
                     archive_alt_urls = []
                     meta_json = None
@@ -2607,7 +2821,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     if url not in config.download_progress:
                         config.download_progress[url] = {
                             "downloaded_size": 0,
-                            "total_size": 0,
+                            "total_size": vimm_file_size if vimm_file_size > 0 else known_total_size,
                             "status": "Connecting",
                             "progress_percent": 0,
                             "speed": 0,
@@ -2762,11 +2976,17 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             logger.error(f"Détails de l'erreur: {last_error}")
                         raise requests.HTTPError(full_error_msg)
 
+                    response_content_type = (response.headers.get('content-type', '') or '').lower()
+                    if 'vimm.net' in original_history_url and 'text/html' in response_content_type:
+                        raise requests.HTTPError(
+                            f"Vimm returned an HTML page instead of an archive (content-type={response_content_type})"
+                        )
+
                     if url in config.download_progress:
                         config.download_progress[url]["status"] = "Downloading"
                         config.needs_redraw = True
 
-                    transfer = _stream_response_to_path(response, dest_path, task_id, cancel_ev, progress_queues.get(task_id), fallback_total_size=known_total_size)
+                    transfer = _stream_response_to_path(response, dest_path, task_id, cancel_ev, progress_queues.get(task_id), fallback_total_size=vimm_file_size or known_total_size)
                     total_size = int(transfer['total_size'])
                     downloaded = int(transfer['downloaded'])
                     last_downloaded = int(transfer['last_downloaded'])
@@ -2777,10 +2997,14 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     logger.debug(f"Progression initiale envoyée: 0% pour {game_name}, task_id={task_id}")
                     if isinstance(config.history, list):
                         for entry in config.history:
-                            if "url" in entry and entry["url"] == url:
+                            if "url" in entry and entry["url"] == original_history_url:
                                 entry["total_size"] = total_size
                                 save_history(config.history)
                                 break
+                    
+                    # Mettre à jour la taille dans download_progress si elle n'était pas connue
+                    if url in config.download_progress and config.download_progress[url]["total_size"] == 0:
+                        config.download_progress[url]["total_size"] = total_size
 
                     if downloaded <= 0 and archive_alt_urls and 'archive.org' in url:
                         try:
@@ -2866,7 +3090,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     config.needs_redraw = True
                 if isinstance(config.history, list):
                     for entry in config.history:
-                        if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement"]:
+                        if "url" in entry and entry["url"] == original_history_url and entry["status"] in ["Downloading", "Téléchargement"]:
                             entry["status"] = "Extracting"
                             entry["progress"] = 0
                             entry["message"] = "Préparation de l'extraction..."
@@ -2925,7 +3149,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         
                         if isinstance(config.history, list):
                             for entry in config.history:
-                                if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement", "Extracting", "Converting"]:
+                                if "url" in entry and entry["url"] == original_history_url and entry["status"] in ["Downloading", "Téléchargement", "Extracting", "Converting"]:
                                     current_progress = int(entry.get("progress", 0) or 0)
                                     entry["status"] = "Download_OK" if success else "Erreur"
                                     entry["progress"] = 100 if success else current_progress
@@ -2941,6 +3165,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     logger.debug(f"Final update in history: status={entry['status']}, progress={entry['progress']}%, message={message}, task_id={task_id}")
                                     break
                     else:
+                        # logger.debug(f"[QUEUE] Traitement données progression: {data}, task_id={task_id}")
                         if len(data) >= 4:
                             downloaded, total_size, speed = data[1], data[2], data[3]
                         else:
@@ -2958,15 +3183,25 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             # Si 100%, afficher "Completed" au lieu de "Downloading"
                             config.download_progress[url]["status"] = "Completed" if progress_percent >= 100 else "Downloading"
                             
-                            # Mettre à jour le fichier web
-                # Plus besoin de update_web_progress
+                            # Mettre à jour l'historique
+                        if isinstance(config.history, list):
+                            for entry in config.history:
+                                if "url" in entry and entry["url"] == original_history_url:
+                                    entry["progress"] = progress_percent
+                                    entry["downloaded_size"] = downloaded
+                                    entry["total_size"] = total_size
+                                    entry["speed"] = speed
+                                    entry["status"] = "Téléchargement"
+                                    save_history(config.history)
+                                    config.needs_redraw = True
+                                    break
                         
                         # IMPORTANT: Mettre à jour config.history PENDANT le téléchargement aussi
                         # pour que l'interface web affiche la progression en temps réel
                         # NOTE: On ne touche PAS au timestamp qui doit rester celui de création
                         if isinstance(config.history, list):
                             for entry in config.history:
-                                if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement"]:
+                                if "url" in entry and entry["url"] == original_history_url and entry["status"] in ["Downloading", "Téléchargement"]:
                                     entry["downloaded_size"] = downloaded
                                     entry["total_size"] = total_size
                                     entry["speed"] = speed
@@ -2997,7 +3232,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     logger.debug(f"[DRAIN_QUEUE] Processing final message: success={success}, message={message[:100] if message else 'None'}")
                     if isinstance(config.history, list):
                         for entry in config.history:
-                            if "url" in entry and entry["url"] == url and entry["status"] in ["Downloading", "Téléchargement", "Extracting", "Converting"]:
+                            if "url" in entry and entry["url"] == original_history_url and entry["status"] in ["Downloading", "Téléchargement", "Extracting", "Converting"]:
                                 entry["status"] = "Download_OK" if success else "Erreur"
                                 entry["progress"] = 100 if success else 0
                                 entry["message"] = message
@@ -3020,12 +3255,12 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     
     # Sauvegarder le résultat AVANT de retirer l'URL du set (pour les doublons)
     with urls_lock:
-        url_results[url] = (result[0], result[1])
-        urls_in_progress.discard(url)
-        logger.debug(f"URL supprimée du set des téléchargements en cours: {url} (URLs restantes: {len(urls_in_progress)})")
+        url_results[original_history_url] = (result[0], result[1])
+        urls_in_progress.discard(original_history_url)
+        logger.debug(f"URL supprimée du set des téléchargements en cours: {original_history_url} (URLs restantes: {len(urls_in_progress)})")
         # Signaler l'événement pour les appels doublons en attente
-        if url in url_done_events:
-            url_done_events[url].set()
+        if original_history_url in url_done_events:
+            url_done_events[original_history_url].set()
     
     # Libérer le slot de la queue
     try:

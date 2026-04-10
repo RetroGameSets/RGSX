@@ -101,6 +101,7 @@ def get_platform_source_badge_key(platform_name: str):
         'lolroms': 'LolRoms',
         'torrent': 'Torrent',
         '1fichier': '1Fichier',
+        'vimms': 'Vimms',
     }
     return mapping.get(source)
 
@@ -242,6 +243,13 @@ def get_platform_source_badge_surface(source_key: str, badge_size: int):
             'border': (0, 255, 255, 230),
             'label': 'LOL',
             'text': (61, 19, 110),
+        },
+        'Vimms': {
+            'svg': 'vimms.svg',
+            'bg': (255, 255, 255, 242),
+            'border': (208, 208, 208, 235),
+            'label': 'VL',
+            'text': (24, 77, 176),
         },
         'Torrent': {
             'svg': 'torrent.svg',
