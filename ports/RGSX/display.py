@@ -2477,17 +2477,36 @@ def draw_history_list(screen):
     else:
         current_history_item_inverted = 0
 
-    # Cherche une entrée en cours de téléchargement pour afficher la vitesse
-    speed_str = ""
-    for entry in history:
-        if entry.get("status") in ["Téléchargement", "Downloading"]:
-            speed = entry.get("speed", 0.0)
-            if speed and speed > 0:
-                speed_str = f" - {speed:.2f} {get_speed_unit()}"
-            break
+    active_statuses = {"Téléchargement", "Downloading", "Extracting", "Converting", "Connecting", "Queued"}
+    completed_statuses = {"Download_OK", "Completed"}
+    error_statuses = {"Erreur", "Error"}
+    canceled_statuses = {"Canceled", "Cancelled", "Annulé", "Annule"}
+
+    selected_entry = history[current_history_item_inverted] if history and 0 <= current_history_item_inverted < len(history) else None
+    selected_status = str((selected_entry or {}).get("status") or "")
+
+    if selected_entry and selected_status in active_statuses:
+        downloaded_size = int(selected_entry.get("downloaded_size", 0) or 0)
+        size_text = format_size(downloaded_size)
+        try:
+            selected_speed = float(selected_entry.get("speed", 0.0) or 0.0)
+        except Exception:
+            selected_speed = 0.0
+        speed_text = f"{selected_speed:.2f} {get_speed_unit()}"
+        title_text = _("history_title_downloading_active").format(size_text, speed_text)
+    elif selected_entry and selected_status in completed_statuses:
+        completed_count = sum(1 for item in history if str(item.get("status") or "") in completed_statuses)
+        title_text = _("history_title_completed_count").format(completed_count)
+    elif selected_entry and selected_status in error_statuses:
+        error_count = sum(1 for item in history if str(item.get("status") or "") in error_statuses)
+        title_text = _("history_title_error_count").format(error_count)
+    elif selected_entry and selected_status in canceled_statuses:
+        canceled_count = sum(1 for item in history if str(item.get("status") or "") in canceled_statuses)
+        title_text = _("history_title_canceled_count").format(canceled_count)
+    else:
+        title_text = _("history_title").format(history_count)
 
     screen.blit(OVERLAY, (0, 0))
-    title_text = _("history_title").format(history_count) + speed_str
     title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
     title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 20))
     title_rect_inflated = title_rect.inflate(60, 30)
@@ -2527,17 +2546,6 @@ def draw_history_list(screen):
             current_history_item_inverted = max(0, min(len(history) - 1, current_history_item_inverted))
     else:
         current_history_item_inverted = 0
-
-    speed = 0.0
-    if history and history[current_history_item_inverted].get("status") in ["Téléchargement", "Downloading"]:
-        speed = history[current_history_item_inverted].get("speed", 0.0)
-    if speed > 0:
-        speed_str = f"{speed:.2f} {get_speed_unit()}"
-        title_text = _("history_title").format(history_count) + f" {speed_str}"
-    else:
-        title_text = _("history_title").format(history_count)
-    title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
-   
 
     if not history:
         logger.debug("Aucun historique disponible")
@@ -2634,6 +2642,8 @@ def draw_history_list(screen):
             custom_message = entry.get('message', '')
             total_size_value = int(entry.get("total_size", 0) or 0)
             downloaded_size_value = int(entry.get("downloaded_size", 0) or 0)
+            seeds_value = int(entry.get("seeds", 0) or 0)
+            connections_value = int(entry.get("connections", 0) or 0)
             # Détecter les messages du mode gratuit (commencent par '[' dans toutes les langues)
             if custom_message and custom_message.strip().startswith('['):
                 # Utiliser le message personnalisé pour le mode gratuit
@@ -2643,6 +2653,9 @@ def draw_history_list(screen):
             else:
                 # Comportement normal: afficher le pourcentage
                 status_text = _("history_status_downloading").format(progress)
+                display_connections = connections_value if connections_value > 0 else seeds_value
+                if display_connections > 0:
+                    status_text = f"{status_text} CN:{display_connections}"
                 # Coerce to string and prefix provider when relevant
                 status_text = str(status_text or "")
                 if provider_prefix and not status_text.startswith(provider_prefix):

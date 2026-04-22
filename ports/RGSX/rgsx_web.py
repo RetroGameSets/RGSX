@@ -795,6 +795,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                                 'status': status,
                                 'progress_percent': entry.get('progress', 0),
                                 'speed': entry.get('speed', 0),
+                                'seeds': entry.get('seeds', 0),
+                                'connections': entry.get('connections', 0),
                                 'game_name': entry.get('game_name', ''),
                                 'platform': entry.get('platform', ''),
                                 'timestamp': entry.get('timestamp', '')
@@ -1177,13 +1179,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     }, status=400)
                     return
 
-                if parse_torrent_download_url(game_url) is not None:
-                    torrent_message = TRANSLATIONS.get('popup_torrent_in_maintenance', 'torrent in maintence')
-                    self._send_json({
-                        'success': False,
-                        'error': torrent_message
-                    }, status=400)
-                    return
+                # Suppression du blocage torrent : on laisse passer les URLs rgsx+torrent
                 
                 # Vérifier l'extension et déterminer si extraction nécessaire
                 from utils import check_extension_before_download

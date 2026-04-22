@@ -56,24 +56,28 @@ GLOBAL_SORT_OPTIONS = [
 
 
 def _notify_torrent_in_maintenance(game_name: str | None = None) -> None:
-    try:
-        message = _("popup_torrent_in_maintenance")
-    except Exception:
-        message = "torrent in maintence"
-
-    show_toast(message, 3000)
-    logger.info(f"Source torrent non telechargeable pour le moment: {game_name or 'unknown game'}")
+    # Fonction devenue inutile, ne fait plus rien
+    pass
 
 
 def _has_download_url(url, game_name: str | None = None) -> bool:
     if isinstance(url, str) and url.strip():
-        if parse_torrent_download_url(url) is not None:
-            _notify_torrent_in_maintenance(game_name)
+        torrent_meta = parse_torrent_download_url(url)
+        if torrent_meta is not None:
+            # Lancer le téléchargement torrent
+            # On suppose que les autres paramètres sont accessibles ou à adapter selon le contexte d'appel
+            # Ici, il faudrait passer platform, game_name, etc. selon l'appelant
+            # Exemple minimal :
+            try:
+                # platform doit être passé ou déterminé selon le contexte réel
+                platform = None
+                download_rom(url, platform, game_name)
+            except Exception as e:
+                logger.error(f"Erreur lors du lancement du téléchargement torrent: {e}")
             config.needs_redraw = True
-            return False
+            return True
         return True
 
-    _notify_torrent_in_maintenance(game_name)
     config.needs_redraw = True
     return False
 

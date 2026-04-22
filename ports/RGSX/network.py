@@ -117,24 +117,49 @@ def _resolve_aria2c_command():
     if config.OPERATING_SYSTEM == "Windows":
         candidates = [config.ARIA2C_EXE, "aria2c.exe", "aria2c"]
     else:
-        candidates = [config.ARIA2C_LINUX, "aria2c"]
+        bundled_alt = os.path.join(config.APP_FOLDER, "assets", "progs", "aria2c")
+        candidates = [config.ARIA2C_LINUX, bundled_alt, "aria2c"]
+
+    def _is_runnable(binary_path: str) -> bool:
+        try:
+            subprocess.run(
+                [binary_path, "--version"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+            )
+            return True
+        except OSError as exc:
+            # Errno 8 on Linux/Batocera means wrong binary format/architecture.
+            if getattr(exc, "errno", None) == 8:
+                logger.warning(f"aria2c binaire incompatible (Exec format error): {binary_path}")
+            else:
+                logger.debug(f"aria2c binaire non exécutable {binary_path}: {exc}")
+            return False
+        except Exception as exc:
+            logger.debug(f"Impossible de valider aria2c {binary_path}: {exc}")
+            return False
 
     for candidate in candidates:
         if not candidate:
             continue
         if os.path.isabs(candidate):
-            if os.path.exists(candidate):
-                try:
-                    if config.OPERATING_SYSTEM != "Windows" and not os.access(candidate, os.X_OK):
-                        os.chmod(candidate, 0o755)
-                except Exception:
-                    pass
+            if not os.path.exists(candidate):
+                continue
+            try:
+                if config.OPERATING_SYSTEM != "Windows" and not os.access(candidate, os.X_OK):
+                    os.chmod(candidate, 0o755)
+            except Exception:
+                pass
+            if _is_runnable(candidate):
                 return candidate
         else:
             resolved = shutil.which(candidate)
-            if resolved:
+            if resolved and _is_runnable(resolved):
                 return resolved
-    raise FileNotFoundError("aria2c unavailable for torrent downloads")
+
+    raise FileNotFoundError("aria2c unavailable or incompatible for torrent downloads")
 
 
 def _download_torrent_manifest_to_file(source_url: str) -> str:
@@ -153,10 +178,11 @@ def _find_torrent_downloaded_file(download_root: str, relative_path: str, fallba
     if os.path.exists(expected):
         return expected
 
-    fallback_basename = os.path.basename(relative_path) or fallback_name
+    # Recherche stricte sur le nom exact (avec extension)
+    exact_filename = os.path.basename(relative_path) or fallback_name
     for current_root, _, files in os.walk(download_root):
         for file_name in files:
-            if file_name == fallback_basename:
+            if file_name == exact_filename:
                 return os.path.join(current_root, file_name)
     return None
 
@@ -203,6 +229,14 @@ def _parse_aria2_progress_line(line: str, total_size: int) -> dict[str, float | 
         if speed_bytes is not None:
             result["speed_mib_s"] = speed_bytes / (1024 * 1024)
 
+    cn_match = re.search(r'\bCN:(\d+)', line)
+    if cn_match:
+        result["connections"] = int(cn_match.group(1))
+
+    sd_match = re.search(r'\bSD:(\d+)', line)
+    if sd_match:
+        result["seeds"] = int(sd_match.group(1))
+
     if not result:
         return None
     return result
@@ -210,13 +244,20 @@ def _parse_aria2_progress_line(line: str, total_size: int) -> dict[str, float | 
 
 def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: str, dest_path: str, task_id: str, cancel_ev, progress_queue) -> tuple[bool, str]:
     source_url = str(torrent_meta.get("source_url") or "")
-    relative_path = str(torrent_meta.get("relative_path") or os.path.basename(dest_path))
+    relative_path = os.path.basename(dest_path)
     file_index = int(torrent_meta.get("file_index") or 1)
     total_size = int(torrent_meta.get("size_bytes") or 0)
     aria2c_cmd = _resolve_aria2c_command()
 
     temp_manifest = _download_torrent_manifest_to_file(source_url)
-    temp_root = os.path.join(dest_dir, f".rgsx_torrent_{task_id}")
+    # Isoler le dossier temporaire hors ROMs et privilégier le même volume que SAVE_FOLDER.
+    temp_base = getattr(config, "SAVE_FOLDER", "") or tempfile.gettempdir()
+    temp_root = os.path.join(temp_base, ".rgsx_torrent_downloads", str(task_id))
+    try:
+        if os.path.exists(temp_root):
+            shutil.rmtree(temp_root, ignore_errors=True)
+    except Exception:
+        pass
     os.makedirs(temp_root, exist_ok=True)
 
     if total_size > 0:
@@ -228,6 +269,7 @@ def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: s
         "--file-allocation=none",
         "--allow-overwrite=true",
         "--auto-file-renaming=false",
+        "--bt-remove-unselected-file=true",
         f"--select-file={file_index}",
         f"--dir={temp_root}",
         "--summary-interval=1",
@@ -257,7 +299,6 @@ def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: s
             if not line:
                 continue
             aria2_output.append(line)
-            logger.debug(f"[aria2c:{task_id}] {line}")
             parsed_progress = _parse_aria2_progress_line(line, total_size)
             if parsed_progress:
                 aria2_progress.update(parsed_progress)
@@ -285,11 +326,15 @@ def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: s
             current_time = time.time()
             elapsed = max(current_time - last_time, 0.001)
             file_speed = max(0.0, (current_size - last_size) / elapsed / (1024 * 1024))
-            reported_total = int(aria2_progress.get("total") or total_size or 0)
-            reported_size = max(current_size, int(aria2_progress.get("downloaded") or 0))
-            reported_speed = max(file_speed, float(aria2_progress.get("speed_mib_s") or 0.0))
+            reported_total = int(total_size or aria2_progress.get("total") or 0)
+            # La progression UI doit refléter le fichier cible uniquement, pas les bytes adjacents BT.
+            reported_size = int(current_size)
+            # Pour les torrents, utiliser la vitesse DL renvoyée par aria2.
+            reported_speed = float(aria2_progress.get("speed_mib_s") or 0.0)
+            reported_seeds = int(aria2_progress.get("seeds") or 0)
+            reported_connections = int(aria2_progress.get("connections") or 0)
             if reported_total > 0:
-                progress_queue.put((task_id, reported_size, reported_total, reported_speed))
+                progress_queue.put((task_id, reported_size, reported_total, reported_speed, reported_seeds, reported_connections))
             last_size = max(last_size, current_size)
             last_time = current_time
             time.sleep(0.2)
@@ -300,13 +345,28 @@ def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: s
         if process.returncode != 0:
             raise RuntimeError(remaining_output or f"aria2c exited with code {process.returncode}")
 
+        # Nettoyer les fichiers adjacents téléchargés par overlap de pièces BitTorrent
+        target_filename = os.path.basename(dest_path)
+        for _root, _dirs, _files in os.walk(temp_root, topdown=False):
+            for _fname in _files:
+                if _fname != target_filename:
+                    try:
+                        os.remove(os.path.join(_root, _fname))
+                        logger.debug(f"Nettoyage fichier adjacent torrent: {_fname}")
+                    except Exception:
+                        pass
+
         downloaded_path = _find_torrent_downloaded_file(temp_root, relative_path, os.path.basename(dest_path))
         if not downloaded_path or not os.path.exists(downloaded_path):
             raise FileNotFoundError(f"Downloaded torrent file not found for {relative_path}")
 
         if os.path.exists(dest_path):
             os.remove(dest_path)
-        os.replace(downloaded_path, dest_path)
+        try:
+            os.replace(downloaded_path, dest_path)
+        except OSError:
+            # Cross-drive move fallback (ex: temp on C:, ROMs on R:)
+            shutil.move(downloaded_path, dest_path)
 
         try:
             shutil.rmtree(temp_root, ignore_errors=True)
@@ -2303,10 +2363,17 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     
     # Sauvegarder l'URL originale pour les mises à jour d'historique
     original_history_url = url
-    if parse_torrent_download_url(url) is not None:
-        message = _("popup_torrent_in_maintenance") if _ else "Torrent under maintenance, please wait"
-        logger.info(f"Téléchargement torrent provisoirement désactivé pour {game_name}: {url}")
-        return False, message
+    # Correction : détecter les URLs rgsx+torrent même si parse_torrent_download_url retourne None (blocage désactivé)
+    torrent_meta = None
+    if url and isinstance(url, str) and url.startswith("rgsx+torrent://"):
+        # Forcer la reconstruction des métadonnées torrent
+        from utils import is_torrent_download_url
+        if is_torrent_download_url(url):
+            # Recréer le dict attendu par _download_torrent_with_aria2
+            from utils import parse_torrent_download_url as _parse_torrent_download_url
+            torrent_meta = _parse_torrent_download_url.__wrapped__(url) if hasattr(_parse_torrent_download_url, '__wrapped__') else _parse_torrent_download_url(url)
+    else:
+        torrent_meta = parse_torrent_download_url(url)
 
     result = [None, None]
     
@@ -3189,11 +3256,17 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     break
                     else:
                         # logger.debug(f"[QUEUE] Traitement données progression: {data}, task_id={task_id}")
-                        if len(data) >= 4:
+                        if len(data) >= 6:
+                            downloaded, total_size, speed, seeds, connections = data[1], data[2], data[3], data[4], data[5]
+                        elif len(data) >= 4:
                             downloaded, total_size, speed = data[1], data[2], data[3]
+                            seeds, connections = 0, 0
                         else:
                             downloaded, total_size = data[1], data[2]
-                            speed = 0.0
+                            speed, seeds, connections = 0.0, 0, 0
+                        # Certains trackers/DHT exposent SD=0 même en téléchargement actif.
+                        # Pour l'UI, on utilise CN comme fallback visuel de SD quand SD reste à 0.
+                        display_seeds = seeds if seeds > 0 else connections
                         progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
                         progress_percent = max(0, min(100, progress_percent))
                         
@@ -3203,8 +3276,16 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             config.download_progress[url]["total_size"] = total_size
                             config.download_progress[url]["speed"] = speed
                             config.download_progress[url]["progress_percent"] = progress_percent
+                            config.download_progress[url]["seeds"] = display_seeds
+                            config.download_progress[url]["connections"] = connections
                             # Si 100%, afficher "Completed" au lieu de "Downloading"
-                            config.download_progress[url]["status"] = "Completed" if progress_percent >= 100 else "Downloading"
+                            if progress_percent >= 100:
+                                config.download_progress[url]["status"] = "Completed"
+                            elif display_seeds > 0 or connections > 0:
+                                display_connections = connections if connections > 0 else display_seeds
+                                config.download_progress[url]["status"] = f"CN:{display_connections}"
+                            else:
+                                config.download_progress[url]["status"] = "Downloading"
                             
                             # Mettre à jour l'historique
                         if isinstance(config.history, list):
@@ -3214,6 +3295,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     entry["downloaded_size"] = downloaded
                                     entry["total_size"] = total_size
                                     entry["speed"] = speed
+                                    entry["seeds"] = display_seeds
+                                    entry["connections"] = connections
                                     entry["status"] = "Téléchargement"
                                     save_history(config.history)
                                     config.needs_redraw = True
@@ -3228,6 +3311,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     entry["downloaded_size"] = downloaded
                                     entry["total_size"] = total_size
                                     entry["speed"] = speed
+                                    entry["seeds"] = display_seeds
+                                    entry["connections"] = connections
                                     entry["progress"] = progress_percent
                                     entry["status"] = "Téléchargement"
                                     config.needs_redraw = True
