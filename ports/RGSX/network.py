@@ -18,7 +18,7 @@ except Exception:
     pygame = None  # type: ignore
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP
 from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, handle_ps3, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, load_api_keys, load_archive_org_cookie, get_clean_display_name, parse_torrent_download_url, load_games
-from history import save_history
+from history import save_history, check_history_write_access, get_history_write_status
 from display import show_toast
 import logging
 import datetime
@@ -47,6 +47,47 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _warn_history_write_issue(context=""):
+    status = get_history_write_status() or {}
+    message = status.get("message") or "Erreur ecriture history.json. Le telechargement continue sans historique temps reel."
+    if context:
+        logger.error(f"[{context}] {message}")
+    else:
+        logger.error(message)
+
+    try:
+        config.history_write_ok = False
+        config.history_write_error = message
+    except Exception:
+        pass
+
+    now = time.time()
+    last_toast = float(getattr(config, "history_write_last_toast_at", 0.0) or 0.0)
+    if now - last_toast >= 8.0:
+        try:
+            show_toast(message, duration=5000)
+        except Exception:
+            pass
+        try:
+            config.history_write_last_toast_at = now
+        except Exception:
+            pass
+
+
+def _save_history_with_feedback(context=""):
+    saved = save_history(config.history)
+    if not saved:
+        _warn_history_write_issue(context)
+    return saved
+
+
+def _check_history_access_before_download(context="download"):
+    ok, _ = check_history_write_access(force=True)
+    if not ok:
+        _warn_history_write_issue(f"{context}:precheck")
+    return ok
+
+
 def _update_history_local_target(url: str, task_id: str, dest_path: str) -> None:
     if not isinstance(config.history, list) or not dest_path:
         return
@@ -71,7 +112,7 @@ def _update_history_local_target(url: str, task_id: str, dest_path: str) -> None
         if absolute_path not in moved_paths:
             moved_paths.insert(0, absolute_path)
         entry["moved_paths"] = moved_paths
-        save_history(config.history)
+        _save_history_with_feedback("download:local_target")
         break
 
 
@@ -2417,6 +2458,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     def download_thread():
         nonlocal url
         try:
+            _check_history_access_before_download("download_rom")
             known_total_size = _lookup_known_game_size(platform, game_name, original_history_url)
             # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "Downloading"
             # pour que l'interface web puisse afficher le téléchargement en cours
@@ -2460,7 +2502,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 })
             
             # Sauvegarder history.json immédiatement
-            save_history(config.history)
+            _save_history_with_feedback("download_rom:init")
             
             cancel_ev = cancel_events.get(task_id)
             # Use symlink path if enabled
@@ -2525,7 +2567,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                 entry["status"] = "Download_OK"
                                 entry["progress"] = 100
                                 entry["message"] = result[1]
-                                save_history(config.history)
+                                _save_history_with_feedback("download_rom:torrent_already_present")
                                 break
                         try:
                             show_toast(result[1])
@@ -2582,7 +2624,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         for entry in config.history:
                             if entry.get("url") == original_history_url:
                                 entry["total_size"] = vimm_file_size
-                                save_history(config.history)
+                                _save_history_with_feedback("download_rom:vimm_total_size")
                                 break
 
                     # Utiliser le nom de fichier réel récupéré via Content-Disposition dans _get_vimm_file_size
@@ -2596,7 +2638,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             for entry in config.history:
                                 if entry.get('url') == original_history_url:
                                     entry['display_name'] = display_name
-                                    save_history(config.history)
+                                    _save_history_with_feedback("download_rom:vimm_display_name")
                                     break
 
                 # Gestion spéciale pour vimm.net
@@ -2706,7 +2748,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                 entry["status"] = "Download_OK"
                                 entry["progress"] = 100
                                 entry["message"] = result[1]
-                                save_history(config.history)
+                                _save_history_with_feedback("download_rom:file_already_present")
                                 break
                         
                         # Afficher un toast au lieu d'ouvrir l'historique
@@ -2787,7 +2829,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                                     entry["status"] = "Download_OK"
                                                     entry["progress"] = 100
                                                     entry["message"] = result[1]
-                                                    save_history(config.history)
+                                                    _save_history_with_feedback("download_rom:file_already_extracted")
                                                     break
                                             
                                             # Afficher un toast au lieu d'ouvrir l'historique
@@ -2845,7 +2887,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             for entry in config.history:
                                 if "url" in entry and entry["url"] == url:
                                     entry["total_size"] = total_size
-                                    save_history(config.history)
+                                    _save_history_with_feedback("download_rom:lolroms_total_size")
                                     break
                         logger.info(f"Téléchargement lolroms terminé via outil externe: {dest_path}")
                     elif external_success is False:
@@ -3089,7 +3131,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         for entry in config.history:
                             if "url" in entry and entry["url"] == original_history_url:
                                 entry["total_size"] = total_size
-                                save_history(config.history)
+                                _save_history_with_feedback("download_rom:stream_total_size")
                                 break
                     
                     # Mettre à jour la taille dans download_progress si elle n'était pas connue
@@ -3184,7 +3226,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             entry["status"] = "Extracting"
                             entry["progress"] = 0
                             entry["message"] = "Préparation de l'extraction..."
-                            save_history(config.history)
+                            _save_history_with_feedback("download_rom:extracting")
                             config.needs_redraw = True
                             break
                 try:
@@ -3220,6 +3262,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
     thread = threading.Thread(target=download_thread, daemon=True)
     download_threads[task_id] = thread
     thread.start()
+    last_saved_progress_percent = -1
     
     # Boucle principale pour mettre à jour la progression
     while thread.is_alive():
@@ -3244,7 +3287,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     entry["status"] = "Download_OK" if success else "Erreur"
                                     entry["progress"] = 100 if success else current_progress
                                     entry["message"] = message
-                                    save_history(config.history)
+                                    _save_history_with_feedback("download_rom:final")
                                     # Marquer le jeu comme téléchargé si succès
                                     if success:
                                         logger.debug(f"[WHILE_LOOP] Marking game as downloaded: platform={platform}, game={game_name}")
@@ -3298,7 +3341,6 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     entry["seeds"] = display_seeds
                                     entry["connections"] = connections
                                     entry["status"] = "Téléchargement"
-                                    save_history(config.history)
                                     config.needs_redraw = True
                                     break
                         
@@ -3316,9 +3358,10 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     entry["progress"] = progress_percent
                                     entry["status"] = "Téléchargement"
                                     config.needs_redraw = True
-                                    # Sauvegarder toutes les 5% pour éviter trop d'I/O
-                                    if progress_percent % 5 == 0 or progress_percent >= 99:
-                                        save_history(config.history)
+                                    # Sauvegarder au plus une fois par palier de 5%
+                                    if (progress_percent % 5 == 0 or progress_percent >= 99) and progress_percent != last_saved_progress_percent:
+                                        if _save_history_with_feedback("download_rom:progress"):
+                                            last_saved_progress_percent = progress_percent
                                     break
             await asyncio.sleep(0.1)
         except Exception as e:
@@ -3344,7 +3387,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                 entry["status"] = "Download_OK" if success else "Erreur"
                                 entry["progress"] = 100 if success else 0
                                 entry["message"] = message
-                                save_history(config.history)
+                                _save_history_with_feedback("download_rom:drain")
                                 # Marquer le jeu comme téléchargé si succès
                                 if success:
                                     logger.debug(f"[DRAIN_QUEUE] Marking game as downloaded: platform={platform}, game={game_name}")
@@ -3454,10 +3497,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     if entry.get("url") == url:
                         entry["provider"] = pfx
                         entry["provider_prefix"] = f"{pfx}:"
-                        try:
-                            save_history(config.history)
-                        except Exception:
-                            pass
+                        _save_history_with_feedback("download_1fichier:set_provider")
                         config.needs_redraw = True
                         break
         except Exception:
@@ -3487,6 +3527,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             )
 
         try:
+            _check_history_access_before_download("download_1fichier")
             cancel_ev = cancel_events.get(task_id)
             link = url.split('&af=')[0]
             logger.debug(f"URL nettoyée: {link}")
@@ -3532,7 +3573,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 })
             
             # Sauvegarder history.json immédiatement
-            save_history(config.history)
+            _save_history_with_feedback("download_1fichier:init")
             
             # Use symlink path if enabled
             from rgsx_settings import apply_symlink_path, get_platform_custom_path
@@ -4023,6 +4064,8 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     
                     # Créer un lock pour ce téléchargement
                     free_lock = threading.Lock()
+                    last_free_saved_percent = {"value": -1}
+                    last_free_wait_save_ts = {"value": 0.0}
                     
                     try:
                         # Créer une session requests pour le mode gratuit
@@ -4049,13 +4092,19 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                 if isinstance(config.history, list):
                                     for entry in config.history:
                                         if "url" in entry and entry["url"] == url and entry["status"] == "Downloading":
-                                            entry["progress"] = int(pct) if pct else 0
+                                            progress_percent = int(pct) if pct else 0
+                                            entry["progress"] = progress_percent
                                             entry["downloaded_size"] = downloaded
                                             entry["total_size"] = total
                                             # Effacer le message personnalisé pour afficher le pourcentage
                                             entry["message"] = ""
                                             config.needs_redraw = True
-                                            save_history(config.history)
+                                            should_save = (
+                                                (progress_percent % 5 == 0 or progress_percent >= 99)
+                                                and progress_percent != last_free_saved_percent["value"]
+                                            )
+                                            if should_save and _save_history_with_feedback("download_1fichier:free_progress"):
+                                                last_free_saved_percent["value"] = progress_percent
                                             break
                                 progress_queues[task_id].put((task_id, downloaded, total))
                         
@@ -4065,7 +4114,10 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                     if "url" in entry and entry["url"] == url:
                                         entry["message"] = _("free_mode_waiting").format(remaining, total_wait)
                                         config.needs_redraw = True
-                                        save_history(config.history)
+                                        now_wait = time.time()
+                                        if now_wait - last_free_wait_save_ts["value"] >= 2.0:
+                                            if _save_history_with_feedback("download_1fichier:free_wait"):
+                                                last_free_wait_save_ts["value"] = now_wait
                                         break
                         
                         # Lancer le téléchargement gratuit
@@ -4095,7 +4147,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         entry["message"] = result[1]
                                         entry["provider"] = "FREE"
                                         entry["provider_prefix"] = "FREE:"
-                                        save_history(config.history)
+                                        _save_history_with_feedback("download_1fichier:free_success")
                                         config.needs_redraw = True
                                         break
                             
@@ -4280,7 +4332,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                             for entry in config.history:
                                 if "url" in entry and entry["url"] == url:
                                     entry["total_size"] = total_size  # Ajouter la taille totale
-                                    save_history(config.history)
+                                    _save_history_with_feedback("download_1fichier:total_size")
                                     break
                         with lock:
                             if isinstance(config.history, list):
@@ -4387,7 +4439,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         entry["progress"] = 0
                                         entry["status"] = "Extracting"
                                         entry["message"] = "Préparation de l'extraction..."
-                                        save_history(config.history)
+                                        _save_history_with_feedback("download_1fichier:extracting")
                                         config.needs_redraw = True
                                         break
                         logger.debug(f"Début post-traitement du téléchargement: {os.path.splitext(dest_path)[1].lower()}")
@@ -4456,7 +4508,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                     entry["status"] = "Download_OK" if success else "Erreur"
                                     entry["progress"] = 100 if success else 0
                                     entry["message"] = message
-                                    save_history(config.history)
+                                    _save_history_with_feedback("download_1fichier:final")
                                     # Marquer le jeu comme téléchargé si succès
                                     if success:
                                         logger.debug(f"[1F_WHILE_LOOP] Marking game as downloaded: platform={platform}, game={game_name}")
@@ -4511,7 +4563,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                 entry["status"] = "Download_OK" if success else "Erreur"
                                 entry["progress"] = 100 if success else 0
                                 entry["message"] = message
-                                save_history(config.history)
+                                _save_history_with_feedback("download_1fichier:drain")
                                 # Marquer le jeu comme téléchargé si succès
                                 if success:
                                     logger.debug(f"[1F_DRAIN_QUEUE] Marking game as downloaded: platform={platform}, game={game_name}")

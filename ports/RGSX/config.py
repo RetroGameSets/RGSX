@@ -27,7 +27,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.6.3.5"
+app_version = "2.6.3.6"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 1
@@ -473,6 +473,11 @@ history = []  # Liste des entrées d'historique avec platform, game_name, status
 pending_download = None  # Objet de téléchargement en attente
 download_progress = {}  # Dictionnaire de progression des téléchargements actifs
 download_tasks = {}  # Dictionnaire pour les tâches de téléchargement
+history_write_ok = True  # Etat courant de l'ecriture de history.json
+history_write_error = ""  # Message explicite si l'ecriture de history.json echoue
+history_write_failure_count = 0  # Nombre d'echecs consecutifs d'ecriture
+history_write_last_failure_ts = 0.0  # Timestamp du dernier echec d'ecriture
+history_write_last_toast_at = 0.0  # Anti-spam pour les toasts d'erreur d'ecriture
 download_result_message = ""  # Message de résultat du dernier téléchargement
 download_result_error = False  # Indicateur d'erreur pour le résultat de téléchargement
 download_result_start_time = 0  # Timestamp de début du résultat affiché

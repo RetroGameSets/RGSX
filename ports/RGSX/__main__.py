@@ -91,7 +91,7 @@ from utils import (
     load_sources, check_extension_before_download, extract_data,
     play_random_music, load_music_config, load_api_keys, _refresh_loading_feedback, _format_size_bytes
 )
-from history import load_history, save_history, load_downloaded_games
+from history import load_history, save_history, load_downloaded_games, check_history_write_access, get_history_write_status
 from config import OTA_data_ZIP
 from rgsx_settings import get_sources_mode, get_custom_sources_url, get_sources_zip_url, get_display_fullscreen
 from accessibility import  load_accessibility_settings
@@ -334,6 +334,23 @@ config.current_music = current_music  # Met à jour la musique en cours dans con
 # Chargement de l'historique
 config.history = load_history()
 logger.debug(f"Historique de téléchargement : {len(config.history)} entrées")
+
+# Vérifier explicitement la capacité d'écriture de history.json
+history_write_ok, history_write_error_probe = check_history_write_access(force=True)
+if not history_write_ok:
+    history_write_status = get_history_write_status() or {}
+    history_write_message = history_write_status.get("message") or (
+        "Erreur ecriture history.json. "
+        "Le telechargement continue sans historique temps reel."
+    )
+    logger.error(history_write_message)
+    config.popup_message = history_write_message
+    config.popup_timer = max(int(getattr(config, 'popup_timer', 0) or 0), 5000)
+    config.needs_redraw = True
+    try:
+        show_toast(history_write_message, duration=5000)
+    except Exception:
+        pass
 
 # Chargement des jeux téléchargés
 config.downloaded_games = load_downloaded_games()

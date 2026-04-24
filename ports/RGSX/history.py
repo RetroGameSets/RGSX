@@ -9,6 +9,131 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+_history_write_state_lock = threading.Lock()
+_history_write_failures = 0
+_history_write_last_error = ""
+_history_write_last_failure_ts = 0.0
+_history_write_last_log_ts = 0.0
+_history_write_last_probe_ts = 0.0
+_history_write_ok = True
+
+_HISTORY_WRITE_FAILURE_COOLDOWN_SEC = 1.5
+_HISTORY_WRITE_PROBE_CACHE_SEC = 8.0
+
+
+def _set_history_write_status(ok, error_message=""):
+    global _history_write_ok, _history_write_last_error
+    with _history_write_state_lock:
+        _history_write_ok = bool(ok)
+        _history_write_last_error = error_message or ""
+        failures = _history_write_failures
+        last_failure_ts = _history_write_last_failure_ts
+
+    setattr(config, "history_write_ok", bool(ok))
+    setattr(config, "history_write_error", error_message or "")
+    setattr(config, "history_write_failure_count", failures)
+    setattr(config, "history_write_last_failure_ts", last_failure_ts)
+
+
+def _register_history_write_failure(exc):
+    global _history_write_failures, _history_write_last_failure_ts, _history_write_last_log_ts
+
+    now = time.time()
+    raw_error = str(exc)
+    message = (
+        f"Erreur ecriture history.json: {raw_error}. "
+        "Le telechargement continue sans sauvegarde temps reel."
+    )
+
+    with _history_write_state_lock:
+        _history_write_failures += 1
+        _history_write_last_failure_ts = now
+
+    _set_history_write_status(False, message)
+
+    should_log = False
+    with _history_write_state_lock:
+        if _history_write_failures in (1, 5, 20):
+            should_log = True
+        elif now - _history_write_last_log_ts >= 5.0:
+            should_log = True
+        if should_log:
+            _history_write_last_log_ts = now
+
+    if should_log:
+        logger.error(message)
+
+
+def _register_history_write_success():
+    global _history_write_failures
+
+    recovered = False
+    with _history_write_state_lock:
+        if _history_write_failures > 0:
+            recovered = True
+        _history_write_failures = 0
+
+    _set_history_write_status(True, "")
+    if recovered:
+        logger.info("Ecriture history.json retablie")
+
+
+def get_history_write_status():
+    with _history_write_state_lock:
+        return {
+            "ok": _history_write_ok,
+            "message": _history_write_last_error,
+            "failures": _history_write_failures,
+            "last_failure_ts": _history_write_last_failure_ts,
+            "last_probe_ts": _history_write_last_probe_ts,
+        }
+
+
+def check_history_write_access(force=False):
+    global _history_write_last_probe_ts
+
+    history_path = getattr(config, 'HISTORY_PATH')
+    now = time.time()
+
+    with _history_write_state_lock:
+        use_cached_probe = (
+            not force
+            and (now - _history_write_last_probe_ts) < _HISTORY_WRITE_PROBE_CACHE_SEC
+        )
+        if use_cached_probe:
+            return _history_write_ok, _history_write_last_error
+
+    probe_a = f"{history_path}.probe.{os.getpid()}.{threading.get_ident()}.a"
+    probe_b = f"{history_path}.probe.{os.getpid()}.{threading.get_ident()}.b"
+
+    try:
+        os.makedirs(os.path.dirname(history_path), exist_ok=True)
+
+        with open(probe_a, "w", encoding="utf-8") as handle:
+            handle.write("[]")
+            handle.flush()
+            os.fsync(handle.fileno())
+
+        os.replace(probe_a, probe_b)
+        os.remove(probe_b)
+
+        with _history_write_state_lock:
+            _history_write_last_probe_ts = now
+        _register_history_write_success()
+        return True, ""
+    except Exception as exc:
+        with _history_write_state_lock:
+            _history_write_last_probe_ts = now
+        _register_history_write_failure(exc)
+        return False, get_history_write_status().get("message", "")
+    finally:
+        for temp_path in (probe_a, probe_b):
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception:
+                pass
+
 
 def _atomic_write_json(target_path, payload):
     temp_path = f"{target_path}.{os.getpid()}.{threading.get_ident()}.tmp"
@@ -24,7 +149,7 @@ def _atomic_write_json(target_path, payload):
                 os.replace(temp_path, target_path)
                 last_error = None
                 break
-            except PermissionError as e:
+            except (PermissionError, OSError) as e:
                 last_error = e
                 time.sleep(0.15 * (attempt + 1))
 
@@ -53,6 +178,7 @@ def init_history():
             logger.error(f"Erreur lors de la création du fichier d'historique : {e}")
     else:
         logger.info(f"Fichier d'historique trouvé : {history_path}")
+    check_history_write_access(force=True)
     return history_path
 
 def load_history():
@@ -102,14 +228,27 @@ def load_history():
         logger.error(f"Erreur inattendue lors de la lecture de {history_path} : {e}")
         return []
 
-def save_history(history):
-    """Sauvegarde l'historique dans history.json de manière atomique."""
+def save_history(history, force=False):
+    """Sauvegarde l'historique dans history.json de manière atomique (mode non-bloquant en cas d'erreur)."""
     history_path = getattr(config, 'HISTORY_PATH')
+
+    now = time.time()
+    state = get_history_write_status()
+    if (
+        not force
+        and not state.get("ok", True)
+        and (now - float(state.get("last_failure_ts", 0.0) or 0.0)) < _HISTORY_WRITE_FAILURE_COOLDOWN_SEC
+    ):
+        return False
+
     try:
         os.makedirs(os.path.dirname(history_path), exist_ok=True)
         _atomic_write_json(history_path, history)
+        _register_history_write_success()
+        return True
     except Exception as e:
-        logger.error(f"Erreur lors de l'écriture de {history_path} : {e}")
+        _register_history_write_failure(e)
+        return False
 
 def add_to_history(platform, game_name, status, url=None, progress=0, message=None, timestamp=None):
     """Ajoute une entrée à l'historique."""
