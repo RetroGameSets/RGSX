@@ -57,31 +57,44 @@ Download latest release : [RGSX_update_latest.zip](https://github.com/RetroGameS
 
 ### Pause Menu Structure
 
+**Root categories**
+- Games (downloads, scans, platform visibility)
+- Language (switch UI language)
+- Controls (help and remap)
+- Display (layout, fonts, monitor/mode, visual options)
+- Settings (music, symlink, auto extract, network and API status)
+- Support (generate support ZIP/log bundle)
+- Quit (exit or restart)
+
 **Controls**
-- View Controls Help
-- Remap Controls
+- View Controls Help (shows current mapped actions)
+- Remap Controls (reconfigure keyboard/controller mapping)
 
 **Display**
 - Layout (3×3, 3×4, 4×3, 4×4)
-- Font Size (general UI)
-- Footer Font Size (controls/version text)
-- Font Family (pixel fonts)
-- Hide Unknown Extension Warning
+- Font Size submenu (general UI + footer text)
+- Font Family (Pixel or DejaVu)
+- Monitor selection (when multiple monitors are detected)
+- Screen Mode (Windows only)
+- Light Mode (performance-friendly rendering)
+- Hide Unknown Extension Warning (toggle unsupported extension warnings)
 
 **Games**
-- Download History
-- Source Mode (RGSX / Custom)
-- Update Game Cache
-- Show Unsupported Platforms
-- Hide Premium Systems
-- Filter Platforms
+- Update Game Cache (redownload systems/games data)
+- Scan Owned ROMs (add locally owned ROMs to history)
+- Download History (view/manage download entries)
+- Show Unsupported Platforms (toggle platforms without local ROM folders)
+- Filter Platforms (source/platform visibility menu)
 
 **Settings**
-- Background Music Toggle
-- Symlink Options (Batocera)
-- Web Service (Batocera)
-- API Keys Management
-- Language Selection
+- Background Music Toggle (enable/disable music)
+- Symlink Options (choose copy/symlink behavior)
+- Auto Extract Toggle (automatic archive extraction)
+- ROMs Folder Selector (set custom ROM root folder)
+- Web Service (Batocera/Knulli) (start web UI at boot)
+- Custom DNS (Batocera/Knulli) (workaround for ISP/domain blocking)
+- API Keys Status (check provider key presence)
+- Connection Status (test required updates/sources sites)
 
 ---
 
@@ -89,18 +102,18 @@ Download latest release : [RGSX_update_latest.zip](https://github.com/RetroGameS
 
 - 🎯 **Smart System Detection** – Auto-discovers supported systems from `es_systems.cfg`
 - 📦 **Intelligent Archive Handling** – Auto-extracts archives when systems don't support ZIP files
-- 🔑 **Premium Unlocking** – 1Fichier API + AllDebrid/Real-Debrid fallback for unlimited downloads
+- 🔑 **Premium Unlocking** – 1Fichier API + AllDebrid/Debrid-Link/Real-Debrid fallback for unlimited downloads
 - 🎨 **Fully Customizable** – Layout (3×3 to 4×4), fonts, font sizes (UI + footer), languages (EN/FR/DE/ES/IT/PT)
 - 🎮 **Controller-First Design** – Auto-mapping for popular controllers + custom remapping support
 - 🔍 **Advanced Filtering** – Search by name, hide/show unsupported systems, filter platforms
 - 📊 **Download Management** – Queue system, history tracking, progress notifications
-- 🌐 **Custom Sources** – Use your own game repository URLs
 - ♿ **Accessibility** – Separate font scaling for UI and footer, keyboard-only mode support
 
 > ### 🔑 API Keys Setup
 > For unlimited 1Fichier downloads, add your API key(s) to `/saves/ports/rgsx/`:
 > - `1FichierAPI.txt` – 1Fichier API key (recommended)
 > - `AllDebridAPI.txt` – AllDebrid fallback (optional)
+> - `DebridLinkAPI.txt` – Debrid-Link fallback (optional)
 > - `RealDebridAPI.txt` – Real-Debrid fallback (optional)
 > 
 > **Each file must contain ONLY the key, no extra text.**
@@ -111,23 +124,6 @@ Download latest release : [RGSX_update_latest.zip](https://github.com/RetroGameS
 2. **Direct Download**: Press `Confirm`
 3. **Queue Download**: Press `X` (West button)
 4. Track progress in **History** menu or via popup notifications
-
-### Custom Game Sources
-
-Switch to custom sources via **Pause Menu > Games > Source Mode**.
-
-Configure in `/saves/ports/rgsx/rgsx_settings.json`:
-```json
-{
-  "sources": {
-    "mode": "custom",
-    "custom_url": "https://example.com/my-sources.zip"
-  }
-}
-```
-**Note**: If custom mode activated but Invalid/empty URL = using /saves/ports/rgsx/games.zip . You need to update games cache on RGSX menu after fixing URL.
-
----
 
 ## 🌐 Web Interface (Batocera/Knulli Only)
 
@@ -169,30 +165,40 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 ## 📁 File Structure
 
 ```
-/roms/ports/RGSX/
-├── __main__.py                # Entry point
-├── controls.py                # Input handling
-├── display.py                 # Rendering engine
-├── network.py                 # Download manager
-├── rgsx_settings.py           # Settings manager
-├── assets/controls/           # Controller profiles
-├── languages/                 # Translations (EN/FR/DE/ES/IT/PT)
-└── logs/RGSX.log             # Runtime logs
-
-/roms/windows/RGSX/
-└── RGSX Retrobat.bat         # RetroBat launcher
+/roms/
+├── ports/
+│   ├── RGSX/
+│   │   ├── __main__.py                # Entry point
+│   │   ├── controls.py                # Input handling
+│   │   ├── display.py                 # Rendering engine
+│   │   ├── network.py                 # Download manager
+│   │   ├── rgsx_settings.py           # Settings manager
+│   │   ├── assets/controls/           # Controller profiles
+│   │   ├── languages/                 # Translations (EN/FR/DE/ES/IT/PT)
+│   │   └── logs/RGSX.log              # Runtime logs
+│   ├── gamelist.xml
+│   ├── images/
+│   └── videos/
+└── windows/
+    ├── RGSX Retrobat.bat              # Launcher for Windows only (can be used without retrobat too)
+    ├── gamelist.xml
+    ├── images/
+    └── videos/
 
 /saves/ports/rgsx/
 ├── rgsx_settings.json        # User preferences
 ├── controls.json             # Control mapping
 ├── history.json              # Download history
-├── rom_extensions.json       # Supported extensions cache
 ├── systems_list.json         # Detected systems
+├── global_search_index.json  # Global search index cache
+├── platform_games_count_cache.json
+├── torrent_manifest_cache.json
 ├── games/                    # Game databases (per platform)
 ├── images/                   # Platform images
-├── 1FichierAPI.txt          # 1Fichier API key
-├── AllDebridAPI.txt         # AllDebrid API key
-└── RealDebridAPI.txt        # Real-Debrid API key
+├── 1FichierAPI.txt           # 1Fichier API key
+├── AllDebridAPI.txt          # AllDebrid API key
+├── DebridLinkAPI.txt         # Debrid-Link API key
+└── RealDebridAPI.txt         # Real-Debrid API key
 ```
 
 ---
@@ -202,11 +208,11 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 | Issue | Solution |
 |-------|----------|
 | Controls not working | Delete `/saves/ports/rgsx/controls.json` + restart app, you can try delete /roms/ports/RGSX/assets/controls/xx.json too |
-| No games ? | Pause Menu > Games > Update Game Cache |
+| No games ? | Pause Menu > Games > Update Game Cache, then check Pause Menu > Games > Filter Platforms and Show Unsupported Platforms |
 | Missing systems on the list? | RGSX read es_systems.cfg to show only supported systems, if you want all systems : Pause Menu > Games > Show unsupported systems |
 | App crashes | Check `/roms/ports/RGSX/logs/RGSX.log` or `/roms/windows/logs/Retrobat_RGSX_log.txt` |
 | Layout change not applied | Restart RGSX after changing layout |
-| Downloading BIOS file is ok but you can't download any games? | Activate custom DNS on Pause Menu> Settings and reboot , server can be blocked by your ISP. check any threat/website protection on your router too, especially on ASUS one|
+| Problem downloading some Games ? | Open Pause Menu > Settings > Connection Status. If one or more required sites are red, enable Custom DNS in Settings and reboot. Also check ISP/router protections (especially ASUS web threat blocking). |
 
 **Need help?** Share logs from `/roms/ports/RGSX/logs/` on [Discord](https://discord.gg/Vph9jwg3VV).
 
