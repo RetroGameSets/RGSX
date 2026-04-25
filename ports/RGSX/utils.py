@@ -102,6 +102,8 @@ def get_platform_source_badge_key(platform_name: str):
         'torrent': 'Torrent',
         '1fichier': '1Fichier',
         'vimms': 'Vimms',
+        'edgeemu': 'EdgeEmu',
+        'edgeemu.net': 'EdgeEmu',
     }
     return mapping.get(source)
 
@@ -265,6 +267,14 @@ def get_platform_source_badge_surface(source_key: str, badge_size: int):
             'label': '1F',
             'text': (24, 77, 176),
         },
+        'EdgeEmu': {
+            'svg': 'edgeemu.svg',
+            'bg': (255, 255, 255, 242),
+            'border': (41, 126, 196, 235),
+            'label': 'EMU',
+            'text': (24, 77, 176),
+            'icon_scale': 0.90,
+        },
     }
     style = style_map.get(source_key)
     if not style:
@@ -287,12 +297,14 @@ def get_platform_source_badge_surface(source_key: str, badge_size: int):
 
     icon_surface = None
     svg_name = style.get('svg')
+    icon_scale = float(style.get('icon_scale', 0.76))
+    target_icon_size = max(22, int(badge_size * icon_scale))
     if svg_name:
         svg_path = os.path.join(config.APP_FOLDER, 'assets', 'images', svg_name)
         if os.path.exists(svg_path):
-            icon_surface = _load_svg_badge_surface(svg_path, max(22, int(badge_size * 0.76)))
+            icon_surface = _load_svg_badge_surface(svg_path, target_icon_size)
     elif source_key == '1Fichier':
-        icon_surface = _build_1fichier_badge_icon(max(22, int(badge_size * 0.76)))
+        icon_surface = _build_1fichier_badge_icon(target_icon_size)
     if icon_surface is None:
         icon_surface = _build_text_badge_icon(style['label'], badge_size, style['text'])
 
@@ -1805,7 +1817,7 @@ CONNECTION_STATUS_TTL_SECONDS = 120
 
 def get_connection_status_targets():
     """Retourne la liste des sites à vérifier pour le status de connexion."""
-    return [
+    default_targets = [
         {
             "key": "retrogamesets",
             "label": "Retrogamesets.fr",
@@ -1837,6 +1849,37 @@ def get_connection_status_targets():
             "category": "sources",
         },
     ]
+
+    configured = getattr(config, "CONNECTION_STATUS_TARGETS", None)
+    if not isinstance(configured, list):
+        return default_targets
+
+    normalized = []
+    seen_keys = set()
+    for index, item in enumerate(configured):
+        if not isinstance(item, dict):
+            continue
+        raw_key = str(item.get("key", "")).strip().lower()
+        key = raw_key if raw_key else f"target_{index + 1}"
+        if key in seen_keys:
+            continue
+
+        url = str(item.get("url", "")).strip()
+        if not url:
+            continue
+
+        label = str(item.get("label", "")).strip() or url
+        category = str(item.get("category", "sources")).strip().lower() or "sources"
+
+        normalized.append({
+            "key": key,
+            "label": label,
+            "url": url,
+            "category": category,
+        })
+        seen_keys.add(key)
+
+    return normalized if normalized else default_targets
 
 
 def _check_url_connectivity(url: str, timeout: int = 6) -> bool:

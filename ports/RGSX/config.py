@@ -27,7 +27,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.6.3.6"
+app_version = "2.6.3.7"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 1
@@ -222,6 +222,54 @@ OTA_VERSION_ENDPOINT = "https://raw.githubusercontent.com/RetroGameSets/RGSX/ref
 OTA_SERVER_URL = "https://retrogamesets.fr/softs/"
 OTA_data_ZIP = os.path.join(OTA_SERVER_URL, "games.zip")
 
+# Sites testés dans le menu pause_connection_status.
+# Pour personnaliser: modifier cette liste (ajouter/supprimer/changer URL, label, catégorie).
+# Catégories conseillées: "updates" et "sources".
+CONNECTION_STATUS_TARGETS = [
+    {
+        "key": "retrogamesets",
+        "label": "RetroGameSets",
+        "url": "https://retrogamesets.fr",
+        "category": "updates",
+    },
+    {
+        "key": "github",
+        "label": "GitHub",
+        "url": "https://github.com",
+        "category": "updates",
+    },
+    {
+        "key": "archive",
+        "label": "Archive.org",
+        "url": "https://archive.org",
+        "category": "sources",
+    },
+    {
+        "key": "1fichier",
+        "label": "1fichier",
+        "url": "https://1fichier.com",
+        "category": "sources",
+    },
+    {
+        "key": "lolroms",
+        "label": "LolRoms",
+        "url": "https://lolroms.com",
+        "category": "sources",
+    },
+    {
+        "key": "vimms",
+        "label": "Vimms Lair",
+        "url": "https://vimm.net/",
+        "category": "sources",
+    },
+    {
+        "key": "edgeemu",
+        "label": "EdgeEmu",
+        "url": "https://edgeemu.net",
+        "category": "sources",
+    },
+]
+
 #CHEMINS DES EXECUTABLES
 UNRAR_EXE = os.path.join(APP_FOLDER,"assets","progs","unrar.exe")
 XISO_EXE = os.path.join(APP_FOLDER,"assets", "progs", "extract-xiso_win.exe")
@@ -407,7 +455,9 @@ platform_dicts = []  # Liste des dictionnaires de plateformes
 selected_filter_index = 0  # index dans la liste visible triée
 filter_platforms_scroll_offset = 0  # défilement si liste longue
 filter_platforms_dirty = False  # indique si modifications non sauvegardées
-filter_platforms_selection = []  # copie de travail des plateformes visibles (bool masque?) structure: list of (name, hidden_bool)
+filter_platforms_selection = []  # copie de travail: list[(platform_name, is_hidden)]
+filter_platforms_source_map = {}  # mapping source -> liste des plateformes associées
+filter_platforms_expanded_sources = []  # sources ouvertes dans la vue collapsible
 
 # Affichage des jeux et sélection
 games: list[Game] = []  # Liste des jeux pour la plateforme actuelle

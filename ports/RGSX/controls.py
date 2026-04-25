@@ -32,8 +32,7 @@ from language import _, get_available_languages, set_language
 from rgsx_settings import (
     get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
     get_show_unsupported_platforms, set_show_unsupported_platforms,
-    set_allow_unknown_extensions, get_hide_premium_systems, set_hide_premium_systems,
-    get_sources_mode, set_sources_mode, set_symlink_option, get_symlink_option,
+    set_allow_unknown_extensions, set_symlink_option, get_symlink_option,
     get_global_sort_option, set_global_sort_option,
     load_rgsx_settings, save_rgsx_settings
 )
@@ -2810,7 +2809,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Games
         elif config.menu_state == "pause_games_menu":
             sel = getattr(config, 'pause_games_selection', 0)
-            total = 8  # update cache, scan roms, history, source, unsupported, hide premium, filter, back
+            total = 6  # update cache, scan roms, history, unsupported, filter, back
             if is_input_matched(event, "up"):
                 config.pause_games_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -2841,22 +2840,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.previous_menu_state = "pause_games_menu"
                     config.menu_state = "history"
                     config.needs_redraw = True
-                elif sel == 3 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # source mode
-                    try:
-                        current_mode = get_sources_mode()
-                        new_mode = set_sources_mode('custom' if current_mode == 'rgsx' else 'rgsx')
-                        config.sources_mode = new_mode
-                        if new_mode == 'custom':
-                            config.popup_message = _("sources_mode_custom_select_info").format(config.RGSX_SETTINGS_PATH)
-                            config.popup_timer = 10000
-                        else:
-                            config.popup_message = _("sources_mode_rgsx_select_info")
-                            config.popup_timer = 4000
-                        config.needs_redraw = True
-                        logger.info(f"Changement du mode des sources vers {new_mode}")
-                    except Exception as e:
-                        logger.error(f"Erreur changement mode sources: {e}")
-                elif sel == 4 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # unsupported toggle
+                elif sel == 3 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # unsupported toggle
                     try:
                         current = get_show_unsupported_platforms()
                         new_val = set_show_unsupported_platforms(not current)
@@ -2866,22 +2850,15 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle unsupported: {e}")
-                elif sel == 5 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):  # hide premium
-                    try:
-                        cur = get_hide_premium_systems()
-                        new_val = set_hide_premium_systems(not cur)
-                        config.popup_message = ("Premium hidden" if new_val else "Premium visible") if _ is None else (_("popup_hide_premium_on") if new_val else _("popup_hide_premium_off"))
-                        config.popup_timer = 2500
-                        config.needs_redraw = True
-                    except Exception as e:
-                        logger.error(f"Erreur toggle hide_premium_systems: {e}")
-                elif sel == 6 and is_input_matched(event, "confirm"):  # filter platforms
+                elif sel == 4 and is_input_matched(event, "confirm"):  # filter platforms
                     config.filter_return_to = "pause_games_menu"
                     config.menu_state = "filter_platforms"
                     config.selected_filter_index = 0
                     config.filter_platforms_scroll_offset = 0
+                    config.filter_platforms_source_map = {}
+                    config.filter_platforms_expanded_sources = []
                     config.needs_redraw = True
-                elif sel == 7 and is_input_matched(event, "confirm"):  # back
+                elif sel == 5 and is_input_matched(event, "confirm"):  # back
                     config.menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
@@ -3178,6 +3155,8 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "filter_platforms"
                     config.selected_filter_index = 0
                     config.filter_platforms_scroll_offset = 0
+                    config.filter_platforms_source_map = {}
+                    config.filter_platforms_expanded_sources = []
                     config.needs_redraw = True
             elif is_input_matched(event, "cancel"):
                 config.menu_state = "pause_menu"
@@ -3991,109 +3970,89 @@ def handle_controls(event, sources, joystick, screen):
 
     # Menu filtre plateformes
         elif config.menu_state == "filter_platforms":
-            total_items = len(config.filter_platforms_selection)
-            action_buttons = 4
-            # Indices: 0-3 = boutons, 4+ = liste des systèmes
-            extended_max = action_buttons + total_items - 1
-            if is_input_matched(event, "up"):
-                if config.selected_filter_index > 0:
-                    config.selected_filter_index -= 1
-                    config.needs_redraw = True
-                else:
-                    # Wrap vers le bas (dernière ligne de la liste)
-                    config.selected_filter_index = extended_max
-                    config.needs_redraw = True
-                # Activer la répétition automatique
-                update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
-                                event.button if event.type == pygame.JOYBUTTONDOWN else 
-                                (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
-                                event.value)
-            elif is_input_matched(event, "down"):
-                if config.selected_filter_index < extended_max:
-                    config.selected_filter_index += 1
-                    config.needs_redraw = True
-                else:
-                    # Wrap retour en haut (premier bouton)
+            def _extract_source(platform_name: str) -> str:
+                match = re.search(r'\(([^()]+)\)\s*$', str(platform_name).strip())
+                if match:
+                    return match.group(1).strip()
+                fallback = _("games_source_rgsx") if _ else "RGSX"
+                return fallback if fallback != "games_source_rgsx" else "RGSX"
+
+            def _build_source_map() -> dict:
+                source_map_local = {}
+                for entry in config.platform_dicts:
+                    platform_name = entry.get("platform_name", "") if isinstance(entry, dict) else ""
+                    platform_name = str(platform_name).strip()
+                    if not platform_name:
+                        continue
+                    source_name = _extract_source(platform_name)
+                    source_map_local.setdefault(source_name, []).append(platform_name)
+
+                normalized = {}
+                for source_name in sorted(source_map_local.keys(), key=lambda s: str(s).lower()):
+                    unique_names = sorted(set(source_map_local.get(source_name, [])), key=lambda s: str(s).lower())
+                    normalized[source_name] = unique_names
+                return normalized
+
+            def _all_platform_names(source_map_local: dict) -> list:
+                names = []
+                for source_name in sorted(source_map_local.keys(), key=lambda s: str(s).lower()):
+                    names.extend(source_map_local.get(source_name, []))
+                return names
+
+            def _ensure_working_selection(source_map_local: dict) -> None:
+                all_platform_names = _all_platform_names(source_map_local)
+                current = getattr(config, 'filter_platforms_selection', [])
+                current_map = {}
+                if isinstance(current, list):
+                    for item in current:
+                        if isinstance(item, (list, tuple)) and len(item) == 2:
+                            name = str(item[0]).strip()
+                            if name:
+                                current_map[name] = bool(item[1])
+
+                expected_set = set(all_platform_names)
+                if set(current_map.keys()) != expected_set:
+                    settings_local = load_rgsx_settings()
+                    hidden_platforms = set(settings_local.get("hidden_platforms", [])) if isinstance(settings_local, dict) else set()
+                    config.filter_platforms_selection = [(name, name in hidden_platforms) for name in all_platform_names]
                     config.selected_filter_index = 0
-                    config.needs_redraw = True
-                # Activer la répétition automatique
-                update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
-                                event.button if event.type == pygame.JOYBUTTONDOWN else 
-                                (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
-                                event.value)
-            elif is_input_matched(event, "left"):
-                # Navigation gauche/droite uniquement pour les boutons (indices 0-3)
-                if config.selected_filter_index < action_buttons:
-                    if config.selected_filter_index > 0:
-                        config.selected_filter_index -= 1
-                        config.needs_redraw = True
-                # sinon ignorer (dans la liste)
-            elif is_input_matched(event, "right"):
-                # Navigation gauche/droite uniquement pour les boutons (indices 0-3)
-                if config.selected_filter_index < action_buttons:
-                    if config.selected_filter_index < action_buttons - 1:
-                        config.selected_filter_index += 1
-                        config.needs_redraw = True
-                # sinon ignorer (dans la liste)
-            elif is_input_matched(event, "confirm"):
-                # Indices 0-3 = boutons, 4+ = liste
-                if config.selected_filter_index < action_buttons:
-                    # Action sur un bouton
-                    btn_idx = config.selected_filter_index
-                    settings = load_rgsx_settings()
-                    if btn_idx == 0:  # all visible
-                        config.filter_platforms_selection = [(n, False) for n, _ in config.filter_platforms_selection]
-                        config.filter_platforms_dirty = True
-                    elif btn_idx == 1:  # none visible
-                        config.filter_platforms_selection = [(n, True) for n, _ in config.filter_platforms_selection]
-                        config.filter_platforms_dirty = True
-                    elif btn_idx == 2:  # apply
-                        hidden_list = [n for n, h in config.filter_platforms_selection if h]
-                        settings["hidden_platforms"] = hidden_list
-                        save_rgsx_settings(settings)
-                        load_sources()
-                        # Recalibrer la sélection et la page courante si elles dépassent la nouvelle liste visible
-                        try:
-                            systems_per_page = config.GRID_COLS * config.GRID_ROWS
-                            if config.current_page * systems_per_page >= len(config.platforms):
-                                config.current_page = 0
-                            if config.selected_platform >= len(config.platforms):
-                                config.selected_platform = 0
-                        except Exception:
-                            # Sécurité: en cas d'erreur on remet simplement à 0
-                            config.current_page = 0
-                            config.selected_platform = 0
-                        config.filter_platforms_dirty = False
-                        # Return either to display menu or pause menu depending on origin
-                        target = getattr(config, 'filter_return_to', 'pause_menu')
-                        config.menu_state = target
-                        if target == 'display_menu':  # ancien cas (fallback)
-                            config.display_menu_selection = 3
-                        elif target == 'pause_display_menu':  # nouveau sous-menu hiérarchique
-                            config.pause_display_selection = 4  # positionner sur Filter
-                        else:
-                            config.selected_option = 5  # keep pointer on Filter in pause menu
-                        config.filter_return_to = None
-                    elif btn_idx == 3:  # back
-                        target = getattr(config, 'filter_return_to', 'pause_menu')
-                        config.menu_state = target
-                        if target == 'display_menu':
-                            config.display_menu_selection = 3
-                        elif target == 'pause_display_menu':
-                            config.pause_display_selection = 4
-                        else:
-                            config.selected_option = 5
-                        config.filter_return_to = None
-                    config.needs_redraw = True
+                    config.filter_platforms_scroll_offset = 0
+                    config.filter_platforms_dirty = False
                 else:
-                    # Action sur un élément de la liste (indices >= action_buttons)
-                    list_index = config.selected_filter_index - action_buttons
-                    if list_index < total_items:
-                        name, hidden = config.filter_platforms_selection[list_index]
-                        config.filter_platforms_selection[list_index] = (name, not hidden)
-                        config.filter_platforms_dirty = True
-                        config.needs_redraw = True
-            elif is_input_matched(event, "cancel"):
+                    config.filter_platforms_selection = [(name, current_map.get(name, False)) for name in all_platform_names]
+
+            def _hidden_map() -> dict:
+                return {name: bool(is_hidden) for name, is_hidden in config.filter_platforms_selection}
+
+            def _set_hidden_map(hidden_map_local: dict, source_map_local: dict) -> None:
+                ordered_names = _all_platform_names(source_map_local)
+                config.filter_platforms_selection = [(name, bool(hidden_map_local.get(name, False))) for name in ordered_names]
+
+            def _build_rows(source_map_local: dict, hidden_map_local: dict, expanded_sources_local: set) -> list:
+                rows_local = []
+                for source_name in sorted(source_map_local.keys(), key=lambda s: str(s).lower()):
+                    platforms = source_map_local.get(source_name, [])
+                    total = len(platforms)
+                    hidden_count = sum(1 for platform_name in platforms if hidden_map_local.get(platform_name, False))
+                    rows_local.append({
+                        "type": "source",
+                        "source": source_name,
+                        "platforms": platforms,
+                        "total": total,
+                        "hidden_count": hidden_count,
+                        "expanded": source_name in expanded_sources_local,
+                    })
+                    if source_name in expanded_sources_local:
+                        for platform_name in platforms:
+                            rows_local.append({
+                                "type": "platform",
+                                "source": source_name,
+                                "platform": platform_name,
+                                "hidden": bool(hidden_map_local.get(platform_name, False)),
+                            })
+                return rows_local
+
+            def _return_from_filter() -> None:
                 target = getattr(config, 'filter_return_to', 'pause_menu')
                 config.menu_state = target
                 if target == 'display_menu':
@@ -4103,6 +4062,144 @@ def handle_controls(event, sources, joystick, screen):
                 else:
                     config.selected_option = 5
                 config.filter_return_to = None
+
+            def _show_unsaved_exit_toast() -> None:
+                if not getattr(config, 'filter_platforms_dirty', False):
+                    return
+                try:
+                    msg_tpl = _("filter_unsaved_toast") if _ else ""
+                    if msg_tpl and msg_tpl != "filter_unsaved_toast":
+                        show_toast(msg_tpl, 3000)
+                    else:
+                        show_toast("Unsaved changes\nApply with History/Start before leaving", 3000)
+                except Exception as toast_error:
+                    logger.debug(f"Impossible d'afficher le toast unsaved filter: {toast_error}")
+
+            def _apply_filter() -> None:
+                settings_local = load_rgsx_settings()
+                hidden_map_local = _hidden_map()
+                hidden_list = sorted({name for name, is_hidden in hidden_map_local.items() if is_hidden}, key=lambda s: str(s).lower())
+                settings_local["hidden_platforms"] = hidden_list
+                save_rgsx_settings(settings_local)
+                load_sources()
+                try:
+                    systems_per_page = config.GRID_COLS * config.GRID_ROWS
+                    if config.current_page * systems_per_page >= len(config.platforms):
+                        config.current_page = 0
+                    if config.selected_platform >= len(config.platforms):
+                        config.selected_platform = 0
+                except Exception:
+                    config.current_page = 0
+                    config.selected_platform = 0
+                config.filter_platforms_dirty = False
+                _return_from_filter()
+
+            source_map = _build_source_map()
+            config.filter_platforms_source_map = source_map
+            _ensure_working_selection(source_map)
+
+            expanded_raw = getattr(config, 'filter_platforms_expanded_sources', [])
+            expanded_sources = set(expanded_raw if isinstance(expanded_raw, list) else [])
+            expanded_sources = {source for source in expanded_sources if source in source_map}
+            config.filter_platforms_expanded_sources = sorted(expanded_sources, key=lambda s: str(s).lower())
+
+            rows = _build_rows(source_map, _hidden_map(), expanded_sources)
+            total_rows = len(rows)
+
+            if total_rows <= 0:
+                config.selected_filter_index = 0
+            else:
+                if config.selected_filter_index < 0:
+                    config.selected_filter_index = 0
+                elif config.selected_filter_index >= total_rows:
+                    config.selected_filter_index = total_rows - 1
+
+            if is_input_matched(event, "up"):
+                if total_rows > 0:
+                    if config.selected_filter_index > 0:
+                        config.selected_filter_index -= 1
+                    else:
+                        config.selected_filter_index = total_rows - 1
+                    config.needs_redraw = True
+                update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else
+                                event.button if event.type == pygame.JOYBUTTONDOWN else
+                                (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else
+                                event.value)
+            elif is_input_matched(event, "down"):
+                if total_rows > 0:
+                    if config.selected_filter_index < total_rows - 1:
+                        config.selected_filter_index += 1
+                    else:
+                        config.selected_filter_index = 0
+                    config.needs_redraw = True
+                update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else
+                                event.button if event.type == pygame.JOYBUTTONDOWN else
+                                (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else
+                                event.value)
+            elif is_input_matched(event, "left"):
+                if total_rows > 0:
+                    current_row = rows[config.selected_filter_index]
+                    if current_row.get("type") == "source":
+                        source_name = current_row.get("source")
+                        if source_name in expanded_sources:
+                            expanded_sources.discard(source_name)
+                            config.filter_platforms_expanded_sources = sorted(expanded_sources, key=lambda s: str(s).lower())
+                            config.needs_redraw = True
+                    elif current_row.get("type") == "platform":
+                        source_name = current_row.get("source")
+                        if source_name in expanded_sources:
+                            expanded_sources.discard(source_name)
+                            config.filter_platforms_expanded_sources = sorted(expanded_sources, key=lambda s: str(s).lower())
+                            refreshed_rows = _build_rows(source_map, _hidden_map(), expanded_sources)
+                            for idx, row in enumerate(refreshed_rows):
+                                if row.get("type") == "source" and row.get("source") == source_name:
+                                    config.selected_filter_index = idx
+                                    break
+                            config.needs_redraw = True
+            elif is_input_matched(event, "right"):
+                if total_rows > 0:
+                    current_row = rows[config.selected_filter_index]
+                    source_name = current_row.get("source")
+                    if current_row.get("type") == "source" and source_name not in expanded_sources:
+                        expanded_sources.add(source_name)
+                        config.filter_platforms_expanded_sources = sorted(expanded_sources, key=lambda s: str(s).lower())
+                        config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                if total_rows > 0:
+                    current_row = rows[config.selected_filter_index]
+                    hidden_map = _hidden_map()
+                    if current_row.get("type") == "source":
+                        platforms = current_row.get("platforms", [])
+                        all_visible = all(not hidden_map.get(platform_name, False) for platform_name in platforms)
+                        new_hidden = True if all_visible else False
+                        for platform_name in platforms:
+                            hidden_map[platform_name] = new_hidden
+                    else:
+                        platform_name = current_row.get("platform")
+                        hidden_map[platform_name] = not hidden_map.get(platform_name, False)
+                    _set_hidden_map(hidden_map, source_map)
+                    config.filter_platforms_dirty = True
+                    config.needs_redraw = True
+            elif is_input_matched(event, "page_up"):
+                hidden_map = _hidden_map()
+                for platform_name in list(hidden_map.keys()):
+                    hidden_map[platform_name] = False
+                _set_hidden_map(hidden_map, source_map)
+                config.filter_platforms_dirty = True
+                config.needs_redraw = True
+            elif is_input_matched(event, "page_down"):
+                hidden_map = _hidden_map()
+                for platform_name in list(hidden_map.keys()):
+                    hidden_map[platform_name] = True
+                _set_hidden_map(hidden_map, source_map)
+                config.filter_platforms_dirty = True
+                config.needs_redraw = True
+            elif is_input_matched(event, "history") or is_input_matched(event, "start"):
+                _apply_filter()
+                config.needs_redraw = True
+            elif is_input_matched(event, "cancel"):
+                _show_unsaved_exit_toast()
+                _return_from_filter()
                 config.needs_redraw = True
 
 

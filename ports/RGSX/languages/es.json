@@ -111,6 +111,7 @@
     "filter_platforms_title": "Visibilidad de sistemas",
     "filter_platforms_info": "Visibles: {0} | Ocultos: {1} / Total: {2}",
     "filter_unsaved_warning": "Cambios no guardados",
+    "filter_unsaved_toast": "Cambios no guardados\nAplica con History/Start antes de salir",
     "menu_show_unsupported_enabled": "Visibilidad de sistemas no soportados activada",
     "menu_show_unsupported_disabled": "Visibilidad de sistemas no soportados desactivada",
     "menu_allow_unknown_ext_on": "Ocultar aviso de extensión desconocida: Sí",

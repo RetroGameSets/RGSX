@@ -109,6 +109,7 @@
     "filter_platforms_title": "Affichage des systèmes",
     "filter_platforms_info": "Visibles: {0} | Masqués: {1} / Total: {2}",
     "filter_unsaved_warning": "Modifications non sauvegardées",
+    "filter_unsaved_toast": "Modifications non sauvegardees\nValider avec History/Start avant de quitter",
     "menu_show_unsupported_enabled": "Affichage systèmes non supportés activé",
     "support_dialog_title": "Fichier de support",
     "support_dialog_message": "Un fichier de support a été créé avec tous vos fichiers de configuration et logs.\n\nFichier: {0}\n\nPour obtenir de l'aide :\n1. Rejoignez le Discord RGSX\n2. Décrivez votre problème\n3. Partagez ce fichier ZIP\n\nAppuyez sur {1} pour revenir au menu.",

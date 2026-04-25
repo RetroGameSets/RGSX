@@ -109,6 +109,7 @@
     "filter_platforms_title": "Systems visibility",
     "filter_platforms_info": "Visible: {0} | Hidden: {1} / Total: {2}",
     "filter_unsaved_warning": "Unsaved changes",
+    "filter_unsaved_toast": "Unsaved changes\nApply with History/Start before leaving",
     "menu_show_unsupported_enabled": "Unsupported systems visibility enabled",
     "menu_show_unsupported_disabled": "Unsupported systems visibility disabled",
     "menu_allow_unknown_ext_on": "Hide unknown extension warning: Yes",

@@ -109,6 +109,7 @@
     "filter_platforms_title": "Visibilità sistemi",
     "filter_platforms_info": "Visibili: {0} | Nascosti: {1} / Totale: {2}",
     "filter_unsaved_warning": "Modifiche non salvate",
+    "filter_unsaved_toast": "Modifiche non salvate\nApplica con History/Start prima di uscire",
     "menu_show_unsupported_enabled": "Visibilità sistemi non supportati abilitata",
     "menu_show_unsupported_disabled": "Visibilità sistemi non supportati disabilitata",
     "menu_allow_unknown_ext_on": "Nascondi avviso estensione sconosciuta: Sì",

@@ -16,12 +16,12 @@ from utils import (truncate_text_middle, wrap_text, load_system_image, truncate_
                    sort_games_list, get_platform_source_badge_key, get_platform_source_badge_surface)
 import logging
 import math
+import re
 from history import load_history, is_game_downloaded  
 from language import _, get_size_units, get_speed_unit, get_available_languages, get_language_name
 from rgsx_settings import (load_rgsx_settings, get_light_mode, get_show_unsupported_platforms,
                             get_allow_unknown_extensions, get_display_monitor, get_display_fullscreen,
-                            get_available_monitors, get_font_family, get_sources_mode,
-                            get_hide_premium_systems, get_symlink_option)
+                            get_available_monitors, get_font_family, get_symlink_option)
 from game_filters import GameFilters  
 
 import json
@@ -1436,17 +1436,7 @@ def draw_platform_grid(screen):
     # Effet de pulsation subtil pour le titre - calculé une seule fois par frame
     current_time = pygame.time.get_ticks()
 
-    # Filtrage éventuel des systèmes premium selon réglage
-    try:
-        from rgsx_settings import get_hide_premium_systems
-        hide_premium = get_hide_premium_systems()
-    except Exception:
-        hide_premium = False
-    premium_markers = getattr(config, 'PREMIUM_HOST_MARKERS', [])
-    if hide_premium and premium_markers:
-        visible_platforms = [p for p in config.platforms if not any(m.lower() in p.lower() for m in premium_markers)]
-    else:
-        visible_platforms = list(config.platforms)
+    visible_platforms = list(config.platforms)
 
     # Ajuster selected_platform et current_platform/page si liste réduite
     if config.selected_platform >= len(visible_platforms):
@@ -3086,6 +3076,13 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
         "pause_connection_status": [
             ("cancel", _("controls_cancel_back")),
         ],
+        "filter_platforms": [
+            ("confirm", _("controls_confirm_select")),
+            (("left", "right"), (_("filter_expand_collapse") if _ and _("filter_expand_collapse") != "filter_expand_collapse" else "Expand/Collapse")),
+            (("page_up", "page_down"), f"{_('filter_all')} / {_('filter_none')}"),
+            ("history", _("filter_apply")),
+            ("cancel", _("controls_cancel_back")),
+        ],
         "support_dialog": [
             ("start", _("controls_cancel_back")),
         ],
@@ -3925,9 +3922,6 @@ def draw_pause_display_font_menu(screen, selected_index):
     _draw_submenu_generic(screen, _("submenu_display_font_size") if _ else "Font Size", options, selected_index, instruction_text)
 
 def draw_pause_games_menu(screen, selected_index):
-    mode = get_sources_mode()
-    source_label = _("games_source_rgsx") if mode == "rgsx" else _("games_source_custom")
-    source_txt = f"{_('menu_games_source_prefix')}: < {source_label} >"
     update_txt = _("menu_redownload_cache")
     scan_txt = _("menu_scan_owned_roms") if _ else "Scan owned ROMs"
     history_txt = _("menu_history") if _ else "History"
@@ -3940,24 +3934,16 @@ def draw_pause_games_menu(screen, selected_index):
         raw_unsupported_label = raw_unsupported_label.split('{status}')[0].rstrip(' :')
     unsupported_txt = f"{raw_unsupported_label}: < {status_unsupported} >"
     
-    # Hide premium systems
-    hide_premium = get_hide_premium_systems()
-    status_hide_premium = _('status_on') if hide_premium else _('status_off')
-    hide_premium_label = _('menu_hide_premium_systems') if _ else 'Hide Premium systems'
-    hide_premium_txt = f"{hide_premium_label}: < {status_hide_premium} >"
-    
     # Filter platforms
     filter_txt = _("submenu_display_filter_platforms") if _ else "Show/Hide Platforms"
     
     back_txt = _("menu_back") if _ else "Back"
-    options = [update_txt, scan_txt, history_txt, source_txt, unsupported_txt, hide_premium_txt, filter_txt, back_txt]
+    options = [update_txt, scan_txt, history_txt, unsupported_txt, filter_txt, back_txt]
     instruction_keys = [
         "instruction_games_update_cache",
         "instruction_games_scan_owned",
         "instruction_games_history",
-        "instruction_games_source_mode",
         "instruction_display_show_unsupported",
-        "instruction_display_hide_premium",
         "instruction_display_filter_platforms",
         "instruction_generic_back",
     ]
@@ -3965,29 +3951,6 @@ def draw_pause_games_menu(screen, selected_index):
     instruction_text = None
     if key:
         instruction_text = _(key)
-        if key == "instruction_display_hide_premium":
-            # Inject dynamic list of premium providers from config.PREMIUM_HOST_MARKERS
-            try:
-                from config import PREMIUM_HOST_MARKERS
-                # Clean, preserve order, remove duplicates (case-insensitive)
-                seen = set()
-                providers_clean = []
-                for p in PREMIUM_HOST_MARKERS:
-                    p_lower = p.lower()
-                    if p_lower not in seen:
-                        seen.add(p_lower)
-                        providers_clean.append(p)
-                providers_str = ", ".join(providers_clean)
-                if not providers_str:
-                    providers_str = "1fichier, etc."
-                if "{providers}" in instruction_text:
-                    instruction_text = instruction_text.format(providers=providers_str)
-                else:
-                    # fallback si placeholder absent
-                    instruction_text = f"{instruction_text} ({providers_str})"
-                    
-            except Exception:
-                pass
     
     _draw_submenu_generic(screen, _("menu_games") if _ else "Games", options, selected_index, instruction_text)
 
@@ -4190,17 +4153,29 @@ def draw_pause_connection_status(screen):
     cat_sources = _("connection_status_category_sources") if _ else "Sources"
 
     # Group rows by category
-    categories_order = ["updates", "sources"]
-    category_labels = {
+    category_labels_map = {
         "updates": cat_updates,
         "sources": cat_sources,
     }
+
+    categories_order = []
+    for target in targets:
+        cat = str(target.get("category", "sources")).strip().lower() or "sources"
+        if cat not in categories_order:
+            categories_order.append(cat)
+
+    def _category_label(cat_key: str) -> str:
+        if cat_key in category_labels_map:
+            return category_labels_map[cat_key]
+        cleaned = cat_key.replace("_", " ").strip()
+        return cleaned.title() if cleaned else cat_sources
+
     rows = []  # list of (type, data)
     for cat in categories_order:
-        cat_items = [t for t in targets if t.get("category") == cat]
+        cat_items = [t for t in targets if str(t.get("category", "sources")).strip().lower() == cat]
         if not cat_items:
             continue
-        rows.append(("header", category_labels.get(cat, cat)))
+        rows.append(("header", _category_label(cat)))
         for item in cat_items:
             rows.append(("item", item))
 
@@ -4322,24 +4297,94 @@ def draw_pause_connection_status(screen):
 
 
 def draw_filter_platforms_menu(screen):
-    """Affiche le menu de filtrage des plateformes (afficher/masquer)."""
+    """Affiche le menu de filtrage des plateformes (sources + plateformes collapsibles)."""
     screen.blit(OVERLAY, (0, 0))
     settings = load_rgsx_settings()
     hidden = set(settings.get("hidden_platforms", [])) if isinstance(settings, dict) else set()
 
-    # Initialiser la copie de travail si vide ou taille différente
-    if not config.filter_platforms_selection or len(config.filter_platforms_selection) != len(config.platform_dicts):
-        # Liste alphabétique complète (sans filtrer hidden existant)
-        all_names = sorted([d.get("platform_name", "") for d in config.platform_dicts if d.get("platform_name")])
-        config.filter_platforms_selection = [(name, name in hidden) for name in all_names]
+    def _extract_source(platform_name: str) -> str:
+        match = re.search(r'\(([^()]+)\)\s*$', str(platform_name).strip())
+        if match:
+            return match.group(1).strip()
+        fallback = _("games_source_rgsx") if _ else "RGSX"
+        return fallback if fallback != "games_source_rgsx" else "RGSX"
+
+    def _strip_source_suffix(platform_name: str) -> str:
+        return re.sub(r'\s*\([^()]+\)\s*$', '', str(platform_name)).strip()
+
+    # Construire mapping source -> plateformes (trié, sans doublons)
+    source_to_platforms = {}
+    for entry in config.platform_dicts:
+        platform_name = entry.get("platform_name", "") if isinstance(entry, dict) else ""
+        platform_name = str(platform_name).strip()
+        if not platform_name:
+            continue
+        source_name = _extract_source(platform_name)
+        source_to_platforms.setdefault(source_name, []).append(platform_name)
+
+    for source_name in list(source_to_platforms.keys()):
+        source_to_platforms[source_name] = sorted(set(source_to_platforms[source_name]), key=lambda s: str(s).lower())
+    source_to_platforms = dict(sorted(source_to_platforms.items(), key=lambda kv: str(kv[0]).lower()))
+    config.filter_platforms_source_map = source_to_platforms
+
+    all_platform_names = []
+    for source_name in source_to_platforms:
+        all_platform_names.extend(source_to_platforms[source_name])
+
+    # Initialiser/synchroniser la copie de travail par plateforme
+    current_map = {}
+    if isinstance(config.filter_platforms_selection, list):
+        for item in config.filter_platforms_selection:
+            if isinstance(item, (list, tuple)) and len(item) == 2:
+                name = str(item[0]).strip()
+                if name:
+                    current_map[name] = bool(item[1])
+
+    expected_set = set(all_platform_names)
+    if set(current_map.keys()) != expected_set:
+        config.filter_platforms_selection = [(name, name in hidden) for name in all_platform_names]
         config.selected_filter_index = 0
         config.filter_platforms_scroll_offset = 0
         config.filter_platforms_dirty = False
+    else:
+        config.filter_platforms_selection = [(name, current_map.get(name, False)) for name in all_platform_names]
+
+    hidden_map = {name: bool(is_hidden) for name, is_hidden in config.filter_platforms_selection}
+
+    expanded_raw = getattr(config, 'filter_platforms_expanded_sources', [])
+    expanded_sources = set(expanded_raw if isinstance(expanded_raw, list) else [])
+    expanded_sources = {source_name for source_name in expanded_sources if source_name in source_to_platforms}
+    config.filter_platforms_expanded_sources = sorted(expanded_sources, key=lambda s: str(s).lower())
+
+    rows = []
+    for source_name, platforms in source_to_platforms.items():
+        total = len(platforms)
+        hidden_count = sum(1 for platform_name in platforms if hidden_map.get(platform_name, False))
+        rows.append({
+            "type": "source",
+            "source": source_name,
+            "platforms": platforms,
+            "total": total,
+            "hidden_count": hidden_count,
+            "expanded": source_name in expanded_sources,
+        })
+        if source_name in expanded_sources:
+            for platform_name in platforms:
+                rows.append({
+                    "type": "platform",
+                    "source": source_name,
+                    "platform": platform_name,
+                    "hidden": bool(hidden_map.get(platform_name, False)),
+                })
+
+    if rows:
+        config.selected_filter_index = max(0, min(config.selected_filter_index, len(rows) - 1))
+    else:
+        config.selected_filter_index = 0
 
     title_text = _("filter_platforms_title")
     title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
     title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 14))
-    # Padding responsive réduit
     hpad = max(36, min(64, int(config.screen_width * 0.06)))
     vpad = max(10, min(20, int(title_surface.get_height() * 0.45)))
     title_rect_inflated = title_rect.inflate(hpad, vpad)
@@ -4348,86 +4393,90 @@ def draw_filter_platforms_menu(screen):
     pygame.draw.rect(screen, THEME_COLORS["border"], title_rect_inflated, 2, border_radius=12)
     screen.blit(title_surface, title_rect)
 
-    # Boutons d'action en haut (avant la liste)
-    btn_width = 220
-    btn_height = int(config.screen_height * 0.0463)
-    spacing = 30
-    buttons_y = title_rect_inflated.bottom + 20
-    center_x = config.screen_width // 2
-    actions = [
-        ("filter_all", 0),
-        ("filter_none", 1),
-        ("filter_apply", 2),
-        ("filter_back", 3)
-    ]
-    total_items = len(config.filter_platforms_selection)
-    action_buttons = len(actions)
-    
-    for idx, (key, btn_idx) in enumerate(actions):
-        btn_x = center_x - (len(actions) * (btn_width + spacing) - spacing) // 2 + idx * (btn_width + spacing)
-        is_selected = (config.selected_filter_index == btn_idx)
-        label = _(key)
-        draw_stylized_button(screen, label, btn_x, buttons_y, btn_width, btn_height, selected=is_selected)
-
-    # Zone liste (après les boutons)
-    list_width = int(config.screen_width * 0.7)
-    list_height = int(config.screen_height * 0.5)
+    # Zone liste: laisser de la place au footer de controls + infos
+    footer_reserved = max(95, int(config.screen_height * 0.15))
+    list_width = int(config.screen_width * 0.78)
     list_x = (config.screen_width - list_width) // 2
-    list_y = buttons_y + btn_height + 20
+    list_y = title_rect_inflated.bottom + 16
+    list_bottom_limit = config.screen_height - footer_reserved - 38
+    list_height = max(140, list_bottom_limit - list_y)
+
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (list_x, list_y, list_width, list_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (list_x, list_y, list_width, list_height), 2, border_radius=12)
 
     line_height = config.small_font.get_height() + 8
-    visible_items = list_height // line_height - 1  # laisser un peu d'espace bas
-    total_items = len(config.filter_platforms_selection)
-    if config.selected_filter_index < 0:
-        config.selected_filter_index = 0
-    # Ne pas forcer la réduction si on est sur les boutons (indices >= total_items)
-    # Laisser controls.py gérer la borne max étendue
-    # Ajuster scroll
+    visible_items = max(4, (list_height - 20) // line_height)
+    total_items = len(rows)
+
     if config.selected_filter_index < config.filter_platforms_scroll_offset:
         config.filter_platforms_scroll_offset = config.selected_filter_index
     elif config.selected_filter_index >= config.filter_platforms_scroll_offset + visible_items:
         config.filter_platforms_scroll_offset = config.selected_filter_index - visible_items + 1
+    config.filter_platforms_scroll_offset = max(0, min(config.filter_platforms_scroll_offset, max(0, total_items - visible_items)))
 
-    # Dessiner items (les indices de la liste commencent à action_buttons)
-    for i in range(config.filter_platforms_scroll_offset, min(config.filter_platforms_scroll_offset + visible_items, total_items)):
-        name, is_hidden = config.filter_platforms_selection[i]
-        idx_on_screen = i - config.filter_platforms_scroll_offset
+    # Dessin des lignes source + plateformes
+    start = config.filter_platforms_scroll_offset
+    end = min(start + visible_items, total_items)
+    for i in range(start, end):
+        row = rows[i]
+        idx_on_screen = i - start
         y_center = list_y + 10 + idx_on_screen * line_height + line_height // 2
-        # Les éléments de la liste ont des indices à partir de action_buttons
-        selected = (config.selected_filter_index == action_buttons + i)
-        checkbox = "[ ]" if is_hidden else "[X]"  # inversé: coché signifie visible
-        # Correction: on veut [X] si visible => is_hidden False
-        checkbox = "[X]" if not is_hidden else "[ ]"
-        display_text = f"{checkbox} {name}"
-        color = THEME_COLORS["fond_lignes"] if selected else THEME_COLORS["text"]
-        text_surface = config.small_font.render(display_text, True, color)
-        text_rect = text_surface.get_rect(midleft=(list_x + 20, y_center))
+        selected = (config.selected_filter_index == i)
+
         if selected:
-            glow_surface = pygame.Surface((list_width - 40, line_height), pygame.SRCALPHA)
-            pygame.draw.rect(glow_surface, THEME_COLORS["fond_lignes"] + (50,), (0, 0, list_width - 40, line_height), border_radius=8)
-            screen.blit(glow_surface, (list_x + 20, y_center - line_height // 2))
+            glow_surface = pygame.Surface((list_width - 32, line_height), pygame.SRCALPHA)
+            pygame.draw.rect(glow_surface, THEME_COLORS["fond_lignes"] + (50,), (0, 0, list_width - 32, line_height), border_radius=8)
+            screen.blit(glow_surface, (list_x + 16, y_center - line_height // 2))
+
+        if row.get("type") == "source":
+            total = max(1, int(row.get("total", 0)))
+            hidden_count = int(row.get("hidden_count", 0))
+            visible_count = max(0, total - hidden_count)
+            if hidden_count == 0:
+                checkbox = "[X]"
+            elif hidden_count >= total:
+                checkbox = "[ ]"
+            else:
+                checkbox = "[-]"
+            collapse = "v" if row.get("expanded") else ">"
+            display_text = f"{checkbox} {collapse} {row.get('source', '')} ({visible_count}/{total})"
+            text_x = list_x + 20
+        else:
+            platform_name = row.get("platform", "")
+            checkbox = "[X]" if not row.get("hidden") else "[ ]"
+            clean_name = _strip_source_suffix(platform_name) or platform_name
+            display_text = f"{checkbox}   {clean_name}"
+            text_x = list_x + 44
+
+        max_text_w = max(60, list_width - (text_x - list_x) - 38)
+        fitted_text = truncate_text_end(display_text, config.small_font, max_text_w)
+        color = THEME_COLORS["fond_lignes"] if selected else THEME_COLORS["text"]
+        text_surface = config.small_font.render(fitted_text, True, color)
+        text_rect = text_surface.get_rect(midleft=(text_x, y_center))
         screen.blit(text_surface, text_rect)
 
     # Scrollbar
     if total_items > visible_items:
-        scroll_height = int((visible_items / total_items) * (list_height - 20))
-        scroll_y = int((config.filter_platforms_scroll_offset / max(1, total_items - visible_items)) * (list_height - 20 - scroll_height))
-        pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], (list_x + list_width - 25, list_y + 10 + scroll_y, 10, scroll_height), border_radius=4)
+        scroll_track_height = list_height - 20
+        scroll_height = int((visible_items / total_items) * scroll_track_height)
+        scroll_height = max(20, scroll_height)
+        scroll_range = max(1, total_items - visible_items)
+        scroll_y = int((config.filter_platforms_scroll_offset / scroll_range) * (scroll_track_height - scroll_height))
+        pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], (list_x + list_width - 22, list_y + 10 + scroll_y, 9, scroll_height), border_radius=4)
 
     # Infos bas
-    hidden_count = sum(1 for _, h in config.filter_platforms_selection if h)
-    visible_count = total_items - hidden_count
-    info_text = _("filter_platforms_info").format(visible_count, hidden_count, total_items)
+    total_platforms = len(all_platform_names)
+    hidden_count = sum(1 for _, is_hidden in config.filter_platforms_selection if is_hidden)
+    visible_count = total_platforms - hidden_count
+    info_text = _("filter_platforms_info").format(visible_count, hidden_count, total_platforms)
     info_surface = config.small_font.render(info_text, True, THEME_COLORS["text"])
-    info_rect = info_surface.get_rect(center=(config.screen_width // 2, list_y + list_height + 20))
+    info_rect = info_surface.get_rect(center=(config.screen_width // 2, list_y + list_height + 18))
     screen.blit(info_surface, info_rect)
 
     if config.filter_platforms_dirty:
         dirty_text = _("filter_unsaved_warning")
         dirty_surface = config.small_font.render(dirty_text, True, THEME_COLORS["warning_text"])
-        dirty_rect = dirty_surface.get_rect(center=(config.screen_width // 2, info_rect.bottom + 25))
+        dirty_rect = dirty_surface.get_rect(center=(config.screen_width // 2, info_rect.bottom + 22))
         screen.blit(dirty_surface, dirty_rect)
 
 # Menu aide contrôles

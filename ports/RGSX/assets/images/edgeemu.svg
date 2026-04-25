@@ -1,0 +1,20 @@
+<svg width="128" height="128" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc" shape-rendering="geometricPrecision">
+  <title id="title">EdgeEmu icon</title>
+  <desc id="desc">EdgeEmu favicon-inspired glyph with bold stacked blocks and cyan accents.</desc>
+
+  <g fill="#1f1f1f">
+    <rect x="6" y="8" width="42" height="24" rx="3"/>
+    <rect x="6" y="38" width="42" height="24" rx="3"/>
+    <rect x="6" y="68" width="42" height="24" rx="3"/>
+
+    <rect x="56" y="10" width="38" height="16" rx="3"/>
+    <rect x="56" y="42" width="38" height="16" rx="3"/>
+    <rect x="56" y="74" width="38" height="16" rx="3"/>
+  </g>
+
+  <g fill="#0388ef">
+    <rect x="12" y="14" width="30" height="8" rx="1.5"/>
+    <rect x="12" y="44" width="30" height="12" rx="1.5"/>
+    <rect x="12" y="76" width="30" height="8" rx="1.5"/>
+  </g>
+</svg>
