@@ -316,7 +316,6 @@ def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: s
         "--summary-interval=1",
         "--download-result=hide",
         "--listen-port=6999",
-        "--enable-upnp=true",
         temp_manifest,
     ]
     logger.info(f"Téléchargement torrent aria2c: index={file_index}, source={source_url}, dest={dest_path}")
