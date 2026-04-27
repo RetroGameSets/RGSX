@@ -4382,12 +4382,6 @@ def get_existing_history_matches(entry):
             continue
         seen_direct.add(normalized_path)
         exists = os.path.isfile(actual_path)
-        logger.debug(
-            "[HISTORY_MATCH_LOOKUP] direct_check game=%s candidate=%s exists=%s",
-            game_name,
-            actual_path,
-            exists,
-        )
         if exists:
             direct_matches.append((os.path.basename(actual_path), actual_path))
 
@@ -4416,12 +4410,6 @@ def get_existing_history_matches(entry):
         for actual_path in fallback_paths:
             normalized_path = os.path.normcase(actual_path)
             exists = os.path.isfile(actual_path)
-            logger.debug(
-                "[HISTORY_MATCH_LOOKUP] fallback_check game=%s candidate=%s exists=%s",
-                game_name,
-                actual_path,
-                exists,
-            )
             if normalized_path in seen_paths or not exists:
                 continue
 
@@ -4431,13 +4419,9 @@ def get_existing_history_matches(entry):
 
     if not matches:
         logger.debug(
-            "[HISTORY_MATCH_LOOKUP] no_match game=%s platform=%s base_path=%s local_path=%s local_filename=%s moved_paths=%s",
+            "[HISTORY_MATCH_LOOKUP] no_match game=%s platform=%s",
             game_name,
             platform_name,
-            base_path,
-            local_path,
-            local_filename,
-            moved_paths,
         )
 
     return matches

@@ -10,7 +10,7 @@ import logging
 import config
 from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE, CONTROLS_CONFIG_PATH, Game
 from display import draw_validation_transition, show_toast
-from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel
+from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel, cleanup_torrent_temp
 from utils import (
     load_games, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
@@ -61,20 +61,6 @@ def _notify_torrent_in_maintenance(game_name: str | None = None) -> None:
 
 def _has_download_url(url, game_name: str | None = None) -> bool:
     if isinstance(url, str) and url.strip():
-        torrent_meta = parse_torrent_download_url(url)
-        if torrent_meta is not None:
-            # Lancer le téléchargement torrent
-            # On suppose que les autres paramètres sont accessibles ou à adapter selon le contexte d'appel
-            # Ici, il faudrait passer platform, game_name, etc. selon l'appelant
-            # Exemple minimal :
-            try:
-                # platform doit être passé ou déterminé selon le contexte réel
-                platform = None
-                download_rom(url, platform, game_name)
-            except Exception as e:
-                logger.error(f"Erreur lors du lancement du téléchargement torrent: {e}")
-            config.needs_redraw = True
-            return True
         return True
 
     config.needs_redraw = True
@@ -130,6 +116,72 @@ def _apply_sorted_active_filters() -> list[Game]:
     if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
         return _sort_local_games(config.game_filter_obj.apply_filters(config.games))
     return config.games
+
+
+def _is_windows_os() -> bool:
+    return str(getattr(config, 'OPERATING_SYSTEM', '') or '').lower() == "windows" or os.name == 'nt'
+
+
+def _is_windows_drive_root(path: str) -> bool:
+    if not _is_windows_os() or not path:
+        return False
+    normalized = os.path.normpath(path)
+    drive, tail = os.path.splitdrive(normalized)
+    return bool(drive) and tail in ('\\', '/')
+
+
+def _get_available_windows_drives() -> list[str]:
+    drives = []
+    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        drive = f"{letter}:\\"
+        if os.path.isdir(drive):
+            drives.append(drive)
+    return drives
+
+
+def _load_folder_browser_items(path: str) -> list[str]:
+    if _is_windows_os() and not path:
+        return _get_available_windows_drives()
+
+    target_path = path
+    if not target_path:
+        target_path = "/"
+
+    items = [".."]
+    try:
+        for item in sorted(os.listdir(target_path)):
+            full_path = os.path.join(target_path, item)
+            if os.path.isdir(full_path):
+                items.append(item)
+    except Exception as e:
+        logger.error(f"Erreur lecture dossier {target_path}: {e}")
+        return [".."] if target_path else []
+    return items
+
+
+def _set_folder_browser_location(path: str | None, reset_selection: bool = True) -> None:
+    if _is_windows_os():
+        normalized_path = os.path.normpath(path) if path else ""
+        if normalized_path in ('\\', '/'):
+            normalized_path = ""
+        if normalized_path and not os.path.isdir(normalized_path):
+            normalized_path = ""
+    else:
+        normalized_path = path or "/"
+        if not os.path.isdir(normalized_path):
+            normalized_path = "/"
+
+    config.folder_browser_path = normalized_path
+    config.folder_browser_items = _load_folder_browser_items(normalized_path)
+
+    if reset_selection:
+        config.folder_browser_selection = 0
+        config.folder_browser_scroll_offset = 0
+    else:
+        max_index = max(0, len(config.folder_browser_items) - 1)
+        config.folder_browser_selection = max(0, min(config.folder_browser_selection, max_index))
+        max_scroll = max(0, len(config.folder_browser_items) - max(1, int(getattr(config, 'folder_browser_visible_items', 10) or 10)))
+        config.folder_browser_scroll_offset = max(0, min(config.folder_browser_scroll_offset, max_scroll))
 
 
 def _build_filter_menu_entries(context: str) -> list[dict[str, str]]:
@@ -494,23 +546,29 @@ def is_global_search_input_matched(event, action_name):
 
     return False
 
-def _launch_next_queued_download():
-    """Lance le prochain téléchargement de la queue si aucun n'est actif.
-    Gère la liaison entre le système Desktop et le système de download_rom/download_from_1fichier.
+def _launch_next_queued_download(force: bool = False):
+    """Lance le(s) prochain(s) téléchargement(s) de la queue selon les slots disponibles.
+    Si force=True, ignore la limite (Force Download depuis l'UI).
+    Peut être appelée plusieurs fois pour remplir tous les slots libres.
     """
-    if config.download_active or not config.download_queue:
+    max_dl = getattr(config, 'max_simultaneous_downloads', 5)
+    active = getattr(config, 'active_download_count', 0)
+    if not force and active >= max_dl:
         return
-    
+    if not config.download_queue:
+        return
+
     queue_item = config.download_queue.pop(0)
+    config.active_download_count = active + 1
     config.download_active = True
-    
+
     url = queue_item['url']
     platform = queue_item['platform']
     game_name = queue_item['game_name']
     is_zip_non_supported = queue_item['is_zip_non_supported']
     is_1fichier = queue_item['is_1fichier']
     task_id = queue_item['task_id']
-    
+
     # Mettre à jour le statut dans l'historique: queued -> Downloading
     for entry in config.history:
         if entry.get('task_id') == task_id and entry.get('status') == 'Queued':
@@ -518,9 +576,9 @@ def _launch_next_queued_download():
             entry['message'] = _("download_in_progress")
             save_history(config.history)
             break
-    
-    logger.info(f"📋 Lancement du téléchargement de la queue: {game_name} (task_id={task_id})")
-    
+
+    logger.info(f"📋 Lancement téléchargement (slot {config.active_download_count}/{max_dl}): {game_name} (task_id={task_id})")
+
     # Lancer le téléchargement de manière asynchrone avec callback
     try:
         if is_1fichier:
@@ -540,17 +598,18 @@ def _launch_next_queued_download():
             except Exception as e:
                 logger.error(f"Erreur tâche download {game_name}: {e}")
             finally:
-                # Toujours marquer comme inactif et lancer le prochain
-                config.download_active = False
-                if config.download_queue:
-                    _launch_next_queued_download()
+                # Décrémenter le compteur et lancer le prochain si queue non vide
+                config.active_download_count = max(0, getattr(config, 'active_download_count', 1) - 1)
+                config.download_active = config.active_download_count > 0
+                _launch_next_queued_download()
         
         # Ajouter le callback à la tâche
         task.add_done_callback(on_task_done)
         
     except Exception as e:
         logger.error(f"Erreur lancement queue download: {e}")
-        config.download_active = False
+        config.active_download_count = max(0, getattr(config, 'active_download_count', 1) - 1)
+        config.download_active = config.active_download_count > 0
         # Mettre à jour l'historique en erreur
         for entry in config.history:
             if entry.get('task_id') == task_id:
@@ -559,8 +618,7 @@ def _launch_next_queued_download():
                 save_history(config.history)
                 break
         # Relancer le suivant
-        if config.download_queue:
-            _launch_next_queued_download()
+        _launch_next_queued_download()
 
 def filter_games_by_search_query() -> list[Game]:
     base_games = config.games
@@ -939,8 +997,43 @@ def trigger_global_search_download(queue_only: bool = False) -> None:
         config.needs_redraw = True
         logger.debug(f"{game_name} ajoute a la file d'attente depuis la recherche globale. Queue size: {len(config.download_queue)}")
 
-        if not config.download_active and config.download_queue:
-            _launch_next_queued_download()
+        _launch_next_queued_download()
+        return
+
+    # Téléchargement direct, démarrer immédiatement,
+    # sinon mettre automatiquement en queue (même comportement que queue_only).
+    max_dl = getattr(config, 'max_simultaneous_downloads', 5)
+    active = getattr(config, 'active_download_count', 0)
+    if active >= max_dl:
+        # Plus de slots disponibles → auto-queue
+        task_id = str(pygame.time.get_ticks())
+        queue_item = {
+            'url': url,
+            'platform': platform,
+            'game_name': game_name,
+            'is_zip_non_supported': pending_download[3],
+            'is_1fichier': is_1fichier_url(url),
+            'task_id': task_id,
+            'status': 'Queued'
+        }
+        config.download_queue.append(queue_item)
+        config.history.append({
+            'platform': platform,
+            'game_name': game_name,
+            'display_name': display_name,
+            'status': 'Queued',
+            'url': url,
+            'progress': 0,
+            'message': _("download_queued"),
+            'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'downloaded_size': 0,
+            'total_size': 0,
+            'task_id': task_id
+        })
+        save_history(config.history)
+        show_toast(f"{display_name}\n{_('download_queued')}")
+        config.needs_redraw = True
+        logger.info(f"{game_name} auto-queue (slots {active}/{max_dl} utilisés)")
         return
 
     if is_1fichier_url(url):
@@ -953,11 +1046,12 @@ def trigger_global_search_download(queue_only: bool = False) -> None:
         task_id = str(pygame.time.get_ticks())
         task = asyncio.create_task(download_rom(url, platform, game_name, pending_download[3], task_id))
 
+    config.active_download_count = getattr(config, 'active_download_count', 0) + 1
+    config.download_active = True
     config.download_tasks[task_id] = (task, url, game_name, platform)
     show_toast(f"{_('download_started')}: {display_name}")
     config.needs_redraw = True
     logger.debug(f"Telechargement demarre depuis la recherche globale: {game_name} pour {platform}, task_id={task_id}")
-    ...
 
 def handle_controls(event, sources, joystick, screen):
     """Gère un événement clavier/joystick/souris et la répétition automatique.
@@ -1515,8 +1609,7 @@ def handle_controls(event, sources, joystick, screen):
                                 logger.debug(f"{game_name} ajouté à la file d'attente. Queue size: {len(config.download_queue)}")
                                 
                                 # Si aucun téléchargement actif, lancer le premier de la queue
-                                if not config.download_active and config.download_queue:
-                                    _launch_next_queued_download()
+                                _launch_next_queued_download()
                         else:
                             logger.error(f"config.pending_download est None pour {game_name}")
                             config.needs_redraw = True
@@ -1729,6 +1822,14 @@ def handle_controls(event, sources, joystick, screen):
                     except Exception as e:
                         logger.debug(f"Erreur lors de l'envoi du signal d'annulation: {e}")
                     
+                    # Supprimer le dossier temp torrent (cas où cancel_events est vide :
+                    # téléchargement déjà terminé côté thread mais UI encore "Téléchargement").
+                    try:
+                        if cleanup_torrent_temp(task_id):
+                            logger.debug(f"Dossier temp torrent supprimé pour task_id={task_id}")
+                    except Exception as e:
+                        logger.debug(f"Erreur nettoyage temp torrent: {e}")
+                    
                     # Annuler aussi la tâche asyncio si elle existe (pour les téléchargements directs)
                     for tid, (task, task_url, tname, tplatform) in list(config.download_tasks.items()):
                         if tid == task_id or task_url == url:
@@ -1849,6 +1950,7 @@ def handle_controls(event, sources, joystick, screen):
                 # Options selon statut
                 if status == "Queued":
                     # En attente dans la queue
+                    options.append("force_download")
                     options.append("remove_from_queue")
                 elif status in ["Downloading", "Téléchargement", "Extracting", "Paused"]:
                     # Téléchargement en cours ou en pause - ajouter pause/resume avant cancel
@@ -1922,7 +2024,22 @@ def handle_controls(event, sources, joystick, screen):
                     selected_option = options[sel]
                     logger.debug(f"history_game_options: CONFIRM option={selected_option}")
                     
-                    if selected_option == "remove_from_queue":
+                    if selected_option == "force_download":
+                        # Forcer le démarrage immédiat d'un téléchargement en file d'attente,
+                        # en ignorant la limite de slots simultanés.
+                        task_id = entry.get("task_id")
+                        url = entry.get("url")
+                        # Retirer cet item de la queue (où qu'il soit)
+                        for i, qi in enumerate(config.download_queue):
+                            if qi.get("task_id") == task_id or qi.get("url") == url:
+                                config.download_queue.insert(0, config.download_queue.pop(i))
+                                break
+                        _launch_next_queued_download(force=True)
+                        config.menu_state = "history"
+                        config.needs_redraw = True
+                        logger.info(f"Force Download: {game_name} (task_id={task_id})")
+
+                    elif selected_option == "remove_from_queue":
                         # Retirer de la queue
                         task_id = entry.get("task_id")
                         url = entry.get("url")
@@ -2149,16 +2266,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.folder_browser_mode = "history_move"
                     config.platform_config_name = entry.get("display_name") or get_clean_display_name(entry.get("game_name", ""), entry.get("platform", ""))
 
-                    try:
-                        items = [".."]
-                        for item in sorted(os.listdir(start_path)):
-                            full_path = os.path.join(start_path, item)
-                            if os.path.isdir(full_path):
-                                items.append(item)
-                        config.folder_browser_items = items
-                    except Exception as e:
-                        logger.error(f"Erreur lecture dossier {start_path}: {e}")
-                        config.folder_browser_items = [".."]
+                    _set_folder_browser_location(start_path, reset_selection=True)
 
                     config.menu_state = "folder_browser"
                     config.needs_redraw = True
@@ -2408,16 +2516,8 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
                 if config.confirm_selection == 0:  # Quit RGSX
-                    # Mark all in-progress downloads as canceled in history
-                    try:
-                        for entry in getattr(config, 'history', []) or []:
-                            if entry.get("status") in ["Downloading", "Téléchargement", "Extracting"]:
-                                entry["status"] = "Canceled"
-                                entry["progress"] = 0
-                                entry["message"] = _("download_canceled") if _ else "Download canceled"
-                        save_history(config.history)
-                    except Exception:
-                        pass
+                    # Les téléchargements actifs restent en état "Téléchargement" dans l'historique
+                    # pour permettre la reprise au prochain démarrage (fichiers .aria2 conservés).
                     return "quit"
                 elif config.confirm_selection == 1:  # Restart RGSX
                     restart_application(2000)
@@ -2870,24 +2970,24 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Settings
         elif config.menu_state == "pause_settings_menu":
             sel = getattr(config, 'pause_settings_selection', 0)
-            # Calculer le nombre total d'options selon le système
-            # Liste des options : music, symlink, auto_extract, roms_folder, [web_service], [custom_dns], api keys, connection_status, back
-            total = 7  # music, symlink, auto_extract, roms_folder, api keys, connection_status, back (Windows)
+            # Liste des options : music, symlink, auto_extract, roms_folder, max_dl_slots, [web_service], [custom_dns], api keys, connection_status, back
+            total = 8  # music, symlink, auto_extract, roms_folder, max_dl_slots, api keys, connection_status, back (Windows)
             auto_extract_index = 2
             roms_folder_index = 3
+            max_dl_index = 4
             web_service_index = -1
             custom_dns_index = -1
-            api_keys_index = 4
-            connection_status_index = 5
-            back_index = 6
-            
+            api_keys_index = 5
+            connection_status_index = 6
+            back_index = 7
+
             if config.OPERATING_SYSTEM == "Linux":
-                total = 9  # music, symlink, auto_extract, roms_folder, web_service, custom_dns, api keys, connection_status, back
-                web_service_index = 4
-                custom_dns_index = 5
-                api_keys_index = 6
-                connection_status_index = 7
-                back_index = 8
+                total = 10  # music, symlink, auto_extract, roms_folder, max_dl_slots, web_service, custom_dns, api keys, connection_status, back
+                web_service_index = 5
+                custom_dns_index = 6
+                api_keys_index = 7
+                connection_status_index = 8
+                back_index = 9
             
             if is_input_matched(event, "up"):
                 config.pause_settings_selection = (sel - 1) % total
@@ -2941,17 +3041,7 @@ def handle_controls(event, sources, joystick, screen):
                         config.folder_browser_selection = 0
                         config.folder_browser_scroll_offset = 0
                         config.folder_browser_mode = "roms_root"
-                        # Charger la liste des dossiers
-                        try:
-                            items = [".."]
-                            for item in sorted(os.listdir(start_path)):
-                                full_path = os.path.join(start_path, item)
-                                if os.path.isdir(full_path):
-                                    items.append(item)
-                            config.folder_browser_items = items
-                        except Exception as e:
-                            logger.error(f"Erreur lecture dossier {start_path}: {e}")
-                            config.folder_browser_items = [".."]
+                        _set_folder_browser_location(start_path, reset_selection=True)
                         config.menu_state = "folder_browser"
                         config.needs_redraw = True
                         logger.info("Ouverture navigateur dossier ROMs principal")
@@ -2965,7 +3055,21 @@ def handle_controls(event, sources, joystick, screen):
                             config.popup_timer = 5000
                             logger.info("Dossier ROMs réinitialisé par défaut")
                         config.needs_redraw = True
-                # Option 4: Web Service toggle (seulement si Linux)
+                # Option 4: Max simultaneous downloads (left/right pour -/+)
+                elif sel == max_dl_index and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                    from rgsx_settings import get_max_simultaneous_downloads, set_max_simultaneous_downloads
+                    current_max = get_max_simultaneous_downloads()
+                    if is_input_matched(event, "left"):
+                        new_max = max(1, current_max - 1)
+                    else:
+                        new_max = min(10, current_max + 1)
+                    if new_max != current_max:
+                        set_max_simultaneous_downloads(new_max)
+                        config.popup_message = _("settings_max_dl_changed").format(new_max) if _ else f"Max simultaneous downloads: {new_max}"
+                        config.popup_timer = 1500
+                        config.needs_redraw = True
+                        logger.info(f"max_simultaneous_downloads réglé à {new_max}")
+                # Option 5: Web Service toggle (seulement si Linux)
                 elif sel == web_service_index and web_service_index >= 0 and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
                     
                     current_status = check_web_service_status()
@@ -3267,17 +3371,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.folder_browser_selection = 0
                     config.folder_browser_scroll_offset = 0
                     config.folder_browser_mode = "platform"
-                    # Charger la liste des dossiers
-                    try:
-                        items = [".."]
-                        for item in sorted(os.listdir(current_path)):
-                            full_path = os.path.join(current_path, item)
-                            if os.path.isdir(full_path):
-                                items.append(item)
-                        config.folder_browser_items = items
-                    except Exception as e:
-                        logger.error(f"Erreur lecture dossier {current_path}: {e}")
-                        config.folder_browser_items = [".."]
+                    _set_folder_browser_location(current_path, reset_selection=True)
                     config.menu_state = "folder_browser"
                     config.needs_redraw = True
                 elif config.platform_folder_selection == 2:  # Reset
@@ -3333,44 +3427,31 @@ def handle_controls(event, sources, joystick, screen):
                 if config.folder_browser_items:
                     selected_item = config.folder_browser_items[config.folder_browser_selection]
                     if selected_item == "..":
-                        # Remonter d'un niveau
-                        parent = os.path.dirname(config.folder_browser_path)
-                        if parent and parent != config.folder_browser_path:
-                            config.folder_browser_path = parent
-                            config.folder_browser_selection = 0
-                            config.folder_browser_scroll_offset = 0
-                            try:
-                                items = [".."]
-                                for item in sorted(os.listdir(parent)):
-                                    full_path = os.path.join(parent, item)
-                                    if os.path.isdir(full_path):
-                                        items.append(item)
-                                config.folder_browser_items = items
-                            except Exception as e:
-                                logger.error(f"Erreur lecture dossier {parent}: {e}")
-                                config.folder_browser_items = [".."]
+                        current_path = config.folder_browser_path
+                        if _is_windows_os() and _is_windows_drive_root(current_path):
+                            parent = ""
+                        else:
+                            parent = os.path.dirname(current_path) if current_path else ("" if _is_windows_os() else "/")
+                        if parent != current_path:
+                            _set_folder_browser_location(parent, reset_selection=True)
                     else:
-                        # Entrer dans le dossier sélectionné
-                        new_path = os.path.join(config.folder_browser_path, selected_item)
+                        if _is_windows_os() and not config.folder_browser_path:
+                            new_path = selected_item
+                        else:
+                            new_path = os.path.join(config.folder_browser_path, selected_item)
                         if os.path.isdir(new_path):
-                            config.folder_browser_path = new_path
-                            config.folder_browser_selection = 0
-                            config.folder_browser_scroll_offset = 0
-                            try:
-                                items = [".."]
-                                for item in sorted(os.listdir(new_path)):
-                                    full_path = os.path.join(new_path, item)
-                                    if os.path.isdir(full_path):
-                                        items.append(item)
-                                config.folder_browser_items = items
-                            except Exception as e:
-                                logger.error(f"Erreur lecture dossier {new_path}: {e}")
-                                config.folder_browser_items = [".."]
+                            _set_folder_browser_location(new_path, reset_selection=True)
                 config.needs_redraw = True
             elif is_input_matched(event, "history"):
                 # Valider et sélectionner le dossier actuel (touche X/Y)
                 browser_mode = getattr(config, 'folder_browser_mode', 'platform')
                 selected_path = config.folder_browser_path
+
+                if not selected_path or not os.path.isdir(selected_path):
+                    config.popup_message = "Please enter a drive/folder first"
+                    config.popup_timer = 2200
+                    config.needs_redraw = True
+                    return action
                 
                 if browser_mode == "roms_root":
                     # Mode dossier ROMs principal
@@ -3497,22 +3578,11 @@ def handle_controls(event, sources, joystick, screen):
                         logger.info(f"Dossier créé: {new_folder_path}")
                         config.popup_message = _("folder_created").format(folder_name) if _ else f"Folder created: {folder_name}"
                         config.popup_timer = 2000
-                        # Rafraîchir la liste des dossiers et sélectionner le nouveau
-                        try:
-                            items = [".."]
-                            for item in sorted(os.listdir(config.folder_browser_path)):
-                                full_path = os.path.join(config.folder_browser_path, item)
-                                if os.path.isdir(full_path):
-                                    items.append(item)
-                            config.folder_browser_items = items
-                            # Sélectionner le nouveau dossier
-                            if folder_name in items:
-                                config.folder_browser_selection = items.index(folder_name)
-                                # Ajuster le scroll si nécessaire
-                                if config.folder_browser_selection >= config.folder_browser_visible_items:
-                                    config.folder_browser_scroll_offset = config.folder_browser_selection - config.folder_browser_visible_items + 1
-                        except Exception as e:
-                            logger.error(f"Erreur rafraîchissement liste: {e}")
+                        config.folder_browser_items = _load_folder_browser_items(config.folder_browser_path)
+                        if folder_name in config.folder_browser_items:
+                            config.folder_browser_selection = config.folder_browser_items.index(folder_name)
+                            if config.folder_browser_selection >= config.folder_browser_visible_items:
+                                config.folder_browser_scroll_offset = config.folder_browser_selection - config.folder_browser_visible_items + 1
                     except Exception as e:
                         logger.error(f"Erreur création dossier {new_folder_path}: {e}")
                         config.popup_message = _("folder_create_error").format(str(e)) if _ else f"Error: {e}"

@@ -37,6 +37,7 @@ from urllib.parse import urljoin, unquote
 import urllib.parse
 import tempfile
 import unicodedata
+import socket
 try:
     from bs4 import BeautifulSoup
 except ImportError:
@@ -246,9 +247,17 @@ def _parse_aria2_size_to_bytes(token: str | None) -> int | None:
     return int(value * multipliers.get(unit, 1))
 
 
+def _strip_ansi_escape_codes(text: str) -> str:
+    if not text:
+        return ""
+    return re.sub(r'\x1B\[[0-?]*[ -/]*[@-~]', '', text)
+
+
 def _parse_aria2_progress_line(line: str, total_size: int) -> dict[str, float | int] | None:
     if not line or "[#" not in line:
         return None
+
+    line = _strip_ansi_escape_codes(line)
 
     result: dict[str, float | int] = {}
 
@@ -283,42 +292,397 @@ def _parse_aria2_progress_line(line: str, total_size: int) -> dict[str, float | 
     return result
 
 
-def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: str, dest_path: str, task_id: str, cancel_ev, progress_queue) -> tuple[bool, str]:
+def _reserve_ephemeral_tcp_port() -> int:
+    """Reserve and return a free local TCP port number for aria2 listen-port."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("", 0))
+        return int(sock.getsockname()[1])
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# UPnP IGD – implémentation pure stdlib (socket + urllib + xml.etree)
+# Compatible Windows, Linux, Batocera – aucun module tiers requis.
+# ---------------------------------------------------------------------------
+
+def _upnp_discover_igd(timeout: float = 2.0) -> tuple[str, str] | None:
+    """
+    Découverte SSDP de l'IGD (Internet Gateway Device) sur le réseau local.
+    Retourne (location_url, local_ip) ou None si aucun dispositif trouvé.
+    """
+    import xml.etree.ElementTree as _ET
+    import urllib.request as _req
+
+    SSDP_ADDR = "239.255.255.250"
+    SSDP_PORT = 1900
+    SSDP_ST   = "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
+    msg = (
+        "M-SEARCH * HTTP/1.1\r\n"
+        f"HOST: {SSDP_ADDR}:{SSDP_PORT}\r\n"
+        "MAN: \"ssdp:discover\"\r\n"
+        "MX: 2\r\n"
+        f"ST: {SSDP_ST}\r\n"
+        "\r\n"
+    ).encode()
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    try:
+        sock.settimeout(timeout)
+        sock.sendto(msg, (SSDP_ADDR, SSDP_PORT))
+        while True:
+            try:
+                data, addr = sock.recvfrom(4096)
+            except OSError:
+                break
+            text = data.decode(errors="replace")
+            for line in text.splitlines():
+                if line.upper().startswith("LOCATION:"):
+                    location = line.split(":", 1)[1].strip()
+                    local_ip = addr[0]
+                    # addr[0] est l'IP de la box; on veut notre propre IP locale.
+                    # On la déduit en ouvrant une socket UDP vers la box.
+                    try:
+                        s2 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        s2.connect((addr[0], 1900))
+                        local_ip = s2.getsockname()[0]
+                        s2.close()
+                    except Exception:
+                        pass
+                    return location, local_ip
+    finally:
+        sock.close()
+    return None
+
+
+def _upnp_get_control_url(location: str) -> str | None:
+    """
+    Récupère l'URL de contrôle WANIPConnection (ou WANPPPConnection) depuis
+    le XML de description de l'IGD.
+    """
+    import xml.etree.ElementTree as _ET
+    import urllib.request as _req
+
+    try:
+        with _req.urlopen(location, timeout=5) as resp:
+            xml_data = resp.read()
+    except Exception as e:
+        logger.debug("UPnP: impossible de récupérer la description IGD: %s", e)
+        return None
+
+    try:
+        root = _ET.fromstring(xml_data)
+    except Exception as e:
+        logger.debug("UPnP: XML IGD invalide: %s", e)
+        return None
+
+    # Supprimer les namespaces pour simplifier la recherche
+    for el in root.iter():
+        if "}" in el.tag:
+            el.tag = el.tag.split("}", 1)[1]
+
+    base = location.rsplit("/", 1)[0]
+    for service in root.iter("service"):
+        st = (service.findtext("serviceType") or "").lower()
+        if "wanipconnection" in st or "wanpppconnection" in st:
+            ctrl = service.findtext("controlURL") or ""
+            if ctrl.startswith("/"):
+                from urllib.parse import urlparse as _up
+                p = _up(location)
+                return f"{p.scheme}://{p.netloc}{ctrl}"
+            return f"{base}/{ctrl.lstrip('/')}"
+    return None
+
+
+def _upnp_soap(control_url: str, service_type: str, action: str, args: dict) -> bool:
+    """Envoie une requête SOAP UPnP. Retourne True si succès (HTTP 200)."""
+    import urllib.request as _req
+
+    args_xml = "".join(f"<{k}>{v}</{k}>" for k, v in args.items())
+    body = (
+        '<?xml version="1.0"?>'
+        '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
+        's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">'
+        '<s:Body>'
+        f'<u:{action} xmlns:u="{service_type}">'
+        f'{args_xml}'
+        f'</u:{action}>'
+        '</s:Body>'
+        '</s:Envelope>'
+    ).encode()
+    headers = {
+        "Content-Type": 'text/xml; charset="utf-8"',
+        "SOAPAction": f'"{service_type}#{action}"',
+        "Content-Length": str(len(body)),
+    }
+    try:
+        req = _req.Request(control_url, data=body, headers=headers, method="POST")
+        with _req.urlopen(req, timeout=5) as resp:
+            return resp.status == 200
+    except Exception as e:
+        logger.debug("UPnP SOAP %s: %s", action, e)
+        return False
+
+
+def _upnp_open_port(port: int, description: str = "RGSX-BT") -> dict | None:
+    """
+    Ouvre le port TCP+UDP via UPnP (pure stdlib, compatible Batocera/Windows/Linux).
+    Retourne un dict de contexte pour la fermeture, ou None si UPnP indisponible.
+    """
+    result = _upnp_discover_igd()
+    if result is None:
+        logger.debug("UPnP: aucun IGD trouvé sur le réseau local")
+        return None
+    location, local_ip = result
+    control_url = _upnp_get_control_url(location)
+    if control_url is None:
+        logger.debug("UPnP: URL de contrôle WANIPConnection introuvable")
+        return None
+
+    # Déterminer le serviceType réel depuis l'URL de contrôle
+    service_type = "urn:schemas-upnp-org:service:WANIPConnection:1"
+    if "ppp" in control_url.lower():
+        service_type = "urn:schemas-upnp-org:service:WANPPPConnection:1"
+
+    opened = []
+    for proto in ("TCP", "UDP"):
+        ok = _upnp_soap(control_url, service_type, "AddPortMapping", {
+            "NewRemoteHost": "",
+            "NewExternalPort": port,
+            "NewProtocol": proto,
+            "NewInternalPort": port,
+            "NewInternalClient": local_ip,
+            "NewEnabled": 1,
+            "NewPortMappingDescription": description,
+            "NewLeaseDuration": 0,
+        })
+        if ok:
+            opened.append(proto)
+            logger.info("UPnP: port %s/%s ouvert → %s:%s", port, proto, local_ip, port)
+        else:
+            logger.debug("UPnP: échec ouverture port %s/%s", port, proto)
+
+    if not opened:
+        return None
+    return {"control_url": control_url, "service_type": service_type, "opened": opened}
+
+
+def _upnp_close_port(ctx: dict | None, port: int) -> None:
+    """Ferme le port TCP+UDP précédemment ouvert via UPnP."""
+    if not ctx:
+        return
+    for proto in ctx.get("opened", []):
+        ok = _upnp_soap(ctx["control_url"], ctx["service_type"], "DeletePortMapping", {
+            "NewRemoteHost": "",
+            "NewExternalPort": port,
+            "NewProtocol": proto,
+        })
+        if ok:
+            logger.info("UPnP: port %s/%s fermé", port, proto)
+        else:
+            logger.debug("UPnP: impossible de fermer port %s/%s", port, proto)
+
+
+def _download_torrent_with_aria2(
+    torrent_meta: dict[str, str | int],
+    dest_dir: str,
+    dest_path: str,
+    task_id: str,
+    cancel_ev,
+    progress_queue,
+) -> tuple[bool, str]:
     source_url = str(torrent_meta.get("source_url") or "")
-    relative_path = os.path.basename(dest_path)
+    relative_path = str(torrent_meta.get("relative_path") or "").strip() or os.path.basename(dest_path)
+    fallback_name = os.path.basename(relative_path) or os.path.basename(dest_path)
     file_index = int(torrent_meta.get("file_index") or 1)
     total_size = int(torrent_meta.get("size_bytes") or 0)
     aria2c_cmd = _resolve_aria2c_command()
+    # Ne pas activer le mode debug aria2c même quand Python est en DEBUG :
+    # aria2c DEBUG génère ~1.5 GB de logs en 8h (Checkout peer / Adding new command
+    # pour chaque connexion peer = 30+ lignes/sec) et sature CPU + disque.
+    aria2_trace_enabled = False
 
     temp_manifest = _download_torrent_manifest_to_file(source_url)
-    # Isoler le dossier temporaire hors ROMs et privilégier le même volume que SAVE_FOLDER.
-    temp_base = getattr(config, "SAVE_FOLDER", "") or tempfile.gettempdir()
-    temp_root = os.path.join(temp_base, ".rgsx_torrent_downloads", str(task_id))
-    try:
-        if os.path.exists(temp_root):
-            shutil.rmtree(temp_root, ignore_errors=True)
-    except Exception:
-        pass
+    # Répertoire temp stable basé sur le torrent + index fichier (pas sur task_id).
+    # Cela permet à aria2c de REPRENDRE un téléchargement interrompu avec les pièces
+    # déjà téléchargées, ce qui est essentiel pour le tit-for-tat BitTorrent :
+    # un client avec 0% est ignoré par tous les peers (choking), alors qu'un client
+    # qui a déjà des pièces se fait unchoke et peut télécharger.
+    import hashlib as _hashlib
+    _stable_key = _hashlib.md5(f"{source_url}|{file_index}".encode()).hexdigest()[:12]
+    temp_root = os.path.join(dest_dir, ".rgsx_torrent", _stable_key)
+    # Enregistrer le temp_root pour permettre le nettoyage sur annulation explicite.
+    if task_id:
+        torrent_temp_roots[task_id] = temp_root
+    # Ne PAS supprimer le temp_root au démarrage : les pièces existantes permettent
+    # la reprise et accélèrent considérablement la connexion avec les seeders.
     os.makedirs(temp_root, exist_ok=True)
+    # Les fichiers *.aria2 sont CONSERVÉS intentionnellement.
+    # Ils contiennent le bitmap des pièces déjà téléchargées + les timers trackers.
+    # Les supprimer faisait repartir le téléchargement à 0% à chaque redémarrage.
+    # --check-integrity=true permet à aria2c de re-vérifier les pièces existantes
+    # même si le .aria2 est présent, ce qui assure une reprise correcte.
 
     if total_size > 0:
-        progress_queue.put((task_id, 0, total_size, 0.0))
+        progress_queue.put((task_id, 0, total_size, 0.0, 0, 0, "connecting"))
+
+    # Utiliser un port aléatoire dans la plage haute (40000-50000).
+    # NE PAS utiliser 6881-6999 : ces ports BT classiques sont filtrés/interceptés
+    # par le DPI de nombreux ISP (cf. "Max payload length exceeded" dans les logs,
+    # signature d'une page de blocage HTTP injectée par le routeur/FAI).
+    # Le client torrent standalone fonctionne car il utilise aussi un port randomisé.
+    import random as _random
+    bt_listen_port = _random.randint(40000, 50000)
+    bt_listen_port_range = f"{bt_listen_port}-{bt_listen_port + 10}"
+    # Ouvrir le port via UPnP pour permettre les connexions ENTRANTES des peers
+    # (même comportement que le client torrent standalone qui ouvre son port via UPnP).
+    upnp_handle = _upnp_open_port(bt_listen_port, description="RGSX-BT")
+    # Fichier DHT GLOBAL partagé entre tous les téléchargements torrents.
+    # Un seul dht.dat persistant = table de routage DHT qui se peuple au fil du temps.
+    # Après le 1er téléchargement, les suivants trouvent des peers en quelques secondes.
+    # Stocké dans CONFIG_FOLDER (saves/ports/rgsx/) qui est toujours accessible en R/W.
+    dht_state_file = os.path.join(config.CONFIG_FOLDER, "dht.dat")
+    # Si le dht.dat est corrompu (erreur de chargement aria2c), le supprimer pour
+    # repartir d'un fichier propre — aria2 le recrée avec les bootstrap nodes.
+    if os.path.exists(dht_state_file):
+        try:
+            with open(dht_state_file, "rb") as _f:
+                _magic = _f.read(4)
+            # Format aria2 dht.dat : commence par 'd1:' (bencoding dict) ou '\x00\x00\x00\x01' (binary)
+            if len(_magic) < 4 or (_magic[:2] != b'd1' and _magic[:1] != b'd'):
+                os.remove(dht_state_file)
+                logger.info("dht.dat corrompu supprimé, sera recréé avec les nœuds bootstrap")
+        except Exception:
+            pass
 
     cmd = [
         aria2c_cmd,
+        "--no-conf=true",
         "--seed-time=0",
         "--file-allocation=none",
         "--allow-overwrite=true",
         "--auto-file-renaming=false",
         "--bt-remove-unselected-file=true",
+        "--enable-peer-exchange=true",
+        "--bt-enable-lpd=true",
+        # 0 = pas de limite : essentiel quand le seeder est en position haute dans la
+        # liste du tracker (ex. position 198/200). Avec --bt-max-peers=80 les 80 premiers
+        # slots sont pris par des leechers et le seeder n'est jamais contacté.
+        "--bt-max-peers=0",
+        "--bt-request-peer-speed-limit=0",
+        "--enable-color=false",
+        # Ports aléatoires (40000-50000) suffisent à contourner le DPI ISP (ciblait 6881).
+        # arc4 strict + require_crypto rejetait 100% des pairs (timeout errorCode=1).
+        # On utilise le chiffrement MSE/PE si disponible, mais on accepte les pairs en clair.
+        "--bt-min-crypto-level=plain",
+        "--bt-require-crypto=false",
+        "--enable-dht=true",
+        "--enable-dht6=false",
+        f"--dht-file-path={dht_state_file}",
         f"--select-file={file_index}",
         f"--dir={temp_root}",
         "--summary-interval=1",
         "--download-result=hide",
-        "--listen-port=6999",
+        f"--listen-port={bt_listen_port_range}",
+        f"--dht-listen-port={bt_listen_port_range}",
+        # Augmenter le timeout d'inactivité peer : le tit-for-tat "optimistic unchoke"
+        # tourne toutes les ~30s chez les autres clients. Avec le timeout par défaut trop
+        # court, aria2c déconnecte les peers avant d'avoir eu sa chance d'être unchoked.
+        "--bt-tracker-timeout=60",
+        "--bt-tracker-connect-timeout=30",
+        # Vérifier l'intégrité des pièces déjà téléchargées au démarrage.
+        # Essentiel quand le fichier .aria2 de contrôle a été supprimé (reset trackers) :
+        # sans ce flag, aria2c ignore les données partielles et repart de 0%.
+        # Avec ce flag, aria2c hash-vérifie les pièces existantes et reprend correctement.
+        "--check-integrity=true",
         temp_manifest,
     ]
-    logger.info(f"Téléchargement torrent aria2c: index={file_index}, source={source_url}, dest={dest_path}")
+
+    # Nœuds de bootstrap DHT : sans eux, aria2c loggue "No DHT entry point specified."
+    # et le DHT est totalement inopérant même avec un dht.dat vide.
+    # Ces nœuds sont les points d'entrée officiels du réseau DHT BitTorrent.
+    dht_bootstrap_nodes = [
+        "router.bittorrent.com:6881",
+        "router.utorrent.com:6881",
+        "dht.transmissionbt.com:6881",
+    ]
+    for node in dht_bootstrap_nodes:
+        cmd.insert(1, f"--dht-entry-point={node}")
+
+    # Trackers publics supplémentaires ajoutés via --bt-tracker (en plus de ceux déjà dans
+    # le fichier .torrent). HTTP/HTTPS en premier car les ports UDP (1337, 6969...) sont
+    # souvent filtrés côté FAI/routeur. UDP en complément pour les réseaux non filtrés.
+    public_trackers = [
+        # --- HTTP/HTTPS (prioritaires, traversent les NAT et pare-feux) ---
+        "http://tracker.opentrackr.org:1337/announce",
+        "http://tracker.openbittorrent.com:80/announce",
+        "http://open.acgnxtracker.com:80/announce",
+        "http://tracker.bt4g.com:2095/announce",
+        "http://tracker.files.fm:6969/announce",
+        "http://tracker.gbitt.info:80/announce",
+        "http://vps02.net.orel.ru:80/announce",
+        "http://t.nyaatracker.com:80/announce",
+        "https://1337.abcvg.info:443/announce",
+        "https://opentracker.i2p.rocks:443/announce",
+        "https://tracker.gbitt.info:443/announce",
+        "https://tracker.loligirl.cn:443/announce",
+        "https://tracker.nanoha.org:443/announce",
+        "https://tracker.sloppyta.co:443/announce",
+        "https://tracker1.ctix.cn:443/announce",
+        # --- UDP (complément, peuvent être filtrés selon le réseau) ---
+        "udp://tracker.opentrackr.org:1337/announce",
+        "udp://tracker.openbittorrent.com:6969/announce",
+        "udp://open.stealth.si:80/announce",
+        "udp://open.demonii.com:1337/announce",
+        "udp://opentracker.i2p.rocks:6969/announce",
+        "udp://opentracker.io:6969/announce",
+        "udp://exodus.desync.com:6969/announce",
+        "udp://explodie.org:6969/announce",
+        "udp://tracker.torrent.eu.org:451/announce",
+        "udp://tracker.moeking.me:6969/announce",
+        "udp://tracker.dler.org:6969/announce",
+        "udp://tracker.tiny-vps.com:6969/announce",
+        "udp://tracker.filemail.com:6969/announce",
+        "udp://tracker.therarbg.com:6969/announce",
+        "udp://tracker.therarbg.to:6969/announce",
+        "udp://tracker-udp.gbitt.info:80/announce",
+        "udp://tracker.0x.tf:6969/announce",
+        "udp://p4p.arenabg.com:1337/announce",
+        "udp://movies.zsw.ca:6969/announce",
+        "udp://new-line.net:6969/announce",
+        "udp://moonburrow.club:6969/announce",
+        "udp://epider.me:6969/announce",
+        "udp://bt1.archive.org:6969/announce",
+        "udp://bt2.archive.org:6969/announce",
+        "udp://bt.ktrackers.com:6666/announce",
+        "udp://fe.dealclub.de:6969/announce",
+        "udp://ipv4.tracker.harry.lu:80/announce",
+        "udp://public.tracker.vraphim.com:6969/announce",
+    ]
+    cmd.insert(1, f"--bt-tracker={','.join(public_trackers)}")
+    # Réannoncer aux trackers toutes les 60s (défaut ~1800s) pour obtenir des peers frais.
+    # Utile quand le seeder est instable ou apparaît/disparaît du swarm.
+    cmd.insert(1, "--bt-tracker-interval=60")
+
+    # Sur Windows, certains environnements annoncent des pairs IPv6 joignables
+    # mais restent bloqués à DL:0B. Forcer IPv4 améliore la compatibilité réelle.
+    if config.OPERATING_SYSTEM == "Windows":
+        cmd.insert(1, "--disable-ipv6=true")
+        logger.info("aria2c Windows: IPv6 désactivé pour le téléchargement torrent")
+
+    if aria2_trace_enabled:
+        cmd.insert(1, "--console-log-level=debug")
+        cmd.insert(1, "--log-level=debug")
+    else:
+        # Même sans trace complète, logger les announces trackers (NOTICE) pour diagnostics.
+        cmd.insert(1, "--console-log-level=notice")
+    logger.info(
+        f"Téléchargement torrent aria2c: index={file_index}, source={source_url}, dest={dest_path}, listen_port={bt_listen_port_range}"
+    )
 
     process = subprocess.Popen(
         cmd,
@@ -329,18 +693,39 @@ def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: s
         errors="replace",
         bufsize=1,
     )
+    if task_id:
+        _aria2c_processes[task_id] = process
 
     aria2_output = deque(maxlen=40)
-    aria2_progress = {"downloaded": 0, "total": total_size, "speed_mib_s": 0.0}
+    # "phase" suit l'étape en cours rapportée par aria2c :
+    #   "connecting"  — démarrage / recherche de pairs
+    #   "verifying"   — vérification des pièces existantes (hash-check)
+    #   "downloading" — téléchargement actif (DL > 0)
+    #   "waiting"     — pairs connectés mais aucune donnée reçue (choked)
+    aria2_progress = {"downloaded": 0, "total": total_size, "speed_mib_s": 0.0, "phase": "connecting"}
 
     def _consume_aria2_stdout() -> None:
         if not process.stdout:
             return
         for raw_line in iter(process.stdout.readline, ''):
-            line = raw_line.strip()
+            line = _strip_ansi_escape_codes(raw_line).strip()
             if not line:
                 continue
             aria2_output.append(line)
+            # Détection de la phase à partir des messages NOTICE d'aria2c.
+            # aria2c émet "[NOTICE] Verification started." au début du hash-check
+            # et "[NOTICE] Verification complete." à la fin.
+            if "erification" in line:
+                if "complete" in line.lower():
+                    # Hash-check terminé → retour en connexion (les chiffres affineront)
+                    aria2_progress["phase"] = "connecting"
+                else:
+                    aria2_progress["phase"] = "verifying"
+            # aria2_trace_enabled est toujours False (voir ci-dessus).
+            # On log uniquement les lignes NOTICE/WARN/ERROR et tracker pour
+            # éviter le flood de messages "Checkout peer" / "Adding new command".
+            if any(kw in line for kw in ("NOTICE", "WARN", "ERROR", "tracker", "Tracker", "seeder", "Seeder")):
+                logger.debug(f"[aria2c] {line}")
             parsed_progress = _parse_aria2_progress_line(line, total_size)
             if parsed_progress:
                 aria2_progress.update(parsed_progress)
@@ -350,34 +735,74 @@ def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: s
 
     last_size = 0
     last_time = time.time()
+    last_trace_time = 0.0
     try:
         while process.poll() is None:
-            if cancel_ev is not None and cancel_ev.is_set():
+            if cancel_ev is not None and cancel_ev.is_set() and not _app_shutting_down:
                 try:
                     process.terminate()
                     process.wait(timeout=5)
                 except Exception:
                     try:
                         process.kill()
+                        process.wait(timeout=5)
                     except Exception:
                         pass
+                # Annulation explicite par l'utilisateur → supprimer le dossier temp.
+                # (contrairement à une erreur réseau où on conserve les pièces pour reprendre)
+                try:
+                    shutil.rmtree(temp_root, ignore_errors=True)
+                except Exception:
+                    pass
                 raise RuntimeError(_("download_canceled") if _ else "Download canceled")
 
-            current_path = _find_torrent_downloaded_file(temp_root, relative_path, os.path.basename(dest_path))
-            current_size = os.path.getsize(current_path) if current_path and os.path.exists(current_path) else 0
+            current_path = _find_torrent_downloaded_file(temp_root, relative_path, fallback_name)
             current_time = time.time()
-            elapsed = max(current_time - last_time, 0.001)
-            file_speed = max(0.0, (current_size - last_size) / elapsed / (1024 * 1024))
             reported_total = int(total_size or aria2_progress.get("total") or 0)
-            # La progression UI doit refléter le fichier cible uniquement, pas les bytes adjacents BT.
-            reported_size = int(current_size)
+            # Utiliser UNIQUEMENT la valeur rapportée par aria2c, jamais os.path.getsize().
+            # getsize() retourne la taille du fichier partiel de la session précédente
+            # (ex: 37 GB), ce qui affiche faussement 100% pendant la phase de
+            # vérification des pièces (hash-check) au redémarrage.
+            aria2_downloaded = int(aria2_progress.get("downloaded") or 0)
+            reported_size = aria2_downloaded
+            if reported_total > 0:
+                reported_size = max(0, min(reported_size, reported_total))
             # Pour les torrents, utiliser la vitesse DL renvoyée par aria2.
             reported_speed = float(aria2_progress.get("speed_mib_s") or 0.0)
             reported_seeds = int(aria2_progress.get("seeds") or 0)
             reported_connections = int(aria2_progress.get("connections") or 0)
+
+            # Affiner la phase à partir des chiffres (complète la détection NOTICE).
+            # La phase "verifying" est uniquement positionnée par les NOTICE ; on ne
+            # l'écrase pas ici pour éviter de masquer la phase hash-check.
+            _phase = aria2_progress.get("phase", "connecting")
+            if _phase != "verifying":
+                if aria2_downloaded > 0 and reported_speed > 0.001:
+                    _phase = "downloading"
+                elif aria2_downloaded > 0 and reported_speed <= 0.001:
+                    _phase = "waiting"
+                # else: "connecting" (pas de données reçues encore)
+            aria2_progress["phase"] = _phase
+
             if reported_total > 0:
-                progress_queue.put((task_id, reported_size, reported_total, reported_speed, reported_seeds, reported_connections))
-            last_size = max(last_size, current_size)
+                progress_queue.put((task_id, reported_size, reported_total, reported_speed, reported_seeds, reported_connections, _phase))
+
+            if aria2_trace_enabled and (current_time - last_trace_time) >= 5.0:
+                _trace_size = os.path.getsize(current_path) if current_path and os.path.exists(current_path) else 0
+                logger.debug(
+                    "[aria2c-monitor] path_found=%s size=%s aria_downloaded=%s total=%s speed=%.2fMiB/s seeds=%s cn=%s rel=%s",
+                    bool(current_path),
+                    _trace_size,
+                    int(aria2_progress.get("downloaded") or 0),
+                    reported_total,
+                    reported_speed,
+                    reported_seeds,
+                    reported_connections,
+                    relative_path,
+                )
+                last_trace_time = current_time
+
+            last_size = max(last_size, aria2_downloaded)
             last_time = current_time
             time.sleep(0.2)
 
@@ -387,18 +812,7 @@ def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: s
         if process.returncode != 0:
             raise RuntimeError(remaining_output or f"aria2c exited with code {process.returncode}")
 
-        # Nettoyer les fichiers adjacents téléchargés par overlap de pièces BitTorrent
-        target_filename = os.path.basename(dest_path)
-        for _root, _dirs, _files in os.walk(temp_root, topdown=False):
-            for _fname in _files:
-                if _fname != target_filename:
-                    try:
-                        os.remove(os.path.join(_root, _fname))
-                        logger.debug(f"Nettoyage fichier adjacent torrent: {_fname}")
-                    except Exception:
-                        pass
-
-        downloaded_path = _find_torrent_downloaded_file(temp_root, relative_path, os.path.basename(dest_path))
+        downloaded_path = _find_torrent_downloaded_file(temp_root, relative_path, fallback_name)
         if not downloaded_path or not os.path.exists(downloaded_path):
             raise FileNotFoundError(f"Downloaded torrent file not found for {relative_path}")
 
@@ -410,6 +824,8 @@ def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: s
             # Cross-drive move fallback (ex: temp on C:, ROMs on R:)
             shutil.move(downloaded_path, dest_path)
 
+        # Supprimer le temp_root après succès : le fichier est déplacé, les données
+        # sont inutiles. En cas d'erreur/annulation on CONSERVE le dossier pour reprendre.
         try:
             shutil.rmtree(temp_root, ignore_errors=True)
         except Exception:
@@ -419,28 +835,35 @@ def _download_torrent_with_aria2(torrent_meta: dict[str, str | int], dest_dir: s
         except Exception:
             pass
 
+        _upnp_close_port(upnp_handle, bt_listen_port)
         final_size = os.path.getsize(dest_path) if os.path.exists(dest_path) else total_size
         if final_size > 0:
             progress_queue.put((task_id, final_size, max(total_size, final_size), 0.0))
+        torrent_temp_roots.pop(task_id, None)
+        _aria2c_processes.pop(task_id, None)
         return True, _("network_download_ok").format(os.path.basename(dest_path))
     except Exception:
         try:
             if process.poll() is None:
                 process.kill()
+                process.wait(timeout=5)
         except Exception:
             pass
         try:
             stdout_thread.join(timeout=1)
         except Exception:
             pass
-        try:
-            shutil.rmtree(temp_root, ignore_errors=True)
-        except Exception:
-            pass
+        # NE PAS supprimer temp_root : les pièces BT téléchargées + fichier .aria2 permettent
+        # de reprendre la session suivante là où on s'est arrêté (tit-for-tat accumulé).
+        # EXCEPTION : si cancel_ev est positionné (annulation explicite), le nettoyage
+        # a déjà été fait dans la boucle de surveillance (voir ci-dessus).
         try:
             os.remove(temp_manifest)
         except Exception:
             pass
+        _upnp_close_port(upnp_handle, bt_listen_port)
+        torrent_temp_roots.pop(task_id, None)
+        _aria2c_processes.pop(task_id, None)
         raise
 
 
@@ -1357,27 +1780,27 @@ def _normalize_archive_org_download_path(identifier: str, rest: str) -> str:
 
 # --- File d'attente de téléchargements (worker) ---
 def download_queue_worker():
-    """Worker qui surveille la file d'attente et lance le prochain téléchargement si aucun n'est actif."""
+    """Worker qui surveille la file d'attente et lance des téléchargements dans la limite des slots disponibles."""
     import time
     while True:
         try:
-            if not config.download_active and config.download_queue:
+            max_dl = getattr(config, 'max_simultaneous_downloads', 5)
+            active = getattr(config, 'active_download_count', 0)
+            if active < max_dl and config.download_queue:
                 job = config.download_queue.pop(0)
+                config.active_download_count = active + 1
                 config.download_active = True
-                logger.info(f"[QUEUE] Lancement du téléchargement: {job.get('game_name','?')} ({job.get('url','?')})")
-                # Démarrer le téléchargement selon le provider
+                logger.info(f"[QUEUE] Lancement téléchargement (slot {active+1}/{max_dl}): {job.get('game_name','?')}")
                 url = job['url']
                 platform = job['platform']
                 game_name = job['game_name']
                 is_zip_non_supported = job.get('is_zip_non_supported', False)
                 task_id = job.get('task_id') or f"queue_{int(time.time()*1000)}"
-                # Choix du provider (1fichier ou direct)
                 if is_1fichier_url(url):
                     t = threading.Thread(target=lambda: asyncio.run(download_from_1fichier(url, platform, game_name, is_zip_non_supported, task_id)), daemon=True)
                 else:
                     t = threading.Thread(target=lambda: asyncio.run(download_rom(url, platform, game_name, is_zip_non_supported, task_id)), daemon=True)
                 t.start()
-                # Le flag download_active sera remis à False à la fin du téléchargement (voir ci-dessous)
             time.sleep(1)
         except Exception as e:
             logger.error(f"[QUEUE] Erreur dans le worker de file d'attente: {e}")
@@ -1385,7 +1808,8 @@ def download_queue_worker():
 
 # Hook à appeler à la fin de chaque téléchargement pour libérer le slot
 def notify_download_finished():
-    config.download_active = False
+    config.active_download_count = max(0, getattr(config, 'active_download_count', 1) - 1)
+    config.download_active = config.active_download_count > 0
 
 # ================== TÉLÉCHARGEMENT 1FICHIER GRATUIT ==================
 # Fonction pour télécharger depuis 1fichier sans API key (mode gratuit)
@@ -2318,6 +2742,16 @@ cancel_events = {}
 # Pause events for downloads
 pause_events = {}  # {task_id: threading.Event} - Event is set when paused
 download_threads = {}
+# Chemins temp_root des téléchargements torrent en cours, indexés par task_id.
+# Permet de nettoyer le dossier temporaire lors d'une annulation même si cancel_events
+# a déjà été supprimé (téléchargement terminé côté thread mais UI encore "Téléchargement").
+torrent_temp_roots: dict[str, str] = {}
+# Process aria2c actifs indexés par task_id : permet de les tuer au shutdown.
+_aria2c_processes: dict[str, "subprocess.Popen"] = {}
+# Flag global : True quand l'application est en cours d'arrêt propre.
+# Permet d'ignorer les signaux d'annulation déclenchés par le shutdown asyncio
+# et de préserver l'état "Téléchargement" en historique pour la reprise.
+_app_shutting_down: bool = False
 # URLs actuellement en cours de téléchargement (pour éviter les doublons)
 urls_in_progress = set()
 urls_lock = threading.Lock()
@@ -2338,6 +2772,24 @@ def request_cancel(task_id: str) -> bool:
             logger.debug(f"Failed to set cancel for task_id={task_id}: {e}")
             return False
     logger.debug(f"No cancel event found for task_id={task_id}")
+    return False
+
+def cleanup_torrent_temp(task_id: str) -> bool:
+    """Supprime le dossier temporaire torrent associé à task_id.
+    
+    À appeler lors d'une annulation explicite par l'utilisateur (via l'UI),
+    notamment quand cancel_events ne contient plus le task_id (téléchargement
+    terminé côté thread mais statut UI encore 'Téléchargement').
+    Retourne True si un dossier a été supprimé.
+    """
+    temp_root = torrent_temp_roots.pop(task_id, None)
+    if temp_root and os.path.isdir(temp_root):
+        try:
+            shutil.rmtree(temp_root, ignore_errors=True)
+            logger.debug(f"cleanup_torrent_temp: dossier supprimé {temp_root}")
+            return True
+        except Exception as e:
+            logger.debug(f"cleanup_torrent_temp: erreur suppression {temp_root}: {e}")
     return False
 
 def toggle_pause_download(task_id: str) -> bool:
@@ -2397,6 +2849,31 @@ def cancel_all_downloads():
         save_history(history)
     except Exception as e:
         logger.error(f"Erreur lors de l'annulation des téléchargements en attente : {e}")
+
+
+def shutdown_downloads():
+    """Appelée au moment de quitter l'application proprement.
+    Tue tous les process aria2c actifs (les fichiers .aria2 sont conservés pour la reprise).
+    Laisse l'historique en état 'Téléchargement' pour permettre une reprise au prochain démarrage."""
+    global _app_shutting_down
+    _app_shutting_down = True
+    # Vider la file d'attente (pas de téléchargements futurs)
+    config.download_queue.clear()
+    config.download_active = False
+    # Tuer tous les process aria2c actifs
+    for _tid, _proc in list(_aria2c_processes.items()):
+        try:
+            if _proc.poll() is None:
+                _proc.terminate()
+                _proc.wait(timeout=3)
+        except Exception:
+            try:
+                _proc.kill()
+            except Exception:
+                pass
+        logger.debug(f"shutdown_downloads: aria2c tué pour task_id={_tid}")
+    _aria2c_processes.clear()
+    logger.debug("shutdown_downloads: _app_shutting_down=True, aria2c terminés, file d'attente vidée.")
 
 
 
@@ -3300,17 +3777,20 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     break
                     else:
                         # logger.debug(f"[QUEUE] Traitement données progression: {data}, task_id={task_id}")
-                        if len(data) >= 6:
+                        if len(data) >= 7:
+                            downloaded, total_size, speed, seeds, connections, phase = data[1], data[2], data[3], data[4], data[5], data[6]
+                        elif len(data) >= 6:
                             downloaded, total_size, speed, seeds, connections = data[1], data[2], data[3], data[4], data[5]
+                            phase = "downloading" if (data[3] > 0.001 or data[1] > 0) else "connecting"
                         elif len(data) >= 4:
                             downloaded, total_size, speed = data[1], data[2], data[3]
                             seeds, connections = 0, 0
+                            phase = "downloading" if data[3] > 0.001 else "connecting"
                         else:
                             downloaded, total_size = data[1], data[2]
                             speed, seeds, connections = 0.0, 0, 0
-                        # Certains trackers/DHT exposent SD=0 même en téléchargement actif.
-                        # Pour l'UI, on utilise CN comme fallback visuel de SD quand SD reste à 0.
-                        display_seeds = seeds if seeds > 0 else connections
+                            phase = "connecting"
+                        display_seeds = seeds
                         progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
                         progress_percent = max(0, min(100, progress_percent))
                         
@@ -3341,6 +3821,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     entry["speed"] = speed
                                     entry["seeds"] = display_seeds
                                     entry["connections"] = connections
+                                    entry["aria2_phase"] = phase
                                     entry["status"] = "Téléchargement"
                                     config.needs_redraw = True
                                     break
@@ -3357,6 +3838,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     entry["seeds"] = display_seeds
                                     entry["connections"] = connections
                                     entry["progress"] = progress_percent
+                                    entry["aria2_phase"] = phase
                                     entry["status"] = "Téléchargement"
                                     config.needs_redraw = True
                                     # Sauvegarder au plus une fois par palier de 5%

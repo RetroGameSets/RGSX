@@ -2449,6 +2449,32 @@ def format_size(size):
     return f"{size:.1f} {units[-1]}"  # Dernier niveau (Po/PB)
 
 
+def format_speed_adaptive(speed_mib_s):
+    """Formate une vitesse stockée en MiB/s avec une unité lisible selon son ordre de grandeur."""
+    try:
+        speed_mib_s = float(speed_mib_s or 0.0)
+    except Exception:
+        speed_mib_s = 0.0
+
+    if speed_mib_s <= 0:
+        units = get_size_units()
+        base = units[0] if units else "B"
+        return f"0 {base}/s"
+
+    bytes_per_second = speed_mib_s * 1024.0 * 1024.0
+    units = get_size_units()
+    if not units or len(units) < 4:
+        units = ["B", "KB", "MB", "GB"]
+
+    if bytes_per_second < 1024.0:
+        return f"{bytes_per_second:.0f} {units[0]}/s"
+    if bytes_per_second < (1024.0 ** 2):
+        return f"{bytes_per_second / 1024.0:.1f} {units[1]}/s"
+    if bytes_per_second < (1024.0 ** 3):
+        return f"{bytes_per_second / (1024.0 ** 2):.2f} {units[2]}/s"
+    return f"{bytes_per_second / (1024.0 ** 3):.2f} {units[3]}/s"
+
+
 def draw_history_list(screen):
     # logger.debug(f"Dessin historique, history={config.history}, needs_redraw={config.needs_redraw}")
     history = config.history if hasattr(config, 'history') else load_history()
@@ -2482,8 +2508,23 @@ def draw_history_list(screen):
             selected_speed = float(selected_entry.get("speed", 0.0) or 0.0)
         except Exception:
             selected_speed = 0.0
-        speed_text = f"{selected_speed:.2f} {get_speed_unit()}"
+        speed_text = format_speed_adaptive(selected_speed)
         title_text = _("history_title_downloading_active").format(size_text, speed_text)
+        # Afficher SD/CN dans le titre
+        _sd = int(selected_entry.get("seeds", 0) or 0)
+        _cn = int(selected_entry.get("connections", 0) or 0)
+        title_text = f"{title_text}  [{_sd}SD/{_cn}CN]"
+        # Afficher l'étape aria2c courante dans le titre (connecting / verifying / waiting).
+        # On ne montre rien quand on télécharge activement (speed > 0) car l'info de vitesse suffit.
+        _aria2_phase = str(selected_entry.get("aria2_phase") or "")
+        _phase_labels = {
+            "connecting": _("aria2_phase_connecting"),
+            "verifying":  _("aria2_phase_verifying"),
+            "waiting":    _("aria2_phase_waiting"),
+        }
+        _phase_label = _phase_labels.get(_aria2_phase, "")
+        if _phase_label:
+            title_text = f"{title_text}  [{_phase_label}]"
     elif selected_entry and selected_status in completed_statuses:
         completed_count = sum(1 for item in history if str(item.get("status") or "") in completed_statuses)
         title_text = _("history_title_completed_count").format(completed_count)
@@ -2642,10 +2683,9 @@ def draw_history_list(screen):
                 status_text = str(status)
             else:
                 # Comportement normal: afficher le pourcentage
-                status_text = _("history_status_downloading").format(progress)
-                display_connections = connections_value if connections_value > 0 else seeds_value
-                if display_connections > 0:
-                    status_text = f"{status_text} CN:{display_connections}"
+                display_progress = "<1" if (progress <= 0 and total_size_value > 0 and downloaded_size_value > 0) else progress
+                status_text = _("history_status_downloading").format(display_progress)
+                # SD/CN sont maintenant affichés dans le titre, pas ici
                 # Coerce to string and prefix provider when relevant
                 status_text = str(status_text or "")
                 if provider_prefix and not status_text.startswith(provider_prefix):
@@ -3955,7 +3995,7 @@ def draw_pause_games_menu(screen, selected_index):
     _draw_submenu_generic(screen, _("menu_games") if _ else "Games", options, selected_index, instruction_text)
 
 def draw_pause_settings_menu(screen, selected_index):
-    from rgsx_settings import get_auto_extract, get_roms_folder
+    from rgsx_settings import get_auto_extract, get_roms_folder, get_max_simultaneous_downloads
     # Music
     if config.music_enabled:
         music_name = config.current_music_name or ""
@@ -3988,6 +4028,10 @@ def draw_pause_settings_menu(screen, selected_index):
         roms_folder_txt = f"{_('settings_roms_folder')} : {display_path}"
     else:
         roms_folder_txt = f"{_('settings_roms_folder')} : < {_('settings_roms_folder_default')} >"
+
+    # Max simultaneous downloads option
+    max_dl = get_max_simultaneous_downloads()
+    max_dl_txt = f"{_('settings_max_simultaneous_dl')} : < {max_dl} >"
     
     # Web Service at boot (only on Linux/Batocera)
     web_service_txt = ""
@@ -4007,22 +4051,23 @@ def draw_pause_settings_menu(screen, selected_index):
     back_txt = _("menu_back") if _ else "Back"
     
     # Construction de la liste des options
-    options = [music_option, symlink_option, auto_extract_txt, roms_folder_txt]
+    options = [music_option, symlink_option, auto_extract_txt, roms_folder_txt, max_dl_txt]
     if web_service_txt:  # Ajouter seulement si Linux/Batocera
         options.append(web_service_txt)
     if custom_dns_txt:  # Ajouter seulement si Linux/Batocera
         options.append(custom_dns_txt)
     options.extend([api_keys_txt, connection_status_txt, back_txt])
-    
+
     # Index de l'option Dossier ROMs
     roms_folder_index = 3
-    
+
     # Instructions textuelles pour chaque option
     instruction_keys = [
         "instruction_settings_music",
         "instruction_settings_symlink",
         "instruction_settings_auto_extract",
         "instruction_settings_roms_folder",
+        "instruction_settings_max_simultaneous_dl",
     ]
     if web_service_txt:
         instruction_keys.append("instruction_settings_web_service")
@@ -4922,6 +4967,8 @@ def draw_folder_browser(screen):
     # Chemin actuel (tronqué si trop long)
     path_max_width = panel_width - 40
     path_display = current_path
+    if not path_display and os.name == 'nt':
+        path_display = "Available drives"
     while config.small_font.size(path_display)[0] > path_max_width and len(path_display) > 10:
         path_display = "..." + path_display[4:]
     path_text = config.small_font.render(path_display, True, THEME_COLORS["highlight"])
@@ -4961,15 +5008,19 @@ def draw_folder_browser(screen):
             pygame.draw.rect(screen, THEME_COLORS["highlight"], sel_rect, 2, border_radius=6)
         
         # Icône dossier (texte simple au lieu d'emoji)
-        folder_icon = "[..]" if item == ".." else "[D]"
+        is_drive = isinstance(item, str) and len(item) >= 2 and item[1] == ':'
+        folder_icon = "[..]" if item == ".." else ("[DRV]" if is_drive else "[D]")
         icon_text = config.small_font.render(folder_icon, True, THEME_COLORS["highlight"] if item == ".." else THEME_COLORS["text"])
-        screen.blit(icon_text, (panel_x + 30, item_y + (item_height - icon_text.get_height()) // 2))
+        icon_x = panel_x + 30
+        icon_y = item_y + (item_height - icon_text.get_height()) // 2
+        screen.blit(icon_text, (icon_x, icon_y))
         
         # Nom du dossier
         display_name = _("folder_browser_parent") if item == ".." and _ else (".." if item == ".." else item)
         text_color = THEME_COLORS["highlight"] if is_selected else THEME_COLORS["text"]
         item_text = config.small_font.render(display_name, True, text_color)
-        screen.blit(item_text, (panel_x + 70, item_y + (item_height - item_text.get_height()) // 2))
+        text_x = icon_x + icon_text.get_width() + 12
+        screen.blit(item_text, (text_x, item_y + (item_height - item_text.get_height()) // 2))
     
     # Indicateur de scroll si nécessaire
     if len(items) > visible_items:
@@ -5308,6 +5359,8 @@ def draw_history_game_options(screen):
     # Options selon statut
     if status == "Queued":
         # En attente dans la queue
+        options.append("force_download")
+        option_labels.append(_("history_option_force_download"))
         options.append("remove_from_queue")
         option_labels.append(_("history_option_remove_from_queue"))
     elif status in ["Downloading", "Téléchargement", "Extracting", "Paused"]:

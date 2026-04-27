@@ -197,6 +197,28 @@
             const lang = translations['_language'] || navigator.language.substring(0, 2);
             return lang === 'fr' ? 'Mo/s' : 'MB/s';
         }
+
+        function formatSpeedFromMib(speedMib) {
+            const speed = Number(speedMib || 0);
+            if (!Number.isFinite(speed) || speed <= 0) return '';
+
+            const lang = translations['_language'] || navigator.language.substring(0, 2);
+            const units = lang === 'fr'
+                ? ['o/s', 'Ko/s', 'Mo/s', 'Go/s']
+                : ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+
+            const bytesPerSecond = speed * 1024 * 1024;
+            if (bytesPerSecond < 1024) {
+                return `${bytesPerSecond.toFixed(0)} ${units[0]}`;
+            }
+            if (bytesPerSecond < 1024 * 1024) {
+                return `${(bytesPerSecond / 1024).toFixed(1)} ${units[1]}`;
+            }
+            if (bytesPerSecond < 1024 * 1024 * 1024) {
+                return `${(bytesPerSecond / (1024 * 1024)).toFixed(2)} ${units[2]}`;
+            }
+            return `${(bytesPerSecond / (1024 * 1024 * 1024)).toFixed(2)} ${units[3]}`;
+        }
         
         // Fonction pour formater une taille en octets
         function formatSize(bytes) {
@@ -1540,7 +1562,7 @@
                                 </div>
                                 <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.9em;">
                                     <span>${status} - ${percent.toFixed(1)}%</span>
-                                    <span>${speed > 0 ? speed.toFixed(2) + ' ' + getSpeedUnit() : ''}</span>
+                                    <span>${formatSpeedFromMib(speed)}</span>
                                 </div>
                                 ${total > 0 ? `<div style="font-size: 0.85em; color: #666;">${formatSize(downloaded)} / ${formatSize(total)}</div>` : ''}
                                 <div style="margin-top: 3px; font-size: 0.85em; color: #666;">
@@ -1608,7 +1630,7 @@
                                                 </div>
                                                 <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.9em;">
                                                     <span>${status} - ${percent.toFixed(1)}%</span>
-                                                    <span>${speed > 0 ? speed.toFixed(2) + ' ' + getSpeedUnit() : ''}</span>
+                                                    <span>${formatSpeedFromMib(speed)}</span>
                                                 </div>
                                                 ${total > 0 ? `<div style="font-size: 0.85em; color: #666;">${formatSize(downloaded)} / ${formatSize(total)}</div>` : ''}
                                                 <div style="margin-top: 3px; font-size: 0.85em; color: #666;">

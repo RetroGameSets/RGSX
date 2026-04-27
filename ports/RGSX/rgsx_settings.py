@@ -86,7 +86,8 @@ def load_rgsx_settings():
     "last_gamelist_update": None,
     "last_gamelist_prompt_remote_update": None,
     "global_sort_option": "name_asc",
-    "platform_custom_paths": {}  # Chemins personnalisés par plateforme
+    "platform_custom_paths": {},  # Chemins personnalisés par plateforme
+    "max_simultaneous_downloads": 5  # Limite de téléchargements simultanés
     }
     
     try:
@@ -689,3 +690,27 @@ def set_auto_extract(enabled: bool):
     except Exception as e:
         logger.error(f"Error setting auto_extract: {str(e)}")
         return False
+
+
+def get_max_simultaneous_downloads() -> int:
+    """Récupère la limite de téléchargements simultanés (1-10, défaut 5)."""
+    try:
+        settings = load_rgsx_settings()
+        val = settings.get("max_simultaneous_downloads", 5)
+        return max(1, min(10, int(val)))
+    except Exception:
+        return 5
+
+
+def set_max_simultaneous_downloads(value: int) -> int:
+    """Définit la limite de téléchargements simultanés et met à jour config. Retourne la valeur appliquée."""
+    value = max(1, min(10, int(value)))
+    try:
+        settings = load_rgsx_settings()
+        settings["max_simultaneous_downloads"] = value
+        save_rgsx_settings(settings)
+        config.max_simultaneous_downloads = value
+        logger.info(f"max_simultaneous_downloads set to {value}")
+    except Exception as e:
+        logger.error(f"Error setting max_simultaneous_downloads: {e}")
+    return value

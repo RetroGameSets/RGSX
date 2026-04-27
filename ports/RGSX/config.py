@@ -151,8 +151,12 @@ logger = logging.getLogger(__name__)
 # File d'attente de téléchargements (jobs en attente)
 download_queue = []  # Liste de dicts: {url, platform, game_name, ...}
 pending_download_is_queue = False  # Indique si pending_download doit être ajouté à la queue
-# Indique si un téléchargement est en cours
+# Indique si un téléchargement est en cours (True quand active_download_count > 0)
 download_active = False
+# Nombre de téléchargements actuellement actifs (mis à jour par controls.py et network.py)
+active_download_count = 0
+# Limite de téléchargements simultanés (chargée depuis rgsx_settings au démarrage, défaut 5)
+max_simultaneous_downloads = 5
 
 # Cache status de connexion (menu pause > settings)
 connection_status = {}

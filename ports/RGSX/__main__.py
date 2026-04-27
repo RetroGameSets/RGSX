@@ -83,7 +83,7 @@ from display import (
     draw_toast, show_toast, THEME_COLORS, sync_display_metrics
 )
 from language import _
-from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates, apply_pending_update, cancel_all_downloads, download_queue_worker
+from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates, apply_pending_update, cancel_all_downloads, shutdown_downloads, download_queue_worker
 from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls
 from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
@@ -97,13 +97,21 @@ from rgsx_settings import get_sources_mode, get_custom_sources_url, get_sources_
 from accessibility import  load_accessibility_settings
 
 # Configuration du logging
+# RotatingFileHandler : 20 MB max par fichier, 2 backups → 60 MB total maximum.
+# Évite les fichiers RGSX.log de 1.5 GB causés par le flood aria2c debug (résolu
+# par aria2_trace_enabled=False dans network.py, mais la rotation sert de garde-fou).
 try:
     os.makedirs(config.log_dir, exist_ok=True)
-    logging.basicConfig(
-        filename=config.log_file,
-        level=logging.DEBUG,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+    from logging.handlers import RotatingFileHandler as _RotatingFileHandler
+    _log_handler = _RotatingFileHandler(
+        config.log_file,
+        maxBytes=20 * 1024 * 1024,  # 20 MB
+        backupCount=2,
+        encoding='utf-8',
     )
+    _log_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logging.root.setLevel(logging.DEBUG)
+    logging.root.addHandler(_log_handler)
 except Exception as e:
     logging.basicConfig(
         level=logging.DEBUG,
@@ -208,6 +216,14 @@ try:
 except Exception:
     # fallback: si l'import ou la lecture échoue, conserver la valeur par défaut dans config
     logger.debug("Impossible de charger nintendo_layout depuis rgsx_settings")
+
+# Charger la limite de téléchargements simultanés depuis les settings
+try:
+    from rgsx_settings import get_max_simultaneous_downloads
+    config.max_simultaneous_downloads = get_max_simultaneous_downloads()
+    logger.debug(f"max_simultaneous_downloads initial: {config.max_simultaneous_downloads}")
+except Exception:
+    logger.debug("Impossible de charger max_simultaneous_downloads depuis rgsx_settings")
 
 # Détection du système grace a une commande windows / linux (on oublie is non-pc c'est juste pour connaitre le materiel et le systeme d'exploitation)
 def detect_system_info():
@@ -525,7 +541,34 @@ async def main():
     # Démarrer le worker de la queue de téléchargement
     queue_worker_thread = threading.Thread(target=download_queue_worker, daemon=True)
     queue_worker_thread.start()
-    
+
+    # Reprendre les téléchargements interrompus (statut "Téléchargement"/"Downloading")
+    # Ces entrées proviennent d'une session précédente fermée proprement sans annulation.
+    try:
+        interrupted = [
+            e for e in config.history
+            if e.get("status") in ("Téléchargement", "Downloading") and e.get("url")
+        ]
+        if interrupted:
+            logger.info(f"[RESUME] {len(interrupted)} téléchargement(s) interrompu(s) détecté(s), reprise...")
+        for entry in interrupted:
+            _url = entry["url"]
+            _platform = entry.get("platform", "")
+            _game_name = entry.get("game_name", "")
+            _task_id = f"resume_{pygame.time.get_ticks()}_{id(entry)}"
+            _is_zip = entry.get("is_zip_non_supported", False)
+            logger.info(f"[RESUME] Reprise: {_game_name} ({_platform}) task_id={_task_id}")
+            if is_1fichier_url(_url):
+                _coro = download_from_1fichier(_url, _platform, _game_name, _is_zip, _task_id)
+            else:
+                _coro = download_rom(_url, _platform, _game_name, _is_zip, _task_id)
+            config.download_tasks[_task_id] = (
+                asyncio.ensure_future(_coro),
+                _url, _game_name, _platform
+            )
+    except Exception as _e:
+        logger.error(f"[RESUME] Erreur lors de la reprise des téléchargements: {_e}")
+
     running = True
     loading_step = "none"
     ota_update_task = None
@@ -1741,11 +1784,12 @@ async def main():
             pygame.mixer.music.stop()
     except (AttributeError, NotImplementedError):
         pass
-    # Cancel any ongoing downloads to prevent lingering background threads
+    # Quitter proprement : vider la queue sans annuler les téléchargements actifs
+    # (les threads daemon s'arrêtent avec Python, l'historique reste en 'Téléchargement')
     try:
-        cancel_all_downloads()
+        shutdown_downloads()
     except Exception as e:
-        logger.debug(f"Erreur lors de l'annulation globale des téléchargements: {e}")
+        logger.debug(f"Erreur lors du shutdown des téléchargements: {e}")
     
     # Arrêter le serveur web
     stop_web_server()
