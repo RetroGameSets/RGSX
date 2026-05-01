@@ -3353,7 +3353,7 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archi
                 
                 cmd = [
                     "powershell", "-Command",
-                    f'$key = (Get-Content "{dkey_escaped}" -Raw).Trim(); ' +
+                    f'$key = [System.IO.File]::ReadAllText("{dkey_escaped}").Trim(); ' +
                     f'& "{ps3dec_escaped}" d key $key "{iso_escaped}" "{decrypted_escaped}"'
                 ]
             else:  # Linux
