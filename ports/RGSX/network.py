@@ -254,7 +254,7 @@ def _strip_ansi_escape_codes(text: str) -> str:
 
 
 def _parse_aria2_progress_line(line: str, total_size: int) -> dict[str, float | int] | None:
-    if not line or "[#" not in line:
+    if not line or ("[#" not in line and "[SEEDING#" not in line):
         return None
 
     line = _strip_ansi_escape_codes(line)
@@ -278,6 +278,12 @@ def _parse_aria2_progress_line(line: str, total_size: int) -> dict[str, float | 
         speed_bytes = _parse_aria2_size_to_bytes(speed_match.group(1))
         if speed_bytes is not None:
             result["speed_mib_s"] = speed_bytes / (1024 * 1024)
+
+    ul_match = re.search(r"UL:([0-9]+(?:\.[0-9]+)?(?:KiB|MiB|GiB|TiB|B))", line)
+    if ul_match:
+        ul_bytes = _parse_aria2_size_to_bytes(ul_match.group(1))
+        if ul_bytes is not None:
+            result["ul_speed_mib_s"] = ul_bytes / (1024 * 1024)
 
     cn_match = re.search(r'\bCN:(\d+)', line)
     if cn_match:
@@ -494,6 +500,7 @@ def _download_torrent_with_aria2(
     task_id: str,
     cancel_ev,
     progress_queue,
+    original_history_url: str = "",
 ) -> tuple[bool, str]:
     source_url = str(torrent_meta.get("source_url") or "")
     relative_path = str(torrent_meta.get("relative_path") or "").strip() or os.path.basename(dest_path)
@@ -830,10 +837,6 @@ def _download_torrent_with_aria2(
             shutil.rmtree(temp_root, ignore_errors=True)
         except Exception:
             pass
-        try:
-            os.remove(temp_manifest)
-        except Exception:
-            pass
 
         _upnp_close_port(upnp_handle, bt_listen_port)
         final_size = os.path.getsize(dest_path) if os.path.exists(dest_path) else total_size
@@ -841,6 +844,22 @@ def _download_torrent_with_aria2(
             progress_queue.put((task_id, final_size, max(total_size, final_size), 0.0))
         torrent_temp_roots.pop(task_id, None)
         _aria2c_processes.pop(task_id, None)
+        # Démarrer le seed en arrière-plan (temp_manifest sera supprimé par le seeder une fois terminé).
+        if original_history_url:
+            _start_background_seeder(
+                task_id=task_id,
+                source_url=source_url,
+                temp_manifest=temp_manifest,
+                dest_path=dest_path,
+                relative_path=relative_path,
+                file_index=file_index,
+                original_history_url=original_history_url,
+            )
+        else:
+            try:
+                os.remove(temp_manifest)
+            except Exception:
+                pass
         return True, _("network_download_ok").format(os.path.basename(dest_path))
     except Exception:
         try:
@@ -865,6 +884,296 @@ def _download_torrent_with_aria2(
         torrent_temp_roots.pop(task_id, None)
         _aria2c_processes.pop(task_id, None)
         raise
+
+
+def _update_seeding_status(original_history_url: str, peers: int, ul_speed: float = 0.0) -> None:
+    """Met à jour l'entrée historique avec le statut Seeding, le nombre de peers et la vitesse UL."""
+    if not isinstance(config.history, list):
+        return
+    for entry in config.history:
+        if entry.get("url") == original_history_url:
+            entry["status"] = "Seeding"
+            entry["seeds"] = peers
+            entry["ul_speed"] = ul_speed
+            config.needs_redraw = True
+            break
+
+
+def _stop_seeding_status(original_history_url: str) -> None:
+    """Restaure le statut Download_OK une fois le seed terminé."""
+    if not isinstance(config.history, list):
+        return
+    for entry in config.history:
+        if entry.get("url") == original_history_url:
+            if entry.get("status") == "Seeding":
+                entry["status"] = "Download_OK"
+                entry["seeds"] = 0
+                config.needs_redraw = True
+                _save_history_with_feedback("seeder:done")
+            break
+
+
+def _start_background_seeder(
+    task_id: str,
+    source_url: str,
+    temp_manifest: str,
+    dest_path: str,
+    relative_path: str,
+    file_index: int,
+    original_history_url: str,
+) -> None:
+    """Lance aria2c en mode seed pur dans un thread daemon après un téléchargement torrent réussi.
+
+    aria2c vérifie l'intégrité du fichier (hash-check) puis seed indéfiniment.
+    Le seed s'arrête automatiquement si le fichier est supprimé ou si l'app se ferme.
+    Le fichier temp_manifest (.torrent) est supprimé à la fin du seed.
+    """
+    def _seeder_worker() -> None:
+        import hashlib as _hashlib
+        import random as _random
+        dest_dir = os.path.dirname(dest_path)
+        dest_basename = os.path.basename(dest_path)
+        torrent_basename = os.path.basename(relative_path) or dest_basename
+
+        # Si le nom du fichier dans le torrent diffère du nom final (dest_path),
+        # créer un hard-link portant le nom attendu par aria2c dans un sous-dossier dédié.
+        # aria2c identifie les fichiers par leur nom (chemin interne du torrent) :
+        # sans ce lien, il recréerait le fichier depuis 0 au lieu de seeder.
+        _seed_key = _hashlib.md5(f"seed|{source_url}|{file_index}".encode()).hexdigest()[:12]
+        seed_work_dir = os.path.join(dest_dir, ".rgsx_seed", _seed_key)
+        link_created = False
+        seed_dir: str
+
+        if torrent_basename != dest_basename:
+            try:
+                os.makedirs(seed_work_dir, exist_ok=True)
+                link_path = os.path.join(seed_work_dir, torrent_basename)
+                if os.path.exists(link_path):
+                    os.remove(link_path)
+                os.link(dest_path, link_path)   # hard-link (même volume)
+                seed_dir = seed_work_dir
+                link_created = True
+            except OSError:
+                # Hard-link impossible (volumes différents, etc.) → seed dans dest_dir
+                # avec le nom réel ; aria2c risque de ne pas trouver le fichier et
+                # de le re-télécharger, mais c'est mieux que de ne pas essayer.
+                logger.warning(
+                    "[seeder] impossible de créer un hard-link pour %s ; "
+                    "le seed peut échouer si le nom ne correspond pas au torrent",
+                    dest_path,
+                )
+                seed_dir = dest_dir
+        else:
+            seed_dir = dest_dir
+
+        try:
+            aria2c_cmd = _resolve_aria2c_command()
+        except Exception as exc:
+            logger.warning("[seeder] aria2c indisponible, seed annulé : %s", exc)
+            try:
+                os.remove(temp_manifest)
+            except Exception:
+                pass
+            if link_created:
+                try:
+                    shutil.rmtree(seed_work_dir, ignore_errors=True)
+                except Exception:
+                    pass
+            return
+
+        bt_listen_port = _random.randint(40000, 50000)
+        bt_listen_port_range = f"{bt_listen_port}-{bt_listen_port + 10}"
+        dht_state_file = os.path.join(config.CONFIG_FOLDER, "dht.dat")
+        upnp_handle = _upnp_open_port(bt_listen_port, description="RGSX-BT-SEED")
+
+        dht_bootstrap_nodes = [
+            "router.bittorrent.com:6881",
+            "router.utorrent.com:6881",
+            "dht.transmissionbt.com:6881",
+        ]
+        public_trackers = [
+            "http://tracker.opentrackr.org:1337/announce",
+            "http://tracker.openbittorrent.com:80/announce",
+            "http://open.acgnxtracker.com:80/announce",
+            "http://tracker.bt4g.com:2095/announce",
+            "http://tracker.files.fm:6969/announce",
+            "http://tracker.gbitt.info:80/announce",
+            "http://vps02.net.orel.ru:80/announce",
+            "http://t.nyaatracker.com:80/announce",
+            "https://1337.abcvg.info:443/announce",
+            "https://opentracker.i2p.rocks:443/announce",
+            "https://tracker.gbitt.info:443/announce",
+            "https://tracker.loligirl.cn:443/announce",
+            "https://tracker.nanoha.org:443/announce",
+            "https://tracker.sloppyta.co:443/announce",
+            "https://tracker1.ctix.cn:443/announce",
+            "udp://tracker.opentrackr.org:1337/announce",
+            "udp://tracker.openbittorrent.com:6969/announce",
+            "udp://open.stealth.si:80/announce",
+            "udp://open.demonii.com:1337/announce",
+            "udp://opentracker.i2p.rocks:6969/announce",
+            "udp://opentracker.io:6969/announce",
+            "udp://exodus.desync.com:6969/announce",
+            "udp://explodie.org:6969/announce",
+            "udp://tracker.torrent.eu.org:451/announce",
+            "udp://tracker.moeking.me:6969/announce",
+            "udp://tracker.dler.org:6969/announce",
+            "udp://tracker.tiny-vps.com:6969/announce",
+            "udp://tracker.filemail.com:6969/announce",
+            "udp://tracker.therarbg.com:6969/announce",
+            "udp://tracker.therarbg.to:6969/announce",
+            "udp://tracker-udp.gbitt.info:80/announce",
+            "udp://tracker.0x.tf:6969/announce",
+            "udp://p4p.arenabg.com:1337/announce",
+            "udp://movies.zsw.ca:6969/announce",
+            "udp://new-line.net:6969/announce",
+            "udp://moonburrow.club:6969/announce",
+            "udp://epider.me:6969/announce",
+            "udp://bt1.archive.org:6969/announce",
+            "udp://bt2.archive.org:6969/announce",
+            "udp://bt.ktrackers.com:6666/announce",
+            "udp://fe.dealclub.de:6969/announce",
+            "udp://ipv4.tracker.harry.lu:80/announce",
+            "udp://public.tracker.vraphim.com:6969/announce",
+        ]
+
+        cmd = [
+            aria2c_cmd,
+            "--no-conf=true",
+            # Seed indéfiniment : seed-time=525600 = 365 jours en minutes.
+            # aria2c interprète --seed-time=-1 comme ≤ 0 (même effet que 0 = pas de seed).
+            # Notre boucle de monitoring arrête le processus dès que le fichier est supprimé.
+            "--seed-time=525600",
+            "--seed-ratio=0.0",
+            "--file-allocation=none",
+            "--allow-overwrite=false",
+            "--auto-file-renaming=false",
+            "--bt-remove-unselected-file=false",
+            "--enable-peer-exchange=true",
+            "--bt-enable-lpd=true",
+            "--bt-max-peers=0",
+            "--bt-min-crypto-level=plain",
+            "--bt-require-crypto=false",
+            "--enable-dht=true",
+            "--enable-dht6=false",
+            f"--dht-file-path={dht_state_file}",
+            f"--select-file={file_index}",
+            f"--dir={seed_dir}",
+            "--summary-interval=1",
+            "--download-result=hide",
+            f"--listen-port={bt_listen_port_range}",
+            f"--dht-listen-port={bt_listen_port_range}",
+            "--bt-tracker-timeout=60",
+            "--bt-tracker-connect-timeout=30",
+            # Vérifier que le fichier est intact avant de seeder.
+            "--check-integrity=true",
+            "--console-log-level=notice",
+            "--enable-color=false",
+            temp_manifest,
+        ]
+        for node in dht_bootstrap_nodes:
+            cmd.insert(1, f"--dht-entry-point={node}")
+        cmd.insert(1, f"--bt-tracker={','.join(public_trackers)}")
+        cmd.insert(1, "--bt-tracker-interval=60")
+        if config.OPERATING_SYSTEM == "Windows":
+            cmd.insert(1, "--disable-ipv6=true")
+
+        logger.info("[seeder] démarrage seed pour %s, port=%s", dest_path, bt_listen_port_range)
+
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+            )
+        except Exception as exc:
+            logger.error("[seeder] impossible de démarrer aria2c pour le seed : %s", exc)
+            _upnp_close_port(upnp_handle, bt_listen_port)
+            try:
+                os.remove(temp_manifest)
+            except Exception:
+                pass
+            if link_created:
+                try:
+                    shutil.rmtree(seed_work_dir, ignore_errors=True)
+                except Exception:
+                    pass
+            return
+
+        _active_seeders[task_id] = {
+            "process": process,
+            "dest_path": dest_path,
+            "peers": 0,
+            "original_history_url": original_history_url,
+        }
+        _update_seeding_status(original_history_url, peers=0)
+
+        def _consume_seed_stdout() -> None:
+            if not process.stdout:
+                return
+            for raw_line in iter(process.stdout.readline, ""):
+                line = _strip_ansi_escape_codes(raw_line).strip()
+                if not line:
+                    continue
+                parsed = _parse_aria2_progress_line(line, 0)
+                if parsed is not None:
+                    cn = int(parsed.get("connections") or 0)
+                    ul = float(parsed.get("ul_speed_mib_s") or 0.0)
+                    if task_id in _active_seeders:
+                        _active_seeders[task_id]["peers"] = cn
+                        _active_seeders[task_id]["ul_speed"] = ul
+                    _update_seeding_status(original_history_url, peers=cn, ul_speed=ul)
+                if any(kw in line for kw in ("NOTICE", "WARN", "ERROR", "tracker", "Tracker")):
+                    logger.debug("[seeder/aria2c] %s", line)
+
+        stdout_thread = threading.Thread(target=_consume_seed_stdout, daemon=True)
+        stdout_thread.start()
+
+        try:
+            while process.poll() is None:
+                if _app_shutting_down:
+                    logger.info("[seeder] arrêt app détecté, seed terminé pour %s", dest_path)
+                    process.terminate()
+                    break
+                if not os.path.exists(dest_path):
+                    logger.info("[seeder] fichier supprimé, seed terminé : %s", dest_path)
+                    process.terminate()
+                    break
+                time.sleep(2.0)
+            try:
+                process.wait(timeout=5)
+            except Exception:
+                try:
+                    process.kill()
+                    process.wait(timeout=5)
+                except Exception:
+                    pass
+        finally:
+            stdout_thread.join(timeout=2)
+            _upnp_close_port(upnp_handle, bt_listen_port)
+            _active_seeders.pop(task_id, None)
+            _stop_seeding_status(original_history_url)
+            try:
+                os.remove(temp_manifest)
+            except Exception:
+                pass
+            if link_created:
+                try:
+                    shutil.rmtree(seed_work_dir, ignore_errors=True)
+                except Exception:
+                    pass
+            logger.info("[seeder] seed terminé pour %s", dest_path)
+
+    seeder_thread = threading.Thread(
+        target=_seeder_worker,
+        name=f"seeder-{task_id}",
+        daemon=True,
+    )
+    seeder_thread.start()
 
 
 def _build_browser_download_headers(referer: str | None = None, accept: str = 'application/octet-stream,*/*;q=0.8') -> dict:
@@ -2748,6 +3057,8 @@ download_threads = {}
 torrent_temp_roots: dict[str, str] = {}
 # Process aria2c actifs indexés par task_id : permet de les tuer au shutdown.
 _aria2c_processes: dict[str, "subprocess.Popen"] = {}
+# Process aria2c de seed post-téléchargement, indexés par task_id.
+_active_seeders: dict[str, dict] = {}
 # Flag global : True quand l'application est en cours d'arrêt propre.
 # Permet d'ignorer les signaux d'annulation déclenchés par le shutdown asyncio
 # et de préserver l'état "Téléchargement" en historique pour la reprise.
@@ -2873,6 +3184,21 @@ def shutdown_downloads():
                 pass
         logger.debug(f"shutdown_downloads: aria2c tué pour task_id={_tid}")
     _aria2c_processes.clear()
+    # Tuer tous les seeders actifs
+    for _tid, _info in list(_active_seeders.items()):
+        _proc = _info.get("process")
+        if _proc is not None:
+            try:
+                if _proc.poll() is None:
+                    _proc.terminate()
+                    _proc.wait(timeout=3)
+            except Exception:
+                try:
+                    _proc.kill()
+                except Exception:
+                    pass
+        logger.debug(f"shutdown_downloads: seeder tué pour task_id={_tid}")
+    _active_seeders.clear()
     logger.debug("shutdown_downloads: _app_shutting_down=True, aria2c terminés, file d'attente vidée.")
 
 
@@ -3066,6 +3392,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     task_id,
                     cancel_ev,
                     progress_queues[task_id],
+                    original_history_url,
                 )
                 result[0] = success
                 result[1] = message

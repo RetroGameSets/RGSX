@@ -2525,6 +2525,11 @@ def draw_history_list(screen):
         _phase_label = _phase_labels.get(_aria2_phase, "")
         if _phase_label:
             title_text = f"{title_text}  [{_phase_label}]"
+    elif selected_entry and selected_status == "Seeding":
+        _cn = int(selected_entry.get("seeds", 0) or 0)
+        _ul = float(selected_entry.get("ul_speed", 0.0) or 0.0)
+        _ul_text = format_speed_adaptive(_ul)
+        title_text = f"Seeding - {_ul_text} - [{_cn}p]"
     elif selected_entry and selected_status in completed_statuses:
         completed_count = sum(1 for item in history if str(item.get("status") or "") in completed_statuses)
         title_text = _("history_title_completed_count").format(completed_count)
@@ -2699,6 +2704,10 @@ def draw_history_list(screen):
             # Completed: no provider prefix (per requirement)
             status_text = _("history_status_completed")
             status_text = str(status_text or "")
+        elif status == "Seeding":
+            _cn = int(entry.get("seeds", 0) or 0)
+            status_text = _("history_status_seeding").format(_cn)
+            status_text = str(status_text or "")
         elif status == "Erreur":
             # Prefer friendly mapped message now stored in 'message'
             status_text = entry.get('message')
@@ -2728,6 +2737,9 @@ def draw_history_list(screen):
         elif status == "Download_OK" or status == "Completed":
             # Use green OK color
             status_color = THEME_COLORS.get("success_text", (0, 255, 0))
+        elif status == "Seeding":
+            # Seeding : couleur verte légèrement différente
+            status_color = THEME_COLORS.get("success_text", (0, 220, 120))
         elif status in ("Downloading", "Téléchargement", "downloading", "Extracting", "Converting", "Queued", "Connecting"):
             # En cours - couleur bleue/cyan pour différencier des autres
             status_color = THEME_COLORS.get("text_selected", (100, 180, 255))
@@ -3529,7 +3541,11 @@ def draw_display_menu(screen):
 def draw_pause_menu(screen, selected_option):
     """Dessine le menu pause racine (catégories)."""
     screen.blit(OVERLAY, (0, 0))
-    # Nouvel ordre: Games / Language / Controls / Display / Settings / Support / Quit
+    # Nouvel ordre: Games / Language / Controls / Display / Settings / Support / Reset / Quit
+    reset_label = _("menu_reset_default_settings") if _ else "Reset default settings"
+    if not reset_label or reset_label == "menu_reset_default_settings":
+        reset_label = "Reset default settings"
+
     options = [
         _("menu_games") if _ else "Games",                  # 0 -> sous-menu games (history + sources + update)
         _("menu_language") if _ else "Language",            # 1 -> sélecteur de langue direct
@@ -3537,7 +3553,8 @@ def draw_pause_menu(screen, selected_option):
         _("menu_display"),                                  # 3 -> sous-menu display
         _("menu_settings_category") if _ else "Settings",   # 4 -> sous-menu settings
         _("menu_support"),                                  # 5 -> support
-        _("menu_quit")                                      # 6 -> sous-menu quit (quit + restart)
+        reset_label,                                          # 6 -> reset settings (delete + restart)
+        _("menu_quit")                                      # 7 -> sous-menu quit (quit + restart)
     ]
     
     # Instruction contextuelle pour l'option sélectionnée
@@ -3548,11 +3565,14 @@ def draw_pause_menu(screen, selected_option):
         "instruction_pause_display",
         "instruction_pause_settings",
         "instruction_pause_support",
+        "instruction_pause_reset_settings",
         "instruction_pause_quit",
     ]
     try:
         key = instruction_keys[selected_option]
         instruction_text = _(key)
+        if instruction_text == key:
+            instruction_text = ""
     except Exception:
         instruction_text = ""
     
@@ -4807,6 +4827,72 @@ def draw_reload_games_data_dialog(screen):
     draw_stylized_button(screen, _("button_no"), no_x, buttons_y, button_width, button_height, selected=config.redownload_confirm_selection == 0)
 
 
+def draw_reset_settings_confirm_dialog(screen):
+    """Affiche un avertissement avant reset des paramètres (oui/non)."""
+    global OVERLAY
+    if OVERLAY is None or OVERLAY.get_size() != (config.screen_width, config.screen_height):
+        OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
+        OVERLAY.fill((0, 0, 0, 150))
+
+    screen.blit(OVERLAY, (0, 0))
+
+    title = _("menu_reset_default_settings") if _ else "Reset default settings"
+    if not title or title == "menu_reset_default_settings":
+        title = "Reset default settings"
+
+    message = _("confirm_reset_settings_warning") if _ else (
+        "Warning: no file, history or game will be deleted.\n"
+        "Only settings will be reset (platform filtering, sort order, custom ROM paths).\n"
+        "Continue?"
+    )
+    if not message or message == "confirm_reset_settings_warning":
+        message = (
+            "Warning: no file, history or game will be deleted.\n"
+            "Only settings will be reset (platform filtering, sort order, custom ROM paths).\n"
+            "Continue?"
+        )
+
+    wrapped_message = []
+    for paragraph in str(message).split("\n"):
+        lines = wrap_text(paragraph, config.small_font, config.screen_width - 120) if paragraph else [""]
+        wrapped_message.extend(lines)
+
+    line_height = config.small_font.get_height() + 5
+    title_height = config.font.get_height() + 10
+    text_height = len(wrapped_message) * line_height
+    sample_text = config.small_font.render("Sample", True, THEME_COLORS["text"])
+    font_height = sample_text.get_height()
+    button_height = max(int(config.screen_height * 0.0463), font_height + 15)
+    margin_top_bottom = 20
+    rect_height = title_height + text_height + button_height + 2 * margin_top_bottom + 8
+    max_text_width = max([config.small_font.size(line)[0] for line in wrapped_message], default=420)
+    title_width = config.font.size(title)[0]
+    rect_width = max(max_text_width + 80, title_width + 80)
+    rect_x = (config.screen_width - rect_width) // 2
+    rect_y = (config.screen_height - rect_height) // 2
+
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
+
+    title_surface = config.font.render(title, True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + title_height // 2))
+    screen.blit(title_surface, title_rect)
+
+    text_top = rect_y + margin_top_bottom + title_height
+    for i, line in enumerate(wrapped_message):
+        text = config.small_font.render(line, True, THEME_COLORS["text"])
+        text_rect = text.get_rect(center=(config.screen_width // 2, text_top + i * line_height + line_height // 2))
+        screen.blit(text, text_rect)
+
+    button_width = min(170, (rect_width - 60) // 2)
+    yes_x = rect_x + rect_width // 2 - button_width - 10
+    no_x = rect_x + rect_width // 2 + 10
+    buttons_y = rect_y + margin_top_bottom + title_height + text_height + 8
+    sel = int(getattr(config, 'reset_settings_confirm_selection', 0))
+    draw_stylized_button(screen, _("button_yes"), yes_x, buttons_y, button_width, button_height, selected=sel == 1)
+    draw_stylized_button(screen, _("button_no"), no_x, buttons_y, button_width, button_height, selected=sel == 0)
+
+
 def draw_gamelist_update_prompt(screen):
     """Affiche la boîte de dialogue pour proposer la mise à jour de la liste des jeux."""
     global OVERLAY
@@ -5373,7 +5459,7 @@ def draw_history_game_options(screen):
             option_labels.append(_("history_option_pause_download"))
         options.append("cancel_download")
         option_labels.append(_("history_option_cancel_download"))
-    elif status == "Download_OK" or status == "Completed":
+    elif status == "Download_OK" or status == "Completed" or status == "Seeding":
         # Vérifier si c'est une archive ET si le fichier existe
         if actual_filename and file_exists:
             ext = os.path.splitext(actual_filename)[1].lower()

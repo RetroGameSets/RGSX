@@ -275,7 +275,7 @@ def clear_history():
         # Charger l'historique actuel
         current_history = load_history()
 
-        active_statuses = {"Downloading", "Téléchargement", "downloading", "Extracting", "Converting", "Queued"}
+        active_statuses = {"Downloading", "Téléchargement", "downloading", "Extracting", "Converting", "Queued", "Seeding"}
 
         active_task_ids = set(getattr(config, 'download_tasks', {}).keys())
         active_progress_urls = set(getattr(config, 'download_progress', {}).keys())
@@ -298,6 +298,9 @@ def clear_history():
 
             task_id = entry.get("task_id")
             url = entry.get("url")
+
+            if status == "Seeding":
+                return True
 
             if status == "Queued":
                 return task_id in queued_task_ids or url in queued_urls

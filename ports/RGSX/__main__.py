@@ -827,7 +827,7 @@ async def main():
                 (event.type == pygame.JOYHATMOTION and start_config.get("type") == "hat" and event.value == tuple(start_config.get("value") if isinstance(start_config.get("value"), list) else start_config.get("value"))) or
                 (event.type == pygame.MOUSEBUTTONDOWN and start_config.get("type") == "mouse" and event.button == start_config.get("button"))
             ):
-                if config.menu_state not in ["pause_menu", "controls_help", "controls_mapping", "history", "confirm_clear_history"]:
+                if config.menu_state not in ["pause_menu", "controls_help", "controls_mapping", "history", "confirm_clear_history", "reset_settings_confirm"]:
                     config.previous_menu_state = config.menu_state
                     # Capturer l'état d'origine pour une sortie fiable du menu pause
                     config.pause_origin_state = config.menu_state
@@ -858,6 +858,7 @@ async def main():
                 "controls_help",
                 "confirm_cancel_download",
                 "reload_games_data",
+                "reset_settings_confirm",
                 # Menus historique
                 "history_game_options",
                 "history_show_folder",
@@ -1355,6 +1356,9 @@ async def main():
                 draw_cancel_download_dialog(screen)
             elif config.menu_state == "reload_games_data":
                 draw_reload_games_data_dialog(screen)
+            elif config.menu_state == "reset_settings_confirm":
+                from display import draw_reset_settings_confirm_dialog
+                draw_reset_settings_confirm_dialog(screen)
             elif config.menu_state == "gamelist_update_prompt":
                 from display import draw_gamelist_update_prompt
                 draw_gamelist_update_prompt(screen)

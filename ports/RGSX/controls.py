@@ -254,6 +254,7 @@ VALID_STATES = [
     "platform", "game", "confirm_exit",
     "extension_warning", "pause_menu", "controls_help", "history", "controls_mapping",
     "reload_games_data", "restart_popup", "error", "loading", "confirm_clear_history",
+    "reset_settings_confirm",
     "language_select", "filter_platforms", "display_menu", "confirm_cancel_download",
     "gamelist_update_prompt", "platform_folder_config",
     # Nouveaux sous-menus hiérarchiques (refonte pause menu)
@@ -2555,12 +2556,12 @@ def handle_controls(event, sources, joystick, screen):
                 logger.debug(f"Start: retour à {config.menu_state} depuis pause_menu")
             elif is_input_matched(event, "up"):
                 # Menu racine hiérarchique: nombre dynamique (langue + catégories)
-                total = getattr(config, 'pause_menu_total_options', 7)
+                total = getattr(config, 'pause_menu_total_options', 8)
                 config.selected_option = (config.selected_option - 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "down"):
                 # Menu racine hiérarchique: nombre dynamique (langue + catégories)
-                total = getattr(config, 'pause_menu_total_options', 7)
+                total = getattr(config, 'pause_menu_total_options', 8)
                 config.selected_option = (config.selected_option + 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
@@ -2604,7 +2605,13 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "support_dialog"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 6:  # Quit submenu
+                elif config.selected_option == 6:  # Reset default settings (delete file + restart)
+                    config.previous_menu_state = "pause_menu"
+                    config.menu_state = "reset_settings_confirm"
+                    config.reset_settings_confirm_selection = 0  # 0=No, 1=Yes
+                    config.last_state_change_time = pygame.time.get_ticks()
+                    config.needs_redraw = True
+                elif config.selected_option == 7:  # Quit submenu
                     # Capturer l'origine pause_menu pour retour si annulation
                     config.confirm_exit_origin = "pause_menu"
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
@@ -3654,6 +3661,51 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = validate_menu_state(config.previous_menu_state)
                 config.needs_redraw = True
                 logger.debug(f"Retour à {config.menu_state} depuis reload_games_data")
+
+        # Confirmation reset settings (warning + yes/no)
+        elif config.menu_state == "reset_settings_confirm":
+            if is_input_matched(event, "left") or is_input_matched(event, "right"):
+                config.reset_settings_confirm_selection = 1 - int(getattr(config, 'reset_settings_confirm_selection', 0))
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                if int(getattr(config, 'reset_settings_confirm_selection', 0)) == 1:  # Yes
+                    try:
+                        settings_path = getattr(config, 'RGSX_SETTINGS_PATH', '')
+                        if settings_path and os.path.exists(settings_path):
+                            os.remove(settings_path)
+                            logger.info(f"Paramètres supprimés: {settings_path}")
+                        else:
+                            logger.info(f"Aucun fichier paramètres à supprimer: {settings_path}")
+
+                        restart_msg = _("popup_settings_reset_restarting") if _ else "Default settings reset. Restarting..."
+                        if not restart_msg or restart_msg == "popup_settings_reset_restarting":
+                            restart_msg = "Default settings reset. Restarting..."
+
+                        config.menu_state = "restart_popup"
+                        config.popup_message = restart_msg
+                        config.popup_timer = 2000
+                        config.last_state_change_time = pygame.time.get_ticks()
+                        config.needs_redraw = True
+                        restart_application(2000)
+                    except Exception as e:
+                        logger.error(f"Erreur reset paramètres par défaut: {e}")
+                        err_tpl = _("popup_settings_reset_error") if _ else "Unable to reset settings: {0}"
+                        if not err_tpl or err_tpl == "popup_settings_reset_error":
+                            config.popup_message = f"Unable to reset settings: {e}"
+                        else:
+                            try:
+                                config.popup_message = err_tpl.format(str(e))
+                            except Exception:
+                                config.popup_message = f"Unable to reset settings: {e}"
+                        config.popup_timer = 5000
+                        config.menu_state = "pause_menu"
+                        config.needs_redraw = True
+                else:  # No
+                    config.menu_state = "pause_menu"
+                    config.needs_redraw = True
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "start"):
+                config.menu_state = "pause_menu"
+                config.needs_redraw = True
        
        
         # Popup de redémarrage
