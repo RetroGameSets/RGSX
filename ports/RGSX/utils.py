@@ -4073,7 +4073,6 @@ def load_api_keys(force: bool = False):
             'debridlink': getattr(config, 'API_KEY_DEBRIDLINK', ''),
             'realdebrid': getattr(config, 'API_KEY_REALDEBRID', ''),
             'torbox': getattr(config, 'API_KEY_TORBOX', ''),
-            'torbox': getattr(config, 'API_KEY_TORBOX', ''),
             'reloaded': False
         }
 
