@@ -3996,14 +3996,14 @@ def set_music_popup(music_name):
     config.needs_redraw = True  # Forcer le redraw pour afficher le nom de la musique
 
 def load_api_keys(force: bool = False):
-    """Charge les clés API (1fichier, AllDebrid, Debrid-Link, RealDebrid) en une seule passe.
+    """Charge les clés API (1fichier, AllDebrid, Debrid-Link, RealDebrid, TorBox) en une seule passe.
 
     - Crée les fichiers vides s'ils n'existent pas
-    - Met à jour config.API_KEY_1FICHIER, config.API_KEY_ALLDEBRID, config.API_KEY_DEBRIDLINK, config.API_KEY_REALDEBRID
+    - Met à jour config.API_KEY_1FICHIER, config.API_KEY_ALLDEBRID, config.API_KEY_DEBRIDLINK, config.API_KEY_REALDEBRID, config.API_KEY_TORBOX
     - Utilise un cache basé sur le mtime pour éviter des relectures
     - force=True ignore le cache et relit systématiquement
 
-    Retourne: { '1fichier': str, 'alldebrid': str, 'debridlink': str, 'realdebrid': str, 'reloaded': bool }
+    Retourne: { '1fichier': str, 'alldebrid': str, 'debridlink': str, 'realdebrid': str, 'torbox': str, 'reloaded': bool }
     """
     try:
         paths = {
@@ -4011,10 +4011,11 @@ def load_api_keys(force: bool = False):
             'alldebrid': getattr(config, 'API_KEY_ALLDEBRID_PATH', ''),
             'debridlink': getattr(config, 'API_KEY_DEBRIDLINK_PATH', ''),
             'realdebrid': getattr(config, 'API_KEY_REALDEBRID_PATH', ''),
+            'torbox': getattr(config, 'API_KEY_TORBOX_PATH', ''),
         }
         cache_attr = '_api_keys_cache'
         if not hasattr(config, cache_attr):
-            setattr(config, cache_attr, {'1fichier_mtime': None, 'alldebrid_mtime': None, 'debridlink_mtime': None, 'realdebrid_mtime': None})
+            setattr(config, cache_attr, {'1fichier_mtime': None, 'alldebrid_mtime': None, 'debridlink_mtime': None, 'realdebrid_mtime': None, 'torbox_mtime': None})
         cache_data = getattr(config, cache_attr)
         reloaded = False
 
@@ -4052,6 +4053,8 @@ def load_api_keys(force: bool = False):
                     config.API_KEY_DEBRIDLINK = value
                 elif key_name == 'realdebrid':
                     config.API_KEY_REALDEBRID = value
+                elif key_name == 'torbox':
+                    config.API_KEY_TORBOX = value
                 cache_data[cache_key] = mtime
                 reloaded = True
         return {
@@ -4059,6 +4062,7 @@ def load_api_keys(force: bool = False):
             'alldebrid': getattr(config, 'API_KEY_ALLDEBRID', ''),
             'debridlink': getattr(config, 'API_KEY_DEBRIDLINK', ''),
             'realdebrid': getattr(config, 'API_KEY_REALDEBRID', ''),
+            'torbox': getattr(config, 'API_KEY_TORBOX', ''),
             'reloaded': reloaded
         }
     except Exception as e:
@@ -4068,6 +4072,8 @@ def load_api_keys(force: bool = False):
             'alldebrid': getattr(config, 'API_KEY_ALLDEBRID', ''),
             'debridlink': getattr(config, 'API_KEY_DEBRIDLINK', ''),
             'realdebrid': getattr(config, 'API_KEY_REALDEBRID', ''),
+            'torbox': getattr(config, 'API_KEY_TORBOX', ''),
+            'torbox': getattr(config, 'API_KEY_TORBOX', ''),
             'reloaded': False
         }
 
@@ -4124,10 +4130,10 @@ def load_archive_org_cookie(force: bool = False) -> str:
 
 
 def save_api_keys(api_keys: dict):
-    """Sauvegarde les clés API (1fichier, AllDebrid, Debrid-Link, RealDebrid) dans leurs fichiers respectifs.
+    """Sauvegarde les clés API (1fichier, AllDebrid, Debrid-Link, RealDebrid, TorBox) dans leurs fichiers respectifs.
 
     Args:
-        api_keys: dict avec les clés '1fichier', 'alldebrid', 'debridlink', 'realdebrid'
+        api_keys: dict avec les clés '1fichier', 'alldebrid', 'debridlink', 'realdebrid', 'torbox'
     
     Retourne: True si au moins une clé a été sauvegardée avec succès
     """
@@ -4139,6 +4145,7 @@ def save_api_keys(api_keys: dict):
         'alldebrid': getattr(config, 'API_KEY_ALLDEBRID_PATH', ''),
         'debridlink': getattr(config, 'API_KEY_DEBRIDLINK_PATH', ''),
         'realdebrid': getattr(config, 'API_KEY_REALDEBRID_PATH', ''),
+        'torbox': getattr(config, 'API_KEY_TORBOX_PATH', ''),
     }
     
     saved_any = False
@@ -4169,6 +4176,8 @@ def save_api_keys(api_keys: dict):
                 config.API_KEY_DEBRIDLINK = value.strip()
             elif key_name == 'realdebrid':
                 config.API_KEY_REALDEBRID = value.strip()
+            elif key_name == 'torbox':
+                config.API_KEY_TORBOX = value.strip()
             
             # Invalider le cache mtime
             cache_attr = '_api_keys_cache'
@@ -4198,6 +4207,9 @@ def load_api_key_debridlink(force: bool = False):  # pragma: no cover
 def load_api_key_realdebrid(force: bool = False):  # pragma: no cover
     return load_api_keys(force).get('realdebrid', '')
 
+def load_api_key_torbox(force: bool = False):  # pragma: no cover
+    return load_api_keys(force).get('torbox', '')
+
 # Ancien nom conservé comme alias
 def ensure_api_keys_loaded(force: bool = False):  # pragma: no cover
     return load_api_keys(force)
@@ -4207,10 +4219,10 @@ def ensure_api_keys_loaded(force: bool = False):  # pragma: no cover
 # ------------------------------
 def build_provider_paths_string():
     """Retourne une chaîne listant les chemins des fichiers de clés pour affichage/erreurs."""
-    return f"{getattr(config, 'API_KEY_1FICHIER_PATH', '')} or {getattr(config, 'API_KEY_ALLDEBRID_PATH', '')} or {getattr(config, 'API_KEY_DEBRIDLINK_PATH', '')} or {getattr(config, 'API_KEY_REALDEBRID_PATH', '')}"
+    return f"{getattr(config, 'API_KEY_1FICHIER_PATH', '')} or {getattr(config, 'API_KEY_ALLDEBRID_PATH', '')} or {getattr(config, 'API_KEY_DEBRIDLINK_PATH', '')} or {getattr(config, 'API_KEY_REALDEBRID_PATH', '')} or {getattr(config, 'API_KEY_TORBOX_PATH', '')}"
 
 def ensure_download_provider_keys(force: bool = False):  # pragma: no cover
-    """S'assure que les clés 1fichier/AllDebrid/Debrid-Link/RealDebrid sont chargées et retourne le dict.
+    """S'assure que les clés 1fichier/AllDebrid/Debrid-Link/RealDebrid/TorBox sont chargées et retourne le dict.
 
     Utilise load_api_keys (cache mtime). force=True invalide le cache.
     """
@@ -4219,7 +4231,7 @@ def ensure_download_provider_keys(force: bool = False):  # pragma: no cover
 def missing_all_provider_keys():  # pragma: no cover
     """True si aucune des clés premium n'est définie."""
     keys = load_api_keys(False)
-    return not keys.get('1fichier') and not keys.get('alldebrid') and not keys.get('debridlink') and not keys.get('realdebrid')
+    return not keys.get('1fichier') and not keys.get('alldebrid') and not keys.get('debridlink') and not keys.get('realdebrid') and not keys.get('torbox')
 
 def provider_keys_status():  # pragma: no cover
     """Retourne un dict de présence pour debug/log."""
@@ -4229,6 +4241,7 @@ def provider_keys_status():  # pragma: no cover
         'alldebrid': bool(keys.get('alldebrid')),
         'debridlink': bool(keys.get('debridlink')),
         'realdebrid': bool(keys.get('realdebrid')),
+        'torbox': bool(keys.get('torbox')),
     }
 
 def load_music_config():

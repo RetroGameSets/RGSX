@@ -890,7 +890,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         '1fichier': api_keys_data.get('1fichier', ''),
                         'alldebrid': api_keys_data.get('alldebrid', ''),
                         'debridlink': api_keys_data.get('debridlink', ''),
-                        'realdebrid': api_keys_data.get('realdebrid', '')
+                        'realdebrid': api_keys_data.get('realdebrid', ''),
+                        'torbox': api_keys_data.get('torbox', '')
                     }
                     
                     self._send_json({

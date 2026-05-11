@@ -2237,6 +2237,12 @@
                             <input type="password" id="setting-api-realdebrid" value="${settings.api_keys?.realdebrid || ''}" 
                                    placeholder="Enter RealDebrid API key">
                         </div>
+
+                        <div style="margin-bottom: 20px;">
+                            <label>TorBox API Key</label>
+                            <input type="password" id="setting-api-torbox" value="${settings.api_keys?.torbox || ''}" 
+                                   placeholder="Enter TorBox API key">
+                        </div>
                         
                         <button id="save-settings-btn" style="width: 100%; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; padding: 15px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 10px;">
                             💾 ${t('web_settings_save')}
@@ -2304,7 +2310,8 @@
                         '1fichier': document.getElementById('setting-api-1fichier')?.value.trim() || '',
                         'alldebrid': document.getElementById('setting-api-alldebrid')?.value.trim() || '',
                         'debridlink': document.getElementById('setting-api-debridlink')?.value.trim() || '',
-                        'realdebrid': document.getElementById('setting-api-realdebrid')?.value.trim() || ''
+                        'realdebrid': document.getElementById('setting-api-realdebrid')?.value.trim() || '',
+                        'torbox': document.getElementById('setting-api-torbox')?.value.trim() || ''
                     },
                     game_filters: {
                         region_filters: regionFiltersObj,
