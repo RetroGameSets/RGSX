@@ -208,6 +208,7 @@ API_KEY_1FICHIER_PATH = os.path.join(SAVE_FOLDER, "1FichierAPI.txt")
 API_KEY_ALLDEBRID_PATH = os.path.join(SAVE_FOLDER, "AllDebridAPI.txt")
 API_KEY_DEBRIDLINK_PATH = os.path.join(SAVE_FOLDER, "DebridLinkAPI.txt")
 API_KEY_REALDEBRID_PATH = os.path.join(SAVE_FOLDER, "RealDebridAPI.txt")
+API_KEY_TORBOX_PATH = os.path.join(SAVE_FOLDER, "TorBoxAPI.txt")
 ARCHIVE_ORG_COOKIE_PATH = os.path.join(APP_FOLDER, "assets", "ArchiveOrgCookie.txt")
 THEGAMESDB_API_KEY_PATH = os.path.join(APP_FOLDER, "assets", "TheGamesDBAPI.txt")
 
@@ -561,6 +562,7 @@ API_KEY_1FICHIER = ""
 API_KEY_ALLDEBRID = ""
 API_KEY_DEBRIDLINK = ""
 API_KEY_REALDEBRID = ""
+API_KEY_TORBOX = ""
 PREMIUM_HOST_MARKERS = [
     "1Fichier",
     "Debrid-Link",

@@ -102,7 +102,7 @@ Télécharger la dernière release : [RGSX_update_latest.zip](https://github.com
 
 - 🎯 **Détection intelligente des systèmes** – Détecte automatiquement les systèmes supportés depuis `es_systems.cfg`
 - 📦 **Gestion intelligente des archives** – Extrait automatiquement les archives quand un système ne supporte pas les ZIP
-- 🔑 **Déblocage premium** – API 1Fichier + fallback AllDebrid/Debrid-Link/Real-Debrid pour des téléchargements illimités
+- 🔑 **Déblocage premium** – API 1Fichier + fallback AllDebrid/Debrid-Link/Real-Debrid/TorBox pour des téléchargements illimités
 - 🎨 **Personnalisation complète** – Layout (3×3 à 4×4), polices, tailles de police (UI + footer), langues (EN/FR/DE/ES/IT/PT)
 - 🎮 **Pensé manette avant tout** – Auto-mapping pour les manettes populaires + remapping personnalisé
 - 🔍 **Filtrage avancé** – Recherche par nom, afficher/masquer les systèmes non supportés, filtre de plateformes
@@ -115,6 +115,7 @@ Télécharger la dernière release : [RGSX_update_latest.zip](https://github.com
 > - `AllDebridAPI.txt` – fallback AllDebrid (optionnel)
 > - `DebridLinkAPI.txt` – fallback Debrid-Link (optionnel)
 > - `RealDebridAPI.txt` – fallback Real-Debrid (optionnel)
+> - `TorBoxAPI.txt` – fallback TorBox (optionnel)
 > 
 > **Chaque fichier doit contenir UNIQUEMENT la clé, sans texte supplémentaire.**
 
@@ -198,7 +199,8 @@ RGSX inclut une interface web qui se lance automatiquement quand vous utilisez R
 ├── 1FichierAPI.txt           # Clé API 1Fichier
 ├── AllDebridAPI.txt          # Clé API AllDebrid
 ├── DebridLinkAPI.txt         # Clé API Debrid-Link
-└── RealDebridAPI.txt         # Clé API Real-Debrid
+├── RealDebridAPI.txt         # Clé API Real-Debrid
+└── TorBoxAPI.txt              # Clé API TorBox
 ```
 
 ---

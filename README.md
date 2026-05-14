@@ -102,7 +102,7 @@ Download latest release : [RGSX_update_latest.zip](https://github.com/RetroGameS
 
 - 🎯 **Smart System Detection** – Auto-discovers supported systems from `es_systems.cfg`
 - 📦 **Intelligent Archive Handling** – Auto-extracts archives when systems don't support ZIP files
-- 🔑 **Premium Unlocking** – 1Fichier API + AllDebrid/Debrid-Link/Real-Debrid fallback for unlimited downloads
+- 🔑 **Premium Unlocking** – 1Fichier API + AllDebrid/Debrid-Link/Real-Debrid/TorBox fallback for unlimited downloads
 - 🎨 **Fully Customizable** – Layout (3×3 to 4×4), fonts, font sizes (UI + footer), languages (EN/FR/DE/ES/IT/PT)
 - 🎮 **Controller-First Design** – Auto-mapping for popular controllers + custom remapping support
 - 🔍 **Advanced Filtering** – Search by name, hide/show unsupported systems, filter platforms
@@ -115,6 +115,7 @@ Download latest release : [RGSX_update_latest.zip](https://github.com/RetroGameS
 > - `AllDebridAPI.txt` – AllDebrid fallback (optional)
 > - `DebridLinkAPI.txt` – Debrid-Link fallback (optional)
 > - `RealDebridAPI.txt` – Real-Debrid fallback (optional)
+> - `TorBoxAPI.txt` – TorBox fallback (optional)
 > 
 > **Each file must contain ONLY the key, no extra text.**
 
@@ -198,7 +199,8 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 ├── 1FichierAPI.txt           # 1Fichier API key
 ├── AllDebridAPI.txt          # AllDebrid API key
 ├── DebridLinkAPI.txt         # Debrid-Link API key
-└── RealDebridAPI.txt         # Real-Debrid API key
+├── RealDebridAPI.txt         # Real-Debrid API key
+└── TorBoxAPI.txt              # TorBox API key
 ```
 
 ---
