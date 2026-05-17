@@ -311,8 +311,8 @@ def _build_platform_search_entries(
     return indexed_entries
 
 
-def build_caches(games_dir: Path) -> tuple[dict[str, list[dict[str, str | int]]], dict[str, dict[str, str | int]], list[dict[str, str | int]], list[str]]:
-    torrent_manifest_cache: dict[str, list[dict[str, str | int]]] = {}
+def build_caches(games_dir: Path) -> tuple[dict[str, dict[str, str | int]], list[dict[str, str | int]], list[str]]:
+    torrent_manifest_cache: dict[str, list[dict[str, str | int]]] = {}  # kept for TORRENT-row backward compat only
     platform_count_cache: dict[str, dict[str, str | int]] = {}
     global_search_index: list[dict[str, str | int]] = []
     warnings: list[str] = []
@@ -333,7 +333,7 @@ def build_caches(games_dir: Path) -> tuple[dict[str, list[dict[str, str | int]]]
         }
         global_search_index.extend(platform_entries)
 
-    return torrent_manifest_cache, platform_count_cache, global_search_index, warnings
+    return platform_count_cache, global_search_index, warnings
 
 
 def main() -> int:
@@ -351,19 +351,16 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        torrent_manifest_cache, platform_count_cache, global_search_index, warnings = build_caches(games_dir)
+        platform_count_cache, global_search_index, warnings = build_caches(games_dir)
     except Exception as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
         return 1
 
-    torrent_cache_path = output_dir / "torrent_manifest_cache.json"
     platform_count_cache_path = output_dir / "platform_games_count_cache.json"
     global_search_index_path = output_dir / "global_search_index.json"
-    torrent_cache_payload = {"version": 1, "entries": torrent_manifest_cache}
     platform_count_payload = {"version": 2, "entries": platform_count_cache}
     global_search_payload = {"version": 1, "entries": global_search_index}
 
-    torrent_cache_path.write_text(json.dumps(torrent_cache_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     platform_count_cache_path.write_text(json.dumps(platform_count_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     global_search_index_path.write_text(json.dumps(global_search_payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -371,10 +368,8 @@ def main() -> int:
         json.dumps(
             {
                 "ok": True,
-                "torrent_manifest_count": len(torrent_manifest_cache),
                 "platform_count_entries": len(platform_count_cache),
                 "global_search_entries": len(global_search_index),
-                "torrent_cache_path": str(torrent_cache_path),
                 "platform_count_cache_path": str(platform_count_cache_path),
                 "global_search_index_path": str(global_search_index_path),
                 "warnings": warnings,
