@@ -2287,19 +2287,38 @@ def load_sources(allow_torrent_manifest_fetch: bool | None = None):
         else:
             logger.warning(f"Fichier systems_list absent: {config.SOURCES_FILE}")
 
-        # S'assurer que chaque entrée possède la clé platform_image (vide si absente)
-        for s in sources:
+        sources_file_changed = False
+        normalized_sources = []
+        # S'assurer que chaque entrée possède les clés attendues.
+        for raw_entry in sources:
+            if not isinstance(raw_entry, dict):
+                sources_file_changed = True
+                continue
+
+            s = dict(raw_entry)
+
             if "platform_image" not in s:
                 # Supporter ancienne clé system_image -> platform_image si présente
-                legacy = s.pop("system_image", "") if isinstance(s, dict) else ""
+                legacy = s.pop("system_image", "")
                 s["platform_image"] = legacy or ""
+                sources_file_changed = True
+
             # Normaliser clé dossier -> folder si besoin (legacy francophone)
-            if isinstance(s, dict) and "folder" not in s:
+            if "folder" not in s:
                 legacy_folder = s.get("dossier") or s.get("folder_name")
                 if legacy_folder:
                     s["folder"] = legacy_folder
+                    sources_file_changed = True
 
-        existing_names = {s.get("platform_name", "") for s in sources}
+            normalized_sources.append(s)
+
+        sources = normalized_sources
+
+        existing_names = {
+            str(s.get("platform_name", "")).strip()
+            for s in sources
+            if isinstance(s, dict) and str(s.get("platform_name", "")).strip()
+        }
         added = []
         if os.path.isdir(config.GAMES_FOLDER):
             for fname in sorted(os.listdir(config.GAMES_FOLDER)):
@@ -2312,45 +2331,46 @@ def load_sources(allow_torrent_manifest_fetch: bool | None = None):
                 sources.append(new_entry)
                 added.append(pname)
                 existing_names.add(pname)
+                sources_file_changed = True
 
         # Déterminer les plateformes orphelines (fichier manquant)
         existing_files = set()
         if os.path.isdir(config.GAMES_FOLDER):
             existing_files = {os.path.splitext(f)[0] for f in os.listdir(config.GAMES_FOLDER) if f.lower().endswith('.json')}
         removed = []
-        filtered_sources = []
+        runtime_sources = []
         for entry in sources:
             pname = entry.get("platform_name", "")
-            # Garder seulement si un fichier existe
+            # En runtime, garder seulement si un fichier existe.
+            # Important: on ne supprime plus ces entrées du fichier systems_list.json,
+            # car l'absence peut être transitoire pendant une mise à jour/extraction.
             if pname in existing_files:
-                filtered_sources.append(entry)
+                runtime_sources.append(entry)
             else:
-                # Ne retirer que si ce n'est pas un nom vide
                 if pname:
                     removed.append(pname)
-        sources = filtered_sources
 
         if added:
             logger.info(f"Plateformes ajoutées automatiquement: {', '.join(added)}")
         if removed:
-            logger.info(f"Plateformes supprimées (fichiers absents): {', '.join(removed)}")
+            logger.info(f"Plateformes ignorées en runtime (fichiers absents): {', '.join(removed)}")
 
-        # Persister si modifications (ajouts ou suppressions)
-        if added or removed:
+        # Persister uniquement les changements non destructifs (ajouts / normalisations de clés).
+        if sources_file_changed:
             try:
                 # Pas de tri avant persistance: conserver ordre d'origine + ajouts fins
                 os.makedirs(os.path.dirname(config.SOURCES_FILE), exist_ok=True)
                 with open(config.SOURCES_FILE, 'w', encoding='utf-8') as f:
                     json.dump(sources, f, ensure_ascii=False, indent=2)
-                logger.info("systems_list.json mis à jour (ajouts/suppressions, ordre conservé)")
+                logger.info("systems_list.json mis à jour (ajouts/normalisations, ordre conservé)")
             except Exception as e:
                 logger.error(f"Échec écriture systems_list.json après maj auto: {e}")
 
         # Pour l'affichage on veut un tri alphabétique sans toucher l'ordre de persistance
-        sorted_for_display = sorted(sources, key=lambda x: x.get("platform_name", "").lower())
+        sorted_for_display = sorted(runtime_sources, key=lambda x: x.get("platform_name", "").lower())
 
         # Construire structures config: platform_dicts = ordre fichier, platforms = tri (avec filtre masqués)
-        config.platform_dicts = sources  # ordre brut fichier
+        config.platform_dicts = runtime_sources  # ordre runtime (fichiers présents)
         settings = load_rgsx_settings()
         hidden = set(settings.get("hidden_platforms", [])) if isinstance(settings, dict) else set()
         all_sorted_names = [s.get("platform_name", "") for s in sorted_for_display]

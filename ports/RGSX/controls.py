@@ -10,7 +10,7 @@ import logging
 import config
 from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE, CONTROLS_CONFIG_PATH, Game
 from display import draw_validation_transition, show_toast
-from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel, cleanup_torrent_temp
+from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel, cleanup_torrent_temp, stop_active_seeder
 from utils import (
     load_games, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
@@ -1785,7 +1785,7 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "cancel") or is_input_matched(event, "history"):
                 if config.history and config.current_history_item < len(config.history):
                     entry = config.history[config.current_history_item]
-                    if entry.get("status") in ["Downloading", "Téléchargement", "Extracting"] and is_input_matched(event, "cancel"):
+                    if entry.get("status") in ["Downloading", "Téléchargement", "Extracting", "Seeding"] and is_input_matched(event, "cancel"):
                         config.menu_state = "confirm_cancel_download"
                         config.confirm_cancel_selection = 0
                         config.needs_redraw = True
@@ -1822,6 +1822,13 @@ def handle_controls(event, sources, joystick, screen):
                         logger.debug(f"Signal d'annulation envoyé pour task_id={task_id}")
                     except Exception as e:
                         logger.debug(f"Erreur lors de l'envoi du signal d'annulation: {e}")
+
+                    # Arrêter explicitement un éventuel seeding actif lié à cette entrée.
+                    try:
+                        if stop_active_seeder(task_id=task_id, original_history_url=url):
+                            logger.debug(f"Seeder actif arrêté pour task_id={task_id}")
+                    except Exception as e:
+                        logger.debug(f"Erreur arrêt seeder actif: {e}")
                     
                     # Supprimer le dossier temp torrent (cas où cancel_events est vide :
                     # téléchargement déjà terminé côté thread mais UI encore "Téléchargement").
@@ -1957,6 +1964,15 @@ def handle_controls(event, sources, joystick, screen):
                     # Téléchargement en cours ou en pause - ajouter pause/resume avant cancel
                     options.append("pause_resume_download")
                     options.append("cancel_download")
+                elif status == "Seeding":
+                    # Seed en cours: proposer arrêt manuel + garder les actions post-download.
+                    options.append("cancel_download")
+                    if actual_filename and file_exists:
+                        ext = os.path.splitext(actual_filename)[1].lower()
+                        if ext in ['.zip', '.rar', '.7z']:
+                            options.append("extract_archive")
+                        elif ext == '.txt':
+                            options.append("open_file")
                 elif status == "Download_OK" or status == "Completed":
                     # Vérifier si c'est une archive ET si le fichier existe
                     if actual_filename and file_exists:

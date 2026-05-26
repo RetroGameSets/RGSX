@@ -1108,7 +1108,13 @@ def _start_background_seeder(
             "process": process,
             "dest_path": dest_path,
             "peers": 0,
+            "source_url": source_url,
+            "file_index": file_index,
+            "relative_path": relative_path,
+            "seed_work_dir": seed_work_dir if link_created else "",
+            "temp_manifest": temp_manifest,
             "original_history_url": original_history_url,
+            "cancel_requested": False,
         }
         _update_seeding_status(original_history_url, peers=0)
 
@@ -1123,10 +1129,11 @@ def _start_background_seeder(
                 if parsed is not None:
                     cn = int(parsed.get("connections") or 0)
                     ul = float(parsed.get("ul_speed_mib_s") or 0.0)
-                    if task_id in _active_seeders:
-                        _active_seeders[task_id]["peers"] = cn
-                        _active_seeders[task_id]["ul_speed"] = ul
-                    _update_seeding_status(original_history_url, peers=cn, ul_speed=ul)
+                    seeder_info = _active_seeders.get(task_id)
+                    if isinstance(seeder_info, dict) and not seeder_info.get("cancel_requested"):
+                        seeder_info["peers"] = cn
+                        seeder_info["ul_speed"] = ul
+                        _update_seeding_status(original_history_url, peers=cn, ul_speed=ul)
                 if any(kw in line for kw in ("NOTICE", "WARN", "ERROR", "tracker", "Tracker")):
                     logger.debug("[seeder/aria2c] %s", line)
 
@@ -1155,8 +1162,11 @@ def _start_background_seeder(
         finally:
             stdout_thread.join(timeout=2)
             _upnp_close_port(upnp_handle, bt_listen_port)
-            _active_seeders.pop(task_id, None)
-            _stop_seeding_status(original_history_url)
+            seeder_info = _active_seeders.pop(task_id, None)
+            if isinstance(seeder_info, dict) and seeder_info.get("cancel_requested"):
+                logger.info("[seeder] arrêt manuel confirmé pour %s", dest_path)
+            else:
+                _stop_seeding_status(original_history_url)
             try:
                 os.remove(temp_manifest)
             except Exception:
@@ -3102,6 +3112,134 @@ def cleanup_torrent_temp(task_id: str) -> bool:
         except Exception as e:
             logger.debug(f"cleanup_torrent_temp: erreur suppression {temp_root}: {e}")
     return False
+
+
+def _cleanup_torrent_resume_artifacts(source_url: str | None, file_index: int | None, dest_path: str | None) -> bool:
+    """Supprime les artefacts de reprise torrent (.rgsx_torrent/*) pour un fichier terminé."""
+    if not source_url or not dest_path:
+        return False
+
+    removed_any = False
+    try:
+        import hashlib as _hashlib
+        stable_key = _hashlib.md5(f"{source_url}|{int(file_index or 1)}".encode()).hexdigest()[:12]
+        dest_dir = os.path.dirname(dest_path)
+        temp_parent = os.path.join(dest_dir, ".rgsx_torrent")
+        temp_root = os.path.join(temp_parent, stable_key)
+
+        if os.path.isdir(temp_root):
+            shutil.rmtree(temp_root, ignore_errors=True)
+            removed_any = True
+            logger.debug(f"_cleanup_torrent_resume_artifacts: dossier supprimé {temp_root}")
+
+        if os.path.isdir(temp_parent):
+            try:
+                if not os.listdir(temp_parent):
+                    os.rmdir(temp_parent)
+                    logger.debug(f"_cleanup_torrent_resume_artifacts: dossier vide supprimé {temp_parent}")
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.debug(f"_cleanup_torrent_resume_artifacts: erreur nettoyage: {exc}")
+
+    return removed_any
+
+
+def _cleanup_seeder_local_artifacts(dest_path: str | None, relative_path: str | None, seed_work_dir: str | None, temp_manifest: str | None) -> bool:
+    """Supprime les artefacts locaux d'un seeding (fichiers .aria2, liens et manifest)."""
+    removed_any = False
+
+    candidates: set[str] = set()
+    if dest_path:
+        candidates.add(f"{dest_path}.aria2")
+        if relative_path:
+            torrent_basename = os.path.basename(relative_path)
+            if torrent_basename:
+                candidates.add(os.path.join(os.path.dirname(dest_path), f"{torrent_basename}.aria2"))
+
+    for candidate in candidates:
+        try:
+            if os.path.isfile(candidate):
+                os.remove(candidate)
+                removed_any = True
+                logger.debug(f"_cleanup_seeder_local_artifacts: fichier supprimé {candidate}")
+        except Exception as exc:
+            logger.debug(f"_cleanup_seeder_local_artifacts: erreur suppression {candidate}: {exc}")
+
+    if temp_manifest:
+        try:
+            if os.path.isfile(temp_manifest):
+                os.remove(temp_manifest)
+                removed_any = True
+                logger.debug(f"_cleanup_seeder_local_artifacts: manifest supprimé {temp_manifest}")
+        except Exception as exc:
+            logger.debug(f"_cleanup_seeder_local_artifacts: erreur suppression manifest {temp_manifest}: {exc}")
+
+    if seed_work_dir and os.path.isdir(seed_work_dir):
+        try:
+            shutil.rmtree(seed_work_dir, ignore_errors=True)
+            removed_any = True
+            logger.debug(f"_cleanup_seeder_local_artifacts: dossier seed supprimé {seed_work_dir}")
+        except Exception as exc:
+            logger.debug(f"_cleanup_seeder_local_artifacts: erreur suppression dossier seed {seed_work_dir}: {exc}")
+
+    return removed_any
+
+
+def stop_active_seeder(task_id: str | None = None, original_history_url: str | None = None) -> bool:
+    """Stoppe un seeding actif (par task_id ou URL historique) et nettoie les artefacts torrent."""
+    target_task_id = None
+
+    if task_id and task_id in _active_seeders:
+        target_task_id = task_id
+    elif original_history_url:
+        for seeded_task_id, info in _active_seeders.items():
+            if info.get("original_history_url") == original_history_url:
+                target_task_id = seeded_task_id
+                break
+
+    if not target_task_id:
+        return False
+
+    seeder_info = _active_seeders.get(target_task_id)
+    if not isinstance(seeder_info, dict):
+        return False
+
+    seeder_info["cancel_requested"] = True
+
+    process = seeder_info.get("process")
+    if process is not None:
+        try:
+            if process.poll() is None:
+                process.terminate()
+                process.wait(timeout=5)
+        except Exception:
+            try:
+                process.kill()
+            except Exception:
+                pass
+
+    # Nettoyage best-effort des traces BT locales après annulation de seed.
+    try:
+        cleanup_torrent_temp(target_task_id)
+    except Exception:
+        pass
+
+    source_url = str(seeder_info.get("source_url") or "")
+    try:
+        file_index = int(seeder_info.get("file_index") or 1)
+    except Exception:
+        file_index = 1
+    dest_path = str(seeder_info.get("dest_path") or "")
+    relative_path = str(seeder_info.get("relative_path") or "")
+    seed_work_dir = str(seeder_info.get("seed_work_dir") or "")
+    temp_manifest = str(seeder_info.get("temp_manifest") or "")
+
+    _cleanup_torrent_resume_artifacts(source_url, file_index, dest_path)
+    _cleanup_seeder_local_artifacts(dest_path, relative_path, seed_work_dir, temp_manifest)
+
+    logger.info(f"Seeder stoppé manuellement pour task_id={target_task_id}")
+    return True
 
 def toggle_pause_download(task_id: str) -> bool:
     """Toggle pause state for a running download task. Returns True if now paused, False if resumed."""

@@ -5459,7 +5459,19 @@ def draw_history_game_options(screen):
             option_labels.append(_("history_option_pause_download"))
         options.append("cancel_download")
         option_labels.append(_("history_option_cancel_download"))
-    elif status == "Download_OK" or status == "Completed" or status == "Seeding":
+    elif status == "Seeding":
+        options.append("cancel_download")
+        option_labels.append(_("history_option_cancel_download"))
+        # Vérifier si c'est une archive ET si le fichier existe
+        if actual_filename and file_exists:
+            ext = os.path.splitext(actual_filename)[1].lower()
+            if ext in ['.zip', '.rar', '.7z']:
+                options.append("extract_archive")
+                option_labels.append(_("history_option_extract_archive"))
+            elif ext == '.txt':
+                options.append("open_file")
+                option_labels.append(_("history_option_open_file"))
+    elif status == "Download_OK" or status == "Completed":
         # Vérifier si c'est une archive ET si le fichier existe
         if actual_filename and file_exists:
             ext = os.path.splitext(actual_filename)[1].lower()
