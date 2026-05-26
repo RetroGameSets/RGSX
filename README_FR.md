@@ -240,6 +240,9 @@ Logiciel gratuit et open-source. Utilisation, modification et distribution libre
 ## Merci à tous les contributeurs et suiveurs du projet
 
 **Si vous voulez soutenir mon projet, vous pouvez m'offrir une bière : https://bit.ly/donate-to-rgsx**
+<a href="https://github.com/RetroGameSets/RGSX/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=RetroGameSets/RGSX" />
+</a>
 [![Stargazers over time](https://starchart.cc/RetroGameSets/RGSX.svg?variant=adaptive)](https://starchart.cc/RetroGameSets/RGSX)
 
 **Développé avec ❤️ pour la communauté retrogaming.**

@@ -151,13 +151,18 @@ jobs:
 
       - name: Send changelog to Discord
         run: |
-          CHANGELOG=$(git log -1 --format=%B ${{ github.ref_name }} | sed ':a;N;$!ba;s/\n/\\n/g')
+          CHANGELOG=$(git log -1 --format=%B "${{ github.ref_name }}")
 
-          curl -H "Content-Type: application/json" \
+          PAYLOAD=$(jq -n \
+            --arg version "${{ github.ref_name }}" \
+            --arg changelog "$CHANGELOG" \
+            '{
+              username: "RGSX Releases Bot",
+              avatar_url: "https://retrogamesets.fr/assets/images/avatar.png",
+              content: ("📦 **RGSX " + $version + "**\n\n📝 **Changelog :**\n" + $changelog)
+            }')
+
+          curl --fail-with-body -H "Content-Type: application/json" \
           -X POST \
-          -d "{
-            \"username\": \"RGSX Releases Bot\",
-            \"avatar_url\": \"https://retrogamesets.fr/assets/images/avatar.png\",
-            \"content\": \"📦 **RGSX ${{ github.ref_name }}**\n\n📝 **Changelog :**\n${CHANGELOG}\"
-          }" \
-          ${{ secrets.DISCORD_WEBHOOK }}
+          --data "$PAYLOAD" \
+          "${{ secrets.DISCORD_WEBHOOK }}"
