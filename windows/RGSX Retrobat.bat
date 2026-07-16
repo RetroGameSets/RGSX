@@ -234,7 +234,7 @@ if not exist "%PYTHON_EXE%" (
     echo [%DATE% %TIME%] Extracting python.zip >> "%LOG_FILE%"
     
     <nul set /p "=       ["
-    tar -xf "%ZIP_FILE%" -C "%PYTHON_DIR%" --strip-components=0
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Expand-Archive -LiteralPath '%ZIP_FILE%' -DestinationPath '%PYTHON_DIR%' -Force; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }" >>"%LOG_FILE%" 2>&1
     set TAR_RESULT=!ERRORLEVEL!
     echo %ESC%%GREEN%##########%ESC%%RESET%] Done
     

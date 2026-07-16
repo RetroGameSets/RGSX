@@ -192,6 +192,7 @@
     "controls_navigation": "Navigation",
     "controls_pages": "Pages",
     "controls_confirm_select": "Confirm/Select",
+    "controls_longpress_confirm": "(Hold) Choose download folder",
     "controls_cancel_back": "Cancel/Back",
     "controls_filter_search": "Filter/Search",
     "controls_action_edit_search": "Edit search",

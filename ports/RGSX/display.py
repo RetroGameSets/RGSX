@@ -3054,6 +3054,7 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
             ("history", _("controls_action_history")),
             ("filter", _("controls_filter_search")),
             ("confirm", _("controls_confirm_select")),
+            ("confirm", _("controls_longpress_confirm")),
             ("start", _("controls_action_start")),
         ],
         "platform_search": [
