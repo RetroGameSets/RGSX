@@ -53,17 +53,12 @@ _enable_windows_dpi_awareness_early()
 warnings.filterwarnings("ignore", category=UserWarning, module="pygame.pkgdata")
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 
-# Ne pas forcer SDL_FBDEV ici; si déjà défini par l'environnement, on le garde
-try:
-    if "SDL_FBDEV" in os.environ:
-        pass  # respecter la configuration existante
-except Exception:
-    pass
+
 import pygame # type: ignore
 import time
 import asyncio
 import logging
-import requests
+import requests # type: ignore
 import queue
 import datetime
 from datetime import timezone
@@ -84,7 +79,7 @@ from display import (
 )
 from language import _
 from network import test_internet, download_rom, is_1fichier_url, download_from_1fichier, check_for_updates, apply_pending_update, cancel_all_downloads, shutdown_downloads, download_queue_worker
-from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls
+from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls, clear_joystick_repeat_states
 from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
 from utils import (
@@ -429,6 +424,44 @@ if pygame.joystick.get_count() > 0:
         logger.warning(f"Échec initialisation gamepad: {e}")
 
 
+def _is_joystick_valid(js) -> bool:
+    if js is None:
+        return False
+    try:
+        js.get_instance_id()
+        js.get_name()
+        return True
+    except Exception:
+        return False
+
+
+def _apply_keyboard_controls(reason: str) -> None:
+    config.joystick = False
+    config.keyboard = True
+    config.controller_device_name = ""
+    clear_joystick_repeat_states()
+    try:
+        config.controls_config = load_controls_config()
+    except Exception as e:
+        logger.warning(f"Impossible de charger les contrôles clavier: {e}")
+    logger.info(reason)
+
+
+def _apply_joystick_controls(js, reason: str) -> None:
+    config.joystick = True
+    config.keyboard = False
+    try:
+        config.controller_device_name = js.get_name()
+    except Exception:
+        config.controller_device_name = ""
+    clear_joystick_repeat_states()
+    try:
+        config.controls_config = load_controls_config()
+    except Exception as e:
+        logger.warning(f"Impossible de charger les contrôles joystick: {e}")
+    logger.info(reason)
+
+
 # ===== GESTION DU SERVEUR WEB =====
 web_server_process = None
 
@@ -762,17 +795,14 @@ async def main():
                     device_index = event.device_index
                     new_joystick = pygame.joystick.Joystick(device_index)
                     new_joystick.init()
-                    # Si c'est la première manette, on l'utilise
-                    if joystick is None:
+
+                    # Si la manette active est absente/invalide, prendre la nouvelle.
+                    if joystick is None or not _is_joystick_valid(joystick):
                         joystick = new_joystick
-                        logger.info(f"Manette connectée et activée: {new_joystick.get_name()} (index {device_index})")
-                        # Basculer sur les contrôles joystick
-                        config.joystick = True
-                        config.keyboard = False
-                        config.controller_device_name = new_joystick.get_name()
-                        # Recharger la configuration des contrôles pour le joystick
-                        config.controls_config = load_controls_config()
-                        logger.info(f"Contrôles joystick chargés pour {new_joystick.get_name()}")
+                        _apply_joystick_controls(
+                            new_joystick,
+                            f"Manette connectée et activée: {new_joystick.get_name()} (index {device_index})",
+                        )
                     else:
                         logger.info(f"Manette connectée: {new_joystick.get_name()} (index {device_index})")
                     config.needs_redraw = True
@@ -785,35 +815,37 @@ async def main():
                     # Pour JOYDEVICEREMOVED, utiliser instance_id pas device_index
                     instance_id = event.instance_id
                     logger.info(f"Manette déconnectée (instance_id {instance_id})")
-                    # Si c'était notre manette active, essayer de trouver une autre
-                    if joystick is not None and joystick.get_instance_id() == instance_id:
+
+                    # Nettoyer immédiatement les répétitions joystick pour éviter
+                    # les événements fantômes après déconnexion Bluetooth.
+                    clear_joystick_repeat_states()
+
+                    active_removed = False
+                    if joystick is not None:
+                        try:
+                            active_removed = joystick.get_instance_id() == instance_id
+                        except Exception:
+                            # Référence SDL potentiellement invalide après coupure BT.
+                            active_removed = True
+
+                    # Si c'était notre manette active, essayer de trouver une autre.
+                    if active_removed:
                         joystick = None
-                        logger.info("Aucune manette active, basculement automatique sur clavier")
+
                         # Chercher une autre manette disponible
                         if pygame.joystick.get_count() > 0:
                             try:
                                 joystick = pygame.joystick.Joystick(0)
                                 joystick.init()
-                                logger.info(f"Basculement vers la manette: {joystick.get_name()}")
+                                _apply_joystick_controls(
+                                    joystick,
+                                    f"Basculement vers la manette: {joystick.get_name()}",
+                                )
                             except Exception as e:
                                 logger.warning(f"Impossible de basculer vers une autre manette: {e}")
-                                logger.info("Utilisation du clavier")
-                                # Basculer sur les contrôles clavier
-                                config.joystick = False
-                                config.keyboard = True
-                                config.controller_device_name = ""
-                                # Recharger la configuration des contrôles pour le clavier
-                                config.controls_config = load_controls_config()
-                                logger.info("Contrôles clavier chargés")
+                                _apply_keyboard_controls("Aucune manette active, basculement automatique sur clavier")
                         else:
-                            logger.info("Utilisation du clavier")
-                            # Basculer sur les contrôles clavier
-                            config.joystick = False
-                            config.keyboard = True
-                            config.controller_device_name = ""
-                            # Recharger la configuration des contrôles pour le clavier
-                            config.controls_config = load_controls_config()
-                            logger.info("Contrôles clavier chargés")
+                            _apply_keyboard_controls("Aucune manette détectée, utilisation du clavier")
                     config.needs_redraw = True
                 except Exception as e:
                     logger.error(f"Erreur lors de la déconnexion de la manette: {e}")

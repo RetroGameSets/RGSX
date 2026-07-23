@@ -4121,7 +4121,8 @@ def draw_pause_api_keys_status(screen):
         ("1fichier", keys.get('1fichier')),
         ("AllDebrid", keys.get('alldebrid')),
         ("Debrid-Link", keys.get('debridlink')),
-        ("RealDebrid", keys.get('realdebrid'))
+        ("RealDebrid", keys.get('realdebrid')),
+        ("TorBox", keys.get('torbox'))
     ]
     # Dimensions dynamiques en fonction du contenu
     row_height = config.small_font.get_height() + 14
@@ -4179,7 +4180,8 @@ def draw_pause_api_keys_status(screen):
                 '1fichier': '1FichierAPI.txt',
                 'AllDebrid': 'AllDebridAPI.txt',
                 'Debrid-Link': 'DebridLinkAPI.txt',
-                'RealDebrid': 'RealDebridAPI.txt'
+                'RealDebrid': 'RealDebridAPI.txt',
+                'TorBox' : 'TorBoxAPI.txt'
             }.get(provider, 'key.txt')
             empty_suffix = _("api_key_empty_suffix") if _ and _("api_key_empty_suffix") != "api_key_empty_suffix" else "empty"
             key_label = f"{filename_display} {empty_suffix}"

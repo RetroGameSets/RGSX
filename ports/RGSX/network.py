@@ -3834,7 +3834,14 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     break
                         logger.info(f"Téléchargement lolroms terminé via outil externe: {dest_path}")
                     elif external_success is False:
-                        raise requests.HTTPError(external_message or "lolroms external download failed")
+                        # Sur Windows, curl peut échouer avec schannel
+                        # (ex: SEC_E_LOGON_DENIED). On tente alors le fallback
+                        # requests/stream classique au lieu d'échouer immédiatement.
+                        ext_err = (external_message or "lolroms external download failed").strip()
+                        if url in config.download_progress:
+                            config.download_progress[url]["status"] = "lolroms requests fallback"
+                            config.needs_redraw = True
+                        logger.warning(f"lolroms external tool failed, fallback requests: {ext_err}")
 
                 if not external_lolroms_downloaded:
                     download_headers = headers.copy()
@@ -4116,6 +4123,26 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         raise requests.HTTPError(
                             f"Downloaded empty response from source (content-type={content_type or 'unknown'})"
                         )
+
+                    # Garde-fous anti faux-positifs: certains hôtes peuvent
+                    # renvoyer une page HTML/challenge avec un status 200.
+                    archive_ext = os.path.splitext(dest_path)[1].lower()
+                    if archive_ext in {'.7z', '.zip', '.rar'}:
+                        if total_size > 0 and downloaded < total_size:
+                            _safe_remove_file(dest_path)
+                            raise requests.HTTPError(
+                                f"Incomplete archive payload downloaded ({downloaded}/{total_size} bytes)"
+                            )
+                        if _looks_like_html_or_challenge(dest_path):
+                            _safe_remove_file(dest_path)
+                            raise requests.HTTPError(
+                                "Downloaded HTML/challenge content instead of archive payload"
+                            )
+                        if not _matches_expected_archive_signature(dest_path):
+                            _safe_remove_file(dest_path)
+                            raise requests.HTTPError(
+                                "Downloaded payload is not a valid archive"
+                            )
 
                     if downloaded > 0 and downloaded != last_downloaded:
                         current_time = time.time()

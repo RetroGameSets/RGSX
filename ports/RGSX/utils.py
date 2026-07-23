@@ -40,6 +40,39 @@ logger = logging.getLogger(__name__)
 # Désactiver les logs DEBUG de urllib3 e requests pour supprimer les messages de connexion HTTP
 
 _SOURCE_BADGE_CACHE = {}
+_HISTORY_MATCH_NO_MATCH_LOG_COOLDOWN_SEC = 5.0
+_HISTORY_MATCH_NO_MATCH_LOG_LAST_TS: dict[str, float] = {}
+_HISTORY_MATCH_NO_MATCH_LOG_LOCK = threading.Lock()
+
+
+def _history_no_match_log_key(game_name, platform_name) -> str:
+    return f"{str(platform_name or '').strip().lower()}::{str(game_name or '').strip().lower()}"
+
+
+def _log_history_no_match_once(game_name, platform_name) -> None:
+    """Log no-match once per key during a short cooldown to avoid spam."""
+    key = _history_no_match_log_key(game_name, platform_name)
+    now_ts = time.time()
+    should_log = False
+
+    with _HISTORY_MATCH_NO_MATCH_LOG_LOCK:
+        last_ts = _HISTORY_MATCH_NO_MATCH_LOG_LAST_TS.get(key, 0.0)
+        if (now_ts - last_ts) >= _HISTORY_MATCH_NO_MATCH_LOG_COOLDOWN_SEC:
+            _HISTORY_MATCH_NO_MATCH_LOG_LAST_TS[key] = now_ts
+            should_log = True
+
+    if should_log:
+        logger.debug(
+            "[HISTORY_MATCH_LOOKUP] no_match game=%s platform=%s",
+            game_name,
+            platform_name,
+        )
+
+
+def _clear_history_no_match_log_cooldown(game_name, platform_name) -> None:
+    key = _history_no_match_log_key(game_name, platform_name)
+    with _HISTORY_MATCH_NO_MATCH_LOG_LOCK:
+        _HISTORY_MATCH_NO_MATCH_LOG_LAST_TS.pop(key, None)
 
 
 def _platform_image_folders():
@@ -4418,6 +4451,7 @@ def get_existing_history_matches(entry):
             direct_matches.append((os.path.basename(actual_path), actual_path))
 
     if direct_matches:
+        _clear_history_no_match_log_cooldown(game_name, platform_name)
         return direct_matches
 
     candidate_paths = []
@@ -4450,11 +4484,9 @@ def get_existing_history_matches(entry):
             break
 
     if not matches:
-        logger.debug(
-            "[HISTORY_MATCH_LOOKUP] no_match game=%s platform=%s",
-            game_name,
-            platform_name,
-        )
+        _log_history_no_match_once(game_name, platform_name)
+    else:
+        _clear_history_no_match_log_cooldown(game_name, platform_name)
 
     return matches
 

@@ -27,7 +27,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.6.4.5"
+app_version = "2.6.4.6"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 1
@@ -564,8 +564,7 @@ API_KEY_DEBRIDLINK = ""
 API_KEY_REALDEBRID = ""
 API_KEY_TORBOX = ""
 PREMIUM_HOST_MARKERS = [
-    "1Fichier",
-    "Debrid-Link",
+    "1Fichier"
 ]
 hide_premium_systems = False  # Indicateur pour masquer les systèmes premium
 

@@ -4676,13 +4676,41 @@ def update_key_state(action, pressed, event_type=None, event_value=None):
         if action in key_states:
             del key_states[action]
 
+
+def clear_joystick_repeat_states() -> None:
+    """Supprime les états de répétition issus de la manette.
+
+    Utile quand une manette Bluetooth se déconnecte sans envoyer tous les
+    événements de relâchement, afin d'éviter des événements fantômes en boucle.
+    """
+    joystick_event_types = {
+        pygame.JOYBUTTONDOWN,
+        pygame.JOYAXISMOTION,
+        pygame.JOYHATMOTION,
+    }
+
+    for action, state in list(key_states.items()):
+        if state.get("event_type") in joystick_event_types:
+            del key_states[action]
+
 def process_key_repeats(sources, joystick, screen):
     """Traite la répétition des touches."""
     current_time = pygame.time.get_ticks()
+
+    # Si aucune manette active, purge les états de répétition joystick pour
+    # éviter la génération d'événements JOY* synthétiques bloquants.
+    if not getattr(config, 'joystick', False) or joystick is None:
+        clear_joystick_repeat_states()
     
     for action, state in list(key_states.items()):
         if not state["pressed"]:
             continue
+
+        # En l'absence de manette, ignorer les repeats joystick résiduels.
+        if state.get("event_type") in (pygame.JOYBUTTONDOWN, pygame.JOYAXISMOTION, pygame.JOYHATMOTION):
+            if not getattr(config, 'joystick', False) or joystick is None:
+                del key_states[action]
+                continue
             
         time_since_first_press = current_time - state["first_press_time"]
         time_since_last_repeat = current_time - state["last_repeat_time"]
