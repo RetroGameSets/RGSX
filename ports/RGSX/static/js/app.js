@@ -2387,6 +2387,10 @@
                                 <option value="3x4" ${settings.display?.grid === '3x4' ? 'selected' : ''}>3x4</option>
                                 <option value="4x3" ${settings.display?.grid === '4x3' ? 'selected' : ''}>4x3</option>
                                 <option value="4x4" ${settings.display?.grid === '4x4' ? 'selected' : ''}>4x4</option>
+                                <option value="5x4" ${settings.display?.grid === '5x4' ? 'selected' : ''}>5x4</option>
+                                <option value="6x4" ${settings.display?.grid === '6x4' ? 'selected' : ''}>6x4</option>
+                                <option value="6x6" ${settings.display?.grid === '6x6' ? 'selected' : ''}>6x6</option>
+                                <option value="8x6" ${settings.display?.grid === '8x6' ? 'selected' : ''}>8x6</option>
                             </select>
                         </div>
                         
@@ -2394,7 +2398,8 @@
                             <label>🖋️ ${t('web_settings_font_family')}</label>
                             <select id="setting-font-family">
                                 <option value="pixel" ${settings.display?.font_family === 'pixel' ? 'selected' : ''}>Pixel</option>
-                                <option value="dejavu" ${settings.display?.font_family === 'dejavu' ? 'selected' : ''}>DejaVu</option>
+                                <option value="bell_centennial" ${settings.display?.font_family === 'bell_centennial' ? 'selected' : ''}>Bell Centennial</option>
+                                <option value="dejavu" ${settings.display?.font_family === 'dejavu' ? 'selected' : ''}>DejaVu Sans</option>
                             </select>
                         </div>
                         

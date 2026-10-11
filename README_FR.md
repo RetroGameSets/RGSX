@@ -5,12 +5,20 @@
 Un téléchargeur de ROMs gratuit et simple d'utilisation pour Batocera, Knulli et RetroBat, avec support multi-sources.
 
 <p align="center">
-  <img width="69%" alt="main" src="https://github.com/user-attachments/assets/a98f1189-9a50-4cc3-b588-3f85245640d8" />
-  <img width="30%" alt="aide contrôles" src="https://github.com/user-attachments/assets/38cac7e6-14f2-4e83-91da-0679669822ee" />
+  <img width="49%" alt="Liste des plateformes RGSX Web" src="screenshots/platforms-web.png" />
+  <img width="49%" alt="Grille des plateformes de l'application RGSX" src="screenshots/platforms-app.png" />
 </p>
 <p align="center">
-  <img width="49%" alt="interface web" src="https://github.com/user-attachments/assets/71f8bd39-5901-45a9-82b2-91426b3c31a7" />
-  <img width="49%" alt="menu api" src="https://github.com/user-attachments/assets/5bae018d-b7d9-4a95-9f1b-77db751ff24f" />
+  <img width="49%" alt="Recherche globale de jeux dans RGSX" src="screenshots/global-search.png" />
+  <img width="49%" alt="Aide des commandes manette RGSX" src="screenshots/controls-help.png" />
+</p>
+<p align="center">
+  <img width="49%" alt="Paramètres de grille RGSX" src="screenshots/grid-layout.png" />
+  <img width="49%" alt="Navigateur de dossiers ROMs RGSX" src="screenshots/folder-browser.png" />
+</p>
+<p align="center">
+  <img width="49%" alt="Historique des téléchargements RGSX" src="screenshots/downloads-history.png" />
+  <img width="49%" alt="Paramètres de RGSX Web" src="screenshots/settings-web.png" />
 </p>
 
 
