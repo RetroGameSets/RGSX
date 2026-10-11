@@ -61,11 +61,12 @@ import logging
 import requests # type: ignore
 import queue
 import datetime
-from datetime import timezone
 import subprocess
 import sys
 import threading
 import config
+import database
+import catalog_sync
 import qbittorrent_backend
 
 from display import (
@@ -76,21 +77,20 @@ from display import (
         draw_display_menu, draw_filter_menu_choice, draw_filter_advanced, draw_filter_priority_config,
     draw_history_list, draw_clear_history_dialog, draw_cancel_download_dialog,
     draw_confirm_dialog, draw_reload_games_data_dialog, draw_popup, draw_app_background,
-    draw_toast, show_toast, sync_display_metrics
+    draw_toast, show_toast, sync_display_metrics, draw_platform_source_menu
 )
 from language import _
-from network import test_internet, is_1fichier_url, check_for_updates, apply_pending_update, cancel_all_downloads, shutdown_downloads
-from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls, clear_joystick_repeat_states, start_or_queue_download
+from network import is_1fichier_url, check_for_updates, apply_pending_update, cancel_all_downloads, shutdown_downloads
+from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls, clear_joystick_repeat_states, start_or_queue_download, should_open_pause_menu
 from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
 from utils import (
-    load_sources, check_extension_before_download, extract_data,
-    play_random_music, load_music_config, load_api_keys, _refresh_loading_feedback, _format_size_bytes, get_disk_usage,
+    load_sources, check_extension_before_download,
+    play_random_music, load_music_config, load_api_keys, _refresh_loading_feedback, get_disk_usage,
     parse_torrent_download_url
 )
 from history import load_history, save_history, load_downloaded_games, check_history_write_access, get_history_write_status
-from config import OTA_data_ZIP
-from rgsx_settings import get_sources_mode, get_custom_sources_url, get_sources_zip_url, get_display_fullscreen
+from rgsx_settings import get_display_fullscreen
 from accessibility import  load_accessibility_settings
 
 # Configuration du logging
@@ -125,10 +125,12 @@ except Exception as exc:
     logger.debug(f"Impossible de journaliser l'espace disque au démarrage: {exc}")
 
 # Ensure API key files (1Fichier, AllDebrid, Debrid-Link, RealDebrid) exist at startup so user can fill them before any download
-try:  # pragma: no cover
-    load_api_keys(False)
-except Exception as _e:
-    logger.warning(f"Cannot prepare API key files early: {_e}")
+if not config.INSTALLATION_PATH_WARNING:
+    try:  # pragma: no cover
+        load_api_keys(False)
+    except Exception as _e:
+        logger.warning(f"Cannot prepare API key files early: {_e}")
+
 # Mise à jour de la gamelist Windows avant toute initialisation graphique (évite les conflits avec ES)
 def _run_windows_gamelist_update():
     try:
@@ -153,11 +155,11 @@ def _run_windows_gamelist_update():
     except Exception as e:
         logger.exception(f"Échec lors de l'exécution de update_gamelist_windows.py: {e}")
 
-_run_windows_gamelist_update()
+if not config.INSTALLATION_PATH_WARNING:
+    _run_windows_gamelist_update()
 
 try:
     config.update_checked = False
-    config.gamelist_update_prompted = False  # Flag pour ne pas redemander la mise à jour plusieurs fois
     config.gamelist_refreshed_this_session = False
     config.pending_update_version = ""
     config.startup_update_confirmed = False
@@ -207,10 +209,6 @@ for i, scale in enumerate(config.footer_font_scale_options):
 # Chargement et initialisation de la langue
 from language import initialize_language
 initialize_language()
-# Initialiser le mode sources et URL personnalisée
-config.sources_mode = get_sources_mode()
-config.custom_sources_url = get_custom_sources_url()
-logger.debug(f"Mode sources initial: {config.sources_mode}, URL custom: {config.custom_sources_url}")
 # Charger l'option nintendo_layout depuis les settings
 try:
     from rgsx_settings import get_nintendo_layout
@@ -259,12 +257,49 @@ config.init_footer_font()
 config.screen_width, config.screen_height = pygame.display.get_surface().get_size()
 print(f"Resolution ecran validee: {config.screen_width}x{config.screen_height}")
 
+if config.INSTALLATION_PATH_WARNING:
+    logger.warning(
+        "Installation RGSX dans un chemin inattendu: APP_FOLDER=%s, USERDATA_FOLDER calculé=%s",
+        config.APP_FOLDER,
+        config.USERDATA_FOLDER,
+    )
+    config.error_message = _("warning_installation_path")
+    warning_confirmed = False
+    while not warning_confirmed:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                raise SystemExit(0)
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    raise SystemExit(0)
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                    warning_confirmed = True
+            elif event.type in (pygame.JOYBUTTONDOWN, pygame.MOUSEBUTTONDOWN):
+                warning_confirmed = True
+
+        if warning_confirmed:
+            break
+        screen.fill((0, 0, 0))
+        draw_error_screen(screen)
+        pygame.display.flip()
+        clock.tick(30)
+
+    config.error_message = ""
+    config.needs_redraw = True
+    try:  # pragma: no cover
+        load_api_keys(False)
+    except Exception as _e:
+        logger.warning(f"Cannot prepare API key files after path warning: {_e}")
+    _run_windows_gamelist_update()
+
 # Afficher un premier écran de chargement immédiatement pour éviter un écran noir
 try:
     if config.menu_state not in ("loading", "error", "pause_menu"):
         config.menu_state = "loading"
-    # Afficher directement le même statut que la première étape pour éviter un écran furtif différent
-    config.current_loading_system = _("loading_test_connection")
+    # Afficher le premier statut du parcours DB/OTA sans texte réseau générique.
+    config.current_loading_system = _("loading_check_updates")
     config.loading_progress = 0.0
     draw_loading_screen(screen)
     pygame.display.flip()
@@ -349,6 +384,21 @@ else:
     logger.debug("Aucune musique trouvée dans config.APP_FOLDER/assets/music")
 
 config.current_music = current_music  # Met à jour la musique en cours dans config
+
+# Migrer les anciennes données JSON avant que l'existence de SQLite ne masque ces fichiers.
+try:
+    legacy_migration = database.migrate_legacy_data(config.SAVE_FOLDER, config.DB_PATH)
+    if legacy_migration.get("migrated"):
+        logger.info(
+            "Migration des anciennes données RGSX terminée : "
+            "%s plateformes, %s jeux, %s historiques, %s téléchargements",
+            legacy_migration.get("platforms", 0),
+            legacy_migration.get("games", 0),
+            legacy_migration.get("history", 0),
+            legacy_migration.get("downloaded_games", 0),
+        )
+except Exception as exc:
+    logger.exception("Migration des anciennes données RGSX impossible : %s", exc)
 
 # Chargement de l'historique
 config.history = load_history()
@@ -565,9 +615,6 @@ def _prewarm_qbittorrent_startup() -> None:
         if _is_arm_machine():
             logger.info("Pré-lancement qBittorrent ignoré sur architecture ARM")
             return
-        if not qbittorrent_backend.is_available():
-            logger.info("Pré-lancement qBittorrent ignoré: backend indisponible")
-            return
         qbittorrent_backend.prewarm_startup_async()
         logger.info("Pré-lancement qBittorrent déclenché")
     except Exception as e:
@@ -609,6 +656,7 @@ async def main():
     
     # Démarrer le serveur web en arrière-plan
     start_web_server()
+    _prewarm_qbittorrent_startup()
 
     # Reprendre les téléchargements interrompus (statut "Téléchargement"/"Downloading")
     # Ces entrées proviennent d'une session précédente fermée proprement sans annulation.
@@ -622,9 +670,8 @@ async def main():
         interrupted_torrents = [e for e in interrupted if _is_torrent_resume_entry(e)]
         if interrupted_torrents:
             logger.info(
-                f"[RESUME] {len(interrupted_torrents)} reprise(s) torrent détectée(s): pré-lancement qBittorrent"
+                f"[RESUME] {len(interrupted_torrents)} reprise(s) torrent détectée(s): qBittorrent préchauffé au démarrage"
             )
-            _prewarm_qbittorrent_startup()
 
         if interrupted:
             logger.info(f"[RESUME] {len(interrupted)} téléchargement(s) interrompu(s) détecté(s), reprise...")
@@ -645,6 +692,7 @@ async def main():
     running = True
     loading_step = "none"
     ota_update_task = None
+    catalog_rows = None
     sources = []
     config.last_state_change_time = 0
     config.debounce_delay = 50
@@ -783,15 +831,20 @@ async def main():
             if press_duration >= config.confirm_long_press_threshold:
                 # Appui long détecté, ouvrir le dialogue de configuration du dossier
                 if config.platforms:
-                    platform = config.platforms[config.selected_platform]
-                    platform_name = platform["name"] if isinstance(platform, dict) else platform
-                    config.platform_config_name = platform_name
-                    config.previous_menu_state = "platform"
-                    config.menu_state = "platform_folder_config"
-                    config.platform_folder_selection = 0  # 0=Current, 1=Browse, 2=Reset, 3=Cancel
-                    config.needs_redraw = True
-                    config.platform_confirm_long_press_triggered = True
-                    logger.debug(f"Appui long détecté ({press_duration}ms), ouverture config dossier pour {platform_name}")
+                    groups = getattr(config, "platform_groups", [])
+                    if groups and 0 <= config.selected_platform < len(groups):
+                        platform_name = groups[config.selected_platform].get("platforms", [""])[0]
+                    else:
+                        platform = config.platforms[config.selected_platform]
+                        platform_name = platform["name"] if isinstance(platform, dict) else platform
+                    if platform_name:
+                        config.platform_config_name = platform_name
+                        config.previous_menu_state = "platform"
+                        config.menu_state = "platform_folder_config"
+                        config.platform_folder_selection = 0  # 0=Current, 1=Browse, 2=Reset, 3=Cancel
+                        config.needs_redraw = True
+                        config.platform_confirm_long_press_triggered = True
+                        logger.debug(f"Appui long détecté ({press_duration}ms), ouverture config dossier pour {platform_name}")
         
         # Gestion des événements
         events = pygame.event.get()
@@ -899,7 +952,7 @@ async def main():
                 (event.type == pygame.JOYHATMOTION and start_config.get("type") == "hat" and event.value == tuple(start_config.get("value") if isinstance(start_config.get("value"), list) else start_config.get("value"))) or
                 (event.type == pygame.MOUSEBUTTONDOWN and start_config.get("type") == "mouse" and event.button == start_config.get("button"))
             ):
-                if config.menu_state not in ["pause_menu", "controls_help", "controls_mapping", "history", "confirm_clear_history", "reset_settings_confirm"]:
+                if should_open_pause_menu(config.menu_state):
                     config.previous_menu_state = config.menu_state
                     # Capturer l'état d'origine pour une sortie fiable du menu pause
                     config.pause_origin_state = config.menu_state
@@ -1041,7 +1094,7 @@ async def main():
                         logger.debug(f"[EXTENSION_WARNING] Returning to {config.menu_state}")
                 continue
 
-            if config.menu_state in ["platform", "game", "error", "confirm_exit", "history"]:
+            if config.menu_state in ["platform", "platform_source", "game", "error", "confirm_exit", "history"]:
                 action = handle_controls(event, sources, joystick, screen)
                 config.needs_redraw = True
                 if action == "quit":
@@ -1297,6 +1350,9 @@ async def main():
                 draw_popup(screen)
             elif config.menu_state == "platform":
                 draw_platform_grid(screen)
+            elif config.menu_state == "platform_source":
+                draw_platform_grid(screen)
+                draw_platform_source_menu(screen)
             elif config.menu_state == "game":
                 #logger.debug(f"[RENDER_GAME] Rendering game state - search_mode={config.search_mode}, filtered_games={len(config.filtered_games) if config.filtered_games else 0}, current_game={config.current_game}")
                 if not config.search_mode:
@@ -1492,51 +1548,39 @@ async def main():
         # Gestion de l'état loading
         elif config.menu_state == "loading":
             if loading_step == "none":
-                loading_step = "test_internet"
-                config.current_loading_system = _("loading_test_connection")
-                config.loading_progress = 0.0
+                loading_step = "check_ota"
+                config.current_loading_system = _("loading_check_updates")
+                config.loading_progress = 5.0
                 config.needs_redraw = True
                 logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
-            elif loading_step == "test_internet":
-                #logger.debug("Exécution de test_internet()")
-                if test_internet():
-                    loading_step = "check_ota"
-                    config.current_loading_system = _("loading_check_updates")
-                    config.loading_progress = 20.0
-                    config.needs_redraw = True
-                    logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
-                    continue  # Passer immédiatement à check_ota
-                else:
-                    config.menu_state = "error"
-                    config.error_message = _("error_no_internet")
-                    config.needs_redraw = True
-                    logger.debug(f"Erreur : {config.error_message}")
             elif loading_step == "check_ota":
                 # Si mise à jour déjà vérifiée au pré-boot, sauter cette étape
                 if getattr(config, "update_checked", False):
                     logger.debug("Mises à jour déjà vérifiées au pré-boot, on saute check_for_updates()")
                     loading_step = "check_data"
-                    config.current_loading_system = _("loading_downloading_games_images")
-                    config.loading_progress = max(config.loading_progress, 50.0)
+                    config.current_loading_system = _("loading_connect_catalog")
+                    config.loading_progress = 35.0
                     config.needs_redraw = True
                     continue
                 logger.debug("Exécution de check_for_updates()")
                 success, message = await check_for_updates()
                 logger.debug(f"Résultat de check_for_updates : success={success}, message={message}")
                 if not success:
-                    config.menu_state = "error"
-                    # Garder message (déjà fourni par check_for_updates), sinon fallback
-                    config.error_message = message or _("error_check_updates_failed")
+                    logger.warning("Échec non bloquant de la vérification OTA: %s", message)
+                    config.current_loading_system = _("loading_update_check_skipped")
+                    config.loading_detail_lines = [str(message)] if message else []
+                    loading_step = "check_data"
+                    config.loading_progress = 35.0
                     config.needs_redraw = True
-                    logger.debug(f"Erreur OTA : {message}")
+                    continue
                 elif getattr(config, "pending_update_version", ""):
                     loading_step = "await_ota_confirmation"
                     config.needs_redraw = True
                     continue
                 else:
                     loading_step = "check_data"
-                    config.current_loading_system = _("loading_downloading_games_images")
-                    config.loading_progress = 50.0
+                    config.current_loading_system = _("loading_connect_catalog")
+                    config.loading_progress = 35.0
                     config.needs_redraw = True
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
                     continue  # Passer immédiatement à check_data
@@ -1573,233 +1617,92 @@ async def main():
                     config.needs_redraw = True
                 continue
             elif loading_step == "check_data":
-                is_data_empty = not os.path.exists(config.GAMES_FOLDER) or not any(os.scandir(config.GAMES_FOLDER))
-                if is_data_empty:
-                    config.current_loading_system = _("loading_download_data")
-                    config.loading_progress = 30.0
+                config.current_loading_system = _("loading_connect_catalog")
+                config.loading_progress = 40.0
+                config.loading_detail_lines = []
+                config.needs_redraw = True
+                catalog_sync_error = None
+                catalog_sync_result = None
+                try:
+                    def _report_catalog_sync_progress(_stage, progress, detail):
+                        detail_lines = []
+                        if detail:
+                            entity, separator, counts = str(detail).partition(":")
+                            if separator and "/" in counts:
+                                loaded, total = counts.split("/", 1)
+                                if entity == "games":
+                                    detail_lines.append(_("loading_catalog_games_progress").format(loaded, total))
+                                elif entity == "platforms":
+                                    detail_lines.append(_("loading_platform_counter").format(loaded, total))
+                        _refresh_loading_feedback(
+                            current_system=_("loading_sync_catalog"),
+                            progress=progress,
+                            detail_lines=detail_lines,
+                            force=True,
+                        )
+
+                    catalog_sync_result = catalog_sync.sync_catalog(
+                        config.DB_PATH,
+                        progress_callback=_report_catalog_sync_progress,
+                    )
+                    logger.info("Synchronisation du catalogue: %s", catalog_sync_result)
+                except Exception as sync_error:
+                    catalog_sync_error = sync_error
+                    logger.warning("API catalogue indisponible: %s", sync_error)
+                try:
+                    catalog_rows = database.list_platforms_with_game_counts(config.DB_PATH)
+                except Exception as database_error:
+                    logger.exception("Connexion ou lecture du catalogue impossible")
+                    config.previous_menu_state = "loading"
+                    config.menu_state = "error"
+                    config.error_message = _("error_catalog_connection")
                     config.needs_redraw = True
-                    logger.debug("Dossier Data vide, début du téléchargement du ZIP")
-                    sources_zip_url = None  # Initialiser pour éviter les erreurs
-                    try:
-                        zip_path = os.path.join(config.SAVE_FOLDER, "data_download.zip")
-                        headers = {'User-Agent': 'Mozilla/5.0'}
-                        # Support des sources custom locales: prioriser un ZIP présent dans SAVE_FOLDER
-                        try:
-                            from rgsx_settings import get_sources_mode
-                            from rgsx_settings import find_local_custom_sources_zip
-                            mode = get_sources_mode()
-                        except Exception:
-                            mode = "rgsx"
-                            find_local_custom_sources_zip = lambda: None  # type: ignore
-
-                        local_zip = find_local_custom_sources_zip() if mode == "custom" else None
-                        if local_zip and os.path.isfile(local_zip):
-                            # Extraire directement depuis le ZIP local
-                            config.current_loading_system = _("loading_extracting_data")
-                            config.loading_progress = 60.0
-                            config.needs_redraw = True
-                            dest_dir = config.SAVE_FOLDER
-                            try:
-                                success, message = extract_data(local_zip, dest_dir, local_zip)
-                                if success:
-                                    from rgsx_settings import set_last_gamelist_update
-
-                                    set_last_gamelist_update()
-                                    config.gamelist_refreshed_this_session = True
-                                    logger.debug(f"Extraction locale réussie : {message}")
-                                    config.loading_progress = 70.0
-                                    config.needs_redraw = True
-                                else:
-                                    raise Exception(f"Échec de l'extraction locale : {message}")
-                            except Exception as de:
-                                logger.error(f"Erreur extraction ZIP local custom: {de}")
-                                config.popup_message = _("sources_mode_custom_download_error")
-                                config.popup_timer = 5000
-                                # Continuer avec jeux vides
-                        else:
-                            # Déterminer l'URL à utiliser selon le mode (RGSX ou custom)
-                            sources_zip_url = get_sources_zip_url(OTA_data_ZIP)
-                            if sources_zip_url is None:
-                                # Mode custom sans fichier local ni URL valide -> pas de téléchargement, jeux vides
-                                logger.warning("Mode custom actif mais aucun ZIP local et aucune URL valide fournie. Liste de jeux vide.")
-                                config.popup_message = _("sources_mode_custom_missing_url").format(config.RGSX_SETTINGS_PATH)
-                                config.popup_timer = 5000
-                            else:
-                                try:
-                                    _refresh_loading_feedback(
-                                        current_system=_("loading_download_data"),
-                                        progress=config.loading_progress,
-                                        force=True,
-                                    )
-                                    with requests.get(sources_zip_url, stream=True, headers=headers, timeout=30) as response:
-                                        response.raise_for_status()
-                                        total_size = int(response.headers.get('content-length', 0))
-                                        logger.debug(f"Taille totale du ZIP : {total_size} octets")
-                                        downloaded = 0
-                                        download_started_at = time.time()
-                                        last_loading_refresh = 0.0
-                                        os.makedirs(os.path.dirname(zip_path), exist_ok=True)
-                                        with open(zip_path, 'wb') as f:
-                                            for chunk in response.iter_content(chunk_size=262144):
-                                                if chunk:
-                                                    f.write(chunk)
-                                                    downloaded += len(chunk)
-                                                    elapsed = max(0.001, time.time() - download_started_at)
-                                                    speed_bytes_per_second = downloaded / elapsed
-                                                    progress_detail = f"{_format_size_bytes(downloaded)} / {_format_size_bytes(total_size)}" if total_size > 0 else _format_size_bytes(downloaded)
-                                                    speed_detail = f"{speed_bytes_per_second / (1024 * 1024):.1f} MB/s"
-                                                    config.download_progress[sources_zip_url] = {
-                                                        "downloaded_size": downloaded,
-                                                        "total_size": total_size,
-                                                        "status": "Téléchargement",
-                                                        "progress_percent": (downloaded / total_size * 100) if total_size > 0 else 0
-                                                    }
-                                                    config.loading_progress = 15.0 + (35.0 * downloaded / total_size) if total_size > 0 else 15.0
-                                                    config.needs_redraw = True
-                                                    now = time.time()
-                                                    should_refresh = (now - last_loading_refresh) >= 0.12 or (total_size > 0 and downloaded >= total_size)
-                                                    if should_refresh:
-                                                        last_loading_refresh = now
-                                                        _refresh_loading_feedback(
-                                                            current_system=_("loading_download_data"),
-                                                            progress=config.loading_progress,
-                                                            detail_lines=[progress_detail, speed_detail],
-                                                        )
-                                                        await asyncio.sleep(0)
-                                        logger.debug(f"ZIP téléchargé : {zip_path}")
-
-                                    config.current_loading_system = _("loading_extracting_data")
-                                    config.loading_progress = 60.0
-                                    config.needs_redraw = True
-                                    dest_dir = config.SAVE_FOLDER
-                                    success, message = extract_data(zip_path, dest_dir, sources_zip_url)
-                                    if success:
-                                        from rgsx_settings import get_remote_gamelist_timestamp, set_last_gamelist_update
-
-                                        remote_update_dt = get_remote_gamelist_timestamp(sources_zip_url)
-                                        set_last_gamelist_update(remote_update_dt)
-                                        config.gamelist_refreshed_this_session = True
-                                        logger.debug(f"Extraction réussie : {message}")
-                                        config.loading_progress = 70.0
-                                        config.needs_redraw = True
-                                    else:
-                                        raise Exception(f"Échec de l'extraction : {message}")
-                                except Exception as de:
-                                    logger.error(f"Erreur téléchargement custom source: {de}")
-                                    config.popup_message = _("sources_mode_custom_download_error")
-                                    config.popup_timer = 5000
-                                    # Pas d'arrêt : continuer avec jeux vides
-                    except Exception as e:
-                        logger.error(f"Erreur lors du téléchargement/extraction du Dossier Data : {str(e)}")
-                        # En mode custom on ne bloque pas le chargement ; en mode RGSX (sources_zip_url non None et OTA) on affiche une erreur
-                        if sources_zip_url is not None:
-                            config.menu_state = "error"
-                            config.error_message = _("error_extract_data_failed")
-                            config.needs_redraw = True
-                        loading_step = "load_sources"
-                        if os.path.exists(zip_path):
-                            os.remove(zip_path)
-                        continue
-                    if os.path.exists(zip_path):
-                        os.remove(zip_path)
-                        logger.debug(f"Fichier ZIP {zip_path} supprimé")
-                    loading_step = "load_sources"
-                    config.current_loading_system = _("loading_load_systems")
-                    config.loading_progress = 80.0
+                    continue
+                if not catalog_rows:
+                    if catalog_sync_error is not None:
+                        logger.error("API catalogue indisponible et aucun cache local utilisable")
+                        config.error_message = _("error_catalog_connection")
+                    else:
+                        logger.error("Le catalogue DB est joignable mais ne contient aucune plateforme")
+                        config.error_message = _("error_catalog_empty")
+                    config.previous_menu_state = "loading"
+                    config.menu_state = "error"
                     config.needs_redraw = True
-                    logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
+                    continue
+
+                config.current_loading_system = _("loading_catalog_connected").format(len(catalog_rows))
+                config.loading_progress = 60.0
+                sync_mode = str((catalog_sync_result or {}).get("mode") or "local")
+                if catalog_sync_error is not None or sync_mode == "local":
+                    config.loading_detail_lines = [_ ("loading_catalog_offline_cache")]
                 else:
-                    loading_step = "load_sources"
-                    config.current_loading_system = _("loading_load_systems")
-                    config.loading_progress = 80.0
-                    config.needs_redraw = True
-                    logger.debug(f"Dossier Data non vide, passage à {loading_step}")
-                    continue  # Passer immédiatement à load_sources
+                    config.loading_detail_lines = [_ ("loading_catalog_source_api")]
+                config.needs_redraw = True
+                loading_step = "load_sources"
+                continue
             elif loading_step == "load_sources":
                 logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
-                sources = load_sources(allow_torrent_manifest_fetch=True)
+                config.current_loading_system = _("loading_catalog_loading")
+                config.loading_progress = 65.0
+                config.needs_redraw = True
+                sources = load_sources(allow_torrent_manifest_fetch=True, catalog_rows=catalog_rows)
+                if not sources:
+                    logger.error("Le catalogue est connecté mais les plateformes n'ont pas pu être chargées")
+                    config.previous_menu_state = "loading"
+                    config.menu_state = "error"
+                    config.error_message = _("error_catalog_load")
+                    config.needs_redraw = True
+                    continue
+                catalog_rows = None
                 config.loading_progress = 100.0
                 config.current_loading_system = ""
                 config.loading_detail_lines = []
-                
-                # Vérifier si une mise à jour de la liste des jeux est nécessaire (seulement si pas déjà demandé)
-                if not config.gamelist_update_prompted:
-                    if getattr(config, "gamelist_refreshed_this_session", False):
-                        logger.info("Liste des jeux déjà téléchargée/extraites pendant ce lancement, aucun prompt de mise à jour supplémentaire")
-                        config.menu_state = "platform"
-                        logger.debug(f"Fin chargement, passage à platform, progress={config.loading_progress}")
-                        continue
-
-                    from rgsx_settings import (
-                        get_last_gamelist_update,
-                        get_last_gamelist_prompt_remote_update,
-                        parse_gamelist_update_timestamp,
-                        format_gamelist_update_display,
-                        get_remote_gamelist_timestamp,
-                    )
-                    
-                    last_update = get_last_gamelist_update()
-                    last_prompted_remote_update = get_last_gamelist_prompt_remote_update()
-                    last_update_dt = parse_gamelist_update_timestamp(last_update)
-                    last_prompted_remote_update_dt = parse_gamelist_update_timestamp(last_prompted_remote_update)
-                    remote_sources_url = get_sources_zip_url(OTA_data_ZIP)
-                    remote_update_dt = get_remote_gamelist_timestamp(remote_sources_url)
-                    config.gamelist_local_update_display = format_gamelist_update_display(last_update)
-                    config.gamelist_remote_update_display = format_gamelist_update_display(remote_update_dt)
-                    config.gamelist_remote_update_timestamp = (
-                        remote_update_dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-                        if remote_update_dt is not None else None
-                    )
-                    should_prompt_update = False
-                    
-                    try:
-                        logger.info(
-                            f"Dernière mise à jour locale de la liste des jeux: {config.gamelist_local_update_display or last_update}"
-                        )
-                        if last_prompted_remote_update_dt is not None:
-                            logger.info(
-                                "Dernière date distante déjà proposée pour la liste des jeux: "
-                                f"{last_prompted_remote_update_dt.isoformat()}"
-                            )
-                        if remote_update_dt is not None:
-                            logger.info(
-                                f"Date distante détectée pour la liste des jeux: {config.gamelist_remote_update_display}"
-                            )
-
-                        latest_seen_update_dt = None
-                        for candidate_dt in (last_update_dt, last_prompted_remote_update_dt):
-                            if candidate_dt is None:
-                                continue
-                            if latest_seen_update_dt is None or candidate_dt > latest_seen_update_dt:
-                                latest_seen_update_dt = candidate_dt
-
-                        if remote_update_dt is not None:
-                            if latest_seen_update_dt is None:
-                                logger.info("Première vérification distante détectée, proposition de mise à jour de la liste des jeux")
-                                should_prompt_update = True
-                            elif remote_update_dt > latest_seen_update_dt:
-                                logger.info("Mise à jour de la liste des jeux recommandée (fichier distant plus récent)")
-                                should_prompt_update = True
-                            else:
-                                logger.info("Même version distante déjà appliquée ou déjà proposée, aucun prompt affiché")
-                        elif last_update is None and last_prompted_remote_update is None:
-                            logger.info("Première utilisation détectée sans date distante exploitable, proposition de mise à jour de la liste des jeux")
-                            should_prompt_update = True
-                    except Exception as e:
-                        logger.error(f"Erreur lors de la vérification de la date de mise à jour: {e}")
-                    
-                    if should_prompt_update:
-                        config.menu_state = "gamelist_update_prompt"
-                        config.gamelist_update_selection = 1  # 0=Non, 1=Oui (par défaut)
-                        config.gamelist_update_prompted = True  # Marquer comme déjà demandé
-                        logger.debug("Affichage du prompt de mise à jour de la liste des jeux")
-                    else:
-                        config.menu_state = "platform"
-                        logger.debug(f"Fin chargement, passage à platform, progress={config.loading_progress}")
-                else:
-                    config.menu_state = "platform"
-                    logger.debug(f"Prompt déjà affiché, passage à platform, progress={config.loading_progress}")
-                
+                config.menu_state = "platform"
+                logger.info(
+                    "Catalogue DB chargé : %s plateformes, %s visibles",
+                    len(sources),
+                    len(config.platforms),
+                )
                 config.needs_redraw = True
 
         # Gestion de l'état de transition

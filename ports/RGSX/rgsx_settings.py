@@ -74,10 +74,6 @@ def load_rgsx_settings():
             "enabled": False,
             "target_directory": ""
         },
-        "sources": {  
-            "mode": "rgsx",       
-            "custom_url": ""      
-    },
     "show_unsupported_platforms": False,
     "allow_unknown_extensions": False,
     "nintendo_layout": False,
@@ -305,57 +301,6 @@ def apply_symlink_path(base_path, platform_folder):
         # Return original path
         return os.path.join(base_path, platform_folder)
 
-# ----------------------- Sources (RGSX / Custom) ----------------------- #
-
-def get_sources_mode(settings=None):
-    """Retourne le mode des sources: 'rgsx' (par défaut) ou 'custom'."""
-    if settings is None:
-        settings = load_rgsx_settings()
-    return settings.get("sources", {}).get("mode", "rgsx")
-
-def set_sources_mode(mode):
-    """Définit le mode des sources et sauvegarde le fichier."""
-    if mode not in ("rgsx", "custom"):
-        mode = "rgsx"
-    settings = load_rgsx_settings()
-    sources = settings.setdefault("sources", {})
-    sources["mode"] = mode
-    save_rgsx_settings(settings)
-    return mode
-
-def get_custom_sources_url(settings=None):
-    """Retourne l'URL personnalisée configurée (ou chaîne vide)."""
-    if settings is None:
-        settings = load_rgsx_settings()
-    return settings.get("sources", {}).get("custom_url", "").strip()
-
-def get_sources_zip_url(fallback_url):
-    """Retourne l'URL ZIP à utiliser selon le mode. Fallback sur l'URL standard si custom invalide."""
-    settings = load_rgsx_settings()
-    if get_sources_mode(settings) == "custom":
-        custom = get_custom_sources_url(settings)
-        if custom.startswith("http://") or custom.startswith("https://"):
-            return custom
-        # Pas de fallback : retourner None pour signaler une source vide
-        return None
-    return fallback_url
-
-def find_local_custom_sources_zip():
-    """Recherche un fichier ZIP local à la racine de SAVE_FOLDER pour le mode custom.
-
-    Ne prend en compte QUE games.zip.
-    Retourne le chemin absolu du ZIP si trouvé, sinon None.
-    """
-    try:
-        from config import SAVE_FOLDER
-        if not os.path.isdir(SAVE_FOLDER):
-            return None
-        games_zip = os.path.join(SAVE_FOLDER, "games.zip")
-        return games_zip if os.path.isfile(games_zip) else None
-    except Exception as e:
-        logger.debug(f"find_local_custom_sources_zip error: {e}")
-        return None
-
 # ----------------------- Unsupported platforms toggle ----------------------- #
 
 def get_show_unsupported_platforms(settings=None):
@@ -422,6 +367,18 @@ def set_hide_premium_systems(enabled: bool) -> bool:
 
 # ----------------------- Display layout (grid) ----------------------- #
 
+DISPLAY_GRID_LAYOUTS = (
+    (3, 3),
+    (3, 4),
+    (4, 3),
+    (4, 4),
+    (5, 4),
+    (6, 4),
+    (6, 6),
+    (8, 6),
+)
+
+
 def get_display_grid(settings=None):
     """Retourne (cols, rows) pour la grille d'affichage, par défaut (3,4)."""
     if settings is None:
@@ -436,8 +393,7 @@ def get_display_grid(settings=None):
 
 def set_display_grid(cols: int, rows: int):
     """Définit et sauvegarde la grille d'affichage (cols x rows) parmi options autorisées."""
-    allowed = {(3,3), (3,4), (4,3), (4,4)}
-    if (cols, rows) not in allowed:
+    if (cols, rows) not in DISPLAY_GRID_LAYOUTS:
         cols, rows = 3, 4
     settings = load_rgsx_settings()
     disp = settings.setdefault("display", {})
@@ -613,7 +569,7 @@ def save_game_filters(filters_dict):
 
 def get_global_sort_option(settings=None):
     """Retourne l'option de tri globale sauvegardée."""
-    allowed = {"name_asc", "name_desc", "size_asc", "size_desc"}
+    allowed = {"name_asc", "name_desc", "size_asc", "size_desc", "date_asc", "date_desc"}
     if settings is None:
         settings = load_rgsx_settings()
     value = str(settings.get("global_sort_option", "name_asc") or "name_asc")
@@ -622,7 +578,7 @@ def get_global_sort_option(settings=None):
 
 def set_global_sort_option(option):
     """Sauvegarde l'option de tri globale."""
-    allowed = {"name_asc", "name_desc", "size_asc", "size_desc"}
+    allowed = {"name_asc", "name_desc", "size_asc", "size_desc", "date_asc", "date_desc"}
     normalized = str(option or "name_asc")
     if normalized not in allowed:
         normalized = "name_asc"

@@ -8,11 +8,12 @@ import datetime
 import threading
 import logging
 import config
+import catalog_sync
 from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE, CONTROLS_CONFIG_PATH, Game
 from display import draw_validation_transition, show_toast
 from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel, cleanup_torrent_temp, stop_active_seeder
 from utils import (
-    load_games, check_extension_before_download, is_extension_supported,
+    load_games, clear_games_cache, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
     save_music_config, load_api_keys, _get_dest_folder_name,
     extract_zip, extract_rar, extract_7z, find_file_with_or_without_extension, find_matching_files, toggle_web_service_at_boot, check_web_service_status,
@@ -21,7 +22,6 @@ from utils import (
     start_connection_status_check, get_clean_display_name, get_existing_history_matches, remember_history_local_match,
     clear_torrent_manifest_cache,
     request_torrent_manifest_refresh,
-    clear_platform_game_count_cache,
     move_files_to_directory, parse_torrent_download_url,
     _refresh_loading_feedback,
     parse_game_size_to_bytes,
@@ -30,7 +30,7 @@ from utils import (
 from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games
 from language import _, get_available_languages, set_language  
 from rgsx_settings import (
-    get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
+    DISPLAY_GRID_LAYOUTS, get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
     get_show_unsupported_platforms, set_show_unsupported_platforms,
     set_allow_unknown_extensions, set_symlink_option, get_symlink_option,
     get_global_sort_option, set_global_sort_option,
@@ -51,6 +51,8 @@ GLOBAL_SORT_OPTIONS = [
     ("name_desc", lambda: _("web_sort_name_desc") or "Z-A (Name)"),
     ("size_asc", lambda: _("web_sort_size_asc") or "Size -+ (Small first)"),
     ("size_desc", lambda: _("web_sort_size_desc") or "Size +- (Large first)"),
+    ("date_asc", lambda: _("web_sort_date_asc") or "Date -+ (Oldest first)"),
+    ("date_desc", lambda: _("web_sort_date_desc") or "Date +- (Newest first)"),
 ]
 
 
@@ -75,7 +77,7 @@ def _wrap_index(current_index: int, delta: int, item_count: int) -> int:
 
 def _sort_global_items(items: list[dict]) -> list[dict]:
     option = getattr(config, 'global_sort_option', 'name_asc') or 'name_asc'
-    reverse = option in ('name_desc', 'size_desc')
+    reverse = option in ('name_desc', 'size_desc', 'date_desc')
 
     if option.startswith('size_'):
         return sorted(
@@ -87,6 +89,25 @@ def _sort_global_items(items: list[dict]) -> list[dict]:
             ),
             reverse=reverse,
         )
+
+    if option.startswith('date_'):
+        dated_items = [item for item in items if item.get('updated_at')]
+        undated_items = [item for item in items if not item.get('updated_at')]
+        dated_items.sort(
+            key=lambda item: (
+                str(item.get('updated_at') or ''),
+                str(item.get('display_name') or '').lower(),
+                str(item.get('platform_label') or '').lower(),
+            ),
+            reverse=reverse,
+        )
+        undated_items.sort(
+            key=lambda item: (
+                str(item.get('display_name') or '').lower(),
+                str(item.get('platform_label') or '').lower(),
+            )
+        )
+        return dated_items + undated_items
 
     return sorted(
         items,
@@ -116,6 +137,54 @@ def _apply_sorted_active_filters() -> list[Game]:
     if hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
         return _sort_local_games(config.game_filter_obj.apply_filters(config.games))
     return config.games
+
+
+def refresh_catalog_from_database() -> tuple[int, int]:
+    previous_platform = None
+    if 0 <= getattr(config, "current_platform", -1) < len(config.platforms):
+        previous_platform = config.platforms[config.current_platform]
+
+    current_games = config.filtered_games if config.filter_active or config.search_mode else config.games
+    previous_game_name = None
+    if 0 <= getattr(config, "current_game", -1) < len(current_games):
+        previous_game_name = current_games[config.current_game].name
+
+    clear_games_cache()
+    catalog_sync.sync_catalog(config.DB_PATH)
+    sources = load_sources(allow_torrent_manifest_fetch=False)
+    if not sources:
+        raise RuntimeError("Le catalogue DB n'a renvoyé aucune plateforme")
+
+    if not config.platforms:
+        config.current_platform = 0
+        config.current_game = 0
+        config.games = []
+        config.filtered_games = []
+        config.scroll_offset = 0
+        return len(sources), 0
+
+    config.current_platform = (
+        config.platforms.index(previous_platform)
+        if previous_platform in config.platforms
+        else 0
+    )
+    platform_name = config.platforms[config.current_platform]
+    config.games = load_games(platform_name)
+
+    if (config.search_mode or config.filter_active) and config.search_query:
+        config.filtered_games = filter_games_by_search_query()
+    elif hasattr(config, 'game_filter_obj') and config.game_filter_obj and config.game_filter_obj.is_active():
+        config.filtered_games = _apply_sorted_active_filters()
+    else:
+        config.filtered_games = config.games
+
+    visible_games = config.filtered_games if config.filter_active or config.search_mode else config.games
+    config.current_game = next(
+        (index for index, game in enumerate(visible_games) if game.name == previous_game_name),
+        0,
+    )
+    config.scroll_offset = 0
+    return len(sources), len(config.platforms)
 
 
 def _get_advanced_filter_region_columns() -> int:
@@ -256,11 +325,46 @@ def _warn_missing_api_key_for_1fichier_platform(platform_label: str | None = Non
 
 
 def _open_selected_platform(screen) -> bool:
-    if not config.platforms:
+    platform_groups = getattr(config, "platform_groups", [])
+    if not platform_groups:
+        platform_groups = [{"platforms": [name]} for name in config.platforms]
+        config.platform_groups = platform_groups
+    group_index = config.selected_platform
+    if group_index < 0 or group_index >= len(platform_groups):
         return False
 
-    platform_entry = config.platforms[config.selected_platform]
-    platform_id = _get_platform_id(platform_entry)
+    group_platforms = platform_groups[group_index].get("platforms", [])
+    if not group_platforms:
+        return False
+    if len(group_platforms) > 1:
+        config.platform_source_group_index = group_index
+        config.platform_source_selected = 0
+        config.platform_source_scroll_offset = 0
+        config.menu_state = "platform_source"
+        config.needs_redraw = True
+        return False
+    config.platform_source_group_index = group_index
+    return _open_platform_source(screen, 0)
+
+
+def _open_platform_source(screen, source_index: int) -> bool:
+    platform_groups = getattr(config, "platform_groups", [])
+    group_index = getattr(config, "platform_source_group_index", config.selected_platform)
+    if group_index < 0 or group_index >= len(platform_groups):
+        return False
+    group_platforms = platform_groups[group_index].get("platforms", [])
+    if source_index < 0 or source_index >= len(group_platforms):
+        return False
+
+    platform_id = str(group_platforms[source_index])
+    try:
+        platform_index = config.platforms.index(platform_id)
+    except ValueError:
+        logger.error("Selected platform source is no longer available: %s", platform_id)
+        config.menu_state = "platform"
+        config.needs_redraw = True
+        return False
+
     platform_label = _get_platform_label(platform_id)
 
     if _is_arm_device() and _platform_has_torrents(platform_id):
@@ -271,7 +375,7 @@ def _open_selected_platform(screen) -> bool:
     if _is_1fichier_platform(platform_id, platform_label):
         _warn_missing_api_key_for_1fichier_platform(platform_label)
 
-    config.current_platform = config.selected_platform
+    config.current_platform = platform_index
     config.games = load_games(platform_id)
 
     # Apply saved filters automatically if any
@@ -434,7 +538,7 @@ VALID_STATES = [
     "reload_games_data", "restart_popup", "error", "loading", "confirm_clear_history",
     "reset_settings_confirm",
     "language_select", "filter_platforms", "display_menu", "confirm_cancel_download",
-    "gamelist_update_prompt", "platform_folder_config",
+    "gamelist_update_prompt", "platform_folder_config", "platform_source",
     # Nouveaux sous-menus hiérarchiques (refonte pause menu)
     "pause_controls_menu",      # sous-menu Controls (aide, remap)
     "pause_display_menu",       # sous-menu Display (layout, font size, unsupported, unknown ext, filter)
@@ -472,6 +576,18 @@ def validate_menu_state(state):
         logger.debug(f"État invalide {state}, retour à platform")
         return "platform"
     return state
+
+
+def should_open_pause_menu(menu_state: str | None) -> bool:
+    state = str(menu_state or "")
+    return not state.startswith("pause_") and state not in {
+        "controls_help",
+        "controls_mapping",
+        "history",
+        "confirm_clear_history",
+        "reload_games_data",
+        "reset_settings_confirm",
+    }
 
 
 def load_controls_config(path=CONTROLS_CONFIG_PATH):
@@ -908,6 +1024,18 @@ def _search_text_matches(normalized_query: str, candidate_text: str | None) -> b
     return bool(compact_query) and compact_query in compact_candidate
 
 
+def _global_search_item_matches(normalized_query: str, compact_query: str, item: dict) -> bool:
+    if not normalized_query:
+        return True
+
+    candidate_text = item.get("search_name") or _normalize_search_text(item.get("display_name", ""))
+    if normalized_query in candidate_text:
+        return True
+
+    compact_candidate = item.get("compact_search_name") or _compact_search_text(item.get("display_name", ""))
+    return bool(compact_query) and compact_query in compact_candidate
+
+
 def _get_search_input_char(event) -> str | None:
     if event.type != pygame.KEYDOWN:
         return None
@@ -973,9 +1101,11 @@ def build_global_search_index() -> list[dict]:
                 "game_name": game.name,
                 "display_name": display_name,
                 "search_name": _normalize_search_text(display_name),
+                "compact_search_name": _compact_search_text(display_name),
                 "url": game.url,
                 "size": game.size,
                 "size_bytes": parse_game_size_to_bytes(game.size),
+                "updated_at": game.updated_at,
                 "game_obj": game,
             })
 
@@ -991,75 +1121,9 @@ def build_global_search_index() -> list[dict]:
     return _sort_global_items(indexed_games)
 
 
-def _load_embedded_global_search_index() -> list[dict] | None:
-    cache_path = getattr(config, 'GLOBAL_SEARCH_INDEX_CACHE_PATH', '')
-    if not cache_path or not os.path.exists(cache_path):
-        return None
-
-    try:
-        with open(cache_path, 'r', encoding='utf-8') as handle:
-            payload = json.load(handle)
-    except Exception as exc:
-        logger.warning(f"Impossible de charger l'index global embarque: {exc}")
-        return None
-
-    raw_entries = payload.get('entries') if isinstance(payload, dict) else None
-    if not isinstance(raw_entries, list):
-        return None
-
-    platform_order: dict[str, int] = {}
-    for index, platform in enumerate(config.platforms):
-        platform_order[_get_platform_id(platform)] = index
-
-    indexed_games = []
-    for raw_entry in raw_entries:
-        if not isinstance(raw_entry, dict):
-            continue
-        platform_id = str(raw_entry.get('platform_id') or '').strip()
-        if not platform_id or platform_id not in platform_order:
-            continue
-
-        game_name = str(raw_entry.get('game_name') or '').strip()
-        if not game_name:
-            continue
-
-        display_name = str(raw_entry.get('display_name') or '').strip() or Path(game_name).stem
-        url = str(raw_entry.get('url') or '').strip() or None
-        size = str(raw_entry.get('size') or '').strip() or None
-        try:
-            size_bytes = int(raw_entry.get('size_bytes') or 0)
-        except (TypeError, ValueError):
-            size_bytes = 0
-
-        game_obj = Game(name=game_name, url=url, size=size, display_name=display_name)
-        indexed_games.append({
-            'platform_id': platform_id,
-            'platform_label': _get_platform_label(platform_id),
-            'platform_index': platform_order[platform_id],
-            'game_name': game_name,
-            'display_name': display_name,
-            'search_name': _normalize_search_text(display_name),
-            'url': url,
-            'size': size,
-            'size_bytes': size_bytes,
-            'game_obj': game_obj,
-        })
-
-    if indexed_games:
-        logger.info(f"Index global charge depuis le cache embarque: {len(indexed_games)} jeux")
-        return _sort_global_items(indexed_games)
-    return None
-
-
 def _ensure_global_search_index(operation_title: str | None = None) -> None:
     index_signature = tuple(config.platforms)
     if getattr(config, 'global_search_index', None) and getattr(config, 'global_search_index_signature', None) == index_signature:
-        return
-
-    embedded_index = _load_embedded_global_search_index()
-    if embedded_index is not None:
-        config.global_search_index = embedded_index
-        config.global_search_index_signature = index_signature
         return
 
     previous_menu_state = getattr(config, 'menu_state', 'platform')
@@ -1085,25 +1149,76 @@ def _ensure_global_search_index(operation_title: str | None = None) -> None:
         config.needs_redraw = True
 
 
+def _get_global_search_source_items() -> tuple[list[dict], tuple]:
+    items = getattr(config, 'global_search_index', None)
+    if items is None:
+        items = []
+    filter_obj = getattr(config, 'game_filter_obj', None)
+    filter_signature = None
+    filter_active = bool(filter_obj and filter_obj.is_active())
+    if filter_active:
+        filter_signature = (
+            tuple(sorted(
+                (str(region), str(state))
+                for region, state in (getattr(filter_obj, 'region_filters', {}) or {}).items()
+            )),
+            bool(getattr(filter_obj, 'hide_non_release', False)),
+            bool(getattr(filter_obj, 'one_rom_per_game', False)),
+            tuple(str(region) for region in (getattr(filter_obj, 'region_priority', ()) or ())),
+        )
+
+    signature = (
+        id(items),
+        getattr(config, 'global_sort_option', 'name_asc'),
+        filter_signature,
+    )
+    if getattr(config, 'global_search_source_signature', None) != signature:
+        source_items = list(items)
+        if filter_active:
+            item_by_game = {
+                id(item.get('game_obj')): item
+                for item in source_items
+                if item.get('game_obj') is not None
+            }
+            filtered_games = filter_obj.apply_filters(
+                [item.get('game_obj') for item in source_items if item.get('game_obj') is not None]
+            )
+            source_items = [
+                item_by_game[id(game)]
+                for game in filtered_games
+                if id(game) in item_by_game
+            ]
+
+        config.global_search_source_items = _sort_global_items(source_items)
+        config.global_search_source_signature = signature
+        config.global_search_applied_query = ""
+        config.global_search_applied_signature = None
+
+    return config.global_search_source_items, signature
+
+
 def refresh_global_search_results(reset_selection: bool = True) -> None:
     query = _normalize_search_text(config.global_search_query)
-    items = list(getattr(config, 'global_search_index', []) or [])
-
-    filter_obj = getattr(config, 'game_filter_obj', None)
-    if filter_obj and filter_obj.is_active():
-        item_by_game = {id(item.get('game_obj')): item for item in items}
-        filtered_games = filter_obj.apply_filters([item.get('game_obj') for item in items if item.get('game_obj') is not None])
-        items = [item_by_game[id(game)] for game in filtered_games if id(game) in item_by_game]
+    source_items, source_signature = _get_global_search_source_items()
+    previous_query = getattr(config, 'global_search_applied_query', "")
+    previous_signature = getattr(config, 'global_search_applied_signature', None)
+    if query and previous_query and source_signature == previous_signature and query.startswith(previous_query):
+        items = config.global_search_results
+    else:
+        items = source_items
 
     if query:
+        compact_query = _compact_search_text(query)
         items = [
             item for item in items
-            if _search_text_matches(query, item.get("search_name") or item.get("display_name", ""))
+            if _global_search_item_matches(query, compact_query, item)
         ]
     elif not getattr(config, 'global_search_allow_empty', False):
         items = []
 
-    config.global_search_results = _sort_global_items(items)
+    config.global_search_results = items
+    config.global_search_applied_query = query
+    config.global_search_applied_signature = source_signature
 
     if reset_selection:
         config.global_search_selected = 0
@@ -1118,6 +1233,8 @@ def enter_global_search() -> None:
     _ensure_global_search_index(_build_global_search_loading_title())
     config.global_search_query = ""
     config.global_search_results = []
+    config.global_search_applied_query = ""
+    config.global_search_applied_signature = None
     config.global_search_selected = 0
     config.global_search_scroll_offset = 0
     config.global_search_editing = True
@@ -1160,6 +1277,8 @@ def enter_global_sorted_results() -> None:
 def exit_global_search() -> None:
     config.global_search_query = ""
     config.global_search_results = []
+    config.global_search_applied_query = ""
+    config.global_search_applied_signature = None
     config.global_search_selected = 0
     config.global_search_scroll_offset = 0
     config.global_search_editing = False
@@ -1179,11 +1298,14 @@ def open_global_search_result(screen) -> None:
     if platform_index < 0 or platform_index >= len(config.platforms):
         return
 
-    config.current_platform = platform_index
-    config.selected_platform = platform_index
-    config.current_page = platform_index // max(1, config.GRID_COLS * config.GRID_ROWS)
-
     platform_id = result["platform_id"]
+    config.current_platform = platform_index
+    config.selected_platform = getattr(config, "platform_group_index", {}).get(
+        platform_id,
+        platform_index,
+    )
+    config.current_page = config.selected_platform // max(1, config.GRID_COLS * config.GRID_ROWS)
+
     config.games = load_games(platform_id)
     config.filtered_games = config.games
     config.search_mode = False
@@ -1289,7 +1411,7 @@ def handle_controls(event, sources, joystick, screen):
             return "quit"
         
         # Menu pause
-        if is_input_matched(event, "start") and config.menu_state not in ("pause_menu", "controls_mapping", "reload_games_data"):
+        if is_input_matched(event, "start") and should_open_pause_menu(config.menu_state):
             config.previous_menu_state = config.menu_state
             config.menu_state = "pause_menu"
             config.selected_option = 0
@@ -1304,10 +1426,34 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
                 logger.debug("Sortie du menu erreur avec Confirm")
                 
+        elif config.menu_state == "platform_source":
+            groups = getattr(config, "platform_groups", [])
+            group_index = getattr(config, "platform_source_group_index", -1)
+            group_platforms = (
+                groups[group_index].get("platforms", [])
+                if 0 <= group_index < len(groups)
+                else []
+            )
+            if is_input_matched(event, "up") and group_platforms:
+                config.platform_source_selected = max(0, config.platform_source_selected - 1)
+                config.needs_redraw = True
+            elif is_input_matched(event, "down") and group_platforms:
+                config.platform_source_selected = min(
+                    len(group_platforms) - 1,
+                    config.platform_source_selected + 1,
+                )
+                config.needs_redraw = True
+            elif is_input_matched(event, "confirm"):
+                _open_platform_source(screen, config.platform_source_selected)
+            elif is_input_matched(event, "cancel"):
+                config.menu_state = "platform"
+                config.needs_redraw = True
+
         #Plateformes
         elif config.menu_state == "platform":
+            platform_count = len(getattr(config, "platform_groups", []) or config.platforms)
             systems_per_page = config.GRID_COLS * config.GRID_ROWS
-            max_index = min(systems_per_page, len(config.platforms) - config.current_page * systems_per_page) - 1
+            max_index = min(systems_per_page, platform_count - config.current_page * systems_per_page) - 1
             current_grid_index = config.selected_platform - config.current_page * systems_per_page
             row = current_grid_index // config.GRID_COLS
             col = current_grid_index % config.GRID_COLS
@@ -1323,13 +1469,13 @@ def handle_controls(event, sources, joystick, screen):
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
                                     event.value)
-                elif (config.current_page + 1) * systems_per_page < len(config.platforms):
+                elif (config.current_page + 1) * systems_per_page < platform_count:
                     # Passage à la page suivante si on est en bas de la grille
                     config.current_page += 1
                     new_row = 0  # Première ligne de la nouvelle page
                     config.selected_platform = config.current_page * systems_per_page + new_row * config.GRID_COLS + col
-                    if config.selected_platform >= len(config.platforms):
-                        config.selected_platform = len(config.platforms) - 1
+                    if config.selected_platform >= platform_count:
+                        config.selected_platform = platform_count - 1
                     update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else 
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
@@ -1348,8 +1494,8 @@ def handle_controls(event, sources, joystick, screen):
                     config.current_page -= 1
                     new_row = config.GRID_ROWS - 1  # Dernière ligne de la page précédente
                     config.selected_platform = config.current_page * systems_per_page + new_row * config.GRID_COLS + col
-                    if config.selected_platform >= len(config.platforms):
-                        config.selected_platform = len(config.platforms) - 1
+                    if config.selected_platform >= platform_count:
+                        config.selected_platform = platform_count - 1
                     update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else 
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
@@ -1366,8 +1512,8 @@ def handle_controls(event, sources, joystick, screen):
                     # Passage à la page précédente si on est à la première colonne
                     config.current_page -= 1
                     config.selected_platform = config.current_page * systems_per_page + row * config.GRID_COLS + (config.GRID_COLS - 1)
-                    if config.selected_platform >= len(config.platforms):
-                        config.selected_platform = len(config.platforms) - 1
+                    if config.selected_platform >= platform_count:
+                        config.selected_platform = platform_count - 1
                     update_key_state("left", True, event.type, event.key if event.type == pygame.KEYDOWN else 
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
@@ -1380,23 +1526,23 @@ def handle_controls(event, sources, joystick, screen):
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
                                     event.value)
-                elif (config.current_page + 1) * systems_per_page < len(config.platforms):
+                elif (config.current_page + 1) * systems_per_page < platform_count:
                     # Passage à la page suivante si on est à la dernière colonne
                     config.current_page += 1
                     config.selected_platform = config.current_page * systems_per_page + row * config.GRID_COLS
-                    if config.selected_platform >= len(config.platforms):
-                        config.selected_platform = len(config.platforms) - 1
+                    if config.selected_platform >= platform_count:
+                        config.selected_platform = platform_count - 1
                     update_key_state("right", True, event.type, event.key if event.type == pygame.KEYDOWN else 
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
                                     event.value)
             elif is_input_matched(event, "page_down"):
                 # Navigation rapide vers la page suivante
-                if (config.current_page + 1) * systems_per_page < len(config.platforms):
+                if (config.current_page + 1) * systems_per_page < platform_count:
                     config.current_page += 1
                     config.selected_platform = config.current_page * systems_per_page + row * config.GRID_COLS + col
-                    if config.selected_platform >= len(config.platforms):
-                        config.selected_platform = len(config.platforms) - 1
+                    if config.selected_platform >= platform_count:
+                        config.selected_platform = platform_count - 1
                     # Réinitialiser la répétition pour éviter des comportements inattendus
                     config.repeat_action = None
                     config.repeat_key = None
@@ -1408,8 +1554,8 @@ def handle_controls(event, sources, joystick, screen):
                 if config.current_page > 0:
                     config.current_page -= 1
                     config.selected_platform = config.current_page * systems_per_page + row * config.GRID_COLS + col
-                    if config.selected_platform >= len(config.platforms):
-                        config.selected_platform = len(config.platforms) - 1
+                    if config.selected_platform >= platform_count:
+                        config.selected_platform = platform_count - 1
                     # Réinitialiser la répétition pour éviter des comportements inattendus
                     config.repeat_action = None
                     config.repeat_key = None
@@ -1448,7 +1594,6 @@ def handle_controls(event, sources, joystick, screen):
             if direct_input_char is not None and getattr(config, 'global_search_editing', False):
                 config.global_search_query += direct_input_char
                 refresh_global_search_results()
-                logger.debug(f"Recherche globale clavier: query={config.global_search_query}, resultats={len(config.global_search_results)}")
                 config.needs_redraw = True
             elif getattr(config, 'joystick', False) and getattr(config, 'global_search_editing', False):
                 row, col = config.selected_key
@@ -1493,18 +1638,15 @@ def handle_controls(event, sources, joystick, screen):
                 elif is_global_search_input_matched(event, "confirm"):
                     config.global_search_query += GLOBAL_SEARCH_KEYBOARD_LAYOUT[row][col]
                     refresh_global_search_results()
-                    logger.debug(f"Recherche globale mise a jour: query={config.global_search_query}, resultats={len(config.global_search_results)}")
                     config.needs_redraw = True
                 elif is_global_search_input_matched(event, "delete"):
                     if config.global_search_query:
                         config.global_search_query = config.global_search_query[:-1]
                         refresh_global_search_results()
-                        logger.debug(f"Recherche globale suppression: query={config.global_search_query}, resultats={len(config.global_search_results)}")
                         config.needs_redraw = True
                 elif is_global_search_input_matched(event, "space"):
                     config.global_search_query += " "
                     refresh_global_search_results()
-                    logger.debug(f"Recherche globale espace: query={config.global_search_query}, resultats={len(config.global_search_results)}")
                     config.needs_redraw = True
                 elif is_global_search_input_matched(event, "filter"):
                     config.global_search_editing = False
@@ -1519,7 +1661,6 @@ def handle_controls(event, sources, joystick, screen):
                     if config.global_search_query:
                         config.global_search_query = config.global_search_query[:-1]
                         refresh_global_search_results()
-                        logger.debug(f"Recherche globale clavier suppression: query={config.global_search_query}, resultats={len(config.global_search_results)}")
                         config.needs_redraw = True
                 elif is_global_search_input_matched(event, "cancel"):
                     exit_global_search()
@@ -1555,7 +1696,6 @@ def handle_controls(event, sources, joystick, screen):
                         if config.global_search_query:
                             config.global_search_query = config.global_search_query[:-1]
                             refresh_global_search_results()
-                            logger.debug(f"Recherche globale clavier suppression: query={config.global_search_query}, resultats={len(config.global_search_results)}")
                             config.needs_redraw = True
 
                 if config.global_search_results:
@@ -2913,7 +3053,7 @@ def handle_controls(event, sources, joystick, screen):
                 if sel == 0 and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_display_layout_menu"
                     # Trouver l'index actuel pour la sélection
-                    layouts = [(3,3),(3,4),(4,3),(4,4)]
+                    layouts = DISPLAY_GRID_LAYOUTS
                     try:
                         idx = layouts.index((config.GRID_COLS, config.GRID_ROWS))
                     except ValueError:
@@ -3047,7 +3187,8 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Display > Layout (disposition avec visualisation)
         elif config.menu_state == "pause_display_layout_menu":
             sel = getattr(config, 'pause_display_layout_selection', 0)
-            total = 5  # 3x3, 3x4, 4x3, 4x4, back
+            layouts = DISPLAY_GRID_LAYOUTS
+            total = len(layouts) + 1
             if is_input_matched(event, "up"):
                 config.pause_display_layout_selection = (sel - 1) % total
                 config.needs_redraw = True
@@ -3055,8 +3196,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.pause_display_layout_selection = (sel + 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
-                if sel < 4:  # Une des dispositions
-                    layouts = [(3,3),(3,4),(4,3),(4,4)]
+                if sel < len(layouts):  # Une des dispositions
                     new_cols, new_rows = layouts[sel]
                     try:
                         set_display_grid(new_cols, new_rows)
@@ -3066,13 +3206,13 @@ def handle_controls(event, sources, joystick, screen):
                     config.GRID_ROWS = new_rows
                     # Afficher un popup indiquant que le changement sera effectif après redémarrage
                     try:
-                        config.popup_message = _("popup_layout_changed_restart").format(new_cols, new_rows) if _ else f"Layout changed to {new_cols}x{new_rows}. Restart required to apply."
+                        config.popup_message = _("popup_layout_changed").format(new_cols, new_rows) if _ else f"Layout {new_cols}x{new_rows} applied immediately; no restart needed."
                         config.popup_timer = 3000
                     except Exception as e:
                         logger.error(f"Erreur popup layout: {e}")
                     config.menu_state = "pause_display_menu"
                     config.needs_redraw = True
-                elif sel == 4:  # Back
+                elif sel == len(layouts):  # Back
                     config.menu_state = "pause_display_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
@@ -3385,7 +3525,7 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm"):
                 # 0: layout change
                 if sel == 0 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
-                    layouts = [(3,3),(3,4),(4,3),(4,4)]
+                    layouts = DISPLAY_GRID_LAYOUTS
                     try:
                         idx = layouts.index((config.GRID_COLS, config.GRID_ROWS))
                     except ValueError:
@@ -3399,15 +3539,11 @@ def handle_controls(event, sources, joystick, screen):
                     config.GRID_COLS = new_cols
                     config.GRID_ROWS = new_rows
                     config.needs_redraw = True
-                    # Redémarrage automatique pour appliquer proprement la modification de layout
                     try:
-                        # Montrer brièvement l'info puis redémarrer
-                        config.menu_state = "restart_popup"
-                        config.popup_message = _("popup_restarting")
-                        config.popup_timer = 2000
-                        restart_application(2000)
+                        config.popup_message = _("popup_layout_changed").format(new_cols, new_rows) if _ else f"Layout {new_cols}x{new_rows} applied immediately; no restart needed."
+                        config.popup_timer = 3000
                     except Exception as e:
-                        logger.error(f"Erreur lors du redémarrage après changement de layout: {e}")
+                        logger.error(f"Erreur lors de l'affichage du changement de layout: {e}")
                 # 1: font size adjust
                 elif sel == 1 and (is_input_matched(event, "left") or is_input_matched(event, "right")):
                     opts = getattr(config, 'font_scale_options', [0.75, 1.0, 1.25, 1.5, 1.75])
@@ -3511,45 +3647,9 @@ def handle_controls(event, sources, joystick, screen):
                     # Lancer le téléchargement
                     config.download_tasks.clear()
                     config.pending_download = None
-                    if os.path.exists(config.SOURCES_FILE):
-                        try:
-                            if os.path.exists(config.SOURCES_FILE):
-                                os.remove(config.SOURCES_FILE)
-                            if os.path.exists(os.path.join(config.SAVE_FOLDER, "sources.json")):
-                                os.remove(os.path.join(config.SAVE_FOLDER, "sources.json"))
-                            if os.path.exists(config.GAMES_FOLDER):
-                                shutil.rmtree(config.GAMES_FOLDER)
-                            if os.path.exists(config.IMAGES_FOLDER):
-                                shutil.rmtree(config.IMAGES_FOLDER)
-                            clear_torrent_manifest_cache()
-                            clear_platform_game_count_cache()
-                            request_torrent_manifest_refresh()
-                            # Mettre à jour la date et mémoriser la version distante déjà proposée
-                            from rgsx_settings import (
-                                set_last_gamelist_prompt_remote_update,
-                                set_last_gamelist_update,
-                            )
-                            set_last_gamelist_update(getattr(config, 'gamelist_remote_update_timestamp', None))
-                            set_last_gamelist_prompt_remote_update(getattr(config, 'gamelist_remote_update_timestamp', None))
-                            config.menu_state = "restart_popup"
-                            config.popup_message = _("popup_gamelist_updating") if _ else "Updating game list... Restarting..."
-                            config.popup_timer = 2000
-                            config.needs_redraw = True
-                            restart_application(2000)
-                        except Exception as e:
-                            logger.error(f"Erreur lors de la mise à jour: {e}")
-                            config.menu_state = "loading"
-                            config.needs_redraw = True
-                    else:
-                        # Pas de cache existant, juste mettre à jour la date et mémoriser la version distante déjà proposée
-                        from rgsx_settings import (
-                            set_last_gamelist_prompt_remote_update,
-                            set_last_gamelist_update,
-                        )
-                        set_last_gamelist_update(getattr(config, 'gamelist_remote_update_timestamp', None))
-                        set_last_gamelist_prompt_remote_update(getattr(config, 'gamelist_remote_update_timestamp', None))
-                        config.menu_state = "loading"
-                        config.needs_redraw = True
+                    # Catalog updates are synchronized from the HTTPS API.
+                    config.menu_state = "platform"
+                    config.needs_redraw = True
                 else:  # Non
                     logger.info("Utilisateur a refusé la mise à jour de la liste des jeux")
                     from rgsx_settings import set_last_gamelist_prompt_remote_update
@@ -3821,7 +3921,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "folder_browser"
                 config.needs_redraw = True
         
-        # Redownload game cache
+        # Refresh the catalog directly from the database.
         elif config.menu_state == "reload_games_data":
             if is_input_matched(event, "left") or is_input_matched(event, "right"):
                 config.redownload_confirm_selection = 1 - config.redownload_confirm_selection
@@ -3830,54 +3930,31 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "confirm"):
                 logger.debug(f"Action confirm dans reload_games_data, sélection={config.redownload_confirm_selection}")
                 if config.redownload_confirm_selection == 1:  # Oui
-                    logger.debug("Début du redownload des jeux")
-                    config.download_tasks.clear()
-                    config.pending_download = None
-                    if os.path.exists(config.SOURCES_FILE):
-                        try:
-                            if os.path.exists(config.SOURCES_FILE):
-                                os.remove(config.SOURCES_FILE)
-                                logger.debug("Fichier system_list.json supprimé avec succès")
-                            if os.path.exists(os.path.join(config.SAVE_FOLDER, "sources.json")):
-                                os.remove(os.path.join(config.SAVE_FOLDER, "sources.json"))
-                            if os.path.exists(config.GAMES_FOLDER):
-                                shutil.rmtree(config.GAMES_FOLDER)
-                                logger.debug("Dossier games supprimé avec succès")
-                            if os.path.exists(config.IMAGES_FOLDER):
-                                shutil.rmtree(config.IMAGES_FOLDER)
-                                logger.debug("Dossier images supprimé avec succès")
-                            clear_torrent_manifest_cache()
-                            clear_platform_game_count_cache()
-                            request_torrent_manifest_refresh()
-                            # Mettre à jour la date de dernière mise à jour
-                            from rgsx_settings import set_last_gamelist_update
-                            set_last_gamelist_update(getattr(config, 'gamelist_remote_update_timestamp', None))
-                            config.menu_state = "restart_popup"
-                            config.popup_message = _("popup_redownload_success")
-                            config.popup_timer = 2000  # bref message
-                            config.needs_redraw = True
-                            logger.debug("Passage à restart_popup")
-                            # Redémarrage automatique
-                            restart_application(2000)
-                        except Exception as e:
-                            logger.error(f"Erreur lors de la suppression du fichier sources.json ou dossiers: {e}")
-                            config.menu_state = "error"
-                            config.error_message = _("error_delete_sources")
-                            config.needs_redraw = True
-                            return action
-                    else:
-                        logger.debug("Fichier sources.json non trouvé, passage à restart_popup")
-                        config.menu_state = "restart_popup"
-                        config.popup_message = _("popup_no_cache")
-                        config.popup_timer = 2000
+                    return_state = validate_menu_state(config.previous_menu_state)
+                    try:
+                        platform_count, visible_count = refresh_catalog_from_database()
+                        if return_state == "game" and not config.platforms:
+                            return_state = "platform"
+                        config.menu_state = return_state
+                        config.popup_message = _("popup_redownload_success").format(platform_count, visible_count)
+                        config.popup_timer = 3500
                         config.needs_redraw = True
-                        logger.debug("Passage à restart_popup")
-                        restart_application(2000)
+                        logger.info(
+                            "Catalogue DB actualisé: %s plateformes (%s visibles)",
+                            platform_count,
+                            visible_count,
+                        )
+                    except Exception as exc:
+                        logger.exception("Échec du rafraîchissement DB depuis le menu Games")
+                        config.previous_menu_state = "reload_games_data"
+                        config.menu_state = "error"
+                        config.error_message = _("error_catalog_refresh_failed")
+                        config.needs_redraw = True
                 else:  # Non
                     config.menu_state = validate_menu_state(config.previous_menu_state)
                     config.needs_redraw = True
                     logger.debug(f"Annulation du redownload, retour à {config.menu_state}")
-            elif is_input_matched(event, "cancel"):
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "start"):
                 config.menu_state = validate_menu_state(config.previous_menu_state)
                 config.needs_redraw = True
                 logger.debug(f"Retour à {config.menu_state} depuis reload_games_data")
@@ -4429,9 +4506,10 @@ def handle_controls(event, sources, joystick, screen):
                 load_sources()
                 try:
                     systems_per_page = config.GRID_COLS * config.GRID_ROWS
-                    if config.current_page * systems_per_page >= len(config.platforms):
+                    platform_group_count = len(getattr(config, "platform_groups", []) or config.platforms)
+                    if config.current_page * systems_per_page >= platform_group_count:
                         config.current_page = 0
-                    if config.selected_platform >= len(config.platforms):
+                    if config.selected_platform >= platform_group_count:
                         config.selected_platform = 0
                 except Exception:
                     config.current_page = 0

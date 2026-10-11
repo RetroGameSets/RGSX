@@ -5,6 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${SCRIPT_DIR}/logs"
 mkdir -p "${LOG_DIR}" || true
 LOGFILE="${LOG_DIR}/launcher.log"
+VENDOR_DIR="${SCRIPT_DIR}/vendor"
+if [[ -d "${VENDOR_DIR}" ]]; then
+	export PYTHONPATH="${VENDOR_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
+	echo "[RGSX] Bundled Python modules enabled: ${VENDOR_DIR}" >>"${LOGFILE}"
+fi
 
 detect_platform() {
 	if [[ -f /etc/rocknix-release || -f /etc/rocknix-os-release ]]; then
@@ -42,10 +47,11 @@ case "${PLATFORM}" in
 			fi
 		done
 
-		# Verify required Python modules on Rocknix (pygame, requests)
+		# Verify required Python modules on Rocknix (pygame, requests, optional pymysql)
 		if command -v python3 >/dev/null 2>&1; then
 			missing=""
-			for mod in pygame requests; do
+			modules=(pygame requests pymysql)
+			for mod in "${modules[@]}"; do
 				if ! python3 -c "import ${mod}" >/dev/null 2>&1; then
 					missing+=" ${mod}"
 				fi

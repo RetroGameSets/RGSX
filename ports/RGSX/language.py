@@ -1,10 +1,11 @@
 import os
 import json
 import logging
+import sys
 import config
 from config import HEADLESS
 try:
-    if not HEADLESS:
+    if not HEADLESS or "pygame" in sys.modules:
         import pygame  # type: ignore
     else:
         pygame = None  # type: ignore

@@ -10,10 +10,12 @@ import logging
 import platform
 import subprocess
 import urllib.parse
+import sys
 import config
+import database
 from config import HEADLESS, Game
 try:
-    if not HEADLESS:
+    if not HEADLESS or "pygame" in sys.modules:
         import pygame  # type: ignore
     else:
         pygame = None  # type: ignore
@@ -156,16 +158,58 @@ def _resolve_platform_image_path(platform_dict):
     return None
 
 
-def get_platform_source_badge_key(platform_name: str):
+def preload_platform_images(platform_dicts):
+    """Load missing assets for a visible platform page with one DB round-trip."""
+    platform_names = list(dict.fromkeys(
+        str(entry.get("platform_name") or "").strip()
+        for entry in platform_dicts
+        if isinstance(entry, dict) and str(entry.get("platform_name") or "").strip()
+    ))
+    missing_names = [name for name in platform_names if name not in _platform_image_asset_cache]
+    if not missing_names:
+        return
+    try:
+        assets = database.get_platform_assets(missing_names, "platform_image", config.DB_PATH)
+    except Exception as exc:
+        logger.debug(f"Impossible de précharger les images de la page: {exc}")
+        assets = {}
+    for platform_name in missing_names:
+        _platform_image_asset_cache[platform_name] = assets.get(platform_name)
+
+
+def _get_platform_image_asset(platform_dict):
+    platform_name = str(platform_dict.get("platform_name") or "").strip()
+    if not platform_name:
+        return None
+    if platform_name not in _platform_image_asset_cache:
+        try:
+            _platform_image_asset_cache[platform_name] = database.get_platform_asset(
+                platform_name, "platform_image", config.DB_PATH
+            )
+        except Exception as exc:
+            logger.debug(f"Impossible de charger l'image SQLite pour {platform_name}: {exc}")
+            return None
+    asset = _platform_image_asset_cache[platform_name]
+    requested_name = os.path.basename(str(platform_dict.get("platform_image") or "").strip()).casefold()
+    stored_name = os.path.basename(str(asset.get("file_name") or "")).casefold() if asset else ""
+    if requested_name and stored_name and requested_name != stored_name:
+        return None
+    return asset
+
+
+def get_platform_source_badge_key(platform_name: str, source: str | None = None):
     text = str(platform_name).strip()
-    if not text:
+    if not text and not source:
         return None
-    match = re.search(r'\(([^()]+)\)\s*$', text)
-    if not match:
-        return None
-    source = match.group(1).strip().lower()
+    source_text = str(source or "").strip()
+    if not source_text:
+        source_text = str(getattr(config, "platform_sources", {}).get(text, "") or "").strip()
+    if not source_text:
+        source_text = database.platform_source_from_name(text)
+    source_text = source_text.lower()
     mapping = {
         'archive': 'Archive',
+        'archive.org': 'Archive',
         'lolroms': 'LolRoms',
         'torrent': 'Torrent',
         '1fichier': '1Fichier',
@@ -173,7 +217,7 @@ def get_platform_source_badge_key(platform_name: str):
         'edgeemu': 'EdgeEmu',
         'edgeemu.net': 'EdgeEmu',
     }
-    return mapping.get(source)
+    return mapping.get(source_text)
 
 
 def _load_svg_badge_surface(svg_path: str, size: int):
@@ -452,14 +496,37 @@ def _surface_to_png_bytes(surface):
                 pass
 
 
-def get_platform_image_payload(platform_dict):
+def get_platform_image_payload(platform_dict, include_source_badge=True):
+    asset = _get_platform_image_asset(platform_dict)
+    if asset and asset.get("data"):
+        image_data = bytes(asset["data"])
+        platform_name = platform_dict.get("platform_name", "unknown")
+        try:
+            if (
+                include_source_badge
+                and pygame is not None
+                and get_platform_source_badge_key(platform_name, platform_dict.get("source"))
+            ):
+                surface = _safe_convert_alpha(pygame.image.load(io.BytesIO(image_data)))
+                surface = _apply_platform_source_badge(surface, platform_name)
+                png_bytes = _surface_to_png_bytes(surface)
+                if png_bytes:
+                    return png_bytes, "image/png"
+        except Exception as exc:
+            logger.debug(f"Badged SQLite image payload failed for {platform_name}: {exc}")
+        return image_data, str(asset.get("mime_type") or "image/png")
+
     image_path = _resolve_platform_image_path(platform_dict)
     if not image_path:
         return None, None
 
     platform_name = platform_dict.get('platform_name', 'unknown')
     try:
-        if pygame is not None and get_platform_source_badge_key(platform_name):
+        if (
+            include_source_badge
+            and pygame is not None
+            and get_platform_source_badge_key(platform_name, platform_dict.get("source"))
+        ):
             surface = _safe_convert_alpha(pygame.image.load(image_path))
             surface = _apply_platform_source_badge(surface, platform_name)
             png_bytes = _surface_to_png_bytes(surface)
@@ -541,8 +608,46 @@ def parse_game_size_to_bytes(value) -> int:
     return int(amount * multipliers.get(unit, 0)) if unit in multipliers else 0
 
 
+def format_game_size(value) -> str:
+    """Format game sizes consistently for display in B, KB, MB, or GB."""
+    if isinstance(value, (int, float)):
+        size_bytes = parse_game_size_to_bytes(value)
+        original = ""
+    else:
+        original = str(value or "").strip()
+        if not original:
+            return ""
+        size_bytes = parse_game_size_to_bytes(original)
+
+    if size_bytes == 0 and not isinstance(value, (int, float)):
+        match = re.fullmatch(r"[0-9][0-9,.]*\s*([A-Za-z]*)", original)
+        known_units = {
+            "", "b", "byte", "bytes", "octet", "octets",
+            "k", "kb", "kib", "ko", "m", "mb", "mib", "mo",
+            "g", "gb", "gib", "go", "t", "tb", "tib", "to",
+            "p", "pb", "pib", "po",
+        }
+        if match is None or match.group(1).lower() not in known_units:
+            return original
+
+    display_units = ("B", "KB", "MB", "GB")
+    value_to_display = float(size_bytes)
+    unit_index = 0
+    while value_to_display >= 1024 and unit_index < len(display_units) - 1:
+        value_to_display /= 1024
+        unit_index += 1
+
+    amount = f"{value_to_display:.2f}".rstrip("0").rstrip(".")
+    return f"{amount} {display_units[unit_index]}"
+
+
+def format_game_date(value) -> str:
+    date_value = str(value or "").strip()
+    return date_value[:10] if date_value else "-"
+
+
 def sort_games_list(items: list[Game], option: str = 'name_asc') -> list[Game]:
-    reverse = option in ('name_desc', 'size_desc')
+    reverse = option in ('name_desc', 'size_desc', 'date_desc')
 
     if option.startswith('size_'):
         return sorted(
@@ -553,6 +658,19 @@ def sort_games_list(items: list[Game], option: str = 'name_asc') -> list[Game]:
             ),
             reverse=reverse,
         )
+
+    if option.startswith('date_'):
+        dated_games = [game for game in items if game.updated_at]
+        undated_games = [game for game in items if not game.updated_at]
+        dated_games.sort(
+            key=lambda game: (
+                str(game.updated_at),
+                str(game.display_name or game.name or '').lower(),
+            ),
+            reverse=reverse,
+        )
+        undated_games.sort(key=lambda game: str(game.display_name or game.name or '').lower())
+        return dated_games + undated_games
 
     return sorted(
         items,
@@ -646,12 +764,13 @@ def get_clean_display_name(raw_name, platform_id=None):
     return display_name.strip(" -_/")
 
 _games_cache = {}
-_platform_game_count_cache = {}
-_platform_game_count_cache_loaded = False
-_platform_game_count_cache_lock = threading.Lock()
+_platform_folder_lookup: dict[str, str] = {}
+_platform_folder_lookup_db_path = None
 _torrent_manifest_cache = {}
 _torrent_manifest_cache_loaded = False
 _torrent_manifest_cache_lock = threading.Lock()
+_platform_image_asset_cache = {}
+_platform_image_surface_cache = {}
 _TORRENT_DOWNLOAD_SCHEME = "rgsx+torrent"
 
 logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -669,6 +788,18 @@ def is_mixer_available():
 unavailable_systems = []
 
 
+def _cache_platform_folders(platform_rows) -> None:
+    global _platform_folder_lookup, _platform_folder_lookup_db_path
+    _platform_folder_lookup = {
+        str(row.get("platform_name") or "").strip(): str(row.get("folder") or row.get("dossier") or "").strip()
+        for row in platform_rows
+        if isinstance(row, dict)
+        and str(row.get("platform_name") or "").strip()
+        and str(row.get("folder") or row.get("dossier") or "").strip()
+    }
+    _platform_folder_lookup_db_path = os.path.abspath(os.fspath(config.DB_PATH))
+
+
 def _load_persistent_torrent_manifest_cache() -> None:
     global _torrent_manifest_cache_loaded, _torrent_manifest_cache
     if _torrent_manifest_cache_loaded:
@@ -676,33 +807,29 @@ def _load_persistent_torrent_manifest_cache() -> None:
     with _torrent_manifest_cache_lock:
         if _torrent_manifest_cache_loaded:
             return
-        cache_path = getattr(config, 'TORRENT_MANIFEST_CACHE_PATH', '')
         loaded_cache = {}
         try:
-            if cache_path and os.path.exists(cache_path):
-                with open(cache_path, 'r', encoding='utf-8') as handle:
-                    payload = json.load(handle)
-                if isinstance(payload, dict):
-                    entries = payload.get('entries') if isinstance(payload.get('entries'), dict) else payload
-                    if isinstance(entries, dict):
-                        for source_url, cached_entries in entries.items():
-                            if not isinstance(source_url, str) or not isinstance(cached_entries, list):
-                                continue
-                            safe_entries = []
-                            for entry in cached_entries:
-                                if not isinstance(entry, dict):
-                                    continue
-                                safe_entries.append({
-                                    'name': str(entry.get('name') or ''),
-                                    'path': str(entry.get('path') or ''),
-                                    'download_path': str(entry.get('download_path') or entry.get('path') or ''),
-                                    'index': int(entry.get('index') or 1),
-                                    'size_bytes': int(entry.get('size_bytes') or 0),
-                                    'source_url': str(entry.get('source_url') or source_url),
-                                })
-                            if safe_entries:
-                                loaded_cache[source_url] = safe_entries
-                logger.info(f"Cache torrent charge: {len(loaded_cache)} manifestes")
+            payload = database.load_local_state("torrent_manifest_cache", {}, config.DB_PATH)
+            entries = payload.get('entries') if isinstance(payload, dict) and isinstance(payload.get('entries'), dict) else payload
+            if isinstance(entries, dict):
+                for source_url, cached_entries in entries.items():
+                    if not isinstance(source_url, str) or not isinstance(cached_entries, list):
+                        continue
+                    safe_entries = []
+                    for entry in cached_entries:
+                        if not isinstance(entry, dict):
+                            continue
+                        safe_entries.append({
+                            'name': str(entry.get('name') or ''),
+                            'path': str(entry.get('path') or ''),
+                            'download_path': str(entry.get('download_path') or entry.get('path') or ''),
+                            'index': int(entry.get('index') or 1),
+                            'size_bytes': int(entry.get('size_bytes') or 0),
+                            'source_url': str(entry.get('source_url') or source_url),
+                        })
+                    if safe_entries:
+                        loaded_cache[source_url] = safe_entries
+            logger.info(f"Cache torrent SQLite charge: {len(loaded_cache)} manifestes")
         except Exception as exc:
             logger.warning(f"Impossible de charger le cache torrent persistant: {exc}")
         _torrent_manifest_cache = loaded_cache
@@ -710,38 +837,11 @@ def _load_persistent_torrent_manifest_cache() -> None:
 
 
 def _save_persistent_torrent_manifest_cache() -> None:
-    cache_path = getattr(config, 'TORRENT_MANIFEST_CACHE_PATH', '')
-    if not cache_path:
-        return
     with _torrent_manifest_cache_lock:
         try:
-            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-            payload = {
-                'version': 1,
-                'entries': _torrent_manifest_cache,
-            }
-            temp_path = f"{cache_path}.{os.getpid()}.{threading.get_ident()}.tmp"
-            with open(temp_path, 'w', encoding='utf-8') as handle:
-                json.dump(payload, handle, ensure_ascii=False, indent=2)
-            last_error = None
-            for attempt in range(5):
-                try:
-                    os.replace(temp_path, cache_path)
-                    last_error = None
-                    break
-                except PermissionError as exc:
-                    last_error = exc
-                    time.sleep(0.15 * (attempt + 1))
-            if last_error is not None:
-                raise last_error
+            database.save_local_state("torrent_manifest_cache", _torrent_manifest_cache, config.DB_PATH)
         except Exception as exc:
-            logger.warning(f"Impossible de sauvegarder le cache torrent persistant: {exc}")
-        finally:
-            try:
-                if 'temp_path' in locals() and os.path.exists(temp_path):
-                    os.remove(temp_path)
-            except Exception:
-                pass
+            logger.warning(f"Impossible de sauvegarder le cache torrent SQLite: {exc}")
 
 
 def clear_torrent_manifest_cache() -> None:
@@ -749,10 +849,8 @@ def clear_torrent_manifest_cache() -> None:
     with _torrent_manifest_cache_lock:
         _torrent_manifest_cache = {}
         _torrent_manifest_cache_loaded = True
-        cache_path = getattr(config, 'TORRENT_MANIFEST_CACHE_PATH', '')
         try:
-            if cache_path and os.path.exists(cache_path):
-                os.remove(cache_path)
+            database.delete_local_state("torrent_manifest_cache", config.DB_PATH)
             logger.info("Cache torrent invalide")
         except Exception as exc:
             logger.warning(f"Impossible de supprimer le cache torrent: {exc}")
@@ -787,155 +885,6 @@ def clear_torrent_manifest_refresh_request() -> None:
         logger.warning(f"Impossible de supprimer le marqueur de rafraichissement torrent: {exc}")
 
 
-def _load_persistent_platform_game_count_cache() -> None:
-    global _platform_game_count_cache_loaded, _platform_game_count_cache
-    if _platform_game_count_cache_loaded:
-        return
-    with _platform_game_count_cache_lock:
-        if _platform_game_count_cache_loaded:
-            return
-        cache_path = getattr(config, 'PLATFORM_GAME_COUNT_CACHE_PATH', '')
-        loaded_cache = {}
-        try:
-            if cache_path and os.path.exists(cache_path):
-                with open(cache_path, 'r', encoding='utf-8') as handle:
-                    payload = json.load(handle)
-                entries = payload.get('entries') if isinstance(payload, dict) else payload
-                if isinstance(entries, dict):
-                    for platform_id, entry in entries.items():
-                        if not isinstance(platform_id, str) or not isinstance(entry, dict):
-                            continue
-                        loaded_cache[platform_id] = {
-                            'path': str(entry.get('path') or ''),
-                            'mtime_ns': int(entry.get('mtime_ns') or 0),
-                            'file_name': str(entry.get('file_name') or ''),
-                            'size_bytes': int(entry.get('size_bytes') or 0),
-                            'count': int(entry.get('count') or 0),
-                        }
-                logger.info(f"Cache compteurs plateformes charge: {len(loaded_cache)} entrees")
-        except Exception as exc:
-            logger.warning(f"Impossible de charger le cache compteurs plateformes: {exc}")
-        _platform_game_count_cache = loaded_cache
-        _platform_game_count_cache_loaded = True
-
-
-def _save_persistent_platform_game_count_cache() -> None:
-    cache_path = getattr(config, 'PLATFORM_GAME_COUNT_CACHE_PATH', '')
-    if not cache_path:
-        return
-    with _platform_game_count_cache_lock:
-        try:
-            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-            payload = {
-                'version': 2,
-                'entries': _platform_game_count_cache,
-            }
-            temp_path = f"{cache_path}.{os.getpid()}.{threading.get_ident()}.tmp"
-            with open(temp_path, 'w', encoding='utf-8') as handle:
-                json.dump(payload, handle, ensure_ascii=False, indent=2)
-            last_error = None
-            for attempt in range(5):
-                try:
-                    os.replace(temp_path, cache_path)
-                    last_error = None
-                    break
-                except PermissionError as exc:
-                    last_error = exc
-                    time.sleep(0.15 * (attempt + 1))
-            if last_error is not None:
-                raise last_error
-        except Exception as exc:
-            logger.warning(f"Impossible de sauvegarder le cache compteurs plateformes: {exc}")
-        finally:
-            try:
-                if 'temp_path' in locals() and os.path.exists(temp_path):
-                    os.remove(temp_path)
-            except Exception:
-                pass
-
-
-def clear_platform_game_count_cache() -> None:
-    global _platform_game_count_cache, _platform_game_count_cache_loaded
-    with _platform_game_count_cache_lock:
-        _platform_game_count_cache = {}
-        _platform_game_count_cache_loaded = True
-        cache_path = getattr(config, 'PLATFORM_GAME_COUNT_CACHE_PATH', '')
-        try:
-            if cache_path and os.path.exists(cache_path):
-                os.remove(cache_path)
-            logger.info("Cache compteurs plateformes invalide")
-        except Exception as exc:
-            logger.warning(f"Impossible de supprimer le cache compteurs plateformes: {exc}")
-
-
-def _resolve_game_file(platform_id: str):
-    platform_dict = None
-    for pd in config.platform_dicts:
-        if pd.get("platform_name") == platform_id or pd.get("platform") == platform_id:
-            platform_dict = pd
-            break
-
-    candidates = [os.path.join(config.GAMES_FOLDER, f"{platform_id}.json")]
-    norm = normalize_platform_name(platform_id)
-    if norm and norm != platform_id:
-        candidates.append(os.path.join(config.GAMES_FOLDER, f"{norm}.json"))
-    if platform_dict:
-        folder_name = platform_dict.get("folder")
-        if folder_name:
-            candidates.append(os.path.join(config.GAMES_FOLDER, f"{folder_name}.json"))
-
-    for candidate in candidates:
-        if os.path.exists(candidate):
-            return candidate, platform_dict, candidates
-    return None, platform_dict, candidates
-
-
-def _get_cached_platform_game_count(platform_id: str, game_file: str, game_mtime_ns: int, game_size_bytes: int) -> int | None:
-    _load_persistent_platform_game_count_cache()
-    cached_entry = _platform_game_count_cache.get(platform_id)
-    if not isinstance(cached_entry, dict):
-        return None
-    cached_path = str(cached_entry.get('path') or '')
-    cached_mtime_ns = int(cached_entry.get('mtime_ns') or 0)
-    cached_file_name = str(cached_entry.get('file_name') or '')
-    cached_size_bytes = int(cached_entry.get('size_bytes') or 0)
-
-    if cached_path == game_file and cached_mtime_ns == int(game_mtime_ns):
-        return max(0, int(cached_entry.get('count') or 0))
-
-    # Portable fallback for caches embedded in games.zip.
-    if cached_file_name and cached_file_name == os.path.basename(game_file) and cached_size_bytes == int(game_size_bytes):
-        return max(0, int(cached_entry.get('count') or 0))
-
-    return None
-
-
-def _store_platform_game_count(platform_id: str, game_file: str, game_mtime_ns: int, game_size_bytes: int, count: int) -> None:
-    _load_persistent_platform_game_count_cache()
-    normalized_entry = {
-        'path': game_file,
-        'mtime_ns': int(game_mtime_ns),
-        'file_name': os.path.basename(game_file),
-        'size_bytes': int(game_size_bytes),
-        'count': max(0, int(count)),
-    }
-    with _platform_game_count_cache_lock:
-        existing_entry = _platform_game_count_cache.get(platform_id)
-        if isinstance(existing_entry, dict):
-            existing_normalized = {
-                'path': str(existing_entry.get('path') or ''),
-                'mtime_ns': int(existing_entry.get('mtime_ns') or 0),
-                'file_name': str(existing_entry.get('file_name') or ''),
-                'size_bytes': int(existing_entry.get('size_bytes') or 0),
-                'count': int(existing_entry.get('count') or 0),
-            }
-            if existing_normalized == normalized_entry:
-                return
-
-        _platform_game_count_cache[platform_id] = normalized_entry
-    _save_persistent_platform_game_count_cache()
-
-
 def _get_torrent_entry_count(source_url: str, display_label: str | None = None, platform_id: str | None = None, allow_network_fetch: bool = True) -> int:
     _load_persistent_torrent_manifest_cache()
     cached = _torrent_manifest_cache.get(source_url)
@@ -948,83 +897,18 @@ def _get_torrent_entry_count(source_url: str, display_label: str | None = None, 
 
 
 def get_platform_game_count(platform_id: str, allow_torrent_manifest_fetch: bool = True) -> int:
-    game_file, resolved_platform_dict, candidates = _resolve_game_file(platform_id)
-    if not game_file:
-        logger.warning(f"Aucun fichier de jeux trouvé pour {platform_id} (candidats: {candidates})")
+    if not database.database_exists(config.DB_PATH):
+        logger.error(
+            "Catalogue SQLite introuvable pour le comptage de %s: %s",
+            platform_id,
+            config.DB_PATH,
+        )
         return 0
-
-    game_stat = os.stat(game_file)
-    game_mtime_ns = game_stat.st_mtime_ns
-    game_size_bytes = game_stat.st_size
-    cached_count = _get_cached_platform_game_count(platform_id, game_file, game_mtime_ns, game_size_bytes)
-    if cached_count is not None:
-        return cached_count
-
-    with open(game_file, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-
-    if isinstance(data, dict) and 'games' in data:
-        data = data['games']
-
-    count = 0
-
-    def count_from_dict(d):
-        torrent_source = _extract_torrent_source(d)
-        if torrent_source is not None:
-            source_name, source_url = torrent_source
-            try:
-                return _get_torrent_entry_count(
-                    source_url,
-                    display_label=source_name,
-                    platform_id=platform_id,
-                    allow_network_fetch=allow_torrent_manifest_fetch,
-                )
-            except Exception as exc:
-                logger.error(f"Erreur comptage torrent pour {platform_id} ({source_name or source_url}): {exc}")
-                return 0
-        name = d.get('game_name') or d.get('name') or d.get('title') or d.get('game')
-        return 1 if name else 0
-
-    if isinstance(data, list):
-        total_items = max(1, len(data))
-        for item_index, item in enumerate(data, start=1):
-            if item_index == 1 or item_index == total_items or item_index % 250 == 0:
-                _refresh_loading_feedback(
-                    detail_lines=[
-                        _("loading_platform_name").format(platform_id),
-                        _("loading_game_entries_progress").format(item_index, total_items),
-                        _("loading_read_games_resolve_sources"),
-                    ],
-                    force=True,
-                )
-            if isinstance(item, dict):
-                count += count_from_dict(item)
-            elif isinstance(item, (list, tuple)):
-                torrent_source = _extract_torrent_source(item)
-                if torrent_source is not None:
-                    source_name, source_url = torrent_source
-                    try:
-                        count += _get_torrent_entry_count(
-                            source_url,
-                            display_label=source_name,
-                            platform_id=platform_id,
-                            allow_network_fetch=allow_torrent_manifest_fetch,
-                        )
-                    except Exception as exc:
-                        logger.error(f"Erreur comptage torrent pour {platform_id} ({source_name or source_url}): {exc}")
-                elif len(item) > 0:
-                    count += 1
-            elif isinstance(item, str):
-                count += 1
-            elif item is not None:
-                count += 1
-    elif isinstance(data, dict):
-        count += count_from_dict(data)
-    else:
-        logger.warning(f"Format de fichier jeux inattendu pour {platform_id}: {type(data)}")
-
-    _store_platform_game_count(platform_id, game_file, game_mtime_ns, game_size_bytes, count)
-    return count
+    try:
+        return database.count_games(platform_id, config.DB_PATH)
+    except Exception as exc:
+        logger.error(f"Impossible de compter les jeux SQLite pour {platform_id}: {exc}")
+        return 0
 
 
 def _refresh_loading_feedback(current_system: str | None = None, progress: float | None = None, detail_lines=None, force: bool = False):
@@ -2056,46 +1940,16 @@ def get_connection_status_snapshot():
 
 
 _extensions_cache = None  # type: ignore
-_extensions_json_regenerated = False
-
-
-# Fonction pour charger le fichier JSON des extensions supportées
 def load_extensions_json():
-    """Charge le JSON des extensions supportées.
-    - Régénère une seule fois par exécution (au premier appel ou si le fichier est absent).
-    - Met en cache le résultat pour éviter les relectures et logs répétés.
-    """
-    global _extensions_cache, _extensions_json_regenerated
+    """Charge les extensions système et les conserve uniquement en mémoire."""
+    global _extensions_cache
     try:
-        # Retour immédiat si déjà en cache
         if _extensions_cache is not None:
             return _extensions_cache
-
-        os.makedirs(os.path.dirname(config.JSON_EXTENSIONS), exist_ok=True)
-
-        # Régénération unique au premier appel (ou si le fichier est manquant)
-        if not _extensions_json_regenerated or not os.path.exists(config.JSON_EXTENSIONS):
-            try:
-                generated = generate_extensions_json_from_es_systems()
-                if generated:
-                    with open(config.JSON_EXTENSIONS, 'w', encoding='utf-8') as wf:
-                        json.dump(generated, wf, ensure_ascii=False, indent=2)
-                    logger.info(f"rom_extensions régénéré ({len(generated)} systèmes): {config.JSON_EXTENSIONS}")
-                else:
-                    logger.warning("Aucune donnée générée depuis es_systems.cfg; on conserve l'existant si présent")
-                _extensions_json_regenerated = True
-            except Exception as ge:
-                logger.error(f"Échec lors de la régénération de {config.JSON_EXTENSIONS} depuis es_systems.cfg: {ge}")
-
-        # Lecture du fichier (nouveau ou existant)
-        if os.path.exists(config.JSON_EXTENSIONS):
-            with open(config.JSON_EXTENSIONS, 'r', encoding='utf-8') as f:
-                _extensions_cache = json.load(f)
-                return _extensions_cache
-        _extensions_cache = []
+        _extensions_cache = generate_extensions_json_from_es_systems() or []
         return _extensions_cache
     except Exception as e:
-        logger.error(f"Erreur lors de la lecture de {config.JSON_EXTENSIONS}: {e}")
+        logger.error(f"Erreur lors du chargement des extensions système: {e}")
         _extensions_cache = []
         return _extensions_cache
 
@@ -2229,7 +2083,7 @@ def check_extension_before_download(url, platform, game_name):
         # Si le cache des extensions est vide/introuvable, ne bloquez pas: traitez comme "inconnu"
         # afin d'afficher l'avertissement d'extension au lieu d'une erreur fatale.
         if not extensions_data:
-            logger.warning(f"Fichier {config.JSON_EXTENSIONS} vide ou introuvable; poursuite avec extensions inconnues")
+            logger.warning("Extensions système indisponibles; poursuite avec extensions inconnues")
             extensions_data = []
 
         is_supported = is_extension_supported(sanitized_name, platform, extensions_data)
@@ -2337,7 +2191,10 @@ def _get_dest_folder_name(platform_key: str) -> str:
 
 
 # Fonction pour charger sources.json
-def load_sources(allow_torrent_manifest_fetch: bool | None = None):
+def load_sources(
+    allow_torrent_manifest_fetch: bool | None = None,
+    catalog_rows: list[dict] | None = None,
+):
     try:
         if allow_torrent_manifest_fetch is None:
             allow_torrent_manifest_fetch = is_torrent_manifest_refresh_requested()
@@ -2345,22 +2202,40 @@ def load_sources(allow_torrent_manifest_fetch: bool | None = None):
             "Chargement des sources (%s fetch manifest torrent)",
             "avec" if allow_torrent_manifest_fetch else "sans",
         )
-        sources = []
-        if os.path.exists(config.SOURCES_FILE):
-            with open(config.SOURCES_FILE, 'r', encoding='utf-8') as f:
-                sources = json.load(f)
-            if not isinstance(sources, list):
-                logger.error("systems_list.json n'est pas une liste JSON valide")
-                sources = []
+        if catalog_rows is None:
+            if not database.database_exists(config.DB_PATH):
+                logger.error(
+                    "Catalogue SQLite introuvable: %s. Aucun catalogue JSON ne sera utilise.",
+                    config.DB_PATH,
+                )
+                config.platform_dicts = []
+                config.platform_dict_by_name = {}
+                config.platforms = []
+                config.platform_names = {}
+                config.platform_sources = {}
+                config.platform_groups = []
+                config.platform_group_index = {}
+                config.games_count = {}
+                return []
+            database_platform_rows = database.list_platforms_with_game_counts(config.DB_PATH)
         else:
-            logger.warning(f"Fichier systems_list absent: {config.SOURCES_FILE}")
+            database_platform_rows = catalog_rows
+        _cache_platform_folders(database_platform_rows)
+        using_database = True
+        sources = [
+            {
+                "platform_name": entry.get("platform_name", ""),
+                "source": entry.get("source", ""),
+                "folder": entry.get("folder", ""),
+                "platform_image": entry.get("platform_image", ""),
+            }
+            for entry in database_platform_rows
+        ]
 
-        sources_file_changed = False
         normalized_sources = []
         # S'assurer que chaque entrée possède les clés attendues.
         for raw_entry in sources:
             if not isinstance(raw_entry, dict):
-                sources_file_changed = True
                 continue
 
             s = dict(raw_entry)
@@ -2369,14 +2244,18 @@ def load_sources(allow_torrent_manifest_fetch: bool | None = None):
                 # Supporter ancienne clé system_image -> platform_image si présente
                 legacy = s.pop("system_image", "")
                 s["platform_image"] = legacy or ""
-                sources_file_changed = True
 
             # Normaliser clé dossier -> folder si besoin (legacy francophone)
             if "folder" not in s:
                 legacy_folder = s.get("dossier") or s.get("folder_name")
                 if legacy_folder:
                     s["folder"] = legacy_folder
-                    sources_file_changed = True
+
+            platform_name = str(s.get("platform_name") or "").strip()
+            detected_source = str(s.get("source") or "").strip() or database.platform_source_from_name(platform_name)
+            if s.get("source") != detected_source:
+                s["source"] = detected_source
+            s["platform_display_name"] = database.platform_display_name(platform_name)
 
             normalized_sources.append(s)
 
@@ -2387,52 +2266,13 @@ def load_sources(allow_torrent_manifest_fetch: bool | None = None):
             for s in sources
             if isinstance(s, dict) and str(s.get("platform_name", "")).strip()
         }
-        added = []
-        if os.path.isdir(config.GAMES_FOLDER):
-            for fname in sorted(os.listdir(config.GAMES_FOLDER)):
-                if not fname.lower().endswith('.json'):
-                    continue
-                pname = os.path.splitext(fname)[0]
-                if not pname or pname in existing_names:
-                    continue
-                new_entry = {"platform_name": pname, "folder": pname, "platform_image": ""}
-                sources.append(new_entry)
-                added.append(pname)
-                existing_names.add(pname)
-                sources_file_changed = True
-
-        # Déterminer les plateformes orphelines (fichier manquant)
-        existing_files = set()
-        if os.path.isdir(config.GAMES_FOLDER):
-            existing_files = {os.path.splitext(f)[0] for f in os.listdir(config.GAMES_FOLDER) if f.lower().endswith('.json')}
-        removed = []
         runtime_sources = []
         for entry in sources:
             pname = entry.get("platform_name", "")
-            # En runtime, garder seulement si un fichier existe.
-            # Important: on ne supprime plus ces entrées du fichier systems_list.json,
-            # car l'absence peut être transitoire pendant une mise à jour/extraction.
-            if pname in existing_files:
+            # SQLite is authoritative; a platform remains visible when its
+            # catalog is temporarily empty.
+            if pname:
                 runtime_sources.append(entry)
-            else:
-                if pname:
-                    removed.append(pname)
-
-        if added:
-            logger.info(f"Plateformes ajoutées automatiquement: {', '.join(added)}")
-        if removed:
-            logger.info(f"Plateformes ignorées en runtime (fichiers absents): {', '.join(removed)}")
-
-        # Persister uniquement les changements non destructifs (ajouts / normalisations de clés).
-        if sources_file_changed:
-            try:
-                # Pas de tri avant persistance: conserver ordre d'origine + ajouts fins
-                os.makedirs(os.path.dirname(config.SOURCES_FILE), exist_ok=True)
-                with open(config.SOURCES_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(sources, f, ensure_ascii=False, indent=2)
-                logger.info("systems_list.json mis à jour (ajouts/normalisations, ordre conservé)")
-            except Exception as e:
-                logger.error(f"Échec écriture systems_list.json après maj auto: {e}")
 
         # Pour l'affichage on veut un tri alphabétique sans toucher l'ordre de persistance
         sorted_for_display = sorted(runtime_sources, key=lambda x: x.get("platform_name", "").lower())
@@ -2477,40 +2317,82 @@ def load_sources(allow_torrent_manifest_fetch: bool | None = None):
             config.unsupported_platforms = []
 
         config.platforms = visible_names
-        config.platform_names = {p: p for p in config.platforms}
         # Nouveau mapping par nom pour éviter décalages index après tri d'affichage
         try:
             config.platform_dict_by_name = {d.get("platform_name", ""): d for d in config.platform_dicts}
         except Exception:
             config.platform_dict_by_name = {}
-        _load_persistent_platform_game_count_cache()
+        config.platform_names = {
+            p: str(config.platform_dict_by_name.get(p, {}).get("platform_display_name") or p)
+            for p in config.platforms
+        }
+        config.platform_sources = {
+            p: str(config.platform_dict_by_name.get(p, {}).get("source") or "")
+            for p in config.platforms
+        }
+        grouped_platforms = {}
+        config.platform_groups = []
+        config.platform_group_index = {}
+        for platform_name in config.platforms:
+            display_name = str(config.platform_names.get(platform_name) or platform_name).strip()
+            group_key = display_name.casefold()
+            group_index = grouped_platforms.get(group_key)
+            if group_index is None:
+                group_index = len(config.platform_groups)
+                grouped_platforms[group_key] = group_index
+                config.platform_groups.append({
+                    "display_name": display_name,
+                    "platforms": [],
+                })
+            config.platform_groups[group_index]["platforms"].append(platform_name)
+            config.platform_group_index[platform_name] = group_index
+
         config.games_count = {}
         total_platforms = max(1, len(config.platforms))
-        for index, platform_name in enumerate(config.platforms, start=1):
-            progress_value = 80.0 + ((index - 1) / total_platforms) * 19.0
+        if using_database:
+            database_counts = {
+                str(entry.get("platform_name") or ""): int(entry.get("game_count") or 0)
+                for entry in database_platform_rows
+            }
+            config.games_count = {
+                platform_name: database_counts.get(platform_name, 0)
+                for platform_name in config.platforms
+            }
             _refresh_loading_feedback(
                 current_system=_("loading_load_systems"),
-                progress=progress_value,
+                progress=99.0,
                 detail_lines=[
-                    _("loading_platform_counter").format(index, total_platforms),
-                    platform_name,
+                    _("loading_platform_counter").format(total_platforms, total_platforms),
                     _("loading_read_games_resolve_sources"),
                 ],
                 force=True,
             )
-            config.games_count[platform_name] = get_platform_game_count(
-                platform_name,
-                allow_torrent_manifest_fetch=allow_torrent_manifest_fetch,
-            )
-            _refresh_loading_feedback(
-                current_system=_("loading_load_systems"),
-                progress=80.0 + (index / total_platforms) * 19.0,
-                detail_lines=[
-                    _("loading_platform_counter").format(index, total_platforms),
+        else:
+            for index, platform_name in enumerate(config.platforms, start=1):
+                progress_value = 80.0 + ((index - 1) / total_platforms) * 19.0
+                _refresh_loading_feedback(
+                    current_system=_("loading_load_systems"),
+                    progress=progress_value,
+                    detail_lines=[
+                        _("loading_platform_counter").format(index, total_platforms),
+                        platform_name,
+                        _("loading_read_games_resolve_sources"),
+                    ],
+                    force=True,
+                )
+                config.games_count[platform_name] = get_platform_game_count(
                     platform_name,
-                    _("loading_read_games_resolve_sources"),
-                ],
-            )
+                    allow_torrent_manifest_fetch=allow_torrent_manifest_fetch,
+                )
+                _refresh_loading_feedback(
+                    current_system=_("loading_load_systems"),
+                    progress=80.0 + (index / total_platforms) * 19.0,
+                    detail_lines=[
+                        _("loading_platform_counter").format(index, total_platforms),
+                        platform_name,
+                        _("loading_read_games_resolve_sources"),
+                    ],
+                )
         if config.games_count:
             try:
                 summary = ", ".join([f"{name}: {count}" for name, count in config.games_count.items()])
@@ -2525,6 +2407,10 @@ def load_sources(allow_torrent_manifest_fetch: bool | None = None):
         logger.error(f"Erreur fusion systèmes + détection jeux: {e}")
         return []
 
+def clear_games_cache() -> None:
+    _games_cache.clear()
+
+
 def load_games(platform_id:str) -> list[Game]:
     try:
         try:
@@ -2534,94 +2420,56 @@ def load_games(platform_id:str) -> list[Game]:
         except Exception:
             current_sort_option = 'name_asc'
 
-        game_file, resolved_platform_dict, candidates = _resolve_game_file(platform_id)
-        if not game_file:
+        cached = _games_cache.get(platform_id)
+        cache_ttl = max(0.0, float(getattr(config, "MYSQL_GAME_CACHE_TTL_SEC", 2.0)))
+        if (
+            isinstance(cached, dict)
+            and cached.get("db_path") == config.DB_PATH
+            and cached.get("sort_option") == current_sort_option
+            and isinstance(cached.get("games"), list)
+            and time.monotonic() - float(cached.get("loaded_at", 0.0)) < cache_ttl
+        ):
+            return list(cached["games"])
+
+        if not database.database_exists(config.DB_PATH):
             _games_cache.pop(platform_id, None)
-            logger.warning(f"Aucun fichier de jeux trouvé pour {platform_id} (candidats: {candidates})")
+            logger.error(
+                "Catalogue SQLite introuvable pour %s: %s. Aucun fichier JSON ne sera lu.",
+                platform_id,
+                config.DB_PATH,
+            )
             return []
 
-        game_stat = os.stat(game_file)
-        game_mtime_ns = game_stat.st_mtime_ns
-        game_size_bytes = game_stat.st_size
-        cached_entry = _games_cache.get(platform_id)
-        if cached_entry and cached_entry.get("path") == game_file and cached_entry.get("mtime_ns") == game_mtime_ns:
-            if cached_entry.get("sort_option") != current_sort_option:
-                cached_entry["games"] = sort_games_list(list(cached_entry.get("games") or []), current_sort_option)
-                cached_entry["sort_option"] = current_sort_option
-            return cached_entry["games"]
-
-        with open(game_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-
-        # Si dict avec clé 'games'
-        if isinstance(data, dict) and 'games' in data:
-            data = data['games']
-
-        normalized = []  # (name, url, size)
-
-        def extract_from_dict(d):
-            torrent_rows = _expand_torrent_source(d, platform_id)
-            if torrent_rows is not None:
-                normalized.extend(torrent_rows)
-                return
-            name = d.get('game_name') or d.get('name') or d.get('title') or d.get('game')
-            url = d.get('url') or d.get('download') or d.get('link') or d.get('href')
-            size = d.get('size') or d.get('filesize') or d.get('length')
-            if name:
-                normalized.append((str(name), url if isinstance(url, str) and url.strip() else None, str(size) if size else None))
-
-        if isinstance(data, list):
-            total_items = max(1, len(data))
-            for item_index, item in enumerate(data, start=1):
-                torrent_source = _extract_torrent_source(item)
-                if (item_index == 1 or item_index == total_items or item_index % 100 == 0) and torrent_source is None:
-                    _refresh_loading_feedback(
-                        detail_lines=[
-                            _("loading_platform_name").format(platform_id),
-                            _("loading_game_entries_progress").format(item_index, total_items),
-                            _("loading_read_games_resolve_sources"),
-                        ],
-                        force=True,
-                    )
-                if isinstance(item, (list, tuple)):
-                    torrent_rows = _expand_torrent_source(item, platform_id)
-                    if torrent_rows is not None:
-                        normalized.extend(torrent_rows)
-                        continue
-                    if len(item) == 0:
-                        continue
-                    name = str(item[0])
-                    url = item[1] if len(item) > 1 and isinstance(item[1], str) and item[1].strip() else None
-                    size = item[2] if len(item) > 2 and isinstance(item[2], str) and item[2].strip() else None
-                    normalized.append((name, url, size))
-                elif isinstance(item, dict):
-                    extract_from_dict(item)
-                elif isinstance(item, str):
-                    normalized.append((item, None, None))
-                else:
-                    normalized.append((str(item), None, None))
-        elif isinstance(data, dict):  # dict sans 'games'
-            extract_from_dict(data)
-        else:
-            logger.warning(f"Format de fichier jeux inattendu pour {platform_id}: {type(data)}")
-
-        if getattr(config, "games_count_log_verbose", False):
-            logger.debug(f"{os.path.basename(game_file)}: {len(normalized)} jeux")
-
-        games_list: list[Game] = []
-        for name, url, size in normalized:
-            display_name = get_clean_display_name(name, platform_id)
-            games_list.append(Game(name=name, url=url, size=size, display_name=display_name))
-
+        rows = database.list_games(platform_id, config.DB_PATH)
+        games_list = []
+        for row in rows:
+            name = str(row.get("name") or "")
+            if not name:
+                continue
+            url = str(row.get("url") or "").strip() or None
+            size = str(row.get("size") or "").strip() or None
+            if parse_game_size_to_bytes(size) <= 0:
+                try:
+                    size_bytes = int(row.get("size_bytes") or 0)
+                except (TypeError, ValueError):
+                    size_bytes = 0
+                if size_bytes > 0:
+                    size = str(size_bytes)
+            games_list.append(Game(
+                name=name,
+                url=url,
+                size=size,
+                display_name=get_clean_display_name(name, platform_id),
+                updated_at=str(row.get("updated_at") or "").strip() or None,
+            ))
         games_list = sort_games_list(games_list, current_sort_option)
-
         _games_cache[platform_id] = {
-            "path": game_file,
-            "mtime_ns": game_mtime_ns,
+            "db_path": config.DB_PATH,
+            "loaded_at": time.monotonic(),
+            "updated_at": max((str(row.get("updated_at") or "") for row in rows), default=""),
             "sort_option": current_sort_option,
             "games": games_list,
         }
-        _store_platform_game_count(platform_id, game_file, game_mtime_ns, game_size_bytes, len(games_list))
         return games_list
     except Exception as e:
         _games_cache.pop(platform_id, None)
@@ -2754,39 +2602,30 @@ def load_system_image(platform_dict):
     5. default.png (dans SAVE_FOLDER/images), sinon default.png de l'app
 
     Cela évite d'échouer lorsque le nom affiché ne correspond pas au fichier image
-    et respecte un mapping explicite fourni par systems_list.json."""
-    platform_name = platform_dict.get("platform_name", "unknown")
+    et respecte le mapping explicite fourni par le catalogue SQLite."""
+    platform_name = str(platform_dict.get("platform_name") or "unknown")
+    if platform_name in _platform_image_surface_cache:
+        return _platform_image_surface_cache[platform_name]
     try:
+        asset = _get_platform_image_asset(platform_dict)
+        if asset and asset.get("data"):
+            surface = _safe_convert_alpha(pygame.image.load(io.BytesIO(bytes(asset["data"]))))
+            _platform_image_surface_cache[platform_name] = surface
+            return surface
+
         image_path = _resolve_platform_image_path(platform_dict)
         if not image_path:
             logger.error(f"Aucune image trouvée pour {platform_name}.")
+            _platform_image_surface_cache[platform_name] = None
             return None
 
-        return _safe_convert_alpha(pygame.image.load(image_path))
+        surface = _safe_convert_alpha(pygame.image.load(image_path))
+        _platform_image_surface_cache[platform_name] = surface
+        return surface
     except Exception as e:
         logger.error(f"Erreur lors du chargement de l'image pour {platform_name} : {str(e)}")
+        _platform_image_surface_cache[platform_name] = None
         return None
-
-def extract_data(zip_path, dest_dir, url):
-    """Extrait le contenu de ZIP de DATA dans le dossier config.SAVE_FOLDER sans progression a l'ecran"""
-    logger.debug(f"Extraction de {zip_path} dans {dest_dir}")
-    try:
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.testzip()  # Vérifier l'intégrité de l'archive
-            for info in zip_ref.infolist():
-                if info.is_dir():
-                    continue
-                file_path = os.path.join(dest_dir, info.filename)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
-                    shutil.copyfileobj(source, dest)
-        logger.info(f"Extraction terminée de {zip_path}")
-        return True, "Extraction terminée avec succès"
-    except zipfile.BadZipFile as e:
-        logger.error(f"Erreur: Archive ZIP corrompue: {str(e)}")
-        return False, _("utils_corrupt_zip").format(str(e))
-
-    
 
 def _update_extraction_progress(url, extracted_size, total_size, lock, last_save_time_ref, save_interval=0.5):
     """Fonction utilitaire pour mettre à jour la progression d'extraction."""
@@ -4444,8 +4283,8 @@ def resolve_platform_folder(platform):
     démarrage, avant l'étape 'load_sources').
 
     Ordre de résolution :
-    1) config.platform_dicts (rapide, déjà en mémoire si chargé)
-    2) Lecture directe de config.SOURCES_FILE (systems_list.json) sur disque
+    1) config.platform_dicts (déjà en mémoire si chargé)
+    2) cache du catalogue DB, chargé à la demande avant load_sources
     3) normalize_platform_name(platform) en dernier recours
 
     Utiliser cette fonction partout où le dossier ROM est déterminé à partir du nom de
@@ -4460,19 +4299,18 @@ def resolve_platform_folder(platform):
     except Exception as e:
         logger.debug(f"resolve_platform_folder: erreur lecture config.platform_dicts: {e}")
 
-    try:
-        sources_file = getattr(config, 'SOURCES_FILE', '')
-        if sources_file and os.path.isfile(sources_file):
-            with open(sources_file, 'r', encoding='utf-8') as f:
-                sources = json.load(f)
-            if isinstance(sources, list):
-                for entry in sources:
-                    if isinstance(entry, dict) and entry.get("platform_name") == platform:
-                        folder = entry.get("folder") or entry.get("dossier")
-                        if folder:
-                            return folder
-    except Exception as e:
-        logger.debug(f"resolve_platform_folder: erreur lecture {getattr(config, 'SOURCES_FILE', '')}: {e}")
+    platform_name = str(platform or "").strip()
+    db_path = os.path.abspath(os.fspath(config.DB_PATH))
+    if _platform_folder_lookup_db_path != db_path:
+        try:
+            _cache_platform_folders(database.list_platforms(config.DB_PATH))
+        except Exception as e:
+            logger.debug(f"resolve_platform_folder: lecture du catalogue DB impossible: {e}")
+
+    cached_folder = _platform_folder_lookup.get(platform_name)
+    if cached_folder:
+        logger.debug("resolve_platform_folder: dossier DB trouvé pour '%s': %s", platform_name, cached_folder)
+        return cached_folder
 
     logger.warning(f"resolve_platform_folder: aucun dossier trouvé pour '{platform}', repli sur normalize_platform_name")
     return normalize_platform_name(platform)

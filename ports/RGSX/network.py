@@ -10,7 +10,7 @@ from collections import deque
 import config
 from config import HEADLESS
 try:
-    if not HEADLESS:
+    if not HEADLESS or "pygame" in sys.modules:
         import pygame  # type: ignore
     else:
         pygame = None  # type: ignore
@@ -43,6 +43,26 @@ import socket
 
 
 logger = logging.getLogger(__name__)
+
+
+_QBITTORRENT_HISTORY_PHASE_KEYS = {
+    "qbt_initializing": "history_qbt_initializing",
+    "qbt_fetching_metadata": "history_qbt_fetching_metadata",
+    "qbt_adding_torrent": "history_qbt_adding_torrent",
+    "qbt_searching_peers": "history_qbt_searching_peers",
+    "qbt_connecting": "history_qbt_connecting",
+    "qbt_verifying": "history_qbt_verifying",
+    "qbt_downloading": "history_qbt_downloading",
+    "qbt_paused": "history_qbt_paused",
+}
+
+
+def _qbt_progress_history_message(phase: str) -> str | None:
+    key = _QBITTORRENT_HISTORY_PHASE_KEYS.get(str(phase or ""))
+    if not key:
+        return None
+    translated = _(key)
+    return translated if translated and translated != key else str(phase)
 
 
 class InsufficientDiskSpaceError(RuntimeError):
@@ -3988,6 +4008,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             downloaded, total_size = data[1], data[2]
                             speed, seeds, connections = 0.0, 0, 0
                             phase = "connecting"
+                        phase_message = _qbt_progress_history_message(phase)
                         display_seeds = seeds
                         progress_percent = int(downloaded / total_size * 100) if total_size > 0 else 0
                         progress_percent = max(0, min(100, progress_percent))
@@ -4030,6 +4051,9 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         if isinstance(config.history, list):
                             for entry in config.history:
                                 if "url" in entry and entry["url"] == original_history_url and entry["status"] in ["Downloading", "Téléchargement"]:
+                                    phase_changed = bool(phase_message and entry.get("message") != phase_message)
+                                    if phase_changed:
+                                        entry["message"] = phase_message
                                     entry["downloaded_size"] = downloaded
                                     entry["total_size"] = total_size
                                     entry["speed"] = speed
@@ -4039,10 +4063,14 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     entry["aria2_phase"] = phase
                                     entry["status"] = "Téléchargement"
                                     config.needs_redraw = True
+                                    history_saved = False
                                     # Sauvegarder au plus une fois par palier de 5%
                                     if (progress_percent % 5 == 0 or progress_percent >= 99) and progress_percent != last_saved_progress_percent:
                                         if _save_history_with_feedback("download_rom:progress"):
                                             last_saved_progress_percent = progress_percent
+                                            history_saved = True
+                                    if phase_changed and not history_saved:
+                                        _save_history_with_feedback("download_rom:phase")
                                     break
             try:
                 await asyncio.sleep(0.1)

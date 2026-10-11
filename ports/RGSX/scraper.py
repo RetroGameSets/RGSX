@@ -11,7 +11,7 @@ import config
 
 logger = logging.getLogger(__name__)
 
-SOURCE_SUFFIXES = {"Archive", "LolRoms", "Torrent", "1Fichier"}
+SOURCE_SUFFIXES = {"Archive", "Archive.org", "LolRoms", "Torrent", "1Fichier", "Vimms", "EdgeEmu", "EdgeEmu.net"}
 THEGAMESDB_API_KEY_PATH = getattr(config, "THEGAMESDB_API_KEY_PATH", os.path.join(config.APP_FOLDER, "assets", "TheGamesDBAPI.txt"))
 
 API_BASE_URL = "https://api.thegamesdb.net/v1"

@@ -390,7 +390,7 @@ echo [%DATE% %TIME%] !PYTHON_VERSION! detected using !PYTHON_SOURCE! >> "%LOG_FI
 
 :: Verifier et installer les dependances Python si necessaires
 set "MISSING_PACKAGES="
-echo [%DATE% %TIME%] Checking Python modules: requests pygame >> "%LOG_FILE%"
+echo [%DATE% %TIME%] Checking Python modules: requests and pygame >> "%LOG_FILE%"
 set "MODULE_CHECK_TMP=%TEMP%\rgsx_py_mod_check_!RANDOM!!RANDOM!.txt"
 "!PYTHON_EXE!" !PYTHON_ARGS! -c "import importlib.util,sys;mods=['requests','pygame'];missing=[m for m in mods if importlib.util.find_spec(m) is None];sys.stdout.write(' '.join(missing))" > "!MODULE_CHECK_TMP!" 2>&1
 set "MODULE_CHECK_RESULT=!ERRORLEVEL!"
@@ -409,7 +409,7 @@ del /q "!MODULE_CHECK_TMP!" 2>nul
 if defined MISSING_PACKAGES (
     echo [%DATE% %TIME%] Missing Python modules detected: !MISSING_PACKAGES! >> "%LOG_FILE%"
 ) else (
-    echo [%DATE% %TIME%] All required Python modules already present: requests pygame >> "%LOG_FILE%"
+    echo [%DATE% %TIME%] All required Python modules already present >> "%LOG_FILE%"
 )
 
 if defined MISSING_PACKAGES (

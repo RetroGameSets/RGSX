@@ -5,6 +5,7 @@ import re
 import threading
 import time
 import config
+import database
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,6 @@ _history_write_last_probe_ts = 0.0
 _history_write_ok = True
 
 _HISTORY_WRITE_FAILURE_COOLDOWN_SEC = 1.5
-_HISTORY_WRITE_PROBE_CACHE_SEC = 8.0
 
 
 def _set_history_write_status(ok, error_message=""):
@@ -66,16 +66,13 @@ def _register_history_write_failure(exc):
 
 def _register_history_write_success():
     global _history_write_failures
-
     recovered = False
     with _history_write_state_lock:
-        if _history_write_failures > 0:
-            recovered = True
+        recovered = _history_write_failures > 0
         _history_write_failures = 0
-
     _set_history_write_status(True, "")
     if recovered:
-        logger.info("Ecriture history.json retablie")
+        logger.info("Ecriture SQLite de l'historique retablie")
 
 
 def get_history_write_status():
@@ -91,147 +88,43 @@ def get_history_write_status():
 
 def check_history_write_access(force=False):
     global _history_write_last_probe_ts
-
-    history_path = getattr(config, 'HISTORY_PATH')
-    now = time.time()
-
-    with _history_write_state_lock:
-        use_cached_probe = (
-            not force
-            and (now - _history_write_last_probe_ts) < _HISTORY_WRITE_PROBE_CACHE_SEC
-        )
-        if use_cached_probe:
-            return _history_write_ok, _history_write_last_error
-
-    probe_a = f"{history_path}.probe.{os.getpid()}.{threading.get_ident()}.a"
-    probe_b = f"{history_path}.probe.{os.getpid()}.{threading.get_ident()}.b"
-
+    _history_write_last_probe_ts = time.time()
     try:
-        os.makedirs(os.path.dirname(history_path), exist_ok=True)
-
-        with open(probe_a, "w", encoding="utf-8") as handle:
-            handle.write("[]")
-            handle.flush()
-            os.fsync(handle.fileno())
-
-        os.replace(probe_a, probe_b)
-        os.remove(probe_b)
-
-        with _history_write_state_lock:
-            _history_write_last_probe_ts = now
+        database.initialize_database(config.DB_PATH)
+        with database.connect(config.DB_PATH) as connection:
+            connection.execute("SELECT 1").fetchone()
         _register_history_write_success()
         return True, ""
     except Exception as exc:
-        with _history_write_state_lock:
-            _history_write_last_probe_ts = now
         _register_history_write_failure(exc)
         return False, get_history_write_status().get("message", "")
-    finally:
-        for temp_path in (probe_a, probe_b):
-            try:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-            except Exception:
-                pass
 
-
-def _atomic_write_json(target_path, payload):
-    temp_path = f"{target_path}.{os.getpid()}.{threading.get_ident()}.tmp"
-    try:
-        with open(temp_path, "w", encoding='utf-8') as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-            f.flush()
-            os.fsync(f.fileno())
-
-        last_error = None
-        for attempt in range(5):
-            try:
-                os.replace(temp_path, target_path)
-                last_error = None
-                break
-            except (PermissionError, OSError) as e:
-                last_error = e
-                time.sleep(0.15 * (attempt + 1))
-
-        if last_error is not None:
-            raise last_error
-    finally:
-        try:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-        except Exception:
-            pass
-
-# Chemin par défaut pour history.json
 
 def init_history():
-    """Initialise le fichier history.json s'il n'existe pas."""
-    history_path = getattr(config, 'HISTORY_PATH')
-    # Vérifie si le fichier history.json existe, sinon le crée
-    if not os.path.exists(history_path):
-        try:
-            os.makedirs(os.path.dirname(history_path), exist_ok=True)
-            with open(history_path, "w", encoding='utf-8') as f:
-                json.dump([], f)  # Initialise avec une liste vide
-            logger.info(f"Fichier d'historique créé : {history_path}")
-        except OSError as e:
-            logger.error(f"Erreur lors de la création du fichier d'historique : {e}")
-    else:
-        logger.info(f"Fichier d'historique trouvé : {history_path}")
+    """Initialise le stockage local SQLite de l'historique."""
+    try:
+        database.initialize_database(config.DB_PATH)
+    except Exception as exc:
+        logger.error(f"Erreur lors de l'initialisation SQLite: {exc}")
     check_history_write_access(force=True)
-    return history_path
+    return config.DB_PATH
+
 
 def load_history():
-    """Charge l'historique depuis history.json avec gestion d'erreur robuste."""
-    history_path = getattr(config, 'HISTORY_PATH')
+    """Charge l'historique depuis la SQLite locale."""
     try:
-        if not os.path.exists(history_path):
-            logger.debug(f"Aucun fichier d'historique trouvé à {history_path}")
-            return []
-        
-        # Vérifier que le fichier n'est pas vide avant de lire
-        if os.path.getsize(history_path) == 0:
-            logger.warning(f"Fichier history.json vide détecté, retour liste vide")
-            return []
-        
-        with open(history_path, "r", encoding='utf-8') as f:
-            content = f.read()
-            if not content or content.strip() == '':
-                logger.warning(f"Contenu history.json vide, retour liste vide")
-                return []
-            
-            history = json.loads(content)
-            
-            # Valider la structure : liste de dictionnaires avec 'platform', 'game_name', 'status'
-            if not isinstance(history, list):
-                logger.warning(f"Format history.json invalide (pas une liste), retour liste vide")
-                return []
-            
-            # Filtrer les entrées valides au lieu de tout rejeter
-            valid_entries = []
-            invalid_count = 0
-            for entry in history:
-                if isinstance(entry, dict) and all(key in entry for key in ['platform', 'game_name', 'status']):
-                    valid_entries.append(entry)
-                else:
-                    invalid_count += 1
-                    logger.warning(f"Entrée d'historique invalide ignorée : {entry}")
-            
-            if invalid_count > 0:
-                logger.info(f"Historique chargé : {len(valid_entries)} valides, {invalid_count} invalides ignorées")
-            #logger.debug(f"Historique chargé depuis {history_path}, {len(valid_entries)} entrées")
-            return valid_entries
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error(f"Erreur lors de la lecture de {history_path} : {e}")
+        history = database.load_history(config.DB_PATH)
+        return [
+            entry for entry in history
+            if isinstance(entry, dict) and all(key in entry for key in ("platform", "game_name", "status"))
+        ]
+    except Exception as exc:
+        logger.error(f"Erreur lors de la lecture de l'historique SQLite: {exc}")
         return []
-    except Exception as e:
-        logger.error(f"Erreur inattendue lors de la lecture de {history_path} : {e}")
-        return []
+
 
 def save_history(history, force=False):
-    """Sauvegarde l'historique dans history.json de manière atomique (mode non-bloquant en cas d'erreur)."""
-    history_path = getattr(config, 'HISTORY_PATH')
-
+    """Sauvegarde l'historique dans la SQLite locale."""
     now = time.time()
     state = get_history_write_status()
     if (
@@ -240,14 +133,12 @@ def save_history(history, force=False):
         and (now - float(state.get("last_failure_ts", 0.0) or 0.0)) < _HISTORY_WRITE_FAILURE_COOLDOWN_SEC
     ):
         return False
-
     try:
-        os.makedirs(os.path.dirname(history_path), exist_ok=True)
-        _atomic_write_json(history_path, history)
+        database.save_history(history, config.DB_PATH)
         _register_history_write_success()
         return True
-    except Exception as e:
-        _register_history_write_failure(e)
+    except Exception as exc:
+        _register_history_write_failure(exc)
         return False
 
 def add_to_history(platform, game_name, status, url=None, progress=0, message=None, timestamp=None):
@@ -432,49 +323,25 @@ def scan_roms_for_downloaded_games():
     return added_games, scanned_platforms
 
 def load_downloaded_games():
-    """Charge la liste des jeux déjà téléchargés depuis downloaded_games.json."""
-    downloaded_path = getattr(config, 'DOWNLOADED_GAMES_PATH')
+    """Charge la liste des jeux téléchargés depuis la SQLite locale."""
     try:
-        if not os.path.exists(downloaded_path):
-            logger.debug(f"Aucun fichier downloaded_games.json trouvé à {downloaded_path}")
-            return {}
-        
-        if os.path.getsize(downloaded_path) == 0:
-            logger.warning(f"Fichier downloaded_games.json vide")
-            return {}
-        
-        with open(downloaded_path, "r", encoding='utf-8') as f:
-            content = f.read()
-            if not content or content.strip() == '':
-                return {}
-            
-            downloaded = json.loads(content)
-            
-            if not isinstance(downloaded, dict):
-                logger.warning(f"Format downloaded_games.json invalide (pas un dict)")
-                return {}
-
-            normalized_downloaded = _normalize_downloaded_games_dict(downloaded)
-            logger.debug(f"Jeux téléchargés chargés : {_count_downloaded_games(normalized_downloaded)} jeux")
-            return normalized_downloaded
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error(f"Erreur lors de la lecture de {downloaded_path} : {e}")
-        return {}
-    except Exception as e:
-        logger.error(f"Erreur inattendue lors de la lecture de {downloaded_path} : {e}")
+        downloaded = database.load_downloaded_games(config.DB_PATH)
+        normalized_downloaded = _normalize_downloaded_games_dict(downloaded)
+        logger.debug(f"Jeux téléchargés chargés depuis SQLite : {_count_downloaded_games(normalized_downloaded)} jeux")
+        return normalized_downloaded
+    except Exception as exc:
+        logger.error(f"Erreur lors de la lecture des jeux téléchargés SQLite: {exc}")
         return {}
 
 
 def save_downloaded_games(downloaded_games_dict):
-    """Sauvegarde la liste des jeux téléchargés dans downloaded_games.json."""
-    downloaded_path = getattr(config, 'DOWNLOADED_GAMES_PATH')
+    """Sauvegarde la liste des jeux téléchargés dans la SQLite locale."""
     try:
         normalized_downloaded = _normalize_downloaded_games_dict(downloaded_games_dict)
-        os.makedirs(os.path.dirname(downloaded_path), exist_ok=True)
-        _atomic_write_json(downloaded_path, normalized_downloaded)
-        logger.debug(f"Jeux téléchargés sauvegardés : {_count_downloaded_games(normalized_downloaded)} jeux")
-    except Exception as e:
-        logger.error(f"Erreur lors de l'écriture de {downloaded_path} : {e}")
+        database.save_downloaded_games(normalized_downloaded, config.DB_PATH)
+        logger.debug(f"Jeux téléchargés sauvegardés dans SQLite : {_count_downloaded_games(normalized_downloaded)} jeux")
+    except Exception as exc:
+        logger.error(f"Erreur lors de l'écriture des jeux téléchargés SQLite: {exc}")
 
 
 def mark_game_as_downloaded(platform_name, game_name, file_size=None):

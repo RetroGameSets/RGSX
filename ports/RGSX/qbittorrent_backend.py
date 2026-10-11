@@ -28,7 +28,7 @@ class BackendUnavailableError(RuntimeError):
 _TARGET_PORT = 18572
 _DEFAULT_USERNAME = "admin"
 _CONFIGURED_PASSWORD = str(getattr(config, "TORRENT_QBITTORRENT_WEBUI_PASSWORD", "") or "")
-_STARTUP_TIMEOUT_SECONDS = 25
+_STARTUP_TIMEOUT_SECONDS = 120
 _TEMP_PASSWORD_PATTERNS = [
     re.compile(r"temporary password.*?:\s*([^\s]+)", re.IGNORECASE),
     re.compile(r"mot de passe temporaire.*?:\s*([^\s]+)", re.IGNORECASE),
@@ -569,7 +569,7 @@ def _ensure_qbittorrent_running() -> "requests.Session | None":
     session = requests.Session()
     with _launch_lock:
         if _qbt_process is not None and _qbt_process.poll() is None:
-            if _wait_for_webui(session, _base_url, timeout=5) and _login(session, _base_url, []):
+            if _wait_for_webui(session, _base_url, timeout=_STARTUP_TIMEOUT_SECONDS) and _login(session, _base_url, []):
                 return session
             return None
 
@@ -1118,10 +1118,14 @@ def download_torrent_via_qbittorrent(
     total_size = int(torrent_meta.get("size_bytes") or 0)
     tag = f"rgsx_{task_id}"
 
+    if progress_queue is not None:
+        progress_queue.put((task_id, 0, total_size, 0.0, 0, 0, "qbt_initializing"))
     session = _ensure_qbittorrent_running()
     if session is None:
         raise BackendUnavailableError("qBittorrent introuvable, non démarré ou authentification échouée")
 
+    if progress_queue is not None:
+        progress_queue.put((task_id, 0, total_size, 0.0, 0, 0, "qbt_fetching_metadata"))
     headers = _build_torrent_headers()
     torrent_bytes = requests.get(source_url, timeout=30, headers=headers).content
 
@@ -1132,6 +1136,8 @@ def download_torrent_via_qbittorrent(
     registered_download_reference = False
 
     try:
+        if progress_queue is not None:
+            progress_queue.put((task_id, 0, total_size, 0.0, 0, 0, "qbt_adding_torrent"))
         files = {"torrents": (fallback_name + ".torrent", torrent_bytes, "application/x-bittorrent")}
         data = {"savepath": temp_dir, "tags": tag, "category": "rgsx"}
         resp = session.post(_url("/api/v2/torrents/add"), files=files, data=data,
@@ -1158,8 +1164,8 @@ def download_torrent_via_qbittorrent(
         _register_active_download(task_id, torrent_hash, original_history_url, target_file_index)
         registered_download_reference = True
         reported_total_size = target_file_size or total_size
-        if reported_total_size > 0:
-            progress_queue.put((task_id, 0, reported_total_size, 0.0, 0, 0, "connecting"))
+        if progress_queue is not None:
+            progress_queue.put((task_id, 0, reported_total_size, 0.0, 0, 0, "qbt_searching_peers"))
 
         while True:
             if cancel_ev is not None and cancel_ev.is_set():
@@ -1193,7 +1199,7 @@ def download_torrent_via_qbittorrent(
                     int(target_file_size or (info or {}).get("size") or total_size or 0),
                 )
                 if size > 0:
-                    progress_queue.put((task_id, downloaded, size, 0.0, 0, 0, "paused"))
+                    progress_queue.put((task_id, downloaded, size, 0.0, 0, 0, "qbt_paused"))
                 while pause_ev.is_set():
                     if cancel_ev is not None and cancel_ev.is_set():
                         break
@@ -1226,8 +1232,14 @@ def download_torrent_via_qbittorrent(
             # affiche plutôt le nombre de pairs qui nous envoient réellement des données là.
             active_senders = _count_active_peers(session, torrent_hash, "dl_speed") if speed_mib_s > 0 else 0
             peers = int(info.get("num_leechs") or 0) + int(info.get("num_seeds") or 0)
-            phase = _STATE_PHASE_MAP.get(state, "waiting")
-            if size > 0:
+            state_phase = _STATE_PHASE_MAP.get(state, "waiting")
+            phase = {
+                "connecting": "qbt_connecting",
+                "waiting": "qbt_searching_peers",
+                "verifying": "qbt_verifying",
+                "downloading": "qbt_downloading",
+            }.get(state_phase, "qbt_searching_peers")
+            if size > 0 or progress_queue is not None:
                 progress_queue.put((task_id, min(downloaded, size), size, speed_mib_s, active_senders, peers, phase))
 
             if state in _ERROR_STATES:

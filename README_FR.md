@@ -37,7 +37,7 @@ Après installation :
 3. **Rafraîchir** : `Menu > Paramètres des jeux > Mettre à jour la liste des jeux`
 
 ### Mise à jour manuelle (si la mise à jour automatique a échoué)
-Télécharger la dernière release : [RGSX_update_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
+Télécharger et extraire la dernière release : [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
 
 **Chemins installés :**
 - `/roms/ports/RGSX` (tous systèmes)
@@ -49,7 +49,8 @@ Télécharger la dernière release : [RGSX_update_latest.zip](https://github.com
 
 ### Premier lancement
 
-- Télécharge automatiquement les images systèmes et les listes de jeux
+- Synchronise le catalogue des systèmes et des jeux dans sa base SQLite locale
+- Télécharge les images nécessaires à l'interface
 - Configure automatiquement les contrôles si votre manette est reconnue
 - **Contrôles cassés ?** Supprimez `/saves/ports/rgsx/controls.json` puis redémarrez
 
@@ -64,44 +65,20 @@ Télécharger la dernière release : [RGSX_update_latest.zip](https://github.com
 
 ### Structure du menu pause
 
-**Catégories racine**
-- Jeux (téléchargements, scans, visibilité des plateformes)
-- Langue (changer la langue de l'interface)
-- Contrôles (aide et remap)
-- Affichage (layout, polices, moniteur/mode, options visuelles)
-- Paramètres (musique, symlink, extraction auto, réseau et statut API)
-- Support (génération d'une archive support ZIP/logs)
-- Quitter (quitter ou redémarrer)
+**Menu racine** — Jeux, Langue, Contrôles, Affichage, Paramètres, Support, Réinitialiser les paramètres par défaut et Quitter.
 
-**Contrôles**
-- Voir l'aide des contrôles (affiche les actions actuellement mappées)
-- Remapper les contrôles (reconfigurer clavier/manette)
+- **Jeux** : actualiser le catalogue, scanner les ROMs déjà présentes, ouvrir l'historique, afficher/masquer les systèmes non supportés et choisir les plateformes visibles.
+- **Contrôles** : consulter l'aide des commandes actuellement assignées ou remapper clavier/manette.
+- **Affichage** : choisir parmi huit grilles (3×3, 3×4, 4×3, 4×4, 5×4, 6×4, 6×6 ou 8×6), régler séparément la taille de police de l'interface et du pied de page, choisir la police (Pixel, Bell Centennial ou DejaVu Sans), le thème d'arrière-plan et le mode léger. Le choix du moniteur n'apparaît que si plusieurs écrans sont détectés ; le mode fenêtre/plein écran est réservé à Windows. Le menu permet aussi de masquer l'avertissement d'extension inconnue.
+- **Paramètres** : musique, comportement des liens symboliques, extraction automatique, dossier ROMs, nombre maximal de téléchargements simultanés, statut des clés API et état des connexions. Le service Web au démarrage et le DNS personnalisé sont proposés sous Linux/Batocera.
+- **Support** : outils de diagnostic et génération d'une archive de support.
+- **Quitter** : quitter ou redémarrer RGSX. La langue se choisit directement depuis le menu racine.
 
-**Affichage**
-- Layout (3×3, 3×4, 4×3, 4×4)
-- Sous-menu taille de police (UI générale + texte du footer)
-- Famille de police (Pixel ou DejaVu)
-- Sélection du moniteur (quand plusieurs moniteurs sont détectés)
-- Mode d'écran (Windows uniquement)
-- Mode léger (rendu plus performant)
-- Masquer l'avertissement d'extension inconnue (toggle des warnings d'extensions non supportées)
+### Base de données locale et migration
 
-**Jeux**
-- Mettre à jour le cache des jeux (retélécharger les données systèmes/jeux)
-- Scanner les ROMs possédées (ajouter vos ROMs locales à l'historique)
-- Historique des téléchargements (consulter/gérer les entrées)
-- Afficher les plateformes non supportées (toggle des plateformes sans dossier ROM local)
-- Filtrer les plateformes (menu de visibilité source/plateforme)
+Le catalogue des systèmes/jeux, l'historique des téléchargements, les ROMs détectées comme déjà possédées et l'état local associé sont enregistrés dans `/saves/ports/rgsx/rgsx.sqlite3`. La première synchronisation télécharge un snapshot complet ; les suivantes appliquent les changements de façon incrémentale. Lorsqu'une source ou une plateforme est masquée ou réactivée, RGSX compare la liste des plateformes visibles et ne transfère les jeux que pour celles qui réapparaissent. **Jeux > Actualiser le catalogue** relance la synchronisation. Les préférences générales restent dans `rgsx_settings.json` et les commandes personnalisées dans `controls.json`.
 
-**Paramètres**
-- Musique de fond (activer/désactiver)
-- Options de symlink (choisir copie/symlink)
-- Extraction auto (activation/désactivation)
-- Sélecteur du dossier ROMs (définir un dossier ROM racine personnalisé)
-- Service Web (Batocera/Knulli) (démarrer l'interface web au boot)
-- DNS personnalisé (Batocera/Knulli) (contourner certains blocages ISP/domaine)
-- Statut des clés API (vérifier la présence des clés providers)
-- Statut de connexion (tester les sites requis updates/sources)
+Lors du premier lancement après la migration depuis l'ancien stockage JSON, RGSX importe l'historique, les jeux détectés comme possédés et le cache torrent lorsqu'ils sont présents. Les anciens fichiers de cache/données trouvés sont déplacés dans `/saves/ports/rgsx/backup_old_rgsx/<date>/`. Ne supprimez pas la base SQLite pendant que RGSX fonctionne : elle contient le catalogue et les données utilisateur persistantes. SQLite peut créer des fichiers temporaires `-wal` et `-shm` à côté de la base.
 
 ---
 
@@ -110,7 +87,7 @@ Télécharger la dernière release : [RGSX_update_latest.zip](https://github.com
 - 🎯 **Détection intelligente des systèmes** – Détecte automatiquement les systèmes supportés depuis `es_systems.cfg`
 - 📦 **Gestion intelligente des archives** – Extrait automatiquement les archives quand un système ne supporte pas les ZIP
 - 🔑 **Déblocage premium** – API 1Fichier + fallback AllDebrid/Debrid-Link/Real-Debrid/TorBox pour des téléchargements illimités
-- 🎨 **Personnalisation complète** – Layout (3×3 à 4×4), polices, tailles de police (UI + footer), langues (EN/FR/DE/ES/IT/PT)
+- 🎨 **Personnalisation complète** – Huit layouts jusqu'à 8×6, polices Pixel/Bell Centennial/DejaVu Sans, tailles de police (UI + footer), langues (EN/FR/DE/ES/IT/PT)
 - 🎮 **Pensé manette avant tout** – Auto-mapping pour les manettes populaires + remapping personnalisé
 - 🔍 **Filtrage avancé** – Recherche par nom, afficher/masquer les systèmes non supportés, filtre de plateformes
 - 📊 **Gestion des téléchargements** – File d'attente, historique, notifications de progression
@@ -191,13 +168,19 @@ RGSX inclut une interface web qui se lance automatiquement quand vous utilisez R
 ├── ports/
 │   ├── RGSX/
 │   │   ├── __main__.py                # Point d'entrée
-│   │   ├── controls.py                # Gestion des entrées
-│   │   ├── display.py                 # Moteur de rendu
-│   │   ├── network.py                 # Gestionnaire de téléchargements
-│   │   ├── rgsx_settings.py           # Gestionnaire des paramètres
-│   │   ├── assets/controls/           # Profils de manettes
+│   │   ├── config.py                  # Chemins et configuration de l'application
+│   │   ├── database.py                # Stockage SQLite local
+│   │   ├── catalog_sync.py            # Synchronisation du catalogue en ligne
+│   │   ├── controls.py                # Navigation, entrées et actions
+│   │   ├── controls_mapper.py         # Profils et remappage des commandes
+│   │   ├── display.py                 # Interface et menus Pygame
+│   │   ├── network.py                 # Téléchargements
+│   │   ├── rgsx_settings.py           # Préférences utilisateur
+│   │   ├── rgsx_web.py                # Interface et serveur Web
+│   │   ├── assets/                    # Profils, images, polices, musique et outils
 │   │   ├── languages/                 # Traductions (EN/FR/DE/ES/IT/PT)
-│   │   └── logs/RGSX.log              # Logs d'exécution
+│   │   ├── static/                    # CSS et JavaScript de l'interface Web
+│   │   └── logs/                      # RGSX.log et rgsx_web.log
 │   ├── gamelist.xml
 │   ├── images/
 │   └── videos/
@@ -210,19 +193,17 @@ RGSX inclut une interface web qui se lance automatiquement quand vous utilisez R
 /saves/ports/rgsx/
 ├── rgsx_settings.json        # Préférences utilisateur
 ├── controls.json             # Mapping des contrôles
-├── history.json              # Historique des téléchargements
-├── systems_list.json         # Systèmes détectés
-├── global_search_index.json  # Cache de l'index de recherche globale
-├── platform_games_count_cache.json
-├── torrent_manifest_cache.json
-├── games/                    # Bases de données des jeux (par plateforme)
-├── images/                   # Images de plateformes
+├── rgsx.sqlite3              # Catalogue, historique et état utilisateur persistant
+├── images/                   # Images des systèmes
+├── backup_old_rgsx/          # Anciennes données archivées lors de la migration (si présentes)
 ├── 1FichierAPI.txt           # Clé API 1Fichier
 ├── AllDebridAPI.txt          # Clé API AllDebrid
 ├── DebridLinkAPI.txt         # Clé API Debrid-Link
 ├── RealDebridAPI.txt         # Clé API Real-Debrid
 └── TorBoxAPI.txt              # Clé API TorBox
 ```
+
+Les fichiers `-wal` et `-shm` éventuellement visibles à côté de `rgsx.sqlite3` sont des fichiers temporaires SQLite, utilisés pendant l'exécution.
 
 ---
 
@@ -231,9 +212,10 @@ RGSX inclut une interface web qui se lance automatiquement quand vous utilisez R
 | Problème | Solution |
 |----------|----------|
 | Les contrôles ne fonctionnent pas | Supprimez `/saves/ports/rgsx/controls.json` puis redémarrez, vous pouvez aussi supprimer `/roms/ports/RGSX/assets/controls/xx.json` |
-| Aucun jeu ? | Menu Pause > Jeux > Mettre à jour le cache des jeux, puis vérifier Menu Pause > Jeux > Filtrer les plateformes et Afficher les plateformes non supportées. Verifie dans le fichier `rgsx_settings.json` dans `/saves/ports/rgsx/` si la valeur de `sources: mode`:  est bien `rgsx` et pas `custom` |
-| Des systèmes manquent dans la liste ? | RGSX lit `es_systems.cfg` pour afficher uniquement les systèmes supportés. Si vous voulez tous les systèmes : Menu Pause > Jeux > Afficher les plateformes non supportées |
-| L'application crash | Vérifiez `/roms/ports/RGSX/logs/RGSX.log` ou `/roms/windows/logs/Retrobat_RGSX_log.txt` |
+| Aucun jeu ou catalogue vide ? | Ouvrez **Jeux > Actualiser le catalogue**, puis vérifiez **Jeux > Filtrer les plateformes** et l'option d'affichage des systèmes non supportés. Dans **Paramètres**, vérifiez aussi que le dossier ROMs configuré est le bon. Consultez le statut de connexion si la synchronisation échoue. |
+| Des systèmes manquent dans la liste ? | RGSX détecte les systèmes de la configuration de l'émulateur. Activez l'affichage des systèmes non supportés dans **Jeux** et vérifiez le filtre des plateformes. |
+| Échec de synchronisation ou erreur d'écriture de la base | Vérifiez l'espace disque et les droits d'écriture dans `/saves/ports/rgsx/`, puis consultez les journaux. Ne supprimez pas `rgsx.sqlite3` sans en avoir fait une copie : elle contient aussi l'historique et les jeux détectés comme possédés. |
+| L'application crash | Vérifiez `/roms/ports/RGSX/logs/RGSX.log` (et `rgsx_web.log` pour le serveur Web). |
 | Changement de layout non appliqué | Redémarrez RGSX après modification du layout |
 | Problème de téléchargement de certains jeux ? | Ouvrez Menu Pause > Paramètres > Statut de connexion. Si un ou plusieurs sites requis sont en rouge, activez DNS personnalisé dans Paramètres et redémarrez. Vérifiez aussi les protections ISP/routeur (notamment ASUS web threat blocking). |
 

@@ -15,12 +15,12 @@ import re
 
 # IMPORTANT: Avoid importing display/pygame modules for headless mode
 import config  # paths, settings, SAVE_FOLDER, etc.
+import database
 from utils import load_api_keys as _prime_api_keys  # ensure API key files are created
 import network as network_mod  # for progress_queues access
 from utils import load_sources, load_games, is_extension_supported, load_extensions_json, sanitize_filename
 from history import load_history, save_history, add_to_history
 from network import download_rom, download_from_1fichier, is_1fichier_url
-from rgsx_settings import get_sources_zip_url
 
 logger = logging.getLogger("rgsx.cli")
 
@@ -84,116 +84,19 @@ def setup_logging(verbose: bool):
 
 
 def ensure_data_present(verbose: bool = False):
-    """Ensure systems list and games data exist; if missing, download OTA data ZIP and extract it."""
-    # If systems_list exists and games folder has some json files, nothing to do
-    has_sources = os.path.exists(config.SOURCES_FILE)
-    has_games = os.path.isdir(config.GAMES_FOLDER) and any(
-        f.lower().endswith('.json') for f in os.listdir(config.GAMES_FOLDER)
+    """Require a populated SQLite catalog; JSON catalog downloads are disabled."""
+    try:
+        if database.database_exists(config.DB_PATH) and database.list_platforms(config.DB_PATH):
+            return True
+    except Exception as database_error:
+        logger.warning(f"SQLite catalog check failed: {database_error}")
+
+    print(
+        f"SQLite catalog missing or empty: {config.DB_PATH}. "
+        "JSON catalog fallback is disabled.",
+        file=sys.stderr,
     )
-    if has_sources and has_games:
-        return True
-
-    url = get_sources_zip_url(config.OTA_data_ZIP)
-    if not url:
-        print("No sources URL configured; cannot auto-download data.", file=sys.stderr)
-        return False
-
-    zip_path = os.path.join(config.SAVE_FOLDER, "data_download.zip")
-    os.makedirs(config.SAVE_FOLDER, exist_ok=True)
-    headers = {"User-Agent": "Mozilla/5.0"}
-    # Always show progress when we're in the 'missing data' path
-    show = True or verbose
-    print("Source data not found, Downloading...")
-    print(f"Downloading data from {url}...")
-    try:
-        with requests.get(url, stream=True, headers=headers, timeout=60) as r:
-            r.raise_for_status()
-            total = int(r.headers.get('content-length', 0))
-            downloaded = 0
-            last_t = time.time()
-            last_d = 0
-            last_line = ""
-            with open(zip_path, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if not chunk:
-                        continue
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if show and total:
-                        now = time.time()
-                        dt = max(1e-6, now - last_t)
-                        delta = downloaded - last_d
-                        speed = delta / dt / (1024*1024)
-                        pct = int(downloaded/total*100)
-                        mb = downloaded/(1024*1024)
-                        tot = total/(1024*1024)
-                        line = f"Downloading data: {pct:3d}% ({mb:.1f}/{tot:.1f} MB) @ {speed:.1f} MB/s"
-                        if line != last_line:
-                            print("\r" + line, end="", flush=True)
-                            last_line = line
-                        last_t = now
-                        last_d = downloaded
-        if show:
-            print()
-    except Exception as e:
-        print(f"Failed to download data: {e}", file=sys.stderr)
-        return False
-
-    # Extract
-    if show:
-        print("Extracting data...")
-    try:
-        # Custom extraction with progress
-        total_size = 0
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            total_size = sum(info.file_size for info in zip_ref.infolist() if not info.is_dir())
-        extracted = 0
-        chunk = 2048
-        last_line = ""
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            for info in zip_ref.infolist():
-                if info.is_dir():
-                    continue
-                file_path = os.path.join(config.SAVE_FOLDER, info.filename)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                with zip_ref.open(info) as src, open(file_path, 'wb') as dst:
-                    remaining = info.file_size
-                    while remaining > 0:
-                        buf = src.read(min(chunk, remaining))
-                        if not buf:
-                            break
-                        dst.write(buf)
-                        remaining -= len(buf)
-                        extracted += len(buf)
-                        if show and total_size:
-                            pct = int(extracted/total_size*100)
-                            mb = extracted/(1024*1024)
-                            tot = total_size/(1024*1024)
-                            line = f"Extracting data: {pct:3d}% ({mb:.1f}/{tot:.1f} MB)"
-                            if line != last_line:
-                                print("\r" + line, end="", flush=True)
-                                last_line = line
-                try:
-                    os.chmod(file_path, 0o644)
-                except Exception:
-                    pass
-        if show and last_line:
-            print()
-        ok, msg = True, "OK"
-    except Exception as ee:
-        ok, msg = False, str(ee)
-    try:
-        if os.path.exists(zip_path):
-            os.remove(zip_path)
-    except Exception:
-        pass
-    if not ok:
-        print(f"Failed to extract data: {msg}", file=sys.stderr)
-        return False
-    if show:
-        print("Data downloaded and extracted.")
-    return True
-
+    return False
 
 def cmd_platforms(args):
     ensure_data_present(getattr(args, 'verbose', False))
@@ -627,8 +530,7 @@ def cmd_download(args):
     is_zip_non_supported = False
     exts = None
     try:
-        if os.path.exists(config.JSON_EXTENSIONS) and os.path.getsize(config.JSON_EXTENSIONS) > 2:
-            exts = load_extensions_json()
+        exts = load_extensions_json()
     except Exception:
         exts = None
     if exts is not None:
@@ -715,25 +617,6 @@ def interactive_loop(parser):
             print("No command provided. Type 'help' to list commands.")
             continue
         setup_logging(getattr(args, 'verbose', False))
-        # Global force-update handling (duplicate minimal logic to avoid leaving loop early)
-        if getattr(args, 'force_update', False):
-            try:
-                if os.path.exists(config.SOURCES_FILE):
-                    os.remove(config.SOURCES_FILE)
-            except Exception:
-                pass
-            try:
-                shutil.rmtree(config.GAMES_FOLDER, ignore_errors=True)
-            except Exception:
-                pass
-            try:
-                shutil.rmtree(config.IMAGES_FOLDER, ignore_errors=True)
-            except Exception:
-                pass
-            ok = ensure_data_present(verbose=True)
-            if not ok:
-                print("force-update failed; aborting command.")
-                continue
         try:
             args.func(args)
         except SystemExit:
@@ -747,20 +630,17 @@ def interactive_loop(parser):
 def build_parser():
     p = argparse.ArgumentParser(prog="rgsx-cli", description="RGSX headless CLI")
     p.add_argument("--verbose", action="store_true", help="Verbose logging")
-    p.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sub = p.add_subparsers(dest="cmd")
 
     sp = sub.add_parser("platforms", aliases=["p"], help="List available platforms")
     sp.add_argument("--json", action="store_true", help="Output JSON with name and folder")
     sp.add_argument("--verbose", action="store_true", help="Verbose logging")
-    sp.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sp.set_defaults(func=cmd_platforms)
 
     sg = sub.add_parser("games", aliases=["g"], help="List games for a platform")
     sg.add_argument("--platform", "--p", "-p", required=True, help="Platform name or key")
     sg.add_argument("--search", "--s", "-s", help="Filter by name contains")
     sg.add_argument("--verbose", action="store_true", help="Verbose logging")
-    sg.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sg.set_defaults(func=cmd_games)
 
     sd = sub.add_parser("download", aliases=["dl"], help="Download a game by title")
@@ -769,19 +649,16 @@ def build_parser():
     sd.add_argument("--force", "-f", action="store_true", help="Override unsupported extension warning")
     sd.add_argument("--interactive", "-i", action="store_true", help="Prompt to choose from matches when no exact title is found")
     sd.add_argument("--verbose", action="store_true", help="Verbose logging")
-    sd.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sd.set_defaults(func=cmd_download)
 
     sh = sub.add_parser("history", help="Show recent history")
     sh.add_argument("--tail", type=int, default=50, help="Last N entries")
     sh.add_argument("--json", action="store_true")
     sh.add_argument("--verbose", action="store_true", help="Verbose logging")
-    sh.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sh.set_defaults(func=cmd_history)
 
     sc = sub.add_parser("clear-history", aliases=["clear"], help="Clear history")
     sc.add_argument("--verbose", action="store_true", help="Verbose logging")
-    sc.add_argument("--force-update", "-force-update", action="store_true", help="Purge data (games/images/systems_list) and redownload")
     sc.set_defaults(func=cmd_clear_history)
 
     return p
@@ -806,30 +683,6 @@ def main(argv=None):
         os.makedirs(config.SAVE_FOLDER, exist_ok=True)
     except Exception:
         pass
-
-    # Handle global force-update (can run without a subcommand)
-    if getattr(args, 'force_update', False):
-        # Purge
-        try:
-            if os.path.exists(config.SOURCES_FILE):
-                os.remove(config.SOURCES_FILE)
-        except Exception:
-            pass
-        try:
-            shutil.rmtree(config.GAMES_FOLDER, ignore_errors=True)
-        except Exception:
-            pass
-        try:
-            shutil.rmtree(config.IMAGES_FOLDER, ignore_errors=True)
-        except Exception:
-            pass
-        # Redownload
-        ok = ensure_data_present(verbose=True)
-        if not ok:
-            sys.exit(1)
-        # If no subcommand, exit now
-        if not getattr(args, 'cmd', None):
-            return
 
     # If a subcommand is provided, run it
     if getattr(args, 'cmd', None):

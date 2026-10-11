@@ -37,7 +37,7 @@ After installation:
 3. **Refresh**: `Menu > Game Settings > Update game list`
 
 ### Manual Update (if automatic update failed)
-Download latest release : [RGSX_update_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
+Download and extract the latest release: [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
 
 **Installed paths:**
 - `/roms/ports/RGSX` (all systems)
@@ -49,7 +49,8 @@ Download latest release : [RGSX_update_latest.zip](https://github.com/RetroGameS
 
 ### First Launch
 
-- Auto-downloads system images and game lists
+- Syncs the systems and games catalog into a local SQLite database
+- Downloads the images needed by the interface
 - Auto-configures controls if your controller is recognized
 - **Controls broken?** Delete `/saves/ports/rgsx/controls.json` and restart
 
@@ -64,44 +65,20 @@ Download latest release : [RGSX_update_latest.zip](https://github.com/RetroGameS
 
 ### Pause Menu Structure
 
-**Root categories**
-- Games (downloads, scans, platform visibility)
-- Language (switch UI language)
-- Controls (help and remap)
-- Display (layout, fonts, monitor/mode, visual options)
-- Settings (music, symlink, auto extract, network and API status)
-- Support (generate support ZIP/log bundle)
-- Quit (exit or restart)
+**Root menu** — Games, Language, Controls, Display, Settings, Support, Reset Default Settings, and Quit.
 
-**Controls**
-- View Controls Help (shows current mapped actions)
-- Remap Controls (reconfigure keyboard/controller mapping)
+- **Games**: refresh the catalog, scan locally owned ROMs, open download history, show/hide unsupported systems, and choose visible platforms.
+- **Controls**: view the currently mapped actions or remap keyboard/controller inputs.
+- **Display**: choose from eight grids (3×3, 3×4, 4×3, 4×4, 5×4, 6×4, 6×6, or 8×6), adjust UI and footer font sizes separately, choose a font (Pixel, Bell Centennial, or DejaVu Sans), background theme, and Light Mode. Monitor selection appears only when multiple displays are detected; window/fullscreen mode is Windows-only. You can also hide unknown-extension warnings.
+- **Settings**: background music, symlink behavior, automatic extraction, ROM folder, maximum simultaneous downloads, API-key status, and connection status. Web service at boot and Custom DNS are available on Linux/Batocera.
+- **Support**: diagnostic tools and support archive generation.
+- **Quit**: quit or restart RGSX. Language selection is directly in the root menu.
 
-**Display**
-- Layout (3×3, 3×4, 4×3, 4×4)
-- Font Size submenu (general UI + footer text)
-- Font Family (Pixel or DejaVu)
-- Monitor selection (when multiple monitors are detected)
-- Screen Mode (Windows only)
-- Light Mode (performance-friendly rendering)
-- Hide Unknown Extension Warning (toggle unsupported extension warnings)
+### Local Database and Migration
 
-**Games**
-- Update Game Cache (redownload systems/games data)
-- Scan Owned ROMs (add locally owned ROMs to history)
-- Download History (view/manage download entries)
-- Show Unsupported Platforms (toggle platforms without local ROM folders)
-- Filter Platforms (source/platform visibility menu)
+The systems/games catalog, download history, locally detected owned games, and related persistent state are stored in `/saves/ports/rgsx/rgsx.sqlite3`. The initial catalog sync downloads a full snapshot; later syncs apply changes incrementally. When a source or platform is hidden or re-enabled, RGSX reconciles the visible platform list and transfers game data only for newly visible platforms. **Games > Refresh Game Catalog** runs synchronization again. General preferences remain in `rgsx_settings.json`, and custom controls remain in `controls.json`.
 
-**Settings**
-- Background Music Toggle (enable/disable music)
-- Symlink Options (choose copy/symlink behavior)
-- Auto Extract Toggle (automatic archive extraction)
-- ROMs Folder Selector (set custom ROM root folder)
-- Web Service (Batocera/Knulli) (start web UI at boot)
-- Custom DNS (Batocera/Knulli) (workaround for ISP/domain blocking)
-- API Keys Status (check provider key presence)
-- Connection Status (test required updates/sources sites)
+On the first launch after upgrading from the former JSON-based storage, RGSX imports the download history, owned-game records, and torrent cache when present. Any discovered legacy cache/data files are moved to `/saves/ports/rgsx/backup_old_rgsx/<date>/`. Do not delete the SQLite database while RGSX is running: it contains the catalog and persistent user data. SQLite may create temporary `-wal` and `-shm` files alongside the database.
 
 ---
 
@@ -110,7 +87,7 @@ Download latest release : [RGSX_update_latest.zip](https://github.com/RetroGameS
 - 🎯 **Smart System Detection** – Auto-discovers supported systems from `es_systems.cfg`
 - 📦 **Intelligent Archive Handling** – Auto-extracts archives when systems don't support ZIP files
 - 🔑 **Premium Unlocking** – 1Fichier API + AllDebrid/Debrid-Link/Real-Debrid/TorBox fallback for unlimited downloads
-- 🎨 **Fully Customizable** – Layout (3×3 to 4×4), fonts, font sizes (UI + footer), languages (EN/FR/DE/ES/IT/PT)
+- 🎨 **Fully Customizable** – Eight layouts up to 8×6, Pixel/Bell Centennial/DejaVu Sans fonts, font sizes (UI + footer), languages (EN/FR/DE/ES/IT/PT)
 - 🎮 **Controller-First Design** – Auto-mapping for popular controllers + custom remapping support
 - 🔍 **Advanced Filtering** – Search by name, hide/show unsupported systems, filter platforms
 - 📊 **Download Management** – Queue system, history tracking, progress notifications
@@ -191,13 +168,19 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 ├── ports/
 │   ├── RGSX/
 │   │   ├── __main__.py                # Entry point
-│   │   ├── controls.py                # Input handling
-│   │   ├── display.py                 # Rendering engine
-│   │   ├── network.py                 # Download manager
-│   │   ├── rgsx_settings.py           # Settings manager
-│   │   ├── assets/controls/           # Controller profiles
+│   │   ├── config.py                  # Application paths and configuration
+│   │   ├── database.py                # Local SQLite storage
+│   │   ├── catalog_sync.py            # Online catalog synchronization
+│   │   ├── controls.py                # Navigation, input, and actions
+│   │   ├── controls_mapper.py         # Control profiles and remapping
+│   │   ├── display.py                 # Pygame interface and menus
+│   │   ├── network.py                 # Downloads
+│   │   ├── rgsx_settings.py           # User preferences
+│   │   ├── rgsx_web.py                # Web interface and server
+│   │   ├── assets/                    # Profiles, images, fonts, music, and tools
 │   │   ├── languages/                 # Translations (EN/FR/DE/ES/IT/PT)
-│   │   └── logs/RGSX.log              # Runtime logs
+│   │   ├── static/                    # Web interface CSS and JavaScript
+│   │   └── logs/                      # RGSX.log and rgsx_web.log
 │   ├── gamelist.xml
 │   ├── images/
 │   └── videos/
@@ -210,19 +193,17 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 /saves/ports/rgsx/
 ├── rgsx_settings.json        # User preferences
 ├── controls.json             # Control mapping
-├── history.json              # Download history
-├── systems_list.json         # Detected systems
-├── global_search_index.json  # Global search index cache
-├── platform_games_count_cache.json
-├── torrent_manifest_cache.json
-├── games/                    # Game databases (per platform)
-├── images/                   # Platform images
+├── rgsx.sqlite3              # Catalog, history, and persistent user state
+├── images/                   # System images
+├── backup_old_rgsx/          # Legacy files archived during migration, if present
 ├── 1FichierAPI.txt           # 1Fichier API key
 ├── AllDebridAPI.txt          # AllDebrid API key
 ├── DebridLinkAPI.txt         # Debrid-Link API key
 ├── RealDebridAPI.txt         # Real-Debrid API key
 └── TorBoxAPI.txt              # TorBox API key
 ```
+
+The `-wal` and `-shm` files that may appear beside `rgsx.sqlite3` are temporary SQLite files used while the application is running.
 
 ---
 
@@ -231,9 +212,10 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 | Issue | Solution |
 |-------|----------|
 | Controls not working | Delete `/saves/ports/rgsx/controls.json` + restart app, you can try delete /roms/ports/RGSX/assets/controls/xx.json too |
-| No games ? | Pause Menu > Games > Update Game Cache, then check Pause Menu > Games > Filter Platforms and Show Unsupported Platforms. Check in rgsx_settings.json in `/saves/ports/rgsx/` if the value of `sources :  mode` is  `rgsx` and not `custom` |
-| Missing systems on the list? | RGSX read es_systems.cfg to show only supported systems, if you want all systems : Pause Menu > Games > Show unsupported systems |
-| App crashes | Check `/roms/ports/RGSX/logs/RGSX.log` or `/roms/windows/logs/Retrobat_RGSX_log.txt` |
+| No games or empty catalog? | Open **Games > Refresh Game Catalog**, then check **Games > Filter Platforms** and the unsupported-systems visibility option. In **Settings**, confirm the configured ROM folder is correct. Check Connection Status if synchronization fails. |
+| Missing systems on the list? | RGSX discovers systems from the emulator configuration. Enable unsupported-system visibility under **Games** and check the platform filter. |
+| Catalog sync or database write failure | Check available disk space and write permissions in `/saves/ports/rgsx/`, then inspect the logs. Do not delete `rgsx.sqlite3` without a backup: it also contains history and owned-game records. |
+| App crashes | Check `/roms/ports/RGSX/logs/RGSX.log` (and `rgsx_web.log` for the web server). |
 | Layout change not applied | Restart RGSX after changing layout |
 | Problem downloading some Games ? | Open Pause Menu > Settings > Connection Status. If one or more required sites are red, enable Custom DNS in Settings and reboot. Also check ISP/router protections (especially ASUS web threat blocking). |
 

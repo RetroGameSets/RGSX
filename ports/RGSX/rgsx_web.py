@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 import config
 from history import load_history, save_history
-from utils import load_sources, load_games, extract_data, get_clean_display_name, parse_torrent_download_url, request_torrent_manifest_refresh, _resolve_platform_image_path
+from utils import load_sources, load_games, get_clean_display_name, format_game_size, parse_torrent_download_url, request_torrent_manifest_refresh, _resolve_platform_image_path, get_platform_image_payload
 from network import download_rom, download_from_1fichier
 from pathlib import Path
 from rgsx_settings import get_language
@@ -214,9 +214,8 @@ def start_cache_invalidation_watchdog() -> None:
 
     observer = Observer()
     watched_paths = {
-        os.path.dirname(config.SOURCES_FILE),
-        config.GAMES_FOLDER,
         config.ROMS_FOLDER,
+        os.path.dirname(config.DB_PATH),
     }
 
     handler = _CacheInvalidationHandler()
@@ -247,62 +246,8 @@ def get_translation(key, default=None):
     return key
 
 # Fonction pour normaliser les tailles de fichier
-def normalize_size(size_str, lang='en'):
-    """
-    Normalise une taille de fichier dans différents formats (Ko, KiB, Mo, MiB, Go, GiB)
-    en un format uniforme selon la langue (MB/GB pour anglais, Mo/Go pour français).
-    Exemples: "150 Mo" -> "150 MB" (en), "1.5 Go" -> "1.5 GB" (en), "500 Ko" -> "0.5 MB"
-    """
-    if not size_str:
-        return None
-    
-    import re
-    
-    # Utiliser regex pour extraire le nombre et l'unité
-    match = re.match(r'([0-9.]+)\s*(ko|kio|kib|kb|mo|mio|mib|mb|go|gio|gib|gb)', 
-                     str(size_str).lower().strip())
-    
-    if not match:
-        return size_str  # Retourner original si ne correspond pas au format
-    
-    try:
-        value = float(match.group(1))
-        unit = match.group(2).lower()
-        
-        # Convertir tout en Mo
-        if unit in ['ko', 'kb']:
-            value = value / 1024  # Ko en Mo
-        elif unit in ['kio', 'kib']:
-            value = value / 1024  # KiB en Mo
-        elif unit in ['mo', 'mb']:
-            pass  # Déjà en Mo
-        elif unit in ['mio', 'mib']:
-            pass  # MiB ≈ Mo
-        elif unit in ['go', 'gb']:
-            value = value * 1024  # Go en Mo
-        elif unit in ['gio', 'gib']:
-            value = value * 1024  # GiB en Mo
-        
-        # Déterminer les unités selon la langue
-        if lang == 'fr':
-            mb_unit = 'Mo'
-            gb_unit = 'Go'
-        else:
-            mb_unit = 'MB'
-            gb_unit = 'GB'
-        
-        # Afficher en GB/Go si > 1024 Mo, sinon en MB/Mo
-        if value >= 1024:
-            return f"{value / 1024:.2f} {gb_unit}".replace('.00 ', ' ').rstrip('0').rstrip('.')
-        else:
-            # Arrondir à 1 décimale pour MB/Mo
-            rounded = round(value, 1)
-            if rounded == int(rounded):
-                return f"{int(rounded)} {mb_unit}"
-            else:
-                return f"{rounded} {mb_unit}".rstrip('0').rstrip('.')
-    except (ValueError, TypeError):
-        return size_str  # Retourner original si conversion échoue
+def normalize_size(size_str):
+    return format_game_size(size_str) or None
 
 
 # Configuration logging - Enregistrer dans rgsx_web.log
@@ -688,8 +633,10 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         if platform_matches:
                             matching_platforms.append({
                                 'platform_name': platform_name,
+                                'platform_display_name': platform.get('platform_display_name') or platform_name,
                                 'folder': platform.get('folder', ''),
                                 'platform_image': platform.get('platform_image', ''),
+                                'source': platform.get('source', ''),
                                 'games_count': games_count_dict.get(platform_name, 0)
                             })
                         
@@ -708,7 +655,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                                         'game_name': game_name,
                                         'platform': platform_name,
                                         'url': game.url,
-                                        'size': normalize_size(game.size, self._get_language_from_cookies())
+                                        'size': normalize_size(game.size)
                                     })
                         except Exception as e:
                             logger.debug(f"Erreur lors de la recherche dans {platform_name}: {e}")
@@ -750,21 +697,23 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 platform_name = urllib.parse.unquote(platform_name)
                 
                 # Récupérer la langue depuis les cookies ou utiliser 'en' par défaut
-                lang = self._get_language_from_cookies()
-                
                 games, _, games_last_modified = get_cached_games(platform_name)
                 games_formatted = [
                     {
                         'name': g.name,
                         'url': g.url,
-                        'size': normalize_size(g.size, lang)
+                        'size': normalize_size(g.size),
+                        'updated_at': g.updated_at
                     }
                     for g in games
                 ]
+                platform_info = (getattr(config, 'platform_dict_by_name', {}) or {}).get(platform_name, {})
                 
                 response_payload = {
                     'success': True,
                     'platform': platform_name,
+                    'platform_display_name': platform_info.get('platform_display_name') or platform_name,
+                    'source': platform_info.get('source', ''),
                     'count': len(games_formatted),
                     'games': games_formatted
                 }
@@ -930,84 +879,19 @@ class RGSXHandler(BaseHTTPRequestHandler):
             # Route: API - Update games list (clear cache)
             elif path == '/api/update-cache':
                 try:
-                    # Chemins à supprimer (utiliser les constantes de config)
-                    sources_file = config.SOURCES_FILE  # systems_list.json
-                    games_folder = config.GAMES_FOLDER
-                    images_folder = config.IMAGES_FOLDER
-                    
-                    deleted = []
-                    
-                    # Supprimer systems_list.json
-                    if os.path.exists(sources_file):
-                        os.remove(sources_file)
-                        deleted.append('systems_list.json')
-                        logger.info(f"✅ Fichier systems_list.json supprimé")
-                    
-                    # Supprimer dossier games/
-                    if os.path.exists(games_folder):
-                        shutil.rmtree(games_folder)
-                        deleted.append('games/')
-                        logger.info(f"✅ Dossier games/ supprimé")
-                    
-                    # Supprimer dossier images/
-                    if os.path.exists(images_folder):
-                        shutil.rmtree(images_folder)
-                        deleted.append('images/')
-                        logger.info(f"✅ Dossier images/ supprimé")
-                    
-                    # IMPORTANT: Télécharger et extraire games.zip depuis le serveur OTA
-                    logger.info("🔄 Téléchargement de games.zip depuis le serveur...")
-                    try:
-                        # URL du ZIP
-                        games_zip_url = config.OTA_data_ZIP  # https://retrogamesets.fr/softs/games.zip
-                        
-                        # Télécharger dans un fichier temporaire
-                        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
-                            zip_path = tmp_file.name
-                        
-                        # Télécharger le ZIP
-                        logger.info(f"Téléchargement depuis {games_zip_url}...")
-                        urllib.request.urlretrieve(games_zip_url, zip_path)
-                        logger.info(f"✅ ZIP téléchargé: {os.path.getsize(zip_path)} octets")
-                        
-                        # Extraire dans SAVE_FOLDER
-                        logger.info(f"📂 Extraction vers {config.SAVE_FOLDER}...")
-                        success, message = extract_data(zip_path, config.SAVE_FOLDER, games_zip_url)
-                        
-                        # Supprimer le ZIP temporaire
-                        if os.path.exists(zip_path):
-                            os.remove(zip_path)
-                        
-                        if success:
-                            from rgsx_settings import get_remote_gamelist_timestamp, set_last_gamelist_update
-
-                            remote_update_dt = get_remote_gamelist_timestamp(games_zip_url)
-                            set_last_gamelist_update(remote_update_dt)
-                            logger.info(f"✅ Extraction réussie: {message}")
-                            deleted.append(f'extracted: {message}')
-                            
-                            # Maintenant charger les sources
-                            invalidate_all_caches(reason='update-cache refresh')
-                            logger.info("🔄 Chargement des plateformes...")
-                            request_torrent_manifest_refresh()
-                            refreshed_sources = load_sources(allow_torrent_manifest_fetch=True)
-                            if refreshed_sources is not None:
-                                with cache_lock:
-                                    source_cache.update({
-                                        'data': copy.deepcopy(refreshed_sources),
-                                        'timestamp': time.time(),
-                                        'etag': generate_etag(refreshed_sources),
-                                        'last_modified': _now_utc(),
-                                    })
-                            platforms_count = len(getattr(config, 'platforms', []))
-                            logger.info(f"✅ {platforms_count} plateformes chargées")
-                            deleted.append(f'loaded: {platforms_count} platforms')
-                        else:
-                            raise Exception(f"Échec extraction: {message}")
-                        
-                    except Exception as reload_error:
-                        logger.error(f"❌ Erreur lors du téléchargement/extraction: {reload_error}")
-                        deleted.append(f'error: {str(reload_error)}')
+                    invalidate_all_caches(reason='SQLite catalog refresh')
+                    request_torrent_manifest_refresh()
+                    refreshed_sources = load_sources(allow_torrent_manifest_fetch=True)
+                    with cache_lock:
+                        source_cache.update({
+                            'data': copy.deepcopy(refreshed_sources),
+                            'timestamp': time.time(),
+                            'etag': generate_etag(refreshed_sources),
+                            'last_modified': _now_utc(),
+                        })
+                    platforms_count = len(getattr(config, 'platforms', []))
+                    logger.info(f"SQLite catalog refreshed: {platforms_count} platforms loaded")
+                    deleted = [f'loaded: {platforms_count} platforms from SQLite']
                     
                     if deleted:
                         self._send_json({
@@ -1827,7 +1711,7 @@ DO NOT share this file publicly as it may contain sensitive information.
             }, status=500)
     
     def _serve_platform_image(self, platform_name):
-        """Sert l'image d'une plateforme en utilisant le mapping de systems_list.json"""
+        """Sert l'image d'une plateforme en utilisant le mapping SQLite."""
         print(f"[DEBUG] Image demandée pour: {platform_name}", flush=True)  # DEBUG
         try:
             # Trouver la plateforme dans platform_dicts pour obtenir le platform_image
@@ -1838,6 +1722,18 @@ DO NOT share this file publicly as it may contain sensitive information.
                     break
             
             payload_platform = platform_dict or {'platform_name': platform_name}
+            image_data, content_type = get_platform_image_payload(payload_platform, include_source_badge=False)
+            if image_data:
+                self.send_response(200)
+                self.send_header('Content-type', content_type or 'image/png')
+                self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                self.send_header('Pragma', 'no-cache')
+                self.send_header('Expires', '0')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(image_data)
+                return
+
             image_path = _resolve_platform_image_path(payload_platform)
 
             if image_path and os.path.exists(image_path):
@@ -2008,8 +1904,16 @@ DO NOT share this file publicly as it may contain sensitive information.
     <meta name="color-scheme" content="light dark">
     <title>🎮 RGSX Web Interface</title>
     <link rel="icon" type="image/x-icon" href="/api/favicon">
+    <script>
+        try {
+            document.documentElement.dataset.theme = localStorage.getItem('rgsxWebTheme') === 'legacy' ? 'legacy' : 'modern';
+        } catch (error) {
+            document.documentElement.dataset.theme = 'modern';
+        }
+    </script>
     <link rel="stylesheet" href="/static/css/theme.css?v=__CSS_VERSION__">
     <link rel="stylesheet" href="/static/css/app.css?v=__CSS_VERSION__">
+    <link rel="stylesheet" href="/static/css/theme-modern.css?v=__CSS_VERSION__">
     <link rel="stylesheet" href="/static/css/accessibility.css?v=__CSS_VERSION__">
 </head>
 <body>
@@ -2023,6 +1927,14 @@ DO NOT share this file publicly as it may contain sensitive information.
         <header role="banner">
             <h1 data-translate="web_title">RGSX Web Interface</h1>
             <p style="font-size: 0.85em; opacity: 0.8; margin-top: 5px;">v{version}</p>
+            <label class="theme-switcher" for="web-theme-select">
+                <span aria-hidden="true">🎨</span>
+                <span>Thème</span>
+                <select id="web-theme-select" aria-label="Choisir le thème de l'interface">
+                    <option value="modern">Moderne</option>
+                    <option value="legacy">Legacy</option>
+                </select>
+            </label>
             
             
             <!-- Navigation mobile avec icônes uniquement -->

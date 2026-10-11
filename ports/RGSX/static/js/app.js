@@ -1,6 +1,6 @@
         // ===== VARIABLES GLOBALES =====
         let currentPlatform = null;
-        let currentGameSort = 'name_asc';  // Type de tri actuel: 'name_asc', 'name_desc', 'size_asc', 'size_desc'
+        let currentGameSort = 'name_asc'; // Type de tri actuel: 'name_asc', 'name_desc', 'size_asc', 'size_desc', 'date_asc', 'date_desc'
         let currentGames = [];  // Stocke les jeux actuels pour le tri
         const loggedUnparsedSizeTexts = new Set();
         let lastProgressUpdate = Date.now();
@@ -8,6 +8,179 @@
         let progressInterval = null;
         let queueInterval = null;
         let translations = {};  // Contiendra toutes les traductions
+        function setWebTheme(theme, persist = true) {
+            const selectedTheme = theme === 'legacy' ? 'legacy' : 'modern';
+            document.documentElement.dataset.theme = selectedTheme;
+            const selector = document.getElementById('web-theme-select');
+            if (selector) selector.value = selectedTheme;
+            if (persist) {
+                try {
+                    localStorage.setItem('rgsxWebTheme', selectedTheme);
+                } catch (error) {
+                    console.warn('Unable to persist the selected RGSX web theme.', error);
+                }
+            }
+        }
+
+        setWebTheme(document.documentElement.dataset.theme || 'modern', false);
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[character]);
+        }
+
+        function databaseIconSvg() {
+            return `<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+                        <ellipse cx="12" cy="5" rx="8" ry="3"></ellipse>
+                        <path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3M4 18c0 1.66 3.58 3 8 3s8-1.34 8-3"></path>
+                    </svg>`;
+        }
+
+        function renderPlatformMeta(platform, gamesText, sourceCount = 1) {
+            if (sourceCount > 1) {
+                const sourceCountText = t('web_source_count', sourceCount);
+                return `<div class="platform-card-meta platform-card-meta-sources">
+                            <span class="platform-origin" title="${escapeHtml(t('web_choose_source'))}">
+                                ${databaseIconSvg()}
+                                <span>${escapeHtml(sourceCountText)}</span>
+                            </span>
+                        </div>`;
+            }
+
+            const source = String(platform.source || '').trim();
+            const sourceBadge = source
+                ? `<span class="platform-origin" title="${escapeHtml(source)}">
+                       ${databaseIconSvg()}
+                       <span>${escapeHtml(source)}</span>
+                   </span>`
+                : '';
+            return `<div class="platform-card-meta"><div class="count">${escapeHtml(gamesText)}</div>${sourceBadge}</div>`;
+        }
+
+        function groupPlatformsByDisplayName(platforms) {
+            const groups = new Map();
+            platforms.forEach(platform => {
+                const displayName = String(platform.platform_display_name || platform.platform_name || '').trim();
+                if (!displayName) return;
+
+                const key = displayName.toLocaleLowerCase();
+                if (!groups.has(key)) {
+                    groups.set(key, { platform_display_name: displayName, platforms: [] });
+                }
+                groups.get(key).platforms.push(platform);
+            });
+            return Array.from(groups.values());
+        }
+
+        function attachPlatformGroupHandlers(container, groups) {
+            container.querySelectorAll('.platform-group-card').forEach(card => {
+                const group = groups[Number(card.dataset.platformGroupIndex)];
+                if (!group) return;
+
+                const activate = () => {
+                    if (group.platforms.length === 1) {
+                        loadGames(group.platforms[0].platform_name);
+                    } else {
+                        openPlatformSourceChooser(group);
+                    }
+                };
+
+                card.addEventListener('click', activate);
+                card.addEventListener('keydown', event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        activate();
+                    }
+                });
+            });
+        }
+
+        function openPlatformSourceChooser(group) {
+            const sources = [...group.platforms].sort((left, right) =>
+                String(left.source || '').localeCompare(String(right.source || ''))
+            );
+            const previousFocus = document.activeElement;
+            const previousBodyOverflow = document.body.style.overflow;
+            const modal = document.createElement('div');
+            modal.id = 'platform-source-modal';
+            modal.className = 'platform-source-modal';
+            modal.innerHTML = `
+                <section class="platform-source-dialog" role="dialog" aria-modal="true" aria-labelledby="platform-source-title" tabindex="-1">
+                    <div class="platform-source-dialog-header">
+                        <div>
+                            <p>${escapeHtml(t('web_choose_source'))}</p>
+                            <h2 id="platform-source-title">${escapeHtml(group.platform_display_name)}</h2>
+                        </div>
+                        <button type="button" class="platform-source-close" aria-label="${escapeHtml(t('web_cancel'))}">×</button>
+                    </div>
+                    <div class="platform-source-options">
+                        ${sources.map((platform, index) => {
+                            const sourceName = platform.source || platform.platform_name;
+                            const gameCount = t('web_game_count', '📦', platform.games_count || 0);
+                            return `
+                                <button type="button" class="platform-source-option" data-source-index="${index}">
+                                    <span class="platform-source-option-icon">${databaseIconSvg()}</span>
+                                    <span class="platform-source-option-details">
+                                        <span class="platform-source-option-name">${escapeHtml(sourceName)}</span>
+                                        <span class="platform-source-option-count">${escapeHtml(gameCount)}</span>
+                                    </span>
+                                    <span class="platform-source-option-arrow" aria-hidden="true">›</span>
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
+                </section>
+            `;
+
+            const handleModalKeydown = event => {
+                if (event.key === 'Escape') {
+                    close();
+                    return;
+                }
+                if (event.key !== 'Tab') return;
+
+                const focusable = modal.querySelectorAll('button:not(:disabled)');
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            };
+            const close = () => {
+                document.removeEventListener('keydown', handleModalKeydown);
+                modal.remove();
+                document.body.style.overflow = previousBodyOverflow;
+                previousFocus?.focus?.();
+            };
+
+            modal.addEventListener('click', event => {
+                if (event.target === modal) close();
+            });
+            modal.querySelector('.platform-source-close').addEventListener('click', close);
+            modal.querySelectorAll('.platform-source-option').forEach(button => {
+                button.addEventListener('click', () => {
+                    const selected = sources[Number(button.dataset.sourceIndex)];
+                    document.removeEventListener('keydown', handleModalKeydown);
+                    modal.remove();
+                    document.body.style.overflow = previousBodyOverflow;
+                    loadGames(selected.platform_name);
+                });
+            });
+            document.addEventListener('keydown', handleModalKeydown);
+            document.body.style.overflow = 'hidden';
+            document.body.appendChild(modal);
+            modal.querySelector('.platform-source-close').focus();
+        }
+
         let trackedDownloads = (() => {
             // Charger depuis localStorage ou initialiser
             try {
@@ -461,6 +634,12 @@
         
         // Restaurer l'état depuis l'URL au chargement
         window.addEventListener('DOMContentLoaded', function() {
+            const themeSelector = document.getElementById('web-theme-select');
+            if (themeSelector) {
+                setWebTheme(document.documentElement.dataset.theme || 'modern', false);
+                themeSelector.addEventListener('change', () => setWebTheme(themeSelector.value));
+            }
+
             // Load saved filters first
             loadSavedFilters();
             
@@ -524,6 +703,7 @@
                     
                     const results = data.results;
                     const platformsMatch = results.platforms || [];
+                    const platformGroups = groupPlatformsByDisplayName(platformsMatch);
                     const gamesMatch = results.games || [];
                     
                     // Masquer la grille normale des plateformes
@@ -545,7 +725,7 @@
                     let html = '<div style="padding: 20px; background: #f9f9f9; border-radius: 8px;">';
                     
                     // Résumé
-                    const totalResults = platformsMatch.length + gamesMatch.length;
+                    const totalResults = platformGroups.length + gamesMatch.length;
                     html += `<h3 style="margin-bottom: 15px;">🔍 ${totalResults} ${t('web_search_results')} "${term}"</h3>`;
                     
                     if (totalResults === 0) {
@@ -553,17 +733,27 @@
                     }
                     
                     // Afficher les systèmes correspondants
-                    if (platformsMatch.length > 0) {
-                        html += `<h4 style="margin-top: 20px; margin-bottom: 10px;">🎮 ${t('web_platforms')} (${platformsMatch.length})</h4>`;
+                    if (platformGroups.length > 0) {
+                        html += `<h4 style="margin-top: 20px; margin-bottom: 10px;">🎮 ${t('web_platforms')} (${platformGroups.length})</h4>`;
                         html += '<div class="platform-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">';
                         
-                        platformsMatch.forEach(platform => {
-                            const imageUrl = '/api/platform-image/' + encodeURIComponent(platform.platform_name);
+                        platformGroups.forEach((group, groupIndex) => {
+                            const platform = group.platforms[0];
+                            const imageUrl = '/api/image/' + encodeURIComponent(platform.platform_name);
+                            const platformTitle = escapeHtml(group.platform_display_name);
+                            const accessibleLabel = group.platforms.length > 1
+                                ? `${platformTitle}, ${escapeHtml(t('web_source_count', group.platforms.length))}`
+                                : platformTitle;
+                            const metaText = group.platforms.length > 1
+                                ? t('web_source_count', group.platforms.length)
+                                : `${platform.games_count} ${t('web_games')}`;
                             html += `
-                                <div class="platform-card" onclick='loadGames("${platform.platform_name.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}")'>
-                                    <img src="${imageUrl}" alt="${platform.platform_name}" onerror="this.src='/favicon.ico'">
-                                    <h3>${platform.platform_name}</h3>
-                                    <p>${platform.games_count} ${t('web_games')}</p>
+                                <div class="platform-card platform-group-card" data-platform-group-index="${groupIndex}" role="button" tabindex="0" aria-haspopup="${group.platforms.length > 1 ? 'dialog' : 'false'}" aria-label="${accessibleLabel}">
+                                    <div class="platform-card-art">
+                                        <img src="${imageUrl}" alt="${platformTitle}" onerror="this.src='/favicon.ico'">
+                                    </div>
+                                    <h3>${platformTitle}</h3>
+                                    ${renderPlatformMeta(platform, metaText, group.platforms.length)}
                                 </div>
                             `;
                         });
@@ -619,6 +809,7 @@
                     
                     html += '</div>';
                     searchResults.innerHTML = html;
+                    attachPlatformGroupHandlers(searchResults, platformGroups);
                     
                 } catch (error) {
                     console.error('Erreur recherche:', error);
@@ -1225,6 +1416,17 @@
                         return getSizeInBytes(sizeElemA) - getSizeInBytes(sizeElemB);
                     case 'size_desc':
                         return getSizeInBytes(sizeElemB) - getSizeInBytes(sizeElemA);
+                    case 'date_asc':
+                    case 'date_desc': {
+                        const dateA = a.querySelector('.game-date')?.textContent.trim() || '';
+                        const dateB = b.querySelector('.game-date')?.textContent.trim() || '';
+                        const normalizedDateA = dateA === '-' ? '' : dateA;
+                        const normalizedDateB = dateB === '-' ? '' : dateB;
+                        if (!normalizedDateA) return normalizedDateB ? 1 : nameA.localeCompare(nameB);
+                        if (!normalizedDateB) return -1;
+                        const dateComparison = normalizedDateA.localeCompare(normalizedDateB);
+                        return sortType === 'date_desc' ? -dateComparison : dateComparison;
+                    }
                     default:
                         return 0;
                 }
@@ -1274,6 +1476,7 @@
                 // Construire le HTML avec les traductions
                 let searchPlaceholder = t('web_search_platform');
                 const platformImageCacheBuster = Date.now();
+                const platformGroups = groupPlatformsByDisplayName(data.platforms);
                 let html = `
                     <div class="search-box">
                         <input type="text" id="platform-search" placeholder="🔍 ${searchPlaceholder}" 
@@ -1284,21 +1487,31 @@
                     <div class="platform-grid">`;
                 
                 // Ajouter chaque plateforme
-                data.platforms.forEach(p => {
-                    let gameCountText = t('web_game_count', '📦', p.games_count || 0);
+                platformGroups.forEach((group, groupIndex) => {
+                    const platform = group.platforms[0];
+                    const platformTitle = escapeHtml(group.platform_display_name);
+                    const accessibleLabel = group.platforms.length > 1
+                        ? `${platformTitle}, ${escapeHtml(t('web_source_count', group.platforms.length))}`
+                        : platformTitle;
+                    const metaText = group.platforms.length > 1
+                        ? t('web_source_count', group.platforms.length)
+                        : t('web_game_count', '📦', platform.games_count || 0);
                     html += `
-                        <div class="platform-card" onclick='loadGames("${p.platform_name.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}")'>
-                            <img src="/api/image/${encodeURIComponent(p.platform_name)}?v=${platformImageCacheBuster}" 
-                                 alt="${p.platform_name}"
-                                 onerror="this.src='/api/image/default?v=${platformImageCacheBuster}'">
-                            <h3>${p.platform_name}</h3>
-                            <div class="count">${gameCountText}</div>
+                        <div class="platform-card platform-group-card" data-platform-group-index="${groupIndex}" role="button" tabindex="0" aria-haspopup="${group.platforms.length > 1 ? 'dialog' : 'false'}" aria-label="${accessibleLabel}">
+                            <div class="platform-card-art">
+                                <img src="/api/image/${encodeURIComponent(platform.platform_name)}?v=${platformImageCacheBuster}" 
+                                     alt="${platformTitle}"
+                                     onerror="this.src='/api/image/default?v=${platformImageCacheBuster}'">
+                            </div>
+                            <h3>${platformTitle}</h3>
+                            ${renderPlatformMeta(platform, metaText, group.platforms.length)}
                         </div>
                     `;
                 });
                 
                 html += '</div>';
                 container.innerHTML = html;
+                attachPlatformGroupHandlers(container, platformGroups);
                 
             } catch (error) {
                 let errorMsg = t('web_error');
@@ -1328,6 +1541,11 @@
                 // Construire le HTML avec les traductions
                 let backText = t('web_back_platforms');
                 let gameCountText = t('web_game_count', '', data.count);
+                const platformDisplayName = escapeHtml(data.platform_display_name || platform);
+                const platformSource = String(data.source || '').trim();
+                const platformSourceBadge = platformSource
+                    ? `<span class="platform-page-source">${databaseIconSvg()}<span>${escapeHtml(platformSource)}</span></span>`
+                    : '';
                 let searchPlaceholder = t('web_search_game');
                 let downloadTitle = t('web_download');
                 let sortLabel = t('web_sort');
@@ -1335,10 +1553,16 @@
                 let sortNameDesc = t('web_sort_name_desc');
                 let sortSizeAsc = t('web_sort_size_asc');
                 let sortSizeDesc = t('web_sort_size_desc');
+                let sortDateAsc = t('web_sort_date_asc');
+                let sortDateDesc = t('web_sort_date_desc');
                 
                 let html = `
                     <button class="back-btn" onclick="goBackToPlatforms()">← ${backText}</button>
-                    <h2>${platform} ${gameCountText}</h2>
+                    <h2 class="platform-page-heading">
+                        <span>${platformDisplayName}</span>
+                        <span class="platform-page-game-count">${escapeHtml(gameCountText)}</span>
+                        ${platformSourceBadge}
+                    </h2>
                     <div class="search-box">
                         <input type="text" id="game-search" placeholder="🔍 ${searchPlaceholder}"
                                oninput="applyAllFilters()">
@@ -1380,8 +1604,16 @@
                         <button class="sort-btn" data-sort="name_desc" onclick="sortGames('name_desc')" title="${sortNameDesc}">${sortNameDesc}</button>
                         <button class="sort-btn" data-sort="size_asc" onclick="sortGames('size_asc')" title="${sortSizeAsc}">${sortSizeAsc}</button>
                         <button class="sort-btn" data-sort="size_desc" onclick="sortGames('size_desc')" title="${sortSizeDesc}">${sortSizeDesc}</button>
+                        <button class="sort-btn" data-sort="date_asc" onclick="sortGames('date_asc')" title="${sortDateAsc}">${sortDateAsc}</button>
+                        <button class="sort-btn" data-sort="date_desc" onclick="sortGames('date_desc')" title="${sortDateDesc}">${sortDateDesc}</button>
                     </div>
                     <div id="filter-status" style="margin-bottom: 8px; font-size: 0.9em; color: #666;"></div>
+                    <div class="game-list-header">
+                        <span>${t('game_header_name')}</span>
+                        <span>${t('game_header_size')}</span>
+                        <span>${t('game_header_date')}</span>
+                        <span></span>
+                    </div>
                     <div class="games-list">`;
                 
                 // Ajouter chaque jeu
@@ -1389,7 +1621,8 @@
                     html += `
                         <div class="game-item">
                             <span class="game-name">${g.name}</span>
-                            ${g.size ? `<span class="game-size">${g.size}</span>` : ''}
+                            <span class="game-size">${g.size || ''}</span>
+                            <span class="game-date">${g.updated_at ? String(g.updated_at).slice(0, 10) : '-'}</span>
                             <div class="download-btn-group" style="display: flex; gap: 4px;">
                                 <button class="download-btn" title="${downloadTitle} (now)" onclick='downloadGame("${platform.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", "${g.name.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", ${idx}, "now")'>⬇️</button>
                                 <button class="download-btn" title="${downloadTitle} (queue)" onclick='downloadGame("${platform.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", "${g.name.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", ${idx}, "queue")' style="background: #e0e0e0; color: #333;">➕</button>
@@ -2173,21 +2406,6 @@
                         </div>
                         
                         <div style="margin-bottom: 20px;">
-                            <label>📦 ${t('web_settings_source_mode')}</label>
-                            <select id="setting-sources-mode">
-                                <option value="rgsx" ${settings.sources?.mode === 'rgsx' ? 'selected' : ''}>RGSX (default)</option>
-                                <option value="custom" ${settings.sources?.mode === 'custom' ? 'selected' : ''}>Custom</option>
-                            </select>
-                        </div>
-                        
-                        <div style="margin-bottom: 20px;">
-                            <label>🔗 ${t('web_settings_custom_url')}</label>
-                            <input type="text" id="setting-custom-url" value="${settings.sources?.custom_url || ''}" 
-                                   data-translate-placeholder="web_settings_custom_url_placeholder"
-                                   placeholder="${t('web_settings_custom_url_placeholder')}">
-                        </div>
-                        
-                        <div style="margin-bottom: 20px;">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="setting-auto-extract" ${settings.auto_extract !== false ? 'checked' : ''}>
                                 <span>📦 ${t('web_settings_auto_extract')}</span>
@@ -2307,10 +2525,6 @@
                     },
                     symlink: {
                         enabled: document.getElementById('setting-symlink').checked
-                    },
-                    sources: {
-                        mode: document.getElementById('setting-sources-mode').value,
-                        custom_url: document.getElementById('setting-custom-url').value
                     },
                     show_unsupported_platforms: document.getElementById('setting-show-unsupported').checked,
                     allow_unknown_extensions: document.getElementById('setting-allow-unknown').checked,

@@ -1,26 +1,9 @@
 ports/RGSX/logs/ 
-ports/RGSX/images/ 
-ports/RGSX/games/ 
-ports/RGSX/scripts/
 ports/RGSX/__pycache__/ 
-ports/RGSX/sources.json 
-ports/gamelist.xml
 windows/gamelist.xml
-windows/logs/
 ports/gamelist.xml
-prboom/
+windows/logs/
 *.log
 *.rar
 .vscode/
-ports/RGSX.bat
 .venv/
-audit_i18n.py
-prune_i18n.py
-Info.txt
-pygame/
-
-# Docker test data
-data/
-docker-compose.test.yml
-config/
-pyrightconfig.json
