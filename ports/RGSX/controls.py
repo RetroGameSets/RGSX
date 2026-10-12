@@ -548,6 +548,7 @@ VALID_STATES = [
     "pause_settings_menu",      # sous-menu Settings (music on/off, symlink toggle, api keys status)
     "pause_api_keys_status",    # sous-menu API Keys (affichage statut des clés)
     "pause_connection_status",  # sous-menu Connection status (statut accès sites)
+    "media_manager",            # Settings > Media Manager (image download)
     # Nouveaux menus historique
     "history_game_options",     # menu options pour un jeu de l'historique
     "history_show_folder",      # afficher le dossier de téléchargement
@@ -3338,7 +3339,7 @@ def handle_controls(event, sources, joystick, screen):
         elif config.menu_state == "pause_settings_menu":
             sel = getattr(config, 'pause_settings_selection', 0)
             # Liste des options : music, symlink, auto_extract, roms_folder, max_dl_slots, [web_service], [custom_dns], api keys, connection_status, back
-            total = 8  # music, symlink, auto_extract, roms_folder, max_dl_slots, api keys, connection_status, back (Windows)
+            total = 9  # music, symlink, auto_extract, roms_folder, max_dl_slots, api keys, connection_status, media_manager, back (Windows)
             auto_extract_index = 2
             roms_folder_index = 3
             max_dl_index = 4
@@ -3346,15 +3347,17 @@ def handle_controls(event, sources, joystick, screen):
             custom_dns_index = -1
             api_keys_index = 5
             connection_status_index = 6
-            back_index = 7
+            media_manager_index = 7
+            back_index = 8
 
             if config.OPERATING_SYSTEM == "Linux":
-                total = 10  # music, symlink, auto_extract, roms_folder, max_dl_slots, web_service, custom_dns, api keys, connection_status, back
+                total = 11  # music, symlink, auto_extract, roms_folder, max_dl_slots, web_service, custom_dns, api keys, connection_status, media_manager, back
                 web_service_index = 5
                 custom_dns_index = 6
                 api_keys_index = 7
                 connection_status_index = 8
-                back_index = 9
+                media_manager_index = 9
+                back_index = 10
             
             if is_input_matched(event, "up"):
                 config.pause_settings_selection = (sel - 1) % total
@@ -3483,6 +3486,14 @@ def handle_controls(event, sources, joystick, screen):
                     start_connection_status_check(force=True)
                     config.menu_state = "pause_connection_status"
                     config.needs_redraw = True
+                # Option Media Manager
+                elif sel == media_manager_index and is_input_matched(event, "confirm"):
+                    from media_manager import manager
+                    manager.open()
+                    config.media_manager_selection = 0
+                    config.media_manager_scroll_offset = 0
+                    config.menu_state = "media_manager"
+                    config.needs_redraw = True
                 # Option Back (dernière option)
                 elif sel == back_index and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_menu"
@@ -3504,6 +3515,36 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "pause_settings_menu"
                 config.last_state_change_time = pygame.time.get_ticks()
                 config.needs_redraw = True
+
+        elif config.menu_state == "media_manager":
+            from media_manager import manager
+            rows = manager.rows()
+            sel = min(getattr(config, 'media_manager_selection', 0), len(rows) - 1)
+            row_type, group = rows[sel]
+            if is_input_matched(event, "up"):
+                config.media_manager_selection = (sel - 1) % len(rows)
+            elif is_input_matched(event, "down"):
+                config.media_manager_selection = (sel + 1) % len(rows)
+            elif row_type == "profile" and not manager.running and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                manager.profile = "max" if manager.profile == "default" else "default"
+            elif is_input_matched(event, "confirm"):
+                if row_type == "action":
+                    if manager.running:
+                        manager.cancel()
+                    elif manager.estimate()[0]:
+                        manager.start()
+                elif row_type == "resume":
+                    manager.start(resume=True)
+                    config.media_manager_selection = 0
+                elif row_type == "select_all" and not manager.running:
+                    manager.toggle_all()
+                elif row_type == "platform" and group["platform_id"] and not manager.running:
+                    manager.selected ^= {group["folder"]}
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "start"):
+                # Download keeps running in the background.
+                config.menu_state = "pause_settings_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+            config.needs_redraw = True
 
         # Aide contrôles
         elif config.menu_state == "controls_help":

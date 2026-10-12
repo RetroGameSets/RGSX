@@ -2089,6 +2089,12 @@ def draw_game_list(screen):
     rect_x = (config.screen_width - rect_width) // 2
     rect_y = title_height + extra_margin_top + (config.screen_height - title_height - extra_margin_top - extra_margin_bottom - rect_height) // 2
 
+    # Right preview panel: disabled in Light Mode and on small screens (keeps the 640x480 layout intact).
+    preview_width = 0
+    if config.screen_width >= PREVIEW_MIN_SCREEN_WIDTH and not get_light_mode():
+        preview_width = int(rect_width * 0.28)
+        rect_width -= preview_width + PREVIEW_GAP
+
     config.scroll_offset = max(0, min(config.scroll_offset, max(0, len(games) - items_per_page)))
     if config.current_game < config.scroll_offset:
         config.scroll_offset = config.current_game
@@ -2377,6 +2383,28 @@ def draw_game_list(screen):
             )
         except NameError as e:
             logger.error(f"Erreur : draw_game_scrollbar non défini: {str(e)}")
+
+    if preview_width and 0 <= config.current_game < len(games):
+        folder = (getattr(config, "platform_dict_by_name", {}).get(platform) or {}).get("folder", "")
+        panel_rect = pygame.Rect(rect_x + rect_width + PREVIEW_GAP, rect_y, preview_width, rect_height)
+        draw_game_preview_panel(screen, folder, games[config.current_game].name, panel_rect)
+
+
+PREVIEW_MIN_SCREEN_WIDTH = 1024
+PREVIEW_GAP = 12
+
+
+def draw_game_preview_panel(screen, folder, rom_filename, panel_rect):
+    """Draw the selected game's image from the local cache, or the RGSX placeholder."""
+    import preview
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], panel_rect, border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], panel_rect, 2, border_radius=12)
+    inner = panel_rect.inflate(-24, -24)
+    image = preview.get_preview(folder, rom_filename, inner.width, inner.height) if folder else None
+    if image is None:
+        # No large logo image in the repo; a text logo is drawn as placeholder.
+        image = config.title_font.render("RGSX", True, THEME_COLORS["border"])
+    screen.blit(image, image.get_rect(center=inner.center))
 
 # Barre de défilement des jeux
 def draw_game_scrollbar(screen, scroll_offset, total_items, visible_items, x, y, height):
@@ -3366,6 +3394,11 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
         ],
         "support_dialog": [
             ("start", _("controls_cancel_back")),
+        ],
+        "media_manager": [
+            ("confirm", _("controls_confirm_select")),
+            (("left", "right"), _("media_profile")),
+            ("cancel", _("controls_cancel_back")),
         ],
     }
     
@@ -4373,7 +4406,7 @@ def draw_pause_settings_menu(screen, selected_index):
         options.append(web_service_txt)
     if custom_dns_txt:  # Ajouter seulement si Linux/Batocera
         options.append(custom_dns_txt)
-    options.extend([api_keys_txt, connection_status_txt, back_txt])
+    options.extend([api_keys_txt, connection_status_txt, _("settings_media_manager"), back_txt])
 
     # Index de l'option Dossier ROMs
     roms_folder_index = 3
@@ -4393,6 +4426,7 @@ def draw_pause_settings_menu(screen, selected_index):
     instruction_keys.extend([
         "instruction_settings_api_keys",
         "instruction_settings_connection_status",
+        "instruction_settings_media_manager",
         "instruction_generic_back",
     ])
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
@@ -4658,6 +4692,102 @@ def draw_pause_connection_status(screen):
         hint_surf = hint_font.render(hint_txt, True, THEME_COLORS.get("text_dim", THEME_COLORS["text"]))
         hint_rect = hint_surf.get_rect(center=(config.screen_width // 2, menu_y + menu_height - 26))
         screen.blit(hint_surf, hint_rect)
+
+
+def draw_media_manager(screen):
+    """Settings > Media Manager: platform selection, profile, quota estimate and download progress."""
+    from media_manager import manager
+    screen.blit(OVERLAY, (0, 0))
+    rows = manager.rows()
+    config.media_manager_selection = max(0, min(getattr(config, 'media_manager_selection', 0), len(rows) - 1))
+
+    title_surface = config.title_font.render(_("media_manager_title"), True, THEME_COLORS["text"])
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, title_surface.get_height() // 2 + 14))
+    title_bg = title_rect.inflate(48, 16)
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], title_bg, border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], title_bg, 2, border_radius=12)
+    screen.blit(title_surface, title_rect)
+
+    # Info lines: quota, estimate, progress, status
+    info_lines = []
+    if manager.allowance_loading:
+        info_lines.append((_("media_allowance_loading"), THEME_COLORS["text"]))
+    elif manager.allowance:
+        info_lines.append((_("media_allowance").format(manager.allowance[0], manager.allowance[1]), THEME_COLORS["text"]))
+    else:
+        info_lines.append((_("media_allowance_unknown"), THEME_COLORS["text"]))
+    games, per_game, capacity = manager.estimate()
+    info_lines.append((_("media_estimate").format(games, games * per_game), THEME_COLORS["text"]))
+    if capacity is not None and capacity < games:
+        info_lines.append((_("media_estimate_insufficient").format(capacity), THEME_COLORS["warning_text"]))
+    if manager.running or manager.progress["total"]:
+        p = manager.progress
+        info_lines.append((_("media_progress").format(p["done"], p["total"], p["found"], p["not_found"], p["errors"]), THEME_COLORS["text"]))
+    if manager.status and not manager.running:
+        key, args = manager.status
+        info_lines.append((_(key).format(*args), THEME_COLORS["warning_text"]))
+
+    # Wrap long messages so they are not cut off on small screens.
+    info_lines = [(part, color) for text, color in info_lines for part in wrap_text(text, config.small_font, config.screen_width - 40)]
+    line_height = config.small_font.get_height() + 8
+    info_height = len(info_lines) * (config.small_font.get_height() + 4)
+    footer_reserved = max(50, int(config.screen_height * 0.10))
+    list_width = int(config.screen_width * 0.78)
+    list_x = (config.screen_width - list_width) // 2
+    list_y = title_bg.bottom + 16
+    list_height = max(line_height * 3 + 20, config.screen_height - footer_reserved - info_height - 16 - list_y)
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (list_x, list_y, list_width, list_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (list_x, list_y, list_width, list_height), 2, border_radius=12)
+
+    visible_items = max(1, (list_height - 20) // line_height)
+    sel = config.media_manager_selection
+    offset = getattr(config, 'media_manager_scroll_offset', 0)
+    if sel < offset:
+        offset = sel
+    elif sel >= offset + visible_items:
+        offset = sel - visible_items + 1
+    config.media_manager_scroll_offset = offset = max(0, min(offset, max(0, len(rows) - visible_items)))
+
+    supported = {g["folder"] for g in manager.platforms if g["platform_id"]}
+    for i in range(offset, min(offset + visible_items, len(rows))):
+        row_type, group = rows[i]
+        color = THEME_COLORS["text"]
+        if row_type == "action":
+            text = _("media_cancel") if manager.running else _("media_start")
+        elif row_type == "resume":
+            text = _("media_resume").format(manager.pending)
+        elif row_type == "profile":
+            text = f"{_('media_profile')} : < {_('media_profile_' + manager.profile)} >"
+        elif row_type == "select_all":
+            checkbox = "[X]" if supported and supported <= manager.selected else "[ ]"
+            text = f"{checkbox} {_('media_select_all')}"
+        elif group["platform_id"]:
+            checkbox = "[X]" if group["folder"] in manager.selected else "[ ]"
+            text = f"{checkbox}   {group['label']} ({group['count']})"
+        else:
+            # Platform without a TheGamesDB mapping: disabled/greyed out
+            text = f"[-]   {group['label']} - {_('media_unsupported')}"
+            color = THEME_COLORS.get("text_dim", (130, 130, 130))
+        y_center = list_y + 10 + (i - offset) * line_height + line_height // 2
+        if i == sel:
+            glow_surface = pygame.Surface((list_width - 32, line_height), pygame.SRCALPHA)
+            pygame.draw.rect(glow_surface, THEME_COLORS["fond_lignes"] + (50,), glow_surface.get_rect(), border_radius=8)
+            screen.blit(glow_surface, (list_x + 16, y_center - line_height // 2))
+            color = THEME_COLORS["fond_lignes"]
+        text_surface = config.small_font.render(truncate_text_end(text, config.small_font, list_width - 60), True, color)
+        screen.blit(text_surface, text_surface.get_rect(midleft=(list_x + 20, y_center)))
+
+    if len(rows) > visible_items:
+        track = list_height - 20
+        bar = max(20, int(visible_items / len(rows) * track))
+        bar_y = int(offset / max(1, len(rows) - visible_items) * (track - bar))
+        pygame.draw.rect(screen, THEME_COLORS["fond_lignes"], (list_x + list_width - 22, list_y + 10 + bar_y, 9, bar), border_radius=4)
+
+    y = list_y + list_height + 8
+    for text, color in info_lines:
+        surface = config.small_font.render(text, True, color)
+        screen.blit(surface, surface.get_rect(midtop=(config.screen_width // 2, y)))
+        y += config.small_font.get_height() + 4
 
 
 def draw_filter_platforms_menu(screen):

@@ -206,6 +206,9 @@ GAMELISTXML_WINDOWS = os.path.join(ROMS_FOLDER, "windows","gamelist.xml")
 
 # Dans le Dossier de sauvegarde : /saves/ports/rgsx (traditional) or /config (Docker)
 IMAGES_FOLDER = os.path.join(SAVE_FOLDER, "images")
+# Game preview images (Media Manager): media/{platform_folder}/{game}.jpg
+MEDIA_FOLDER = os.path.join(SAVE_FOLDER, "media")
+MEDIA_QUEUE_PATH = os.path.join(SAVE_FOLDER, "rgsx_media_queue.json")
 
 # Local SQLite cache for the HTTPS catalog and user-specific state.
 DB_PATH = os.path.join(SAVE_FOLDER, "rgsx.sqlite3")

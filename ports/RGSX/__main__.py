@@ -977,6 +977,7 @@ async def main():
                 "pause_settings_menu",
                 "pause_api_keys_status",
                 "pause_connection_status",
+                "media_manager",
                 "filter_platforms",
                 "display_menu",
                 "language_select",
@@ -1399,6 +1400,9 @@ async def main():
             elif config.menu_state == "pause_connection_status":
                 from display import draw_pause_connection_status
                 draw_pause_connection_status(screen)
+            elif config.menu_state == "media_manager":
+                from display import draw_media_manager
+                draw_media_manager(screen)
             elif config.menu_state == "filter_platforms":
                 from display import draw_filter_platforms_menu
                 draw_filter_platforms_menu(screen)
