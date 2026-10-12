@@ -33,7 +33,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.7.0.6"
+app_version = "2.7.0.7"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 1
@@ -637,6 +637,14 @@ try:
 except Exception as e:
     logging.getLogger(__name__).debug(f"Impossible de charger la famille de police sauvegardée: {e}")
 
+def _resolve_font_family(family_id):
+    """Bell-centennial.otf n'a pas ğ Ğ İ ş Ş : on bascule sur DejaVu pour le turc."""
+    if family_id == "bell_centennial":
+        import language  # import tardif : language importe config
+        if language.current_language == "tr":
+            return "dejavu"
+    return family_id
+
 def init_font():
     """Initialise les polices après pygame.init() en fonction de la famille choisie."""
     global font, progress_font, title_font, search_font, small_font
@@ -644,6 +652,7 @@ def init_font():
 
     # Déterminer la famille sélectionnée
     family_id = FONT_FAMILIES[current_font_family_index] if 0 <= current_font_family_index < len(FONT_FAMILIES) else "pixel"
+    family_id = _resolve_font_family(family_id)
 
 
     def load_family(fam: str):
@@ -703,6 +712,7 @@ def init_footer_font():
     
     # Déterminer la famille sélectionnée
     family_id = FONT_FAMILIES[current_font_family_index] if 0 <= current_font_family_index < len(FONT_FAMILIES) else "pixel"
+    family_id = _resolve_font_family(family_id)
     
     footer_base_size = 20  # Taille de base pour le footer
     

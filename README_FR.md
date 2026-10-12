@@ -1,6 +1,6 @@
 # 🎮 Retro Game Sets Xtra (RGSX)
 
-**[Support Discord](https://discord.gg/Vph9jwg3VV)** • **[Installation](#-installation)** • **[Documentation anglaise](https://github.com/RetroGameSets/RGSX/blob/main/README.md)** • **[Dépannage / Erreurs courantes](https://github.com/RetroGameSets/RGSX/blob/main/README_FR.md#%EF%B8%8F-d%C3%A9pannage)** •
+**[Support Discord](https://discord.gg/Vph9jwg3VV)** • **[Installation](#-installation)** • **[Documentation anglaise](https://github.com/RetroGameSets/RGSX/blob/main/README.md)** • **[Documentation turque](https://github.com/RetroGameSets/RGSX/blob/main/README_TR.md)** • **[Dépannage / Erreurs courantes](https://github.com/RetroGameSets/RGSX/blob/main/README_FR.md#%EF%B8%8F-d%C3%A9pannage)** •
 
 Un téléchargeur de ROMs gratuit et simple d'utilisation pour Batocera, Knulli et RetroBat, avec support multi-sources.
 
@@ -95,7 +95,7 @@ Lors du premier lancement après la migration depuis l'ancien stockage JSON, RGS
 - 🎯 **Détection intelligente des systèmes** – Détecte automatiquement les systèmes supportés depuis `es_systems.cfg`
 - 📦 **Gestion intelligente des archives** – Extrait automatiquement les archives quand un système ne supporte pas les ZIP
 - 🔑 **Déblocage premium** – API 1Fichier + fallback AllDebrid/Debrid-Link/Real-Debrid/TorBox pour des téléchargements illimités
-- 🎨 **Personnalisation complète** – Huit layouts jusqu'à 8×6, polices Pixel/Bell Centennial/DejaVu Sans, tailles de police (UI + footer), langues (EN/FR/DE/ES/IT/PT)
+- 🎨 **Personnalisation complète** – Huit layouts jusqu'à 8×6, polices Pixel/Bell Centennial/DejaVu Sans, tailles de police (UI + footer), langues (EN/FR/DE/ES/IT/PT/TR)
 - 🎮 **Pensé manette avant tout** – Auto-mapping pour les manettes populaires + remapping personnalisé
 - 🔍 **Filtrage avancé** – Recherche par nom, afficher/masquer les systèmes non supportés, filtre de plateformes
 - 📊 **Gestion des téléchargements** – File d'attente, historique, notifications de progression
@@ -186,7 +186,7 @@ RGSX inclut une interface web qui se lance automatiquement quand vous utilisez R
 │   │   ├── rgsx_settings.py           # Préférences utilisateur
 │   │   ├── rgsx_web.py                # Interface et serveur Web
 │   │   ├── assets/                    # Profils, images, polices, musique et outils
-│   │   ├── languages/                 # Traductions (EN/FR/DE/ES/IT/PT)
+│   │   ├── languages/                 # Traductions (EN/FR/DE/ES/IT/PT/TR)
 │   │   ├── static/                    # CSS et JavaScript de l'interface Web
 │   │   └── logs/                      # RGSX.log et rgsx_web.log
 │   ├── gamelist.xml
