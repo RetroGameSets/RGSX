@@ -174,6 +174,7 @@ def get_language_name(lang_code):
         "de": "Deutsch",
         "it": "Italiano",
         "pt": "Português",
+        "tr": "Türkçe",
         "ja": "日本語",
         "zh": "中文",
         "ru": "Русский"
