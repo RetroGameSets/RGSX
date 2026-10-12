@@ -1,6 +1,6 @@
 # 🎮 Retro Game Sets Xtra (RGSX)
 
-**[Discord Support](https://discord.gg/XPK8YG8XYC)** • **[Installation](#-installation)** • **[French Documentation](https://github.com/RetroGameSets/RGSX/blob/main/README_FR.md)** • **[Troubleshoot / Common Errors](https://github.com/RetroGameSets/RGSX#%EF%B8%8F-troubleshooting)** •
+**[Discord Support](https://discord.gg/XPK8YG8XYC)** • **[Installation](#-installation)** • **[French Documentation](https://github.com/RetroGameSets/RGSX/blob/main/README_FR.md)** • **[Turkish Documentation](https://github.com/RetroGameSets/RGSX/blob/main/README_TR.md)** • **[Troubleshoot / Common Errors](https://github.com/RetroGameSets/RGSX#%EF%B8%8F-troubleshooting)** •
 
 A free, user-friendly ROM downloader for Batocera, Knulli, and RetroBat with multi-source support.
 
@@ -95,7 +95,7 @@ On the first launch after upgrading from the former JSON-based storage, RGSX imp
 - 🎯 **Smart System Detection** – Auto-discovers supported systems from `es_systems.cfg`
 - 📦 **Intelligent Archive Handling** – Auto-extracts archives when systems don't support ZIP files
 - 🔑 **Premium Unlocking** – 1Fichier API + AllDebrid/Debrid-Link/Real-Debrid/TorBox fallback for unlimited downloads
-- 🎨 **Fully Customizable** – Eight layouts up to 8×6, Pixel/Bell Centennial/DejaVu Sans fonts, font sizes (UI + footer), languages (EN/FR/DE/ES/IT/PT)
+- 🎨 **Fully Customizable** – Eight layouts up to 8×6, Pixel/Bell Centennial/DejaVu Sans fonts, font sizes (UI + footer), languages (EN/FR/DE/ES/IT/PT/TR)
 - 🎮 **Controller-First Design** – Auto-mapping for popular controllers + custom remapping support
 - 🔍 **Advanced Filtering** – Search by name, hide/show unsupported systems, filter platforms
 - 📊 **Download Management** – Queue system, history tracking, progress notifications
@@ -186,7 +186,7 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 │   │   ├── rgsx_settings.py           # User preferences
 │   │   ├── rgsx_web.py                # Web interface and server
 │   │   ├── assets/                    # Profiles, images, fonts, music, and tools
-│   │   ├── languages/                 # Translations (EN/FR/DE/ES/IT/PT)
+│   │   ├── languages/                 # Translations (EN/FR/DE/ES/IT/PT/TR)
 │   │   ├── static/                    # Web interface CSS and JavaScript
 │   │   └── logs/                      # RGSX.log and rgsx_web.log
 │   ├── gamelist.xml

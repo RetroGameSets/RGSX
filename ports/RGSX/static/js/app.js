@@ -2363,6 +2363,7 @@
                                 <option value="de" ${settings.language === 'de' ? 'selected' : ''}>Deutsch</option>
                                 <option value="it" ${settings.language === 'it' ? 'selected' : ''}>Italiano</option>
                                 <option value="pt" ${settings.language === 'pt' ? 'selected' : ''}>Português</option>
+                                <option value="tr" ${settings.language === 'tr' ? 'selected' : ''}>Türkçe</option>
                             </select>
                         </div>
                         
