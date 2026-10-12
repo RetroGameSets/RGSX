@@ -416,3 +416,152 @@ def download_image_to_surface(image_url):
     except Exception as e:
         logger.error(f"Erreur lors du téléchargement de l'image: {str(e)}")
         return None
+
+
+# ---------------------------------------------------------------------------
+# TheGamesDB helpers for bulk media download (Media Manager).
+# get_game_metadata() serves the single-game screen; the helpers below add the
+# quota tracking and error classification the background download loop needs.
+# ---------------------------------------------------------------------------
+
+# TheGamesDB HTTP codes (official Swagger + forum reports):
+#   200: success (may have no result: data.count == 0)
+#   401/403: invalid API key; 403 + remaining_monthly_allowance == 0 means the monthly quota is exhausted
+#   429: too many requests (retryable)
+#   5xx: server error (retryable)
+TGDB_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+# Media kind -> TheGamesDB image type
+TGDB_MEDIA_TYPES = {"box": "boxart", "ss": "screenshot", "logo": "clearlogo"}
+
+# Quota from the last API response: (remaining_monthly, extra, refresh_seconds) or None
+LAST_ALLOWANCE = None
+
+
+class TheGamesDBError(Exception):
+    """kind: 'quota' | 'auth' | 'network' | 'http' | 'unsupported'"""
+
+    def __init__(self, kind, message="", refresh_seconds=None):
+        super().__init__(message or kind)
+        self.kind = kind
+        self.refresh_seconds = refresh_seconds
+
+
+def _tgdb_get(endpoint, params, timeout=15):
+    """Call TheGamesDB and return JSON; errors are raised as TheGamesDBError. The API key is never logged."""
+    api_key, _ = get_thegamesdb_api_key()
+    if not api_key:
+        raise TheGamesDBError("auth", "TheGamesDB API key missing")
+    try:
+        response = requests.get(f"{API_BASE_URL}/{endpoint}", params={"apikey": api_key, **params}, timeout=timeout)
+    except requests.RequestException as exc:
+        raise TheGamesDBError("network", str(exc))
+    try:
+        data = response.json()
+    except ValueError:
+        data = {}
+    global LAST_ALLOWANCE
+    if "remaining_monthly_allowance" in data:
+        LAST_ALLOWANCE = (
+            int(data.get("remaining_monthly_allowance") or 0),
+            int(data.get("extra_allowance") or 0),
+            data.get("allowance_refresh_timer"),
+        )
+    if response.status_code == 200:
+        return data
+    if response.status_code in (401, 403):
+        if data.get("remaining_monthly_allowance") == 0 and not data.get("extra_allowance"):
+            raise TheGamesDBError("quota", "monthly allowance exhausted", data.get("allowance_refresh_timer"))
+        raise TheGamesDBError("auth", f"HTTP {response.status_code}")
+    if response.status_code in TGDB_RETRYABLE_STATUS:
+        raise TheGamesDBError("network", f"HTTP {response.status_code}")
+    raise TheGamesDBError("http", f"HTTP {response.status_code}")
+
+
+def get_allowance():
+    """Return the remaining quota: (remaining_monthly, extra, refresh_seconds). Uses the small Genres endpoint (1 request)."""
+    _tgdb_get("Genres", {})
+    return LAST_ALLOWANCE
+
+
+def get_platform_id(platform_name):
+    return PLATFORM_MAPPING.get(normalize_scraper_platform_name(platform_name))
+
+
+def _normalize_title(text):
+    return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
+
+
+def match_game(games, rom_filename):
+    """Pick the search result matching the ROM, or None.
+
+    Name based for now: exact match > single result > first title containing the searched name.
+    DAT (No-Intro/Redump) hash matching can be added here later.
+    """
+    wanted = _normalize_title(clean_game_name(rom_filename))
+    if not games or not wanted:
+        return None
+    for game in games:
+        if _normalize_title(game.get("game_title")) == wanted:
+            return game
+    if len(games) == 1:
+        return games[0]
+    for game in games:
+        if wanted in _normalize_title(game.get("game_title")):
+            return game
+    return None
+
+
+def _pick_image(images, image_type):
+    """Prefer the front cover among images of the same type."""
+    candidates = [img for img in images or [] if img.get("type") == image_type and img.get("filename")]
+    if not candidates:
+        return None
+    front = [img for img in candidates if img.get("side") in (None, "front")]
+    return (front or candidates)[0]["filename"]
+
+
+def _image_base_url(base_urls):
+    # Medium size is enough for the preview panel and saves disk space and download time.
+    return (base_urls or {}).get("medium") or (base_urls or {}).get("original") or ""
+
+
+def fetch_game_media(rom_filename, platform_id, kinds):
+    """Return a game's media URLs: {"box": url, "ss": url, "logo": url}.
+
+    None if the game is not found. API calls: 1 (box only) or 2 (when ss/logo are requested).
+    """
+    data = _tgdb_get("Games/ByGameName", {
+        "name": clean_game_name(rom_filename),
+        "filter[platform]": platform_id,
+        "include": "boxart",
+    })
+    game = match_game((data.get("data") or {}).get("games") or [], rom_filename)
+    if not game:
+        return None
+    game_id = str(game.get("id"))
+    urls = {}
+
+    boxart = (data.get("include") or {}).get("boxart") or {}
+    box_file = _pick_image((boxart.get("data") or {}).get(game_id), "boxart")
+    if box_file and "box" in kinds:
+        urls["box"] = _image_base_url(boxart.get("base_url")) + box_file
+
+    extra_kinds = [kind for kind in kinds if kind != "box"]
+    # Without box art, fall back to a screenshot for the preview.
+    if "box" in kinds and "box" not in urls and "ss" not in extra_kinds:
+        extra_kinds.append("ss")
+    if extra_kinds:
+        images_data = (_tgdb_get("Games/Images", {
+            "games_id": game_id,
+            "filter[type]": ",".join(TGDB_MEDIA_TYPES[kind] for kind in extra_kinds),
+        }).get("data") or {})
+        images = (images_data.get("images") or {}).get(game_id) or []
+        base_url = _image_base_url(images_data.get("base_url"))
+        for kind in extra_kinds:
+            filename = _pick_image(images, TGDB_MEDIA_TYPES[kind])
+            if filename:
+                urls[kind] = base_url + filename
+        if "box" in kinds and "box" not in urls and "ss" in urls:
+            urls["box"] = urls["ss"]
+    return urls
