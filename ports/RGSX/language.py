@@ -135,6 +135,10 @@ def set_language(lang_code):
     if load_language(lang_code):
         config.current_language = lang_code
         save_language_preference(lang_code)
+        if pygame is not None and pygame.font.get_init():
+            # Recharge les polices : certaines familles n'ont pas les glyphes de toutes les langues
+            config.init_font()
+            config.init_footer_font()
         return True
     return False
 
