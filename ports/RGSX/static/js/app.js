@@ -2481,6 +2481,20 @@
                             <input type="password" id="setting-api-torbox" value="${settings.api_keys?.torbox || ''}" 
                                    placeholder="Enter TorBox API key">
                         </div>
+
+                        <h4 style="margin-top: 25px; margin-bottom: 15px; border-top: 1px solid #ddd; padding-top: 15px;">🖼️ ScreenScraper</h4>
+                        <p style="margin-bottom: 15px;">${escapeHtml(t('instruction_settings_screenscraper_account'))}</p>
+
+                        <div style="margin-bottom: 15px;">
+                            <label>${escapeHtml(t('settings_screenscraper_user'))}</label>
+                            <input type="text" id="setting-ss-username" value="${escapeHtml(settings.screenscraper?.username || '')}" autocomplete="off">
+                        </div>
+
+                        <div style="margin-bottom: 20px;">
+                            <label>${escapeHtml(t('settings_screenscraper_password'))}</label>
+                            <input type="password" id="setting-ss-password" value="" autocomplete="new-password"
+                                   placeholder="${settings.screenscraper?.has_password ? '******' : escapeHtml(t('settings_screenscraper_not_set'))}">
+                        </div>
                         
                         <button id="save-settings-btn" style="width: 100%; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; padding: 15px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 10px;">
                             💾 ${t('web_settings_save')}
@@ -2547,6 +2561,11 @@
                         'realdebrid': document.getElementById('setting-api-realdebrid')?.value.trim() || '',
                         'torbox': document.getElementById('setting-api-torbox')?.value.trim() || ''
                     },
+                    // Empty password keeps the saved one (the server never sends it back)
+                    screenscraper: {
+                        username: document.getElementById('setting-ss-username')?.value.trim() || '',
+                        password: document.getElementById('setting-ss-password')?.value || ''
+                    },
                     game_filters: {
                         region_filters: regionFiltersObj,
                         hide_non_release: document.getElementById('hide-non-release')?.checked || savedHideNonRelease,
@@ -2569,6 +2588,21 @@
                     if (saveButton) {
                         saveButton.disabled = false;
                         saveButton.textContent = originalText;
+                    }
+                    // Result of the ScreenScraper login check (only when the account changed)
+                    const ss = data.screenscraper;
+                    if (ss) {
+                        if (ss.status === 'ok') {
+                            alert('✅ ' + t('screenscraper_login_ok', ss.remaining, ss.max_per_day));
+                        } else if (ss.status === 'auth') {
+                            alert('❌ ' + t('screenscraper_login_failed'));
+                        } else if (ss.status === 'config') {
+                            alert('❌ ' + t('screenscraper_dev_credentials_missing'));
+                        } else if (ss.status === 'save_error') {
+                            alert('❌ ' + t('screenscraper_save_error'));
+                        } else {
+                            alert('❌ ' + t('media_error', ss.status));
+                        }
                     }
                     // Afficher le dialogue de confirmation de redémarrage
                     showRestartDialog();
