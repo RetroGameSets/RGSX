@@ -574,5 +574,15 @@
     "media_network_paused": "Network error, download paused. Remaining games were queued.",
     "media_cancelled": "Download cancelled. Remaining games were queued.",
     "media_done": "Media download finished.",
-    "media_error": "Media error: {0}"
+    "media_error": "Media error: {0}",
+    "settings_screenscraper_user": "ScreenScraper username",
+    "settings_screenscraper_password": "ScreenScraper password",
+    "settings_screenscraper_not_set": "not set",
+    "instruction_settings_screenscraper_account": "Your ScreenScraper.fr account raises the daily media download quota",
+    "controls_action_shift": "Shift",
+    "screenscraper_input_save": "Save",
+    "screenscraper_login_ok": "ScreenScraper account OK: {0} / {1} requests left today",
+    "screenscraper_login_failed": "ScreenScraper login failed: check your username and password",
+    "screenscraper_dev_credentials_missing": "This RGSX build has no ScreenScraper developer credentials, the account cannot be checked",
+    "screenscraper_save_error": "Could not save the ScreenScraper account"
 }

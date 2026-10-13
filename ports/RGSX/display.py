@@ -3395,6 +3395,14 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
         "support_dialog": [
             ("start", _("controls_cancel_back")),
         ],
+        "screenscraper_input": [
+            ("confirm", _("controls_action_select_char")),
+            ("delete", _("controls_action_delete")),
+            ("space", _("controls_action_space")),
+            (("page_up", "page_down"), _("controls_action_shift")),
+            ("history", _("screenscraper_input_save")),
+            ("cancel", _("controls_cancel_back")),
+        ],
         "media_manager": [
             ("confirm", _("controls_confirm_select")),
             (("left", "right"), _("media_profile")),
@@ -4406,7 +4414,11 @@ def draw_pause_settings_menu(screen, selected_index):
         options.append(web_service_txt)
     if custom_dns_txt:  # Ajouter seulement si Linux/Batocera
         options.append(custom_dns_txt)
-    options.extend([api_keys_txt, connection_status_txt, _("settings_media_manager"), back_txt])
+    from screenscraper import load_account
+    ss_username, ss_password = load_account()
+    ss_user_txt = f"{_('settings_screenscraper_user')} : {ss_username or _('settings_screenscraper_not_set')}"
+    ss_password_txt = f"{_('settings_screenscraper_password')} : {'******' if ss_password else _('settings_screenscraper_not_set')}"
+    options.extend([api_keys_txt, connection_status_txt, ss_user_txt, ss_password_txt, _("settings_media_manager"), back_txt])
 
     # Index de l'option Dossier ROMs
     roms_folder_index = 3
@@ -4426,6 +4438,8 @@ def draw_pause_settings_menu(screen, selected_index):
     instruction_keys.extend([
         "instruction_settings_api_keys",
         "instruction_settings_connection_status",
+        "instruction_settings_screenscraper_account",
+        "instruction_settings_screenscraper_account",
         "instruction_settings_media_manager",
         "instruction_generic_back",
     ])
@@ -5632,6 +5646,65 @@ def draw_folder_browser_new_folder(screen):
             key_text = config.small_font.render(key, True, THEME_COLORS["text_selected"] if is_selected else THEME_COLORS["text"])
             key_rect = key_text.get_rect(center=(key_x + key_size // 2, key_y + key_size // 2))
             screen.blit(key_text, key_rect)
+
+
+# Virtual keyboard for the ScreenScraper username/password (letters become upper case with Shift)
+SCREENSCRAPER_KEYBOARD_LAYOUT = [
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+    ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', '@'],
+    ['z', 'x', 'c', 'v', 'b', 'n', 'm', '-', '_', '.'],
+    ['!', '#', '$', '%', '&', '*', '+', '=', '?', '/'],
+]
+
+
+def draw_screenscraper_input(screen):
+    """ScreenScraper username/password entry with a virtual keyboard (same look as the new folder screen)."""
+    global OVERLAY
+    if OVERLAY is None or OVERLAY.get_size() != (config.screen_width, config.screen_height):
+        OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
+        OVERLAY.fill((0, 0, 0, 200))
+    screen.blit(OVERLAY, (0, 0))
+    panel_width = int(config.screen_width * 0.7)
+    panel_height = int(config.screen_height * 0.7)
+    panel_x = (config.screen_width - panel_width) // 2
+    panel_y = (config.screen_height - panel_height) // 2
+    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (panel_x, panel_y, panel_width, panel_height), border_radius=12)
+    pygame.draw.rect(screen, THEME_COLORS["border"], (panel_x, panel_y, panel_width, panel_height), 2, border_radius=12)
+
+    field = getattr(config, 'ss_input_field', 'username')
+    title = _("settings_screenscraper_user") if field == "username" else _("settings_screenscraper_password")
+    title_text = config.font.render(title, True, THEME_COLORS["text"])
+    screen.blit(title_text, title_text.get_rect(center=(config.screen_width // 2, panel_y + 30)))
+
+    value = getattr(config, 'ss_input_value', '')
+    if field == "password" and value:
+        # Only the last typed character is visible, to check the input without showing the password.
+        value = "*" * (len(value) - 1) + value[-1]
+    input_x, input_y = panel_x + 30, panel_y + 70
+    input_width, input_height = panel_width - 60, 40
+    pygame.draw.rect(screen, THEME_COLORS["button_selected"], (input_x, input_y, input_width, input_height), border_radius=6)
+    pygame.draw.rect(screen, THEME_COLORS["border_selected"], (input_x, input_y, input_width, input_height), 2, border_radius=6)
+    value += "_"
+    while len(value) > 1 and config.font.size(value)[0] > input_width - 20:
+        value = value[1:]  # keep the end (cursor) visible
+    input_text = config.font.render(value, True, THEME_COLORS["text"])
+    screen.blit(input_text, input_text.get_rect(midleft=(input_x + 10, input_y + input_height // 2)))
+
+    shift = getattr(config, 'ss_input_shift', False)
+    selected_row, selected_col = getattr(config, 'ss_input_selected_key', (0, 0))
+    keyboard_y = input_y + input_height + 30
+    key_size = min(40, (panel_width - 60) // 10)
+    key_gap = 5
+    for row_idx, row in enumerate(SCREENSCRAPER_KEYBOARD_LAYOUT):
+        row_x = (config.screen_width - (len(row) * (key_size + key_gap) - key_gap)) // 2
+        for col_idx, key in enumerate(row):
+            key_rect = pygame.Rect(row_x + col_idx * (key_size + key_gap), keyboard_y + row_idx * (key_size + key_gap), key_size, key_size)
+            is_selected = (row_idx, col_idx) == (selected_row, selected_col)
+            pygame.draw.rect(screen, THEME_COLORS["button_hover" if is_selected else "button_idle"], key_rect, border_radius=4)
+            pygame.draw.rect(screen, THEME_COLORS["border_selected" if is_selected else "border"], key_rect, 2 if is_selected else 1, border_radius=4)
+            key_text = config.small_font.render(key.upper() if shift else key, True, THEME_COLORS["text_selected"] if is_selected else THEME_COLORS["text"])
+            screen.blit(key_text, key_text.get_rect(center=key_rect.center))
 
 
 def draw_support_dialog(screen):

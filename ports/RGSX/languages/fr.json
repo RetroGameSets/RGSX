@@ -574,5 +574,15 @@
     "media_network_paused": "Erreur réseau, téléchargement en pause. Les jeux restants ont été mis en file.",
     "media_cancelled": "Téléchargement annulé. Les jeux restants ont été mis en file.",
     "media_done": "Téléchargement des médias terminé.",
-    "media_error": "Erreur médias : {0}"
+    "media_error": "Erreur médias : {0}",
+    "settings_screenscraper_user": "Identifiant ScreenScraper",
+    "settings_screenscraper_password": "Mot de passe ScreenScraper",
+    "settings_screenscraper_not_set": "non défini",
+    "instruction_settings_screenscraper_account": "Votre compte ScreenScraper.fr augmente le quota quotidien de téléchargement des médias",
+    "controls_action_shift": "Maj",
+    "screenscraper_input_save": "Enregistrer",
+    "screenscraper_login_ok": "Compte ScreenScraper OK : {0} / {1} requêtes restantes aujourd'hui",
+    "screenscraper_login_failed": "Connexion ScreenScraper refusée : vérifiez votre identifiant et votre mot de passe",
+    "screenscraper_dev_credentials_missing": "Cette version de RGSX n'a pas d'identifiants développeur ScreenScraper, le compte ne peut pas être vérifié",
+    "screenscraper_save_error": "Impossible d'enregistrer le compte ScreenScraper"
 }

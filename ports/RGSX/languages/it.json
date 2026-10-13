@@ -570,5 +570,15 @@
     "media_network_paused": "Errore di rete, download in pausa. I giochi rimanenti sono stati messi in coda.",
     "media_cancelled": "Download annullato. I giochi rimanenti sono stati messi in coda.",
     "media_done": "Download dei media completato.",
-    "media_error": "Errore media: {0}"
+    "media_error": "Errore media: {0}",
+    "settings_screenscraper_user": "Nome utente ScreenScraper",
+    "settings_screenscraper_password": "Password ScreenScraper",
+    "settings_screenscraper_not_set": "non impostato",
+    "instruction_settings_screenscraper_account": "Il tuo account ScreenScraper.fr aumenta la quota giornaliera di download dei media",
+    "controls_action_shift": "Maiusc",
+    "screenscraper_input_save": "Salva",
+    "screenscraper_login_ok": "Account ScreenScraper OK: {0} / {1} richieste rimanenti oggi",
+    "screenscraper_login_failed": "Accesso a ScreenScraper non riuscito: controlla nome utente e password",
+    "screenscraper_dev_credentials_missing": "Questa versione di RGSX non ha credenziali sviluppatore ScreenScraper, impossibile verificare l'account",
+    "screenscraper_save_error": "Impossibile salvare l'account ScreenScraper"
 }

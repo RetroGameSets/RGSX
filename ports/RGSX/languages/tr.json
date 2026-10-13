@@ -574,5 +574,15 @@
     "media_network_paused": "Ağ hatası, indirme duraklatıldı. Kalan oyunlar kuyruğa alındı.",
     "media_cancelled": "İndirme iptal edildi. Kalan oyunlar kuyruğa alındı.",
     "media_done": "Medya indirmesi tamamlandı.",
-    "media_error": "Medya hatası: {0}"
+    "media_error": "Medya hatası: {0}",
+    "settings_screenscraper_user": "ScreenScraper kullanıcı adı",
+    "settings_screenscraper_password": "ScreenScraper parolası",
+    "settings_screenscraper_not_set": "ayarlanmadı",
+    "instruction_settings_screenscraper_account": "ScreenScraper.fr hesabınız günlük medya indirme kotanızı artırır",
+    "controls_action_shift": "Shift",
+    "screenscraper_input_save": "Kaydet",
+    "screenscraper_login_ok": "ScreenScraper hesabı doğrulandı: bugün {0} / {1} istek kaldı",
+    "screenscraper_login_failed": "ScreenScraper girişi başarısız: kullanıcı adı ve parolanızı kontrol edin",
+    "screenscraper_dev_credentials_missing": "Bu RGSX sürümünde ScreenScraper geliştirici bilgileri yok, hesap doğrulanamıyor",
+    "screenscraper_save_error": "ScreenScraper hesabı kaydedilemedi"
 }

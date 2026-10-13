@@ -574,5 +574,15 @@
     "media_network_paused": "Netzwerkfehler, Download pausiert. Die restlichen Spiele wurden eingereiht.",
     "media_cancelled": "Download abgebrochen. Die restlichen Spiele wurden eingereiht.",
     "media_done": "Mediendownload abgeschlossen.",
-    "media_error": "Medienfehler: {0}"
+    "media_error": "Medienfehler: {0}",
+    "settings_screenscraper_user": "ScreenScraper-Benutzername",
+    "settings_screenscraper_password": "ScreenScraper-Passwort",
+    "settings_screenscraper_not_set": "nicht gesetzt",
+    "instruction_settings_screenscraper_account": "Dein ScreenScraper.fr-Konto erhöht das tägliche Medien-Download-Kontingent",
+    "controls_action_shift": "Umschalt",
+    "screenscraper_input_save": "Speichern",
+    "screenscraper_login_ok": "ScreenScraper-Konto OK: {0} / {1} Anfragen heute übrig",
+    "screenscraper_login_failed": "ScreenScraper-Anmeldung fehlgeschlagen: Benutzername und Passwort prüfen",
+    "screenscraper_dev_credentials_missing": "Diesem RGSX-Build fehlen ScreenScraper-Entwicklerzugangsdaten, das Konto kann nicht geprüft werden",
+    "screenscraper_save_error": "ScreenScraper-Konto konnte nicht gespeichert werden"
 }
