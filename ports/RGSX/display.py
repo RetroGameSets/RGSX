@@ -4710,9 +4710,7 @@ def draw_media_manager(screen):
 
     # Info lines: quota, estimate, progress, status
     info_lines = []
-    if manager.allowance_loading:
-        info_lines.append((_("media_allowance_loading"), THEME_COLORS["text"]))
-    elif manager.allowance:
+    if manager.allowance:
         info_lines.append((_("media_allowance").format(manager.allowance[0], manager.allowance[1]), THEME_COLORS["text"]))
     else:
         info_lines.append((_("media_allowance_unknown"), THEME_COLORS["text"]))
@@ -4765,7 +4763,7 @@ def draw_media_manager(screen):
             checkbox = "[X]" if group["folder"] in manager.selected else "[ ]"
             text = f"{checkbox}   {group['label']} ({group['count']})"
         else:
-            # Platform without a TheGamesDB mapping: disabled/greyed out
+            # Platform without a ScreenScraper system id: disabled/greyed out
             text = f"[-]   {group['label']} - {_('media_unsupported')}"
             color = THEME_COLORS.get("text_dim", (130, 130, 130))
         y_center = list_y + 10 + (i - offset) * line_height + line_height // 2

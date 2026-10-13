@@ -1,4 +1,4 @@
-"""Media Manager: bulk-download game images from TheGamesDB into the local cache.
+"""Media Manager: bulk-download game images from ScreenScraper.fr into the local cache.
 
 The UI only reads this module's state; all network work runs in a background thread.
 Images: config.MEDIA_FOLDER/{platform_folder}/{game}.jpg (+ _ss / _logo)
@@ -15,6 +15,7 @@ import requests
 import config
 import database
 import scraper
+import screenscraper
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ NETWORK_RETRIES = 3
 # After this many consecutive games fail with network errors, the connection is considered down and the job pauses.
 MAX_CONSECUTIVE_NETWORK_FAILURES = 3
 
-# Profile -> media kinds to download. Missing "box" falls back to a screenshot (scraper.fetch_game_media).
+# Profile -> media kinds to download. Missing "box" falls back to a screenshot (screenscraper.fetch_game_media).
 PROFILES = {
     "default": ("box",),
     "max": ("box", "ss", "logo"),
@@ -103,8 +104,7 @@ class MediaManager:
         self.progress = {"done": 0, "total": 0, "found": 0, "not_found": 0, "errors": 0}
         # Status shown in the UI: (translation key, format args) or None
         self.status = None
-        self.allowance = None  # (remaining_monthly, extra, refresh_seconds)
-        self.allowance_loading = False
+        self.allowance = None  # (remaining_today, max_per_day)
         self.platforms = []
         self.pending = 0  # number of games waiting in the queue
 
@@ -133,14 +133,23 @@ class MediaManager:
             if not group["label"]:
                 group["label"] = scraper.normalize_scraper_platform_name(name) or name
             if group["platform_id"] is None:
-                group["platform_id"] = scraper.get_platform_id(name)
+                group["platform_id"] = screenscraper.get_system_id(name)
         return sorted(groups.values(), key=lambda g: g["label"].lower())
 
     def open(self):
         """On page open: read platforms and queue once (avoid DB/file reads every frame)."""
         self.platforms = self.list_platforms()
         self.pending = len(load_queue()["items"])
-        self.refresh_allowance()
+        self.allowance = screenscraper.LAST_ALLOWANCE or self.allowance
+        # ssuserInfos also reports the quota of users without an account.
+        threading.Thread(target=self._refresh_allowance, daemon=True).start()
+
+    def _refresh_allowance(self):
+        try:
+            self.allowance = screenscraper.get_user_info()
+        except screenscraper.ScreenScraperError as exc:
+            logger.warning(f"Could not read ScreenScraper quota: {exc.kind} ({exc})")
+        config.needs_redraw = True
 
     def rows(self):
         rows = [("action", None)]
@@ -156,33 +165,13 @@ class MediaManager:
     def estimate(self):
         """(selected game count, requests per game, games the quota covers or None).
 
-        Requests per game: ByGameName (+boxart) = 1; Games/Images for ss/logo = +1.
-        Images come from the CDN and are assumed not to count against the quota.
+        Requests per game: jeuInfos = 1 for every profile (it returns all media URLs).
+        Media downloads are assumed not to count against the daily quota.
         """
         games = sum(g["count"] for g in self.platforms if g["folder"] in self.selected and g["platform_id"])
-        per_game = 1 if self.profile == "default" else 2
-        capacity = None
-        if self.allowance:
-            capacity = (self.allowance[0] + self.allowance[1]) // per_game
+        per_game = 1
+        capacity = self.allowance[0] // per_game if self.allowance else None
         return games, per_game, capacity
-
-    def refresh_allowance(self):
-        if self.allowance_loading:
-            return
-
-        def worker():
-            try:
-                self.allowance = scraper.get_allowance()
-            except scraper.TheGamesDBError as exc:
-                logger.warning(f"Could not read TheGamesDB quota: {exc.kind}")
-                if exc.kind == "quota":
-                    self.allowance = (0, 0, exc.refresh_seconds)
-            finally:
-                self.allowance_loading = False
-                config.needs_redraw = True
-
-        self.allowance_loading = True
-        threading.Thread(target=worker, daemon=True).start()
 
     def start(self, resume=False):
         if self.running:
@@ -223,11 +212,13 @@ class MediaManager:
                     })
         return items
 
-    def _download(self, url, folder, rom_filename, kind):
-        ext = os.path.splitext(url.split("?")[0])[1].lower().replace(".jpeg", ".jpg")
+    def _download(self, media, folder, rom_filename, kind):
+        url, ext = media
+        ext = ext.replace(".jpeg", ".jpg")
         response = requests.get(url, timeout=20)
-        if response.status_code != 200 or not response.content:
-            raise scraper.TheGamesDBError("http", f"image HTTP {response.status_code}")
+        # A missing media is answered with a short text body (e.g. NOMEDIA), not an image.
+        if response.status_code != 200 or not response.content or not response.headers.get("Content-Type", "").startswith("image/"):
+            raise screenscraper.ScreenScraperError("http", f"image HTTP {response.status_code}")
         _atomic_write_bytes(media_path(folder, rom_filename, kind, ext if ext in MEDIA_EXTENSIONS else ".jpg"), response.content)
 
     def _process_item(self, item, platform_id):
@@ -235,7 +226,7 @@ class MediaManager:
         kinds = PROFILES[self.profile]
         for attempt in range(NETWORK_RETRIES):
             try:
-                urls = scraper.fetch_game_media(item["rom_filename"], platform_id, kinds)
+                urls = screenscraper.fetch_game_media(item["rom_filename"], platform_id, kinds)
                 if not urls:
                     return "not_found"
                 for kind in kinds:
@@ -243,8 +234,9 @@ class MediaManager:
                         self._download(urls[kind], item["platform"], item["rom_filename"], kind)
                 return "found"
             except requests.RequestException as exc:
-                error = scraper.TheGamesDBError("network", str(exc))
-            except scraper.TheGamesDBError as exc:
+                # str(exc) contains the media URL with the credentials
+                error = screenscraper.ScreenScraperError("network", type(exc).__name__)
+            except screenscraper.ScreenScraperError as exc:
                 error = exc
             if error.kind != "network" or attempt == NETWORK_RETRIES - 1:
                 raise error
@@ -281,7 +273,7 @@ class MediaManager:
             try:
                 platform_id = platform_ids.get(item["platform"])
                 if not platform_id:
-                    raise scraper.TheGamesDBError("unsupported", item["platform"])
+                    raise screenscraper.ScreenScraperError("unsupported", item["platform"])
                 result = self._process_item(item, platform_id)
                 consecutive_network_failures = 0
                 if result == "found":
@@ -290,12 +282,11 @@ class MediaManager:
                     self.progress["not_found"] += 1
                     not_found.append({"platform": item["platform"], "rom_filename": item["rom_filename"]})
                     logger.info(f"Media not found: {item['platform']}/{item['rom_filename']}")
-            except scraper.TheGamesDBError as exc:
+            except screenscraper.ScreenScraperError as exc:
                 if exc.kind in ("quota", "auth"):
                     # Quota/auth error: the remaining games, current one included, are queued and the job stops.
-                    hours = int((exc.refresh_seconds or 0) // 3600)
-                    self.status = ("media_quota_exhausted", (hours,)) if exc.kind == "quota" else ("media_auth_error", ())
-                    logger.warning(f"TheGamesDB {exc.kind} error, download paused")
+                    self.status = ("media_quota_exhausted", ()) if exc.kind == "quota" else ("media_auth_error", ())
+                    logger.warning(f"ScreenScraper {exc.kind} error ({exc}), download paused")
                     break
                 if exc.kind == "network":
                     consecutive_network_failures += 1
@@ -326,7 +317,7 @@ class MediaManager:
         self.pending = len(remaining)
         if self.status is None:
             self.status = ("media_done", ())
-        self.allowance = scraper.LAST_ALLOWANCE or self.allowance
+        self.allowance = screenscraper.LAST_ALLOWANCE or self.allowance
         import preview  # "no image" entries in the preview cache may now be stale
         preview.clear_cache()
         logger.info(f"Media download finished: {self.progress}, {len(remaining)} games queued")
