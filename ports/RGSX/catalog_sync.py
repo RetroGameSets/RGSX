@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import json
 import os
-import sqlite3
 import tempfile
 import urllib.parse
 import urllib.request
@@ -13,6 +12,7 @@ from typing import Any
 
 import config
 import database
+from sqlite_compat import sqlite3
 
 
 _LOCAL_CATALOG_TRIGGERS = {

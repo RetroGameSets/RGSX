@@ -178,6 +178,7 @@ RGSX inclut une interface web qui se lance automatiquement quand vous utilisez R
 │   │   ├── __main__.py                # Point d'entrée
 │   │   ├── config.py                  # Chemins et configuration de l'application
 │   │   ├── database.py                # Stockage SQLite local
+│   │   ├── sqlite_compat.py           # SQLite système et solution de repli embarquée
 │   │   ├── catalog_sync.py            # Synchronisation du catalogue en ligne
 │   │   ├── controls.py                # Navigation, entrées et actions
 │   │   ├── controls_mapper.py         # Profils et remappage des commandes
@@ -188,6 +189,7 @@ RGSX inclut une interface web qui se lance automatiquement quand vous utilisez R
 │   │   ├── assets/                    # Profils, images, polices, musique et outils
 │   │   ├── languages/                 # Traductions (EN/FR/DE/ES/IT/PT/TR)
 │   │   ├── static/                    # CSS et JavaScript de l'interface Web
+│   │   ├── vendor/pysqlite3/          # Repli Knulli pour CPython 3.12 aarch64
 │   │   └── logs/                      # RGSX.log et rgsx_web.log
 │   ├── gamelist.xml
 │   ├── images/
@@ -223,6 +225,7 @@ Les fichiers `-wal` et `-shm` éventuellement visibles à côté de `rgsx.sqlite
 | Aucun jeu ou catalogue vide ? | Ouvrez **Jeux > Actualiser le catalogue**, puis vérifiez **Jeux > Filtrer les plateformes** et l'option d'affichage des systèmes non supportés. Dans **Paramètres**, vérifiez aussi que le dossier ROMs configuré est le bon. Consultez le statut de connexion si la synchronisation échoue. |
 | Des systèmes manquent dans la liste ? | RGSX détecte les systèmes de la configuration de l'émulateur. Activez l'affichage des systèmes non supportés dans **Jeux** et vérifiez le filtre des plateformes. |
 | Échec de synchronisation ou erreur d'écriture de la base | Vérifiez l'espace disque et les droits d'écriture dans `/saves/ports/rgsx/`, puis consultez les journaux. Ne supprimez pas `rgsx.sqlite3` sans en avoir fait une copie : elle contient aussi l'historique et les jeux détectés comme possédés. |
+| Knulli affiche `No module named 'sqlite3'` | Conservez les fichiers embarqués dans `/roms/ports/RGSX/vendor/pysqlite3/` et vérifiez la présence de `/usr/lib/libsqlite3.so.0`. RGSX utilise automatiquement son module pysqlite3 CPython 3.12 aarch64, lié à cette bibliothèque système, si le Python système ne fournit pas SQLite. |
 | L'application crash | Vérifiez `/roms/ports/RGSX/logs/RGSX.log` (et `rgsx_web.log` pour le serveur Web). |
 | Changement de layout non appliqué | Redémarrez RGSX après modification du layout |
 | Problème de téléchargement de certains jeux ? | Ouvrez Menu Pause > Paramètres > Statut de connexion. Si un ou plusieurs sites requis sont en rouge, activez DNS personnalisé dans Paramètres et redémarrez. Vérifiez aussi les protections ISP/routeur (notamment ASUS web threat blocking). |

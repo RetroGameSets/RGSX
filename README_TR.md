@@ -178,6 +178,7 @@ RGSX, ağınızdaki herhangi bir cihazdan uzaktan oyunlara göz atmak ve indirme
 │   │   ├── __main__.py                # Giriş noktası
 │   │   ├── config.py                  # Uygulama yolları ve yapılandırma
 │   │   ├── database.py                # Yerel SQLite depolama
+│   │   ├── sqlite_compat.py           # Sistem SQLite modülü ve yedek çözüm
 │   │   ├── catalog_sync.py            # Çevrimiçi katalog senkronizasyonu
 │   │   ├── controls.py                # Gezinme, girdi ve eylemler
 │   │   ├── controls_mapper.py         # Kontrol profilleri ve tuş atama
@@ -188,6 +189,7 @@ RGSX, ağınızdaki herhangi bir cihazdan uzaktan oyunlara göz atmak ve indirme
 │   │   ├── assets/                    # Profiller, görseller, yazı tipleri, müzik ve araçlar
 │   │   ├── languages/                 # Çeviriler (EN/FR/DE/ES/IT/PT/TR)
 │   │   ├── static/                    # Web arayüzü CSS ve JavaScript
+│   │   ├── vendor/pysqlite3/          # Knulli için CPython 3.12 aarch64 yedeği
 │   │   └── logs/                      # RGSX.log ve rgsx_web.log
 │   ├── gamelist.xml
 │   ├── images/
@@ -223,6 +225,7 @@ RGSX, ağınızdaki herhangi bir cihazdan uzaktan oyunlara göz atmak ve indirme
 | Oyun yok veya katalog boş mu? | **Oyunlar > Oyun Kataloğunu Yenile**'yi açın, ardından **Oyunlar > Platformları Filtrele**'yi ve desteklenmeyen sistemlerin görünürlük seçeneğini kontrol edin. **Ayarlar**'da yapılandırılmış ROM klasörünün doğru olduğunu doğrulayın. Senkronizasyon başarısız olursa Bağlantı Durumu'nu kontrol edin. |
 | Listede eksik sistemler mi var? | RGSX sistemleri emülatör yapılandırmasından bulur. **Oyunlar** altında desteklenmeyen sistemlerin görünürlüğünü açın ve platform filtresini kontrol edin. |
 | Katalog senkronizasyonu veya veritabanı yazma hatası | `/saves/ports/rgsx/` içinde boş disk alanını ve yazma izinlerini kontrol edin, ardından logları inceleyin. `rgsx.sqlite3` dosyasını yedeksiz silmeyin: geçmiş ve sahip olunan oyun kayıtları da bu dosyadadır. |
+| Knulli `No module named 'sqlite3'` hatası veriyor | `/roms/ports/RGSX/vendor/pysqlite3/` içindeki dosyaları koruyun ve sistemde `libsqlite3.so.0` bulunduğunu doğrulayın. Sistem Python'unda SQLite modülü yoksa RGSX, CPython 3.12 aarch64 yedeğini otomatik kullanır. |
 | Uygulama çöküyor | `/roms/ports/RGSX/logs/RGSX.log` (web sunucusu için `rgsx_web.log`) dosyasını kontrol edin. |
 | Düzen değişikliği uygulanmadı | Düzeni değiştirdikten sonra RGSX'i yeniden başlatın |
 | Bazı oyunları indirmede sorun mu var? | Duraklatma Menüsü > Ayarlar > Bağlantı Durumu'nu açın. Gerekli sitelerden biri veya birkaçı kırmızıysa Ayarlar'dan Özel DNS'i etkinleştirip yeniden başlatın. İnternet sağlayıcısı/modem korumalarını da kontrol edin (özellikle ASUS web tehdit engelleme). |

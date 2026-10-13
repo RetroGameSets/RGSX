@@ -178,6 +178,7 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 │   │   ├── __main__.py                # Entry point
 │   │   ├── config.py                  # Application paths and configuration
 │   │   ├── database.py                # Local SQLite storage
+│   │   ├── sqlite_compat.py           # System SQLite with bundled fallback
 │   │   ├── catalog_sync.py            # Online catalog synchronization
 │   │   ├── controls.py                # Navigation, input, and actions
 │   │   ├── controls_mapper.py         # Control profiles and remapping
@@ -188,6 +189,7 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 │   │   ├── assets/                    # Profiles, images, fonts, music, and tools
 │   │   ├── languages/                 # Translations (EN/FR/DE/ES/IT/PT/TR)
 │   │   ├── static/                    # Web interface CSS and JavaScript
+│   │   ├── vendor/pysqlite3/          # CPython 3.12 aarch64 fallback for Knulli
 │   │   └── logs/                      # RGSX.log and rgsx_web.log
 │   ├── gamelist.xml
 │   ├── images/
@@ -223,6 +225,7 @@ The `-wal` and `-shm` files that may appear beside `rgsx.sqlite3` are temporary 
 | No games or empty catalog? | Open **Games > Refresh Game Catalog**, then check **Games > Filter Platforms** and the unsupported-systems visibility option. In **Settings**, confirm the configured ROM folder is correct. Check Connection Status if synchronization fails. |
 | Missing systems on the list? | RGSX discovers systems from the emulator configuration. Enable unsupported-system visibility under **Games** and check the platform filter. |
 | Catalog sync or database write failure | Check available disk space and write permissions in `/saves/ports/rgsx/`, then inspect the logs. Do not delete `rgsx.sqlite3` without a backup: it also contains history and owned-game records. |
+| Knulli reports `No module named 'sqlite3'` | Keep the bundled files in `/roms/ports/RGSX/vendor/pysqlite3/` and confirm `/usr/lib/libsqlite3.so.0` is present. RGSX automatically uses its CPython 3.12 aarch64 pysqlite3 fallback, linked to that system library, when the system Python has no SQLite module. |
 | App crashes | Check `/roms/ports/RGSX/logs/RGSX.log` (and `rgsx_web.log` for the web server). |
 | Layout change not applied | Restart RGSX after changing layout |
 | Problem downloading some Games ? | Open Pause Menu > Settings > Connection Status. If one or more required sites are red, enable Custom DNS in Settings and reboot. Also check ISP/router protections (especially ASUS web threat blocking). |
