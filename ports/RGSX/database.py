@@ -5,13 +5,12 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from sqlite_compat import sqlite3
-
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 PLATFORM_SOURCE_ALIASES = {
     "archive": "Archive",
@@ -32,6 +31,13 @@ CREATE TABLE IF NOT EXISTS schema_meta (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS screenscraper_systems (
+    system_id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL DEFAULT '',
+    short_name TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS platforms (
     id INTEGER PRIMARY KEY,
     platform_name TEXT NOT NULL UNIQUE,
@@ -39,6 +45,7 @@ CREATE TABLE IF NOT EXISTS platforms (
     file_name TEXT NOT NULL DEFAULT '',
     folder TEXT NOT NULL DEFAULT '',
     platform_image TEXT NOT NULL DEFAULT '',
+    screenscraper_system_id INTEGER,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -234,6 +241,8 @@ def initialize_database(db_path: str | os.PathLike[str] | None = None) -> str:
         columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(platforms)").fetchall()}
         if "source" not in columns:
             connection.execute("ALTER TABLE platforms ADD COLUMN source TEXT NOT NULL DEFAULT ''")
+        if "screenscraper_system_id" not in columns:
+            connection.execute("ALTER TABLE platforms ADD COLUMN screenscraper_system_id INTEGER")
         legacy_rows = connection.execute(
             "SELECT id, platform_name, source FROM platforms WHERE TRIM(source) = ''"
         ).fetchall()
@@ -417,10 +426,71 @@ def list_platforms(db_path: str | os.PathLike[str] | None = None) -> list[dict[s
     initialize_database(db_path)
     with connect(db_path) as connection:
         rows = connection.execute(
-            "SELECT id, platform_name, source, file_name, folder, platform_image, sort_order, created_at, updated_at "
+            "SELECT id, platform_name, source, file_name, folder, platform_image, screenscraper_system_id, sort_order, created_at, updated_at "
             "FROM platforms ORDER BY sort_order, id"
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def list_screenscraper_systems(db_path: str | os.PathLike[str] | None = None) -> list[dict[str, Any]]:
+    initialize_database(db_path)
+    with connect(db_path) as connection:
+        rows = connection.execute(
+            "SELECT system_id, name, short_name FROM screenscraper_systems ORDER BY system_id"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def screenscraper_systems_cache_is_stale(
+    max_age_seconds: float,
+    db_path: str | os.PathLike[str] | None = None,
+) -> bool:
+    initialize_database(db_path)
+    with connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT value FROM schema_meta WHERE key = 'screenscraper_systems_updated_at'"
+        ).fetchone()
+    if not row:
+        return True
+    try:
+        updated_at = datetime.fromisoformat(str(row["value"]).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return True
+    return (datetime.now(timezone.utc) - updated_at).total_seconds() >= max_age_seconds
+
+
+def replace_screenscraper_systems(
+    systems: Iterable[dict[str, Any]],
+    db_path: str | os.PathLike[str] | None = None,
+) -> int:
+    system_rows = {}
+    for system in systems:
+        try:
+            system_id = int(system.get("system_id") or system.get("id") or 0)
+        except (AttributeError, TypeError, ValueError):
+            continue
+        name = str(system.get("name") or "").strip()
+        short_name = str(system.get("short_name") or "").strip()
+        if system_id < 1 or (not name and not short_name):
+            continue
+        system_rows[system_id] = (name, short_name)
+    if not system_rows:
+        raise ValueError("ScreenScraper system catalog contains no valid systems")
+
+    initialize_database(db_path)
+    now = utc_now()
+    with connect(db_path) as connection:
+        connection.execute("DELETE FROM screenscraper_systems")
+        connection.executemany(
+            "INSERT INTO screenscraper_systems(system_id, name, short_name, updated_at) VALUES(?, ?, ?, ?)",
+            [(system_id, name, short_name, now) for system_id, (name, short_name) in system_rows.items()],
+        )
+        connection.execute(
+            "INSERT INTO schema_meta(key, value) VALUES('screenscraper_systems_updated_at', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (now,),
+        )
+    return len(system_rows)
 
 
 def list_platforms_with_game_counts(db_path: str | os.PathLike[str] | None = None) -> list[dict[str, Any]]:
@@ -429,10 +499,12 @@ def list_platforms_with_game_counts(db_path: str | os.PathLike[str] | None = Non
     with connect(db_path) as connection:
         rows = connection.execute(
             """SELECT p.id, p.platform_name, p.source, p.file_name, p.folder, p.platform_image,
+                      p.screenscraper_system_id,
                       p.sort_order, p.created_at, p.updated_at, COUNT(g.id) AS game_count
                  FROM platforms p
             LEFT JOIN games g ON g.platform_id = p.id
              GROUP BY p.id, p.platform_name, p.source, p.file_name, p.folder, p.platform_image,
+                      p.screenscraper_system_id,
                       p.sort_order, p.created_at, p.updated_at
              ORDER BY p.sort_order, p.id"""
         ).fetchall()

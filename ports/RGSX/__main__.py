@@ -757,71 +757,21 @@ async def main():
         # Gestion de la répétition automatique des actions
         process_key_repeats(sources, joystick, screen)
         
-        # Gestion de l'appui long sur confirm dans le menu game pour ouvrir le scraper
+        # A long confirm press opens ScreenScraper game details.
         if (config.menu_state == "game" and 
             config.confirm_press_start_time > 0 and 
             not config.confirm_long_press_triggered):
             press_duration = current_time - config.confirm_press_start_time
             if press_duration >= config.confirm_long_press_threshold:
-                # Appui long détecté, ouvrir le scraper
                 games = config.filtered_games if config.filter_active or config.search_mode else config.games
                 if games:
-                    game_name = games[config.current_game].name
+                    game = games[config.current_game]
+                    game_name = game.name
                     platform = config.platforms[config.current_platform]["name"] if isinstance(config.platforms[config.current_platform], dict) else config.platforms[config.current_platform]
-                    
-                    config.previous_menu_state = "game"
-                    config.menu_state = "scraper"
-                    config.scraper_game_name = game_name
-                    config.scraper_platform_name = platform
-                    config.scraper_loading = True
-                    config.scraper_error_message = ""
-                    config.scraper_image_surface = None
-                    config.scraper_image_url = ""
-                    config.scraper_description = ""
-                    config.scraper_genre = ""
-                    config.scraper_release_date = ""
-                    config.scraper_game_page_url = ""
-                    config.needs_redraw = True
-                    config.confirm_long_press_triggered = True  # Éviter de déclencher plusieurs fois
-                    logger.debug(f"Appui long détecté ({press_duration}ms), ouverture du scraper pour {game_name}")
-                    
-                    # Lancer la recherche des métadonnées dans un thread séparé
-                    def scrape_async():
-                        from scraper import get_game_metadata, download_image_to_surface
-                        logger.info(f"Scraping métadonnées pour {game_name} sur {platform}")
-                        metadata = get_game_metadata(game_name, platform)
-                        
-                        # Vérifier si on a une erreur
-                        if "error" in metadata:
-                            config.scraper_error_message = metadata["error"]
-                            config.scraper_loading = False
-                            config.needs_redraw = True
-                            logger.error(f"Erreur de scraping: {metadata['error']}")
-                            return
-                        
-                        # Mettre à jour les métadonnées textuelles
-                        config.scraper_description = metadata.get("description", "")
-                        config.scraper_genre = metadata.get("genre", "")
-                        config.scraper_release_date = metadata.get("release_date", "")
-                        config.scraper_game_page_url = metadata.get("game_page_url", "")
-                        
-                        # Télécharger l'image si disponible
-                        image_url = metadata.get("image_url")
-                        if image_url:
-                            logger.info(f"Téléchargement de l'image: {image_url}")
-                            image_surface = download_image_to_surface(image_url)
-                            if image_surface:
-                                config.scraper_image_surface = image_surface
-                                config.scraper_image_url = image_url
-                            else:
-                                logger.warning("Échec du téléchargement de l'image")
-                        
-                        config.scraper_loading = False
-                        config.needs_redraw = True
-                        logger.info("Scraping terminé")
-                    
-                    thread = threading.Thread(target=scrape_async, daemon=True)
-                    thread.start()
+                    from game_info import open_game_info
+                    open_game_info(game.name, game.display_name, platform, "game")
+                    config.confirm_long_press_triggered = True
+                    logger.debug("Long confirm press opened ScreenScraper details for %s", game_name)
         
         # Gestion de l'appui long sur confirm dans le menu platform pour configurer le dossier de destination
         if (config.menu_state == "platform" and 
@@ -974,11 +924,13 @@ async def main():
                 "pause_display_layout_menu",
                 "pause_display_font_menu",
                 "pause_games_menu",
+                "pause_scrap_menu",
                 "pause_settings_menu",
                 "pause_api_keys_status",
                 "pause_connection_status",
                 "media_manager",
                 "screenscraper_input",
+                "game_info",
                 "filter_platforms",
                 "display_menu",
                 "language_select",
@@ -989,8 +941,6 @@ async def main():
                 # Menus historique
                 "history_game_options",
                 "history_show_folder",
-                "history_scraper_info",
-                "scraper",
                 "history_error_details",
                 "history_confirm_delete",
                 "history_extract_archive",
@@ -1392,6 +1342,9 @@ async def main():
             elif config.menu_state == "pause_games_menu":
                 from display import draw_pause_games_menu
                 draw_pause_games_menu(screen, getattr(config, 'pause_games_selection', 0))
+            elif config.menu_state == "pause_scrap_menu":
+                from display import draw_pause_scrap_menu
+                draw_pause_scrap_menu(screen, getattr(config, 'pause_scrap_selection', 0))
             elif config.menu_state == "pause_settings_menu":
                 from display import draw_pause_settings_menu
                 draw_pause_settings_menu(screen, getattr(config, 'pause_settings_selection', 0))
@@ -1429,12 +1382,9 @@ async def main():
             elif config.menu_state == "history_show_folder":
                 from display import draw_history_show_folder
                 draw_history_show_folder(screen)
-            elif config.menu_state == "scraper":
-                from display import draw_scraper_screen
-                draw_scraper_screen(screen)
-            elif config.menu_state == "history_scraper_info":
-                from display import draw_history_scraper_info
-                draw_history_scraper_info(screen)
+            elif config.menu_state == "game_info":
+                from display import draw_game_info_screen
+                draw_game_info_screen(screen)
             elif config.menu_state == "history_error_details":
                 from display import draw_history_error_details
                 draw_history_error_details(screen)

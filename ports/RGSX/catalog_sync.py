@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sqlite3
 import tempfile
 import urllib.parse
 import urllib.request
@@ -12,7 +13,6 @@ from typing import Any
 
 import config
 import database
-from sqlite_compat import sqlite3
 
 
 _LOCAL_CATALOG_TRIGGERS = {
@@ -112,6 +112,15 @@ def _snapshot_pages(entity: str, page_size: int = 1000, platform_id: int | None 
         cursor = next_cursor
 
 
+def _optional_screenscraper_system_id(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    system_id = int(value)
+    if system_id <= 0:
+        raise ValueError("ScreenScraper system IDs must be positive integers")
+    return system_id
+
+
 def _insert_snapshot_page(connection: sqlite3.Connection, entity: str, rows: list[dict[str, Any]]) -> None:
     if not rows:
         return
@@ -119,12 +128,13 @@ def _insert_snapshot_page(connection: sqlite3.Connection, entity: str, rows: lis
         connection.executemany(
             """INSERT INTO platforms(
                 id, platform_name, source, file_name, folder, platform_image,
-                sort_order, created_at, updated_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                screenscraper_system_id, sort_order, created_at, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             [(
                 int(row.get("id") or 0), str(row.get("platform_name") or ""),
                 str(row.get("source") or ""), str(row.get("file_name") or ""),
                 str(row.get("folder") or ""), str(row.get("platform_image") or ""),
+                _optional_screenscraper_system_id(row.get("screenscraper_system_id")),
                 int(row.get("sort_order") or 0), str(row.get("created_at") or ""),
                 str(row.get("updated_at") or ""),
             ) for row in rows],
@@ -221,7 +231,15 @@ def _replace_local_catalog_from_api(
                 connection.execute("DELETE FROM platform_assets")
                 connection.execute("DELETE FROM games")
                 connection.execute("DELETE FROM platforms")
-                connection.execute("INSERT INTO platforms SELECT * FROM catalog_stage.platforms")
+                connection.execute(
+                    """INSERT INTO platforms(
+                           id, platform_name, source, file_name, folder, platform_image,
+                           screenscraper_system_id, sort_order, created_at, updated_at
+                       )
+                       SELECT id, platform_name, source, file_name, folder, platform_image,
+                              screenscraper_system_id, sort_order, created_at, updated_at
+                         FROM catalog_stage.platforms"""
+                )
                 connection.execute("INSERT INTO games SELECT * FROM catalog_stage.games")
                 connection.execute("INSERT INTO platform_assets SELECT * FROM catalog_stage.platform_assets")
                 connection.execute("DELETE FROM catalog_changes")
@@ -291,14 +309,20 @@ def _sync_catalog_visibility(db_path: str, progress_callback=None) -> dict[str, 
                     "DELETE FROM platforms WHERE id NOT IN (SELECT id FROM catalog_stage.platforms)"
                 )
                 connection.execute(
-                    """INSERT INTO platforms
-                       SELECT * FROM catalog_stage.platforms WHERE true
+                    """INSERT INTO platforms(
+                           id, platform_name, source, file_name, folder, platform_image,
+                           screenscraper_system_id, sort_order, created_at, updated_at
+                       )
+                       SELECT id, platform_name, source, file_name, folder, platform_image,
+                              screenscraper_system_id, sort_order, created_at, updated_at
+                         FROM catalog_stage.platforms WHERE true
                        ON CONFLICT(id) DO UPDATE SET
                            platform_name=excluded.platform_name,
                            source=excluded.source,
                            file_name=excluded.file_name,
                            folder=excluded.folder,
                            platform_image=excluded.platform_image,
+                           screenscraper_system_id=excluded.screenscraper_system_id,
                            sort_order=excluded.sort_order,
                            created_at=excluded.created_at,
                            updated_at=excluded.updated_at"""
@@ -343,14 +367,15 @@ def _apply_change(connection: sqlite3.Connection, change: dict[str, Any]) -> Non
         connection.execute(
             """INSERT INTO platforms(
                 id, platform_name, source, file_name, folder, platform_image,
-                sort_order, created_at, updated_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                screenscraper_system_id, sort_order, created_at, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 platform_name=excluded.platform_name,
                 source=excluded.source,
                 file_name=excluded.file_name,
                 folder=excluded.folder,
                 platform_image=excluded.platform_image,
+                screenscraper_system_id=excluded.screenscraper_system_id,
                 sort_order=excluded.sort_order,
                 updated_at=excluded.updated_at""",
             (
@@ -360,6 +385,7 @@ def _apply_change(connection: sqlite3.Connection, change: dict[str, Any]) -> Non
                 str(data.get("file_name") or ""),
                 str(data.get("folder") or ""),
                 str(data.get("platform_image") or ""),
+                _optional_screenscraper_system_id(data.get("screenscraper_system_id")),
                 int(data.get("sort_order") or 0),
                 str(data.get("created_at") or ""),
                 str(data.get("updated_at") or ""),

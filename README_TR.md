@@ -73,14 +73,21 @@ En son sürümü indirip arşivden çıkarın: [RGSX_full_latest.zip](https://gi
 
 ### Duraklatma Menüsü Yapısı
 
-**Ana menü** — Oyunlar, Dil, Kontroller, Görünüm, Ayarlar, Destek, Varsayılan Ayarlara Sıfırla ve Çıkış.
+**Ana menü** — Oyunlar, Dil, Kontroller, Görünüm, Scrap, Ayarlar, Destek, Varsayılan Ayarlara Sıfırla ve Çıkış.
 
 - **Oyunlar**: kataloğu yenileyin, yerelde sahip olunan ROM'ları tarayın, indirme geçmişini açın, desteklenmeyen sistemleri gösterin/gizleyin ve görünür platformları seçin.
 - **Kontroller**: geçerli tuş atamalarını görüntüleyin veya klavye/kontrolcü tuşlarını yeniden atayın.
 - **Görünüm**: sekiz ızgara arasından seçim yapın (3×3, 3×4, 4×3, 4×4, 5×4, 6×4, 6×6 veya 8×6), arayüz ve alt bilgi yazı boyutlarını ayrı ayrı ayarlayın, yazı tipi (Pixel, Bell Centennial veya DejaVu Sans), arka plan teması ve Açık Mod seçin. Monitör seçimi yalnızca birden fazla ekran algılandığında görünür; pencere/tam ekran modu yalnızca Windows'ta vardır. Bilinmeyen uzantı uyarılarını da gizleyebilirsiniz.
+- **Scrap**: ScreenScraper kimlik bilgilerini düzenleyin ve Medya Yöneticisi'ni açın.
 - **Ayarlar**: arka plan müziği, sembolik bağlantı davranışı, otomatik arşivden çıkarma, ROM klasörü, en fazla eşzamanlı indirme sayısı, API anahtarı durumu ve bağlantı durumu. Açılışta web servisi ve Özel DNS seçenekleri Linux/Batocera'da kullanılabilir.
 - **Destek**: tanılama araçları ve destek arşivi oluşturma.
 - **Çıkış**: RGSX'ten çıkın veya yeniden başlatın. Dil seçimi doğrudan ana menüdedir.
+
+### ScreenScraper ve Medya Yöneticisi
+
+Oyun listesinde bir oyunu iki saniye seçili tutmak kapağını yerel medya önbelleğine indirir ve ScreenScraper özetini önizleme panelinde gösterir. Bilgi bulunamazsa panelde uygun bir yer tutucu gösterilir. Öncelikli ScreenScraper sistem kimliği, çevrimiçi RGSX kataloğunda platform başına saklanır ve RGSX Sources Manager üzerinden düzenlenebilir. Kimlik tanımlı değilse RGSX, SQLite'ta düzenli güncellenen ScreenScraper sistem listesine, ardından yerleşik takma adlara geri döner. **Onayla** düğmesine iki saniye basmak, kapak, ekran görüntüsü ve özeti içeren ScreenScraper ayrıntı sayfasını açar. **Duraklat > Scrap** bölümünde ScreenScraper kullanıcı adı ve parolası aynı sayfada düzenlenir: sanal klavye yalnızca kontrolcü algılandığında görünür; aksi durumda doğrudan yazın ve alanlar arasında geçmek için Tab kullanın. Hesap ayrı `screenscraper_account.json` dosyasında saklanır ve Web arayüzünden de düzenlenebilir.
+
+Medya Yöneticisi toplu indirme yapar. **Geçmiş** kontrol kısayolu, ilk satıra dönmeden işi başlatır, sürdürür veya iptal eder.
 
 ### Yerel Veritabanı ve Taşıma
 
@@ -99,6 +106,7 @@ Eski JSON tabanlı depolamadan yükseltme sonrası ilk açılışta RGSX; indirm
 - 🎮 **Kontrolcü Odaklı Tasarım** – Popüler kontrolcüler için otomatik tuş atama + özel tuş atama desteği
 - 🔍 **Gelişmiş Filtreleme** – Ada göre arama, desteklenmeyen sistemleri gösterme/gizleme, platform filtreleme
 - 📊 **İndirme Yönetimi** – Kuyruk sistemi, geçmiş takibi, ilerleme bildirimleri
+- 🖼️ **ScreenScraper Medyaları** – Gecikmeli kapak indirme, oyun ayrıntıları, ekran görüntüleri ve toplu medya yönetimi
 - ♿ **Erişilebilirlik** – Arayüz ve alt bilgi için ayrı yazı ölçekleme, yalnızca klavye modu desteği
 
 > ### 🔑 API Anahtarı Kurulumu
@@ -178,18 +186,20 @@ RGSX, ağınızdaki herhangi bir cihazdan uzaktan oyunlara göz atmak ve indirme
 │   │   ├── __main__.py                # Giriş noktası
 │   │   ├── config.py                  # Uygulama yolları ve yapılandırma
 │   │   ├── database.py                # Yerel SQLite depolama
-│   │   ├── sqlite_compat.py           # Sistem SQLite modülü ve yedek çözüm
 │   │   ├── catalog_sync.py            # Çevrimiçi katalog senkronizasyonu
 │   │   ├── controls.py                # Gezinme, girdi ve eylemler
 │   │   ├── controls_mapper.py         # Kontrol profilleri ve tuş atama
 │   │   ├── display.py                 # Pygame arayüzü ve menüler
+│   │   ├── game_info.py               # ScreenScraper ayrıntılarını alma
+│   │   ├── media_manager.py           # Toplu medya indirmeleri
 │   │   ├── network.py                 # İndirmeler
+│   │   ├── preview.py                 # Oyun listesi kapak önizlemesi ve gecikmeli indirme
 │   │   ├── rgsx_settings.py           # Kullanıcı tercihleri
+│   │   ├── screenscraper.py           # ScreenScraper proxy istemcisi
 │   │   ├── rgsx_web.py                # Web arayüzü ve sunucu
 │   │   ├── assets/                    # Profiller, görseller, yazı tipleri, müzik ve araçlar
 │   │   ├── languages/                 # Çeviriler (EN/FR/DE/ES/IT/PT/TR)
 │   │   ├── static/                    # Web arayüzü CSS ve JavaScript
-│   │   ├── vendor/pysqlite3/          # Knulli için CPython 3.12 aarch64 yedeği
 │   │   └── logs/                      # RGSX.log ve rgsx_web.log
 │   ├── gamelist.xml
 │   ├── images/
@@ -205,6 +215,8 @@ RGSX, ağınızdaki herhangi bir cihazdan uzaktan oyunlara göz atmak ve indirme
 ├── controls.json             # Tuş atamaları
 ├── rgsx.sqlite3              # Katalog, geçmiş ve kalıcı kullanıcı verileri
 ├── images/                   # Sistem görselleri
+├── media/                    # Oyun kapakları, ekran görüntüleri ve logoların önbelleği
+├── screenscraper_account.json # İsteğe bağlı ScreenScraper hesabı
 ├── backup_old_rgsx/          # Taşıma sırasında arşivlenen eski dosyalar (varsa)
 ├── 1FichierAPI.txt           # 1Fichier API anahtarı
 ├── AllDebridAPI.txt          # AllDebrid API anahtarı
@@ -225,8 +237,8 @@ RGSX, ağınızdaki herhangi bir cihazdan uzaktan oyunlara göz atmak ve indirme
 | Oyun yok veya katalog boş mu? | **Oyunlar > Oyun Kataloğunu Yenile**'yi açın, ardından **Oyunlar > Platformları Filtrele**'yi ve desteklenmeyen sistemlerin görünürlük seçeneğini kontrol edin. **Ayarlar**'da yapılandırılmış ROM klasörünün doğru olduğunu doğrulayın. Senkronizasyon başarısız olursa Bağlantı Durumu'nu kontrol edin. |
 | Listede eksik sistemler mi var? | RGSX sistemleri emülatör yapılandırmasından bulur. **Oyunlar** altında desteklenmeyen sistemlerin görünürlüğünü açın ve platform filtresini kontrol edin. |
 | Katalog senkronizasyonu veya veritabanı yazma hatası | `/saves/ports/rgsx/` içinde boş disk alanını ve yazma izinlerini kontrol edin, ardından logları inceleyin. `rgsx.sqlite3` dosyasını yedeksiz silmeyin: geçmiş ve sahip olunan oyun kayıtları da bu dosyadadır. |
-| Knulli `No module named 'sqlite3'` hatası veriyor | `/roms/ports/RGSX/vendor/pysqlite3/` içindeki dosyaları koruyun ve sistemde `libsqlite3.so.0` bulunduğunu doğrulayın. Sistem Python'unda SQLite modülü yoksa RGSX, CPython 3.12 aarch64 yedeğini otomatik kullanır. |
 | Uygulama çöküyor | `/roms/ports/RGSX/logs/RGSX.log` (web sunucusu için `rgsx_web.log`) dosyasını kontrol edin. |
+| ScreenScraper ayrıntıları veya kapaklar eksik | İnternet bağlantısını kontrol edin ve güncel ScreenScraper proxy sürümünün dağıtıldığından emin olun. Hesap isteğe bağlıdır; geçerli kimlik bilgileri kullanılabilir kotayı artırabilir. |
 | Düzen değişikliği uygulanmadı | Düzeni değiştirdikten sonra RGSX'i yeniden başlatın |
 | Bazı oyunları indirmede sorun mu var? | Duraklatma Menüsü > Ayarlar > Bağlantı Durumu'nu açın. Gerekli sitelerden biri veya birkaçı kırmızıysa Ayarlar'dan Özel DNS'i etkinleştirip yeniden başlatın. İnternet sağlayıcısı/modem korumalarını da kontrol edin (özellikle ASUS web tehdit engelleme). |
 

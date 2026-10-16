@@ -2384,10 +2384,15 @@ def draw_game_list(screen):
         except NameError as e:
             logger.error(f"Erreur : draw_game_scrollbar non défini: {str(e)}")
 
-    if preview_width and 0 <= config.current_game < len(games):
+    if 0 <= config.current_game < len(games):
         folder = (getattr(config, "platform_dict_by_name", {}).get(platform) or {}).get("folder", "")
-        panel_rect = pygame.Rect(rect_x + rect_width + PREVIEW_GAP, rect_y, preview_width, rect_height)
-        draw_game_preview_panel(screen, folder, games[config.current_game].name, panel_rect)
+        rom_filename = games[config.current_game].name
+        if preview_width:
+            panel_rect = pygame.Rect(rect_x + rect_width + PREVIEW_GAP, rect_y, preview_width, rect_height)
+            draw_game_preview_panel(screen, folder, rom_filename, panel_rect)
+        elif folder:
+            import preview
+            preview.get_preview(folder, rom_filename, 1, 1)
 
 
 PREVIEW_MIN_SCREEN_WIDTH = 1024
@@ -2395,16 +2400,71 @@ PREVIEW_GAP = 12
 
 
 def draw_game_preview_panel(screen, folder, rom_filename, panel_rect):
-    """Draw the selected game's image from the local cache, or the RGSX placeholder."""
+    """Draw the selected game's cover, synopsis, and loading/unavailable states."""
     import preview
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], panel_rect, border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], panel_rect, 2, border_radius=12)
     inner = panel_rect.inflate(-24, -24)
-    image = preview.get_preview(folder, rom_filename, inner.width, inner.height) if folder else None
-    if image is None:
-        # No large logo image in the repo; a text logo is drawn as placeholder.
-        image = config.title_font.render("RGSX", True, THEME_COLORS["border"])
-    screen.blit(image, image.get_rect(center=inner.center))
+    data = preview.get_preview_data(folder, rom_filename, inner.width, inner.height) if folder else {
+        "status": "unavailable",
+        "image": None,
+        "summary": "",
+    }
+    image = data["image"]
+    summary = data["summary"]
+    if data["status"] == "unavailable" and image is None and not summary:
+        message = _("game_preview_no_info")
+        lines = wrap_text(message, config.small_font, inner.width)
+        line_height = config.small_font.get_height() + 5
+        start_y = inner.centery - len(lines) * line_height // 2
+        for index, line in enumerate(lines):
+            text = config.small_font.render(line, True, THEME_COLORS["title_text"])
+            screen.blit(text, text.get_rect(center=(inner.centerx, start_y + index * line_height)))
+        return
+    if data["status"] == "loading" and image is None:
+        lines = wrap_text(_("game_preview_loading"), config.small_font, inner.width)
+        line_height = config.small_font.get_height() + 5
+        start_y = inner.centery - len(lines) * line_height // 2
+        for index, line in enumerate(lines):
+            text = config.small_font.render(line, True, THEME_COLORS["title_text"])
+            screen.blit(text, text.get_rect(center=(inner.centerx, start_y + index * line_height)))
+        return
+
+    summary_height = max(1, int(inner.height * 0.35))
+    image_area = pygame.Rect(inner.left, inner.top, inner.width, max(1, inner.height - summary_height - 12))
+    if image is not None:
+        image_width, image_height = image.get_size()
+        scale = min(image_area.width / image_width, image_area.height / image_height)
+        scaled_image = pygame.transform.smoothscale(
+            image,
+            (max(1, int(image_width * scale)), max(1, int(image_height * scale))),
+        )
+        screen.blit(scaled_image, scaled_image.get_rect(center=image_area.center))
+    else:
+        placeholder = _("game_info_no_image") if summary else _("game_preview_loading")
+        lines = wrap_text(placeholder, config.small_font, image_area.width)
+        line_height = config.small_font.get_height() + 5
+        start_y = image_area.centery - len(lines) * line_height // 2
+        for index, line in enumerate(lines):
+            text = config.small_font.render(line, True, THEME_COLORS["title_text"])
+            screen.blit(text, text.get_rect(center=(image_area.centerx, start_y + index * line_height)))
+
+    summary_y = image_area.bottom + 12
+    summary_label = config.small_font.render(_("game_info_summary"), True, THEME_COLORS["neon"])
+    screen.blit(summary_label, (inner.left, summary_y))
+    summary_text = summary or (
+        _("game_preview_loading") if data["status"] == "loading" else _("game_info_no_summary")
+    )
+    summary_lines = wrap_text(
+        summary_text,
+        config.small_font,
+        inner.width,
+    )
+    line_height = config.small_font.get_height() + 4
+    max_lines = max(1, (inner.bottom - summary_y - summary_label.get_height() - 4) // line_height)
+    for index, line in enumerate(summary_lines[:max_lines]):
+        text = config.small_font.render(line, True, THEME_COLORS["text"])
+        screen.blit(text, (inner.left, summary_y + summary_label.get_height() + 4 + index * line_height))
 
 # Barre de défilement des jeux
 def draw_game_scrollbar(screen, scroll_offset, total_items, visible_items, x, y, height):
@@ -3345,8 +3405,7 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
             ("clear_history", _("history_move_action")),
             ("cancel", _("controls_cancel_back")),
         ],
-        "scraper": [
-            ("confirm", _("controls_confirm_select")),
+        "game_info": [
             ("cancel", _("controls_cancel_back")),
         ],
         "error": [
@@ -3396,16 +3455,33 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
             ("start", _("controls_cancel_back")),
         ],
         "screenscraper_input": [
-            ("confirm", _("controls_action_select_char")),
-            ("delete", _("controls_action_delete")),
-            ("space", _("controls_action_space")),
-            (("page_up", "page_down"), _("controls_action_shift")),
-            ("history", _("screenscraper_input_save")),
-            ("cancel", _("controls_cancel_back")),
+            *(
+                [
+                    ("confirm", _("controls_action_select_char")),
+                    ("delete", _("controls_action_delete")),
+                    ("space", _("controls_action_space")),
+                    ("filter", _("controls_action_shift")),
+                    (("page_up", "page_down"), _("screenscraper_input_switch_field")),
+                    ("history", _("screenscraper_input_save")),
+                    ("cancel", _("controls_cancel_back")),
+                ]
+                if getattr(config, "joystick", False)
+                else [
+                    ("confirm", _("screenscraper_input_save")),
+                    ("delete", _("controls_action_delete")),
+                    (("page_up", "page_down"), _("screenscraper_input_switch_field")),
+                    ("cancel", _("controls_cancel_back")),
+                ]
+            ),
         ],
         "media_manager": [
             ("confirm", _("controls_confirm_select")),
             (("left", "right"), _("media_profile")),
+            ("history", _("media_start_shortcut")),
+            ("cancel", _("controls_cancel_back")),
+        ],
+        "pause_scrap_menu": [
+            ("confirm", _("controls_confirm_select")),
             ("cancel", _("controls_cancel_back")),
         ],
     }
@@ -3811,7 +3887,7 @@ def draw_display_menu(screen):
 def draw_pause_menu(screen, selected_option):
     """Dessine le menu pause racine (catégories)."""
     screen.blit(OVERLAY, (0, 0))
-    # Nouvel ordre: Games / Language / Controls / Display / Settings / Support / Reset / Quit
+    # Nouvel ordre: Games / Language / Controls / Display / Scrap / Settings / Support / Reset / Quit
     reset_label = _("menu_reset_default_settings") if _ else "Reset default settings"
     if not reset_label or reset_label == "menu_reset_default_settings":
         reset_label = "Reset default settings"
@@ -3821,10 +3897,11 @@ def draw_pause_menu(screen, selected_option):
         _("menu_language") if _ else "Language",            # 1 -> sélecteur de langue direct
         _("menu_controls"),                                 # 2 -> sous-menu controls
         _("menu_display"),                                  # 3 -> sous-menu display
-        _("menu_settings_category") if _ else "Settings",   # 4 -> sous-menu settings
-        _("menu_support"),                                  # 5 -> support
-        reset_label,                                          # 6 -> reset settings (delete + restart)
-        _("menu_quit")                                      # 7 -> sous-menu quit (quit + restart)
+        _("menu_scrap_category"),                            # 4 -> sous-menu Scrap
+        _("menu_settings_category") if _ else "Settings",   # 5 -> sous-menu settings
+        _("menu_support"),                                  # 6 -> support
+        reset_label,                                          # 7 -> reset settings (delete + restart)
+        _("menu_quit")                                      # 8 -> sous-menu quit (quit + restart)
     ]
     
     # Instruction contextuelle pour l'option sélectionnée
@@ -3833,6 +3910,7 @@ def draw_pause_menu(screen, selected_option):
         "instruction_pause_language",
         "instruction_pause_controls",
         "instruction_pause_display",
+        "instruction_pause_scrap",
         "instruction_pause_settings",
         "instruction_pause_support",
         "instruction_pause_reset_settings",
@@ -4414,11 +4492,7 @@ def draw_pause_settings_menu(screen, selected_index):
         options.append(web_service_txt)
     if custom_dns_txt:  # Ajouter seulement si Linux/Batocera
         options.append(custom_dns_txt)
-    from screenscraper import load_account
-    ss_username, ss_password = load_account()
-    ss_user_txt = f"{_('settings_screenscraper_user')} : {ss_username or _('settings_screenscraper_not_set')}"
-    ss_password_txt = f"{_('settings_screenscraper_password')} : {'******' if ss_password else _('settings_screenscraper_not_set')}"
-    options.extend([api_keys_txt, connection_status_txt, ss_user_txt, ss_password_txt, _("settings_media_manager"), back_txt])
+    options.extend([api_keys_txt, connection_status_txt, back_txt])
 
     # Index de l'option Dossier ROMs
     roms_folder_index = 3
@@ -4438,15 +4512,29 @@ def draw_pause_settings_menu(screen, selected_index):
     instruction_keys.extend([
         "instruction_settings_api_keys",
         "instruction_settings_connection_status",
-        "instruction_settings_screenscraper_account",
-        "instruction_settings_screenscraper_account",
-        "instruction_settings_media_manager",
         "instruction_generic_back",
     ])
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
     instruction_text = _(key) if key else None
     
     _draw_submenu_generic(screen, _("menu_settings_category") if _ else "Settings", options, selected_index, instruction_text)
+
+
+def draw_pause_scrap_menu(screen, selected_index):
+    options = [
+        _("menu_screenscraper_account"),
+        _("settings_media_manager"),
+        _("menu_back"),
+    ]
+    instruction_keys = [
+        "instruction_scrap_screenscraper_account",
+        "instruction_settings_media_manager",
+        "instruction_generic_back",
+    ]
+    key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
+    instruction_text = _(key) if key else None
+    _draw_submenu_generic(screen, _("menu_scrap_category"), options, selected_index, instruction_text)
+
 
 def draw_pause_api_keys_status(screen):
     screen.blit(OVERLAY, (0,0))
@@ -5659,52 +5747,69 @@ SCREENSCRAPER_KEYBOARD_LAYOUT = [
 
 
 def draw_screenscraper_input(screen):
-    """ScreenScraper username/password entry with a virtual keyboard (same look as the new folder screen)."""
+    """Edit both ScreenScraper credentials, showing the virtual keyboard only with a gamepad."""
     global OVERLAY
     if OVERLAY is None or OVERLAY.get_size() != (config.screen_width, config.screen_height):
         OVERLAY = pygame.Surface((config.screen_width, config.screen_height), pygame.SRCALPHA)
         OVERLAY.fill((0, 0, 0, 200))
     screen.blit(OVERLAY, (0, 0))
-    panel_width = int(config.screen_width * 0.7)
-    panel_height = int(config.screen_height * 0.7)
+    panel_width = int(config.screen_width * 0.86)
+    panel_height = int(config.screen_height * 0.9)
     panel_x = (config.screen_width - panel_width) // 2
     panel_y = (config.screen_height - panel_height) // 2
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (panel_x, panel_y, panel_width, panel_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (panel_x, panel_y, panel_width, panel_height), 2, border_radius=12)
 
     field = getattr(config, 'ss_input_field', 'username')
-    title = _("settings_screenscraper_user") if field == "username" else _("settings_screenscraper_password")
-    title_text = config.font.render(title, True, THEME_COLORS["text"])
+    title_text = config.title_font.render(_("menu_screenscraper_account"), True, THEME_COLORS["text"])
     screen.blit(title_text, title_text.get_rect(center=(config.screen_width // 2, panel_y + 30)))
 
-    value = getattr(config, 'ss_input_value', '')
-    if field == "password" and value:
-        # Only the last typed character is visible, to check the input without showing the password.
-        value = "*" * (len(value) - 1) + value[-1]
-    input_x, input_y = panel_x + 30, panel_y + 70
-    input_width, input_height = panel_width - 60, 40
-    pygame.draw.rect(screen, THEME_COLORS["button_selected"], (input_x, input_y, input_width, input_height), border_radius=6)
-    pygame.draw.rect(screen, THEME_COLORS["border_selected"], (input_x, input_y, input_width, input_height), 2, border_radius=6)
-    value += "_"
-    while len(value) > 1 and config.font.size(value)[0] > input_width - 20:
-        value = value[1:]  # keep the end (cursor) visible
-    input_text = config.font.render(value, True, THEME_COLORS["text"])
-    screen.blit(input_text, input_text.get_rect(midleft=(input_x + 10, input_y + input_height // 2)))
+    input_x = panel_x + 24
+    input_width = panel_width - 48
+    input_height = min(38, max(30, int(config.screen_height * 0.075)))
+    field_gap = 8
+    for index, field_name in enumerate(("username", "password")):
+        input_y = panel_y + 52 + index * (input_height + field_gap)
+        active = field == field_name
+        background = THEME_COLORS["button_selected"] if active else THEME_COLORS["button_idle"]
+        border = THEME_COLORS["border_selected"] if active else THEME_COLORS["border"]
+        pygame.draw.rect(screen, background, (input_x, input_y, input_width, input_height), border_radius=6)
+        pygame.draw.rect(screen, border, (input_x, input_y, input_width, input_height), 2 if active else 1, border_radius=6)
+        label = _("settings_screenscraper_user" if field_name == "username" else "settings_screenscraper_password")
+        value = str(getattr(config, f"ss_input_{field_name}", ""))
+        if field_name == "password":
+            value = "*" * len(value)
+        available_width = input_width - 24
+        while value and config.small_font.size(f"{label}: {value}")[0] > available_width:
+            value = value[1:]
+        cursor = "_" if active else ""
+        field_text = config.small_font.render(f"{label}: {value}{cursor}", True, THEME_COLORS["text"])
+        screen.blit(field_text, field_text.get_rect(midleft=(input_x + 12, input_y + input_height // 2)))
 
     shift = getattr(config, 'ss_input_shift', False)
     selected_row, selected_col = getattr(config, 'ss_input_selected_key', (0, 0))
-    keyboard_y = input_y + input_height + 30
-    key_size = min(40, (panel_width - 60) // 10)
-    key_gap = 5
-    for row_idx, row in enumerate(SCREENSCRAPER_KEYBOARD_LAYOUT):
-        row_x = (config.screen_width - (len(row) * (key_size + key_gap) - key_gap)) // 2
-        for col_idx, key in enumerate(row):
-            key_rect = pygame.Rect(row_x + col_idx * (key_size + key_gap), keyboard_y + row_idx * (key_size + key_gap), key_size, key_size)
-            is_selected = (row_idx, col_idx) == (selected_row, selected_col)
-            pygame.draw.rect(screen, THEME_COLORS["button_hover" if is_selected else "button_idle"], key_rect, border_radius=4)
-            pygame.draw.rect(screen, THEME_COLORS["border_selected" if is_selected else "border"], key_rect, 2 if is_selected else 1, border_radius=4)
-            key_text = config.small_font.render(key.upper() if shift else key, True, THEME_COLORS["text_selected"] if is_selected else THEME_COLORS["text"])
-            screen.blit(key_text, key_text.get_rect(center=key_rect.center))
+    if getattr(config, "joystick", False):
+        keyboard_y = panel_y + 52 + 2 * (input_height + field_gap) + 18
+        key_gap = 4
+        key_size = min(42, max(24, (panel_height - (keyboard_y - panel_y) - 36 - 4 * key_gap) // 5))
+        key_width = len(SCREENSCRAPER_KEYBOARD_LAYOUT[0]) * (key_size + key_gap) - key_gap
+        keyboard_x = (config.screen_width - key_width) // 2
+        for row_idx, row in enumerate(SCREENSCRAPER_KEYBOARD_LAYOUT):
+            for col_idx, key in enumerate(row):
+                key_rect = pygame.Rect(
+                    keyboard_x + col_idx * (key_size + key_gap),
+                    keyboard_y + row_idx * (key_size + key_gap),
+                    key_size,
+                    key_size,
+                )
+                is_selected = (row_idx, col_idx) == (selected_row, selected_col)
+                pygame.draw.rect(screen, THEME_COLORS["button_hover" if is_selected else "button_idle"], key_rect, border_radius=4)
+                pygame.draw.rect(screen, THEME_COLORS["border_selected" if is_selected else "border"], key_rect, 2 if is_selected else 1, border_radius=4)
+                key_text = config.small_font.render(key.upper() if shift else key, True, THEME_COLORS["text_selected"] if is_selected else THEME_COLORS["text"])
+                screen.blit(key_text, key_text.get_rect(center=key_rect.center))
+    else:
+        hint = config.small_font.render(_("screenscraper_keyboard_hint"), True, THEME_COLORS["title_text"])
+        screen.blit(hint, hint.get_rect(center=(config.screen_width // 2, panel_y + panel_height - 24)))
 
 
 def draw_support_dialog(screen):
@@ -5942,7 +6047,7 @@ def draw_history_game_options(screen):
     
     # Options communes
 
-    options.append("scraper")
+    options.append("game_info")
     option_labels.append(_("history_option_scraper"))
  
     # Options selon statut
@@ -6159,34 +6264,6 @@ def draw_history_show_folder(screen):
     draw_stylized_button(screen, _("button_OK"), rect_x + (rect_width - button_width) // 2, rect_y + rect_height - button_height - 20, button_width, button_height, selected=True)
 
 
-def draw_history_scraper_info(screen):
-    """Affiche l'information que le scraper n'est pas implémenté."""
-    screen.blit(OVERLAY, (0, 0))
-    
-    message = _("history_scraper_not_implemented")
-    wrapped_message = wrap_text(message, config.font, config.screen_width - 80)
-    line_height = config.font.get_height() + 5
-    text_height = len(wrapped_message) * line_height
-    button_height = int(config.screen_height * 0.0463)
-    margin_top_bottom = 20
-    rect_height = text_height + button_height + 2 * margin_top_bottom
-    max_text_width = max([config.font.size(line)[0] for line in wrapped_message], default=300)
-    rect_width = max_text_width + 150
-    rect_x = (config.screen_width - rect_width) // 2
-    rect_y = (config.screen_height - rect_height) // 2
-    
-    pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
-    pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
-    
-    for i, line in enumerate(wrapped_message):
-        text = config.font.render(line, True, THEME_COLORS["text"])
-        text_rect = text.get_rect(center=(config.screen_width // 2, rect_y + margin_top_bottom + i * line_height + line_height // 2))
-        screen.blit(text, text_rect)
-    
-    button_width = 120
-    draw_stylized_button(screen, _("button_OK"), rect_x + (rect_width - button_width) // 2, rect_y + text_height + margin_top_bottom, button_width, button_height, selected=True)
-
-
 def draw_history_error_details(screen):
     """Affiche les détails de l'erreur du téléchargement."""
     screen.blit(OVERLAY, (0, 0))
@@ -6392,7 +6469,7 @@ def draw_text_file_viewer(screen):
         screen.blit(no_content_surface, no_content_rect)
 
 
-def draw_scraper_screen(screen):
+def draw_game_info_screen(screen):
     screen.blit(OVERLAY, (0, 0))
     
     # Dimensions de l'écran avec marge pour les contrôles en bas
@@ -6411,13 +6488,13 @@ def draw_scraper_screen(screen):
     pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
     
     # Titre
-    title_text = f"Scraper: {config.scraper_game_name}"
+    title_text = _("game_info_title").format(config.game_info_game_name)
     title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
     title_rect = title_surface.get_rect(center=(config.screen_width // 2, rect_y + 40))
     screen.blit(title_surface, title_rect)
     
     # Sous-titre avec plateforme
-    subtitle_text = f"Platform: {config.scraper_platform_name}"
+    subtitle_text = _("game_info_source").format(config.game_info_platform_name)
     subtitle_surface = config.font.render(subtitle_text, True, THEME_COLORS["title_text"])
     subtitle_rect = subtitle_surface.get_rect(center=(config.screen_width // 2, rect_y + 80))
     screen.blit(subtitle_surface, subtitle_rect)
@@ -6427,142 +6504,72 @@ def draw_scraper_screen(screen):
     content_height = rect_height - 140  # Ajusté pour ne pas inclure les marges du bas
     
     # Si chargement en cours
-    if config.scraper_loading:
-        loading_text = "Searching for metadata..."
+    if config.game_info_loading:
+        loading_text = _("game_info_loading")
         loading_surface = config.font.render(loading_text, True, THEME_COLORS["text"])
         loading_rect = loading_surface.get_rect(center=(config.screen_width // 2, config.screen_height // 2))
         screen.blit(loading_surface, loading_rect)
     
-    # Si erreur
-    elif config.scraper_error_message:
-        error_lines = wrap_text(config.scraper_error_message, config.font, rect_width - 80)
-        line_height = config.font.get_height() + 10
-        start_y = config.screen_height // 2 - (len(error_lines) * line_height) // 2
-        
-        for i, line in enumerate(error_lines):
-            error_surface = config.font.render(line, True, THEME_COLORS["error_text"])
-            error_rect = error_surface.get_rect(center=(config.screen_width // 2, start_y + i * line_height))
-            screen.blit(error_surface, error_rect)
-    
-    # Si données disponibles
     else:
+        if config.game_info_error_message:
+            error_lines = wrap_text(config.game_info_error_message, config.small_font, rect_width - 80)
+            line_height = config.small_font.get_height() + 5
+            max_error_lines = max(1, min(len(error_lines), 3))
+            for index, line in enumerate(error_lines[:max_error_lines]):
+                error_surface = config.small_font.render(line, True, THEME_COLORS["error_text"])
+                error_rect = error_surface.get_rect(
+                    center=(config.screen_width // 2, content_y + line_height // 2 + index * line_height)
+                )
+                screen.blit(error_surface, error_rect)
+            used_height = max_error_lines * line_height + 8
+            content_y += used_height
+            content_height = max(1, content_height - used_height)
+
         # Division en deux colonnes: image à gauche, métadonnées à droite
         left_width = int(rect_width * 0.4)
         right_width = rect_width - left_width - 20
         left_x = rect_x + 20
         right_x = left_x + left_width + 20
         
-        # === COLONNE GAUCHE: IMAGE ===
-        if config.scraper_image_surface:
-            # Calculer la taille max pour l'image
-            max_image_width = left_width - 20
-            max_image_height = content_height - 20
-            
-            # Redimensionner l'image en conservant le ratio
-            image = config.scraper_image_surface
-            img_width, img_height = image.get_size() if image else (0, 0)
-            
-            # Calculer le ratio de redimensionnement
-            width_ratio = max_image_width / img_width
-            height_ratio = max_image_height / img_height
-            scale_ratio = min(width_ratio, height_ratio, 1.0)
-            
-            new_width = int(img_width * scale_ratio)
-            new_height = int(img_height * scale_ratio)
-            
-            # Redimensionner l'image
-            scaled_image = pygame.transform.smoothscale(image, (new_width, new_height))
-            
-            # Centrer l'image dans la colonne gauche
-            image_x = left_x + (left_width - new_width) // 2
-            image_y = content_y + (content_height - new_height) // 2
-            
-            # Fond derrière l'image
-            padding = 10
-            bg_rect = pygame.Rect(image_x - padding, image_y - padding, new_width + 2 * padding, new_height + 2 * padding)
-            pygame.draw.rect(screen, THEME_COLORS["fond_image"], bg_rect, border_radius=8)
-            pygame.draw.rect(screen, THEME_COLORS["neon"], bg_rect, 2, border_radius=8)
-            
-            # Afficher l'image
-            screen.blit(scaled_image, (image_x, image_y))
-        else:
-            # Pas d'image disponible
-            no_image_text = "No image available"
-            no_image_surface = config.font.render(no_image_text, True, THEME_COLORS["title_text"])
-            no_image_rect = no_image_surface.get_rect(center=(left_x + left_width // 2, content_y + content_height // 2))
-            screen.blit(no_image_surface, no_image_rect)
-        
-        # === COLONNE DROITE: METADONNEES (centrées verticalement) ===
-        line_height = config.font.get_height() + 8
-        small_line_height = config.small_font.get_height() + 5
-        
-        # Calculer la hauteur totale des métadonnées pour centrer verticalement
-        total_metadata_height = 0
-        
-        # Compter les lignes de genre
-        if config.scraper_genre:
-            total_metadata_height += line_height * 2 + 10  # Label + valeur + espace
-        
-        # Compter les lignes de date
-        if config.scraper_release_date:
-            total_metadata_height += line_height * 2 + 10  # Label + valeur + espace
-        
-        # Compter les lignes de description
-        if config.scraper_description:
-            desc_lines = wrap_text(config.scraper_description, config.small_font, right_width - 100)
-            max_desc_lines = min(len(desc_lines), int((content_height - total_metadata_height - 100) / small_line_height))
-            total_metadata_height += line_height + 5  # Label + espace
-            total_metadata_height += max_desc_lines * small_line_height
-        
-        # Calculer le Y de départ pour centrer verticalement
-        metadata_y = content_y + (content_height - total_metadata_height) // 2
-        
-        # Genre
-        if config.scraper_genre:
-            genre_label = config.font.render("Genre:", True, THEME_COLORS["neon"])
-            screen.blit(genre_label, (right_x, metadata_y))
-            metadata_y += line_height
-            
-            genre_value = config.font.render(config.scraper_genre, True, THEME_COLORS["text"])
-            screen.blit(genre_value, (right_x + 10, metadata_y))
-            metadata_y += line_height + 10
-        
-        # Date de sortie
-        if config.scraper_release_date:
-            date_label = config.font.render("Release Date:", True, THEME_COLORS["neon"])
-            screen.blit(date_label, (right_x, metadata_y))
-            metadata_y += line_height
-            
-            date_value = config.font.render(config.scraper_release_date, True, THEME_COLORS["text"])
-            screen.blit(date_value, (right_x + 10, metadata_y))
-            metadata_y += line_height + 10
-        
-        # Description
-        if config.scraper_description:
-            desc_label = config.font.render("Description:", True, THEME_COLORS["neon"])
-            screen.blit(desc_label, (right_x, metadata_y))
-            metadata_y += line_height + 5
-            
-            # Wrapper la description avec plus de padding à droite
-            desc_lines = wrap_text(config.scraper_description, config.small_font, right_width - 40)
-            max_desc_lines = min(len(desc_lines), int((content_height - (metadata_y - content_y)) / small_line_height))
-            
-            for i, line in enumerate(desc_lines[:max_desc_lines]):
-                desc_surface = config.small_font.render(line, True, THEME_COLORS["text"])
-                screen.blit(desc_surface, (right_x + 10, metadata_y))
-                metadata_y += small_line_height
-            
-            # Si trop de lignes, afficher "..."
-            if len(desc_lines) > max_desc_lines:
-                more_text = config.small_font.render("...", True, THEME_COLORS["title_text"])
-                screen.blit(more_text, (right_x + 10, metadata_y))
-        
-        # URL de la source en bas (si disponible)
-        if config.scraper_game_page_url:
-            url_text = truncate_text_middle(config.scraper_game_page_url, config.small_font, rect_width - 80, is_filename=False)
-            url_surface = config.small_font.render(url_text, True, THEME_COLORS["title_text"])
-            url_rect = url_surface.get_rect(center=(config.screen_width // 2, rect_y + rect_height - 20))
-            screen.blit(url_surface, url_rect)
+        # ScreenScraper cover and screenshot previews.
+        slot_gap = 12
+        slot_height = max(1, (content_height - slot_gap) // 2)
+        for index, (image, label_key) in enumerate((
+            (config.game_info_cover_surface, "game_info_cover"),
+            (config.game_info_screenshot_surface, "game_info_screenshot"),
+        )):
+            slot_y = content_y + index * (slot_height + slot_gap)
+            slot_rect = pygame.Rect(left_x, slot_y, left_width, slot_height)
+            pygame.draw.rect(screen, THEME_COLORS["fond_image"], slot_rect, border_radius=8)
+            pygame.draw.rect(screen, THEME_COLORS["border"], slot_rect, 1, border_radius=8)
+            label = config.small_font.render(_(label_key), True, THEME_COLORS["title_text"])
+            screen.blit(label, label.get_rect(midtop=(slot_rect.centerx, slot_rect.top + 4)))
+            if image:
+                max_width = max(1, slot_rect.width - 16)
+                max_height = max(1, slot_rect.height - label.get_height() - 16)
+                image_width, image_height = image.get_size()
+                scale = min(max_width / image_width, max_height / image_height, 1.0)
+                scaled = pygame.transform.smoothscale(
+                    image,
+                    (max(1, int(image_width * scale)), max(1, int(image_height * scale))),
+                )
+                screen.blit(scaled, scaled.get_rect(center=(slot_rect.centerx, slot_rect.centery + label.get_height() // 2)))
+            else:
+                missing = config.small_font.render(_("game_info_no_image"), True, THEME_COLORS["title_text"])
+                screen.blit(missing, missing.get_rect(center=(slot_rect.centerx, slot_rect.centery + label.get_height() // 2)))
+
+        summary_label = config.font.render(_("game_info_summary"), True, THEME_COLORS["neon"])
+        screen.blit(summary_label, (right_x, content_y))
+        summary = config.game_info_summary or _("game_info_no_summary")
+        line_height = config.small_font.get_height() + 5
+        summary_lines = wrap_text(summary, config.small_font, max(1, right_width - 20))
+        max_lines = max(1, (content_height - summary_label.get_height() - 12) // line_height)
+        for index, line in enumerate(summary_lines[:max_lines]):
+            text = config.small_font.render(line, True, THEME_COLORS["text"])
+            screen.blit(text, (right_x, content_y + summary_label.get_height() + 12 + index * line_height))
+        if len(summary_lines) > max_lines:
+            more = config.small_font.render("...", True, THEME_COLORS["title_text"])
+            screen.blit(more, (right_x, content_y + summary_label.get_height() + 12 + max_lines * line_height))
 
 
 def draw_filter_menu_choice(screen):

@@ -2228,6 +2228,7 @@ def load_sources(
                 "source": entry.get("source", ""),
                 "folder": entry.get("folder", ""),
                 "platform_image": entry.get("platform_image", ""),
+                "screenscraper_system_id": entry.get("screenscraper_system_id"),
             }
             for entry in database_platform_rows
         ]

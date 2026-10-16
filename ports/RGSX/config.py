@@ -33,7 +33,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.7.0.8"
+app_version = "2.7.1.0"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 1
@@ -221,6 +221,10 @@ CATALOG_SYNC_URL = os.environ.get(
     "https://retrogamesets.fr/rgsx/manager/rgsx_catalog_api.php",
 ).strip()
 CATALOG_SYNC_TIMEOUT_SEC = int(os.environ.get("RGSX_CATALOG_SYNC_TIMEOUT", "30"))
+SCREENSCRAPER_PROXY_URL = os.environ.get(
+    "RGSX_SCREENSCRAPER_PROXY_URL",
+    "https://retrogamesets.fr/rgsx/manager/rgsx_screenscraper_api.php",
+).strip()
 
 PRECONF_CONTROLS_PATH = os.path.join(APP_FOLDER, "assets", "controls")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")
@@ -234,7 +238,6 @@ API_KEY_DEBRIDLINK_PATH = os.path.join(SAVE_FOLDER, "DebridLinkAPI.txt")
 API_KEY_REALDEBRID_PATH = os.path.join(SAVE_FOLDER, "RealDebridAPI.txt")
 API_KEY_TORBOX_PATH = os.path.join(SAVE_FOLDER, "TorBoxAPI.txt")
 ARCHIVE_ORG_COOKIE_PATH = os.path.join(APP_FOLDER, "assets", "ArchiveOrgCookie.txt")
-THEGAMESDB_API_KEY_PATH = os.path.join(APP_FOLDER, "assets", "TheGamesDBAPI.txt")
 
 
 
@@ -570,17 +573,16 @@ confirm_cancel_selection = 0  # confirmation annulation téléchargement
 # Tracking des jeux téléchargés
 downloaded_games = {}  # Dict {platform_name: {game_name: {"timestamp": "...", "size": "..."}}}
 
-# Scraper de métadonnées
-scraper_image_surface = None  # Surface Pygame contenant l'image scrapée
-scraper_image_url = ""  # URL de l'image actuellement affichée
-scraper_game_name = ""  # Nom du jeu en cours de scraping
-scraper_platform_name = ""  # Nom de la plateforme en cours de scraping
-scraper_loading = False  # Indicateur de chargement en cours
-scraper_error_message = ""  # Message d'erreur du scraper
-scraper_description = ""  # Description du jeu
-scraper_genre = ""  # Genre(s) du jeu
-scraper_release_date = ""  # Date de sortie du jeu
-scraper_game_page_url = ""  # URL de la page du jeu sur TheGamesDB
+# ScreenScraper game details
+game_info_cover_surface = None
+game_info_screenshot_surface = None
+game_info_game_name = ""
+game_info_platform_name = ""
+game_info_summary = ""
+game_info_loading = False
+game_info_error_message = ""
+game_info_request_id = 0
+game_info_return_state = "game"
 
 # CLES API / PREMIUM HOSTS
 API_KEY_1FICHIER = ""

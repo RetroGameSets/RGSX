@@ -10,11 +10,8 @@ import re
 import threading
 from datetime import datetime, timezone
 
-import requests
-
 import config
 import database
-import scraper
 import screenscraper
 
 logger = logging.getLogger(__name__)
@@ -64,6 +61,17 @@ def _atomic_write_bytes(path, payload):
     with open(tmp_path, "wb") as handle:
         handle.write(payload)
     os.replace(tmp_path, path)
+
+
+def save_media(folder, rom_filename, kind, media):
+    """Persist one validated ScreenScraper media payload in the shared local cache."""
+    payload, ext = media
+    ext = str(ext or ".jpg").lower().replace(".jpeg", ".jpg")
+    if not isinstance(payload, bytes) or not payload:
+        raise screenscraper.ScreenScraperError("http", "invalid image payload")
+    path = media_path(folder, rom_filename, kind, ext if ext in MEDIA_EXTENSIONS else ".jpg")
+    _atomic_write_bytes(path, payload)
+    return path
 
 
 def load_queue():
@@ -131,8 +139,11 @@ class MediaManager:
             group["platform_names"].append(name)
             group["count"] += counts.get(name, 0)
             if not group["label"]:
-                group["label"] = scraper.normalize_scraper_platform_name(name) or name
-            if group["platform_id"] is None:
+                group["label"] = screenscraper.normalize_platform_name(name) or name
+            configured_id = screenscraper.get_configured_system_id(name)
+            if configured_id is not None:
+                group["platform_id"] = configured_id
+            elif group["platform_id"] is None:
                 group["platform_id"] = screenscraper.get_system_id(name)
         return sorted(groups.values(), key=lambda g: g["label"].lower())
 
@@ -143,6 +154,22 @@ class MediaManager:
         self.allowance = screenscraper.LAST_ALLOWANCE or self.allowance
         # ssuserInfos also reports the quota of users without an account.
         threading.Thread(target=self._refresh_allowance, daemon=True).start()
+        if screenscraper.system_catalog_cache_is_stale():
+            threading.Thread(target=self._refresh_systems, daemon=True).start()
+
+    def _refresh_systems(self):
+        try:
+            screenscraper.refresh_system_catalog()
+        except screenscraper.ScreenScraperError as exc:
+            logger.warning("Could not refresh ScreenScraper systems: %s (%s)", exc.kind, exc)
+            self.status = (
+                ("screenscraper_proxy_outdated", ())
+                if exc.kind == "proxy"
+                else ("media_error", (exc.kind,))
+            )
+        else:
+            self.platforms = self.list_platforms()
+        config.needs_redraw = True
 
     def _refresh_allowance(self):
         try:
@@ -213,13 +240,7 @@ class MediaManager:
         return items
 
     def _download(self, media, folder, rom_filename, kind):
-        url, ext = media
-        ext = ext.replace(".jpeg", ".jpg")
-        response = requests.get(url, timeout=20)
-        # A missing media is answered with a short text body (e.g. NOMEDIA), not an image.
-        if response.status_code != 200 or not response.content or not response.headers.get("Content-Type", "").startswith("image/"):
-            raise screenscraper.ScreenScraperError("http", f"image HTTP {response.status_code}")
-        _atomic_write_bytes(media_path(folder, rom_filename, kind, ext if ext in MEDIA_EXTENSIONS else ".jpg"), response.content)
+        save_media(folder, rom_filename, kind, media)
 
     def _process_item(self, item, platform_id):
         """Process one game. Returns 'found' | 'not_found'. Retries with backoff on network errors."""
@@ -233,9 +254,6 @@ class MediaManager:
                     if urls.get(kind) and not find_media(item["platform"], item["rom_filename"], kind):
                         self._download(urls[kind], item["platform"], item["rom_filename"], kind)
                 return "found"
-            except requests.RequestException as exc:
-                # str(exc) contains the media URL with the credentials
-                error = screenscraper.ScreenScraperError("network", type(exc).__name__)
             except screenscraper.ScreenScraperError as exc:
                 error = exc
             if error.kind != "network" or attempt == NETWORK_RETRIES - 1:

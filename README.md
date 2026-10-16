@@ -73,14 +73,21 @@ Download and extract the latest release: [RGSX_full_latest.zip](https://github.c
 
 ### Pause Menu Structure
 
-**Root menu** — Games, Language, Controls, Display, Settings, Support, Reset Default Settings, and Quit.
+**Root menu** — Games, Language, Controls, Display, Scrap, Settings, Support, Reset Default Settings, and Quit.
 
 - **Games**: refresh the catalog, scan locally owned ROMs, open download history, show/hide unsupported systems, and choose visible platforms.
 - **Controls**: view the currently mapped actions or remap keyboard/controller inputs.
 - **Display**: choose from eight grids (3×3, 3×4, 4×3, 4×4, 5×4, 6×4, 6×6, or 8×6), adjust UI and footer font sizes separately, choose a font (Pixel, Bell Centennial, or DejaVu Sans), background theme, and Light Mode. Monitor selection appears only when multiple displays are detected; window/fullscreen mode is Windows-only. You can also hide unknown-extension warnings.
+- **Scrap**: edit ScreenScraper credentials and open the Media Manager.
 - **Settings**: background music, symlink behavior, automatic extraction, ROM folder, maximum simultaneous downloads, API-key status, and connection status. Web service at boot and Custom DNS are available on Linux/Batocera.
 - **Support**: diagnostic tools and support archive generation.
 - **Quit**: quit or restart RGSX. Language selection is directly in the root menu.
+
+### ScreenScraper and Media Manager
+
+In the game list, leaving a game selected for two seconds retrieves its cover for the local media cache and displays its ScreenScraper synopsis in the preview panel. If no information is available, the panel shows an unavailable placeholder. The preferred ScreenScraper system ID is stored per platform in the online RGSX catalog and can be edited in RGSX Sources Manager. If no ID is configured, RGSX falls back to the periodically refreshed ScreenScraper system list cached in SQLite, then to built-in aliases. A two-second hold on **Confirm** opens the ScreenScraper details page with the cover, screenshot, and synopsis. In **Pause > Scrap**, the ScreenScraper username and password can be edited together; a virtual keyboard is shown only when a controller is detected, otherwise type directly and use Tab to switch fields. The account is stored in the dedicated `screenscraper_account.json` file and can also be edited from the web interface.
+
+The Media Manager downloads media in bulk. Its **History** control shortcut starts, resumes, or cancels the current job without navigating back to the first row.
 
 ### Local Database and Migration
 
@@ -99,6 +106,7 @@ On the first launch after upgrading from the former JSON-based storage, RGSX imp
 - 🎮 **Controller-First Design** – Auto-mapping for popular controllers + custom remapping support
 - 🔍 **Advanced Filtering** – Search by name, hide/show unsupported systems, filter platforms
 - 📊 **Download Management** – Queue system, history tracking, progress notifications
+- 🖼️ **ScreenScraper Media** – Delayed cover downloads, game details, screenshots, and bulk media management
 - ♿ **Accessibility** – Separate font scaling for UI and footer, keyboard-only mode support
 
 > ### 🔑 API Keys Setup
@@ -178,18 +186,20 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 │   │   ├── __main__.py                # Entry point
 │   │   ├── config.py                  # Application paths and configuration
 │   │   ├── database.py                # Local SQLite storage
-│   │   ├── sqlite_compat.py           # System SQLite with bundled fallback
 │   │   ├── catalog_sync.py            # Online catalog synchronization
 │   │   ├── controls.py                # Navigation, input, and actions
 │   │   ├── controls_mapper.py         # Control profiles and remapping
 │   │   ├── display.py                 # Pygame interface and menus
+│   │   ├── game_info.py               # ScreenScraper details retrieval
+│   │   ├── media_manager.py           # Bulk media downloads
 │   │   ├── network.py                 # Downloads
+│   │   ├── preview.py                 # Game-list cover preview and delayed fetch
 │   │   ├── rgsx_settings.py           # User preferences
+│   │   ├── screenscraper.py           # ScreenScraper proxy client
 │   │   ├── rgsx_web.py                # Web interface and server
 │   │   ├── assets/                    # Profiles, images, fonts, music, and tools
 │   │   ├── languages/                 # Translations (EN/FR/DE/ES/IT/PT/TR)
 │   │   ├── static/                    # Web interface CSS and JavaScript
-│   │   ├── vendor/pysqlite3/          # CPython 3.12 aarch64 fallback for Knulli
 │   │   └── logs/                      # RGSX.log and rgsx_web.log
 │   ├── gamelist.xml
 │   ├── images/
@@ -205,6 +215,8 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 ├── controls.json             # Control mapping
 ├── rgsx.sqlite3              # Catalog, history, and persistent user state
 ├── images/                   # System images
+├── media/                    # Cached game covers, screenshots, and logos
+├── screenscraper_account.json # Optional ScreenScraper account
 ├── backup_old_rgsx/          # Legacy files archived during migration, if present
 ├── 1FichierAPI.txt           # 1Fichier API key
 ├── AllDebridAPI.txt          # AllDebrid API key
@@ -225,9 +237,9 @@ The `-wal` and `-shm` files that may appear beside `rgsx.sqlite3` are temporary 
 | No games or empty catalog? | Open **Games > Refresh Game Catalog**, then check **Games > Filter Platforms** and the unsupported-systems visibility option. In **Settings**, confirm the configured ROM folder is correct. Check Connection Status if synchronization fails. |
 | Missing systems on the list? | RGSX discovers systems from the emulator configuration. Enable unsupported-system visibility under **Games** and check the platform filter. |
 | Catalog sync or database write failure | Check available disk space and write permissions in `/saves/ports/rgsx/`, then inspect the logs. Do not delete `rgsx.sqlite3` without a backup: it also contains history and owned-game records. |
-| Knulli reports `No module named 'sqlite3'` | Keep the bundled files in `/roms/ports/RGSX/vendor/pysqlite3/` and confirm `/usr/lib/libsqlite3.so.0` is present. RGSX automatically uses its CPython 3.12 aarch64 pysqlite3 fallback, linked to that system library, when the system Python has no SQLite module. |
 | App crashes | Check `/roms/ports/RGSX/logs/RGSX.log` (and `rgsx_web.log` for the web server). |
 | Layout change not applied | Restart RGSX after changing layout |
+| ScreenScraper details or covers are missing | Check the Internet connection and ensure the updated ScreenScraper proxy is deployed. An account is optional; valid account credentials can increase available quotas. |
 | Problem downloading some Games ? | Open Pause Menu > Settings > Connection Status. If one or more required sites are red, enable Custom DNS in Settings and reboot. Also check ISP/router protections (especially ASUS web threat blocking). |
 
 **Need help?** Share logs from `/roms/ports/RGSX/logs/` on [Discord](https://discord.gg/XPK8YG8XYC).
