@@ -842,6 +842,11 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         'realdebrid': api_keys_data.get('realdebrid', ''),
                         'torbox': api_keys_data.get('torbox', '')
                     }
+
+                    # ScreenScraper account: the password is never sent to the browser, only whether it is set
+                    from screenscraper import load_account
+                    ss_username, ss_password = load_account()
+                    settings['screenscraper'] = {'username': ss_username, 'has_password': bool(ss_password)}
                     
                     self._send_json({
                         'success': True,
@@ -1485,12 +1490,37 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         except Exception as e:
                             logger.error(f"Erreur sauvegarde API keys: {e}")
                         del settings['api_keys']
+
+                    # ScreenScraper account: stored in its own file; an empty password keeps the saved one,
+                    # an empty username removes the account. A changed account is checked against the API.
+                    ss_check = None
+                    if 'screenscraper' in settings:
+                        try:
+                            import screenscraper
+                            previous = screenscraper.load_account()
+                            ss_data = settings['screenscraper'] or {}
+                            ss_username = str(ss_data.get('username') or '').strip()
+                            ss_password = (str(ss_data.get('password') or '').strip() or previous[1]) if ss_username else ''
+                            if (ss_username, ss_password) != previous:
+                                screenscraper.save_account(ss_username, ss_password)
+                                if ss_username and ss_password:
+                                    try:
+                                        remaining, max_per_day = screenscraper.get_user_info() or ('?', '?')
+                                        ss_check = {'status': 'ok', 'remaining': remaining, 'max_per_day': max_per_day}
+                                    except screenscraper.ScreenScraperError as e:
+                                        logger.warning(f"ScreenScraper login check failed: {e.kind} ({e})")
+                                        ss_check = {'status': e.kind}
+                        except Exception as e:
+                            logger.error(f"Erreur sauvegarde compte ScreenScraper: {e}")
+                            ss_check = {'status': 'save_error'}
+                        del settings['screenscraper']
                     
                     save_rgsx_settings(settings)
                     
                     self._send_json({
                         'success': True,
-                        'message': 'Paramètres sauvegardés avec succès'
+                        'message': 'Paramètres sauvegardés avec succès',
+                        'screenscraper': ss_check
                     })
                     
                 except Exception as e:

@@ -548,6 +548,8 @@ VALID_STATES = [
     "pause_settings_menu",      # sous-menu Settings (music on/off, symlink toggle, api keys status)
     "pause_api_keys_status",    # sous-menu API Keys (affichage statut des clés)
     "pause_connection_status",  # sous-menu Connection status (statut accès sites)
+    "media_manager",            # Settings > Media Manager (image download)
+    "screenscraper_input",      # Settings > ScreenScraper username/password (virtual keyboard)
     # Nouveaux menus historique
     "history_game_options",     # menu options pour un jeu de l'historique
     "history_show_folder",      # afficher le dossier de téléchargement
@@ -1055,6 +1057,38 @@ GLOBAL_SEARCH_KEYBOARD_LAYOUT = [
     ['Q', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M'],
     ['W', 'X', 'C', 'V', 'B', 'N', '.', '_', '-', ',']
 ]
+
+
+def _save_screenscraper_account_field(field, value):
+    """Save the edited username or password; once both are set, check the login in the background."""
+    import screenscraper
+    username, password = screenscraper.load_account()
+    if field == "username":
+        username = value
+    else:
+        password = value
+    try:
+        screenscraper.save_account(username, password)
+    except Exception as exc:
+        logger.error(f"Could not save ScreenScraper account: {exc}")
+        config.popup_message = _("screenscraper_save_error")
+        config.popup_timer = 4000
+        return
+    if not (username and password):
+        return
+
+    def check_login():
+        try:
+            remaining, max_per_day = screenscraper.get_user_info() or ("?", "?")
+            config.popup_message = _("screenscraper_login_ok").format(remaining, max_per_day)
+        except screenscraper.ScreenScraperError as exc:
+            logger.warning(f"ScreenScraper login check failed: {exc.kind} ({exc})")
+            messages = {"auth": "screenscraper_login_failed", "config": "screenscraper_dev_credentials_missing"}
+            config.popup_message = _(messages[exc.kind]) if exc.kind in messages else _("media_error").format(exc.kind)
+        config.popup_timer = 4000
+        config.needs_redraw = True
+
+    threading.Thread(target=check_login, daemon=True).start()
 
 
 def _get_platform_id(platform) -> str:
@@ -3338,7 +3372,7 @@ def handle_controls(event, sources, joystick, screen):
         elif config.menu_state == "pause_settings_menu":
             sel = getattr(config, 'pause_settings_selection', 0)
             # Liste des options : music, symlink, auto_extract, roms_folder, max_dl_slots, [web_service], [custom_dns], api keys, connection_status, back
-            total = 8  # music, symlink, auto_extract, roms_folder, max_dl_slots, api keys, connection_status, back (Windows)
+            total = 11  # music, symlink, auto_extract, roms_folder, max_dl_slots, api keys, connection_status, ss_user, ss_password, media_manager, back (Windows)
             auto_extract_index = 2
             roms_folder_index = 3
             max_dl_index = 4
@@ -3346,15 +3380,21 @@ def handle_controls(event, sources, joystick, screen):
             custom_dns_index = -1
             api_keys_index = 5
             connection_status_index = 6
-            back_index = 7
+            ss_user_index = 7
+            ss_password_index = 8
+            media_manager_index = 9
+            back_index = 10
 
             if config.OPERATING_SYSTEM == "Linux":
-                total = 10  # music, symlink, auto_extract, roms_folder, max_dl_slots, web_service, custom_dns, api keys, connection_status, back
+                total = 13  # music, symlink, auto_extract, roms_folder, max_dl_slots, web_service, custom_dns, api keys, connection_status, ss_user, ss_password, media_manager, back
                 web_service_index = 5
                 custom_dns_index = 6
                 api_keys_index = 7
                 connection_status_index = 8
-                back_index = 9
+                ss_user_index = 9
+                ss_password_index = 10
+                media_manager_index = 11
+                back_index = 12
             
             if is_input_matched(event, "up"):
                 config.pause_settings_selection = (sel - 1) % total
@@ -3483,6 +3523,23 @@ def handle_controls(event, sources, joystick, screen):
                     start_connection_status_check(force=True)
                     config.menu_state = "pause_connection_status"
                     config.needs_redraw = True
+                # Options ScreenScraper account: edit with the virtual keyboard
+                elif sel in (ss_user_index, ss_password_index) and is_input_matched(event, "confirm"):
+                    from screenscraper import load_account
+                    config.ss_input_field = "username" if sel == ss_user_index else "password"
+                    config.ss_input_value = load_account()[0 if sel == ss_user_index else 1]
+                    config.ss_input_selected_key = (0, 0)
+                    config.ss_input_shift = False
+                    config.menu_state = "screenscraper_input"
+                    config.needs_redraw = True
+                # Option Media Manager
+                elif sel == media_manager_index and is_input_matched(event, "confirm"):
+                    from media_manager import manager
+                    manager.open()
+                    config.media_manager_selection = 0
+                    config.media_manager_scroll_offset = 0
+                    config.menu_state = "media_manager"
+                    config.needs_redraw = True
                 # Option Back (dernière option)
                 elif sel == back_index and is_input_matched(event, "confirm"):
                     config.menu_state = "pause_menu"
@@ -3504,6 +3561,66 @@ def handle_controls(event, sources, joystick, screen):
                 config.menu_state = "pause_settings_menu"
                 config.last_state_change_time = pygame.time.get_ticks()
                 config.needs_redraw = True
+
+        elif config.menu_state == "screenscraper_input":
+            from display import SCREENSCRAPER_KEYBOARD_LAYOUT
+            row, col = getattr(config, 'ss_input_selected_key', (0, 0))
+            rows, cols = len(SCREENSCRAPER_KEYBOARD_LAYOUT), len(SCREENSCRAPER_KEYBOARD_LAYOUT[0])
+            if is_input_matched(event, "up"):
+                config.ss_input_selected_key = ((row - 1) % rows, col)
+            elif is_input_matched(event, "down"):
+                config.ss_input_selected_key = ((row + 1) % rows, col)
+            elif is_input_matched(event, "left"):
+                config.ss_input_selected_key = (row, (col - 1) % cols)
+            elif is_input_matched(event, "right"):
+                config.ss_input_selected_key = (row, (col + 1) % cols)
+            elif is_input_matched(event, "confirm"):
+                char = SCREENSCRAPER_KEYBOARD_LAYOUT[row][col]
+                config.ss_input_value += char.upper() if config.ss_input_shift else char
+            elif is_input_matched(event, "delete"):
+                config.ss_input_value = config.ss_input_value[:-1]
+            elif is_input_matched(event, "space"):
+                config.ss_input_value += " "
+            elif is_input_matched(event, "page_up") or is_input_matched(event, "page_down"):
+                config.ss_input_shift = not config.ss_input_shift
+            elif is_input_matched(event, "history"):
+                _save_screenscraper_account_field(config.ss_input_field, config.ss_input_value.strip())
+                config.menu_state = "pause_settings_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+            elif is_input_matched(event, "cancel"):
+                config.menu_state = "pause_settings_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+            config.needs_redraw = True
+
+        elif config.menu_state == "media_manager":
+            from media_manager import manager
+            rows = manager.rows()
+            sel = min(getattr(config, 'media_manager_selection', 0), len(rows) - 1)
+            row_type, group = rows[sel]
+            if is_input_matched(event, "up"):
+                config.media_manager_selection = (sel - 1) % len(rows)
+            elif is_input_matched(event, "down"):
+                config.media_manager_selection = (sel + 1) % len(rows)
+            elif row_type == "profile" and not manager.running and (is_input_matched(event, "confirm") or is_input_matched(event, "left") or is_input_matched(event, "right")):
+                manager.profile = "max" if manager.profile == "default" else "default"
+            elif is_input_matched(event, "confirm"):
+                if row_type == "action":
+                    if manager.running:
+                        manager.cancel()
+                    elif manager.estimate()[0]:
+                        manager.start()
+                elif row_type == "resume":
+                    manager.start(resume=True)
+                    config.media_manager_selection = 0
+                elif row_type == "select_all" and not manager.running:
+                    manager.toggle_all()
+                elif row_type == "platform" and group["platform_id"] and not manager.running:
+                    manager.selected ^= {group["folder"]}
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "start"):
+                # Download keeps running in the background.
+                config.menu_state = "pause_settings_menu"
+                config.last_state_change_time = pygame.time.get_ticks()
+            config.needs_redraw = True
 
         # Aide contrôles
         elif config.menu_state == "controls_help":

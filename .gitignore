@@ -7,3 +7,5 @@ windows/logs/
 *.rar
 .vscode/
 .venv/
+.idea
+ports/RGSX/screenscraper_credentials.py
