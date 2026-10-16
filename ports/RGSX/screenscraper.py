@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import re
-import sqlite3
 import threading
 import time
 import unicodedata
@@ -13,6 +12,7 @@ import requests
 
 import config
 import database
+from sqlite_compat import sqlite3
 
 logger = logging.getLogger(__name__)
 

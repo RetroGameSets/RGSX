@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+from sqlite_compat import sqlite3
 
 SCHEMA_VERSION = 5
 
