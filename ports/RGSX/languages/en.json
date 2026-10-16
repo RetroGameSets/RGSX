@@ -602,5 +602,7 @@
     "game_info_summary": "Summary",
     "game_info_no_summary": "No summary available.",
     "screenscraper_game_not_found": "Game not found on ScreenScraper.",
-    "media_start_shortcut": "Start, resume or cancel scraping"
+    "media_start_shortcut": "Start, resume or cancel scraping",
+    "darkos_network_no_adapter": "No network adapter found.\nPlug a USB WiFi dongle into the OTG port, then restart RGSX.",
+    "darkos_network_disconnected": "WiFi adapter found but not connected.\nConnect to WiFi from the EmulationStation Options menu, then restart RGSX."
 }

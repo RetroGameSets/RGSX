@@ -602,5 +602,7 @@
     "game_info_summary": "Resumo",
     "game_info_no_summary": "Nenhum resumo disponível.",
     "screenscraper_game_not_found": "Jogo não encontrado no ScreenScraper.",
-    "media_start_shortcut": "Iniciar, retomar ou cancelar o scraping"
+    "media_start_shortcut": "Iniciar, retomar ou cancelar o scraping",
+    "darkos_network_no_adapter": "Nenhum adaptador de rede encontrado.\nConecte um adaptador WiFi USB à porta OTG e reinicie o RGSX.",
+    "darkos_network_disconnected": "Adaptador WiFi encontrado, mas não conectado.\nConecte-se ao WiFi pelo menu Opções do EmulationStation e reinicie o RGSX."
 }

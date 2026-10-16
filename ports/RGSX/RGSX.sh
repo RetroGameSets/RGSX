@@ -23,7 +23,12 @@ detect_platform() {
 	if [[ -f /etc/batocera-release ]] || command -v batocera-info >/dev/null 2>&1; then
 		echo batocera
 		return
-	
+
+	fi
+	# dArkOS family (dArkOS, dArkOSRE, dArkOSen): same probe as PortMaster
+	if [[ -f /etc/darkos_version ]] || grep -qi darkos /usr/share/plymouth/themes/text.plymouth 2>/dev/null; then
+		echo darkos
+		return
 	fi
 	echo generic
 }
@@ -90,11 +95,40 @@ case "${PLATFORM}" in
 		;;
 	rpi|batocera)
 		# RPi/Batocera: assume system Python and system libs are present
-		;; 
+		;;
+	darkos)
+		# pygame/requests are not shipped with dArkOS; tools/build_darkos_vendor.sh bundles them here
+		DARKOS_VENDOR_DIR="${SCRIPT_DIR}/vendor_darkos"
+		if [[ -d "${DARKOS_VENDOR_DIR}" ]]; then
+			export PYTHONPATH="${DARKOS_VENDOR_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
+			echo "[RGSX] dArkOS bundled Python modules enabled: ${DARKOS_VENDOR_DIR}" >>"${LOGFILE}"
+		else
+			echo "[RGSX] Missing ${DARKOS_VENDOR_DIR}: pygame/requests will not be found" >>"${LOGFILE}"
+		fi
+		;;
 	generic)
 		;; 
 esac
 
 # Run the app from the script directory and capture stdout/stderr to log
 cd "${SCRIPT_DIR}"
+
+if [[ "${PLATFORM}" == "darkos" ]]; then
+	ROMS_ROOT="$(dirname "$(dirname "${SCRIPT_DIR}")")"
+	STAMP_FILE="$(mktemp)"
+	set +e
+	python3 __main__.py >>"${LOGFILE}" 2>&1
+	APP_STATUS=$?
+	set -e
+	# dArkOS EmulationStation has no reload API: restart it only when a ROM folder changed during the session.
+	# rgsx/ holds the Media Manager covers, not ROMs
+	if [[ -n "$(find "${ROMS_ROOT}" -mindepth 1 -maxdepth 1 -type d -not -name rgsx -newer "${STAMP_FILE}" -print -quit 2>/dev/null)" ]]; then
+		echo "[RGSX] ROM folders changed, restarting EmulationStation" >>"${LOGFILE}"
+		rm -f "${STAMP_FILE}"
+		sudo systemctl restart emulationstation
+	fi
+	rm -f "${STAMP_FILE}"
+	exit "${APP_STATUS}"
+fi
+
 exec python3 __main__.py >>"${LOGFILE}" 2>&1

@@ -44,6 +44,30 @@ After installation:
    - **RetroBat**: Extract both `ports` and `windows` folders to `/roms/`
 3. **Refresh**: `Menu > Game Settings > Update game list`
 
+### dArkOS / dArkOSRE / dArkOSen (R36S and clones)
+**Install script (recommended):** [tools/install_darkos.sh](tools/install_darkos.sh) downloads the latest release, installs RGSX in `/roms/ports` (or `/roms2/ports` with a second SD card), adds RGSX to `gamelist.xml` without touching your other ports (a backup is saved as `gamelist.xml.rgsx-backup`), then restarts EmulationStation. Run it the same way to update.
+- Over SSH (`ssh ark@IPADDRESS`, password `ark`; enable SSH with `Options > Enable Remote Services`):
+  ```bash
+  curl -L https://raw.githubusercontent.com/RetroGameSets/RGSX/main/tools/install_darkos.sh | bash
+  ```
+  Without curl: `wget -qO- https://raw.githubusercontent.com/RetroGameSets/RGSX/main/tools/install_darkos.sh | bash`
+- From the menu: copy `install_darkos.sh` to `/roms/tools/`, then start it from `Options` in EmulationStation.
+- A local zip or folder also works: `bash install_darkos.sh /path/to/RGSX_full_latest.zip`
+
+**Manual install:** copy `ports/RGSX` from [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip) to `/roms/ports/`, and `RGSX.png` / `RGSX.mp4` into `/roms/ports/images/` and `/roms/ports/videos/`. Merge the folders, never replace them: they also hold your other ports. Do not copy a `gamelist.xml` over yours. dArkOS only lists launchers placed directly in `ports/`, so also create `/roms/ports/RGSX.sh`:
+```bash
+printf '#!/bin/bash\nexec "$(dirname "$0")/RGSX/RGSX.sh" "$@"\n' > /roms/ports/RGSX.sh
+```
+Then restart EmulationStation.
+
+Notes:
+- The R36S has no built-in WiFi. Plug a USB WiFi dongle into the OTG port and connect from `Options > Wifi`. RGSX shows a warning at startup when no adapter or no connection is found.
+- pygame and requests are not part of dArkOS. They are bundled in `ports/RGSX/vendor_darkos` (built with `tools/build_darkos_vendor.sh` from Debian trixie packages, linked against the system SDL2).
+- Settings and the local database are stored in `/home/ark/.config/rgsx` (ext4), not on the exFAT ROM card. Media Manager covers can take a lot of space, so they go to the ROM card: `/roms/rgsx/media` (or `/roms2/rgsx/media`).
+- When games were added during the session, EmulationStation restarts automatically after you quit RGSX so they show up.
+- The A/B button swap (EmulationStation's "SWITCH A/B BUTTONS IN EMULATIONSTATION" option, or the dArkOSen Button Mapper) is applied automatically when RGSX starts.
+- Torrent downloads are not available on ARM devices yet.
+
 ### Manual Update (if automatic update failed)
 Download and extract the latest release: [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
 

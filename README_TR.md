@@ -44,6 +44,30 @@ Kurulumdan sonra:
    - **RetroBat**: `ports` ve `windows` klasörlerinin ikisini de `/roms/` içine çıkarın
 3. **Yenileyin**: `Menu > Game Settings > Update game list`
 
+### dArkOS / dArkOSRE / dArkOSen (R36S ve klonları)
+**Kurulum script'i (önerilen):** [tools/install_darkos.sh](tools/install_darkos.sh) son sürümü indirir, RGSX'i `/roms/ports` içine (ikinci SD kart kullanıyorsanız `/roms2/ports` içine) kurar, diğer portlarınıza dokunmadan RGSX'i `gamelist.xml` dosyasına ekler (yedeği `gamelist.xml.rgsx-backup` olarak saklanır) ve ardından EmulationStation'ı yeniden başlatır. Güncellemek için aynı şekilde tekrar çalıştırın.
+- SSH ile (`ssh ark@IPADRESI`, şifre `ark`; SSH'ı `Options > Enable Remote Services` ile açın):
+  ```bash
+  curl -L https://raw.githubusercontent.com/RetroGameSets/RGSX/main/tools/install_darkos.sh | bash
+  ```
+  curl yoksa: `wget -qO- https://raw.githubusercontent.com/RetroGameSets/RGSX/main/tools/install_darkos.sh | bash`
+- Menüden: `install_darkos.sh` dosyasını `/roms/tools/` içine kopyalayın, ardından EmulationStation'da `Options` menüsünden başlatın.
+- Yerel bir zip ya da klasör de kullanılabilir: `bash install_darkos.sh /yol/RGSX_full_latest.zip`
+
+**Manuel kurulum:** [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip) içindeki `ports/RGSX` klasörünü `/roms/ports/` içine, `RGSX.png` / `RGSX.mp4` dosyalarını da `/roms/ports/images/` ve `/roms/ports/videos/` içine kopyalayın. Klasörleri birleştirin, asla üzerine yazıp değiştirmeyin: bu klasörlerde diğer portlarınız da bulunur. Kendi `gamelist.xml` dosyanızın üzerine başka bir `gamelist.xml` kopyalamayın. dArkOS sadece doğrudan `ports/` içindeki başlatıcıları listeler, bu yüzden `/roms/ports/RGSX.sh` dosyasını da oluşturun:
+```bash
+printf '#!/bin/bash\nexec "$(dirname "$0")/RGSX/RGSX.sh" "$@"\n' > /roms/ports/RGSX.sh
+```
+Ardından EmulationStation'ı yeniden başlatın.
+
+Notlar:
+- R36S'te dahili WiFi yoktur. OTG portuna bir USB WiFi adaptörü takın ve `Options > Wifi` üzerinden bağlanın. Adaptör ya da bağlantı bulunamazsa RGSX açılışta uyarı gösterir.
+- pygame ve requests dArkOS ile birlikte gelmez. Bunlar `ports/RGSX/vendor_darkos` içinde paketlenmiştir (Debian trixie paketlerinden `tools/build_darkos_vendor.sh` ile oluşturulur ve sistemdeki SDL2'yi kullanır).
+- Ayarlar ve yerel veritabanı exFAT ROM kartında değil, `/home/ark/.config/rgsx` (ext4) içinde saklanır. Media Manager kapakları çok yer kaplayabildiği için ROM kartına kaydedilir: `/roms/rgsx/media` (veya `/roms2/rgsx/media`).
+- Oturum sırasında oyun eklendiyse, RGSX'ten çıktıktan sonra oyunların görünmesi için EmulationStation otomatik olarak yeniden başlar.
+- A/B düğme değişimi (EmulationStation'daki "SWITCH A/B BUTTONS IN EMULATIONSTATION" ayarı veya dArkOSen'in Button Mapper aracı) RGSX açılırken otomatik olarak uygulanır.
+- Torrent indirmeleri ARM cihazlarda henüz kullanılamıyor.
+
 ### Manuel Güncelleme (otomatik güncelleme başarısız olursa)
 En son sürümü indirip arşivden çıkarın: [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
 
