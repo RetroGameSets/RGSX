@@ -112,7 +112,7 @@ jobs:
           
           ---
           
-          ## 📥 Automatic Installation (Only for Batocera/Knulli)
+          ## 📥 Automatic Installation (Batocera/Knulli/dArkOS)
 
           ### ON PC, NUC, SteamDeck or any x86_64 based: 
           1. Open File Manager (F1) then "Applications" and launch xterm
@@ -122,9 +122,15 @@ jobs:
           ### ON RASPBERRY/ ARM based SBC / HANDHELD : 
           1. Connect your device with SSH on a computer/smartphone connected to same network (ssh root@IPADDRESS , pass:linux)
           2. Use the command line `curl -L bit.ly/rgsx-install | sh`
-          3. Launch RGSX from "Ports" menu            
+          3. Launch RGSX from "Ports" menu
 
-          ## 📥 Manual Installation 
+          ### ON dArkOS / dArkOSRE / dArkOSen (R36S and clones) :
+          1. The R36S has no built-in WiFi: plug a USB WiFi dongle into the OTG port and connect from `Options > Wifi`
+          2. Enable SSH with `Options > Enable Remote Services`, then connect from a computer/smartphone on the same network (ssh ark@IPADDRESS , pass:ark)
+          3. Use the command line `curl -L https://raw.githubusercontent.com/RetroGameSets/RGSX/main/tools/install_darkos.sh | bash` (without curl: `wget -qO- https://raw.githubusercontent.com/RetroGameSets/RGSX/main/tools/install_darkos.sh | bash`)
+          4. EmulationStation restarts by itself, then launch RGSX from "Ports" menu. Run the same command again to update.
+
+          ## 📥 Manual Installation
           
           ### Batocera/Knulli
           1. Download latest release : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip
@@ -135,7 +141,16 @@ jobs:
           1. Download latest release : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip
           2. Extract all folders in your Retrobat\roms folder
           3. Launch RGSX from system "Windows"
-          
+
+          ### dArkOS / dArkOSRE / dArkOSen (R36S and clones)
+          **Without SSH:** download https://raw.githubusercontent.com/RetroGameSets/RGSX/main/tools/install_darkos.sh, copy it to `/roms/tools/` and start it from `Options` in EmulationStation.
+
+          **Fully manual:**
+          1. Download latest release : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip
+          2. Copy `ports/RGSX` to `/roms/ports/` (or `/roms2/ports/` with a second SD card), and `RGSX.png` / `RGSX.mp4` into `ports/images/` and `ports/videos/`. Merge the folders, never replace them: they also hold your other ports.
+          3. dArkOS only lists launchers placed directly in `ports/`: create `/roms/ports/RGSX.sh` with `printf '#!/bin/bash\nexec "$(dirname "$0")/RGSX/RGSX.sh" "$@"\n' > /roms/ports/RGSX.sh`
+          4. Restart EmulationStation, then launch RGSX from the Ports menu
+
 
           ## 📥 Manual Update (only if automatic doesn't work for some obscure reason)
 
@@ -150,6 +165,11 @@ jobs:
           3. Download latest RGSX retrobat launcher update : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_update_windows_latest.zip
           4. Extract zip content in `retrobat\roms\windows\rgsx\`
           5. Launch RGSX
+
+          #### dArkOS / dArkOSRE / dArkOSen
+          1. Download latest update : https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_update_latest.zip
+          2. Extract zip content in `/roms/ports/RGSX` (or `/roms2/ports/RGSX`)
+          3. Launch RGSX
 
           ### 📖 Documentation
           [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
