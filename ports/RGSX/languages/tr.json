@@ -602,5 +602,7 @@
     "game_info_summary": "Özet",
     "game_info_no_summary": "Özet mevcut değil.",
     "screenscraper_game_not_found": "Oyun ScreenScraper'da bulunamadı.",
-    "media_start_shortcut": "Taramayı başlat, sürdür veya iptal et"
+    "media_start_shortcut": "Taramayı başlat, sürdür veya iptal et",
+    "darkos_network_no_adapter": "Ağ adaptörü bulunamadı.\nOTG portuna bir USB WiFi adaptörü takın, ardından RGSX'i yeniden başlatın.",
+    "darkos_network_disconnected": "WiFi adaptörü bulundu ama bağlı değil.\nEmulationStation'daki Options menüsünden WiFi'ye bağlanın, ardından RGSX'i yeniden başlatın."
 }

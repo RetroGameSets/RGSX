@@ -831,7 +831,11 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     # Options Linux/Batocera
                     if config.OPERATING_SYSTEM == "Linux":
                         settings['web_service_at_boot'] = check_web_service_status()
-                        settings['custom_dns_at_boot'] = check_custom_dns_status()
+                        # Custom DNS is a Batocera service; dArkOS DNS is managed by NetworkManager.
+                        if config.IS_DARKOS:
+                            settings.pop('custom_dns_at_boot', None)
+                        else:
+                            settings['custom_dns_at_boot'] = check_custom_dns_status()
                     
                     # API Keys (filtrer la clé 'reloaded' qui n'est pas utile pour l'UI)
                     api_keys_data = load_api_keys()
@@ -1476,7 +1480,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     
                     # Gérer custom_dns_at_boot (Linux only)
                     if 'custom_dns_at_boot' in settings:
-                        if config.OPERATING_SYSTEM == "Linux":
+                        if config.OPERATING_SYSTEM == "Linux" and not config.IS_DARKOS:
                             try:
                                 toggle_custom_dns_at_boot(settings['custom_dns_at_boot'])
                             except Exception as e:

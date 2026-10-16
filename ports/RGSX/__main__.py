@@ -80,7 +80,7 @@ from display import (
     draw_toast, show_toast, sync_display_metrics, draw_platform_source_menu
 )
 from language import _
-from network import is_1fichier_url, check_for_updates, apply_pending_update, cancel_all_downloads, shutdown_downloads
+from network import is_1fichier_url, check_for_updates, apply_pending_update, cancel_all_downloads, shutdown_downloads, get_network_adapter_status
 from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls, clear_joystick_repeat_states, start_or_queue_download, should_open_pause_menu
 from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
@@ -421,6 +421,16 @@ if not history_write_ok:
     except Exception:
         pass
 
+# R36S has no built-in WiFi: tell the user to plug a USB dongle or connect it.
+if config.IS_DARKOS:
+    network_adapter_status = get_network_adapter_status()
+    logger.info("dArkOS network adapter status: %s", network_adapter_status)
+    if network_adapter_status != "connected":
+        network_message = _(f"darkos_network_{network_adapter_status}")
+        config.popup_message = network_message
+        config.popup_timer = max(int(getattr(config, 'popup_timer', 0) or 0), 8000)
+        config.needs_redraw = True
+
 # Chargement des jeux téléchargés
 config.downloaded_games = load_downloaded_games()
 
@@ -527,8 +537,15 @@ def start_web_server():
     """Démarre le serveur web en arrière-plan dans un processus séparé."""
     global web_server_process
     try:
+        if config.IS_DARKOS:
+            from utils import is_darkos_web_service_active
+            # The boot service already owns port 5000; a second server would fail to bind.
+            if is_darkos_web_service_active():
+                logger.info("dArkOS: rgsx-web.service already serves the web interface")
+                return True
+
         web_server_script = os.path.join(config.APP_FOLDER, "rgsx_web.py")
-        
+
         if not os.path.exists(web_server_script):
             logger.warning(f"Script serveur web introuvable: {web_server_script}")
             return False
@@ -1543,6 +1560,14 @@ async def main():
                     logger.debug(f"Étape chargement : {loading_step}, progress={config.loading_progress}")
                     continue  # Passer immédiatement à check_data
             elif loading_step == "await_ota_confirmation":
+                if not getattr(config, "pending_update_version", ""):
+                    # Update skipped with Cancel in the OTA viewer
+                    logger.info("OTA update skipped by the user")
+                    loading_step = "check_data"
+                    config.current_loading_system = _("loading_connect_catalog")
+                    config.loading_progress = 35.0
+                    config.needs_redraw = True
+                    continue
                 if not getattr(config, "startup_update_confirmed", False):
                     await asyncio.sleep(0.01)
                     continue
@@ -1724,6 +1749,9 @@ async def main():
                 print(f"Arret Python ko")
         except FileNotFoundError:
             logger.debug("taskkill introuvable, saut de l'étape d'arrêt d'emulatorLauncher.exe")
+    elif config.IS_DARKOS:
+        # dArkOS EmulationStation has no reload API; RGSX.sh restarts it after exit when ROM folders changed.
+        logger.debug("dArkOS: EmulationStation refresh delegated to RGSX.sh")
     else:
         # Exécuter la mise à jour de la liste des jeux d'EmulationStation UNIQUEMENT sur Batocera
         resp = requests.get("http://127.0.0.1:1234/reloadgames", timeout=2)

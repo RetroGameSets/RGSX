@@ -2442,12 +2442,14 @@
                             </label>
                         </div>
                         
+                        ${'custom_dns_at_boot' in settings ? `
                         <div style="margin-bottom: 20px;">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="setting-custom-dns" ${settings.custom_dns_at_boot ? 'checked' : ''}>
                                 <span>🔒 ${t('web_settings_custom_dns')}</span>
                             </label>
                         </div>
+                        ` : ''}
                         ` : ''}
                         
                         <h4 style="margin-top: 25px; margin-bottom: 15px; border-top: 1px solid #ddd; padding-top: 15px;">🔑 API Keys</h4>

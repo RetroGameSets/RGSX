@@ -593,6 +593,46 @@ def should_open_pause_menu(menu_state: str | None) -> bool:
     }
 
 
+def darkos_confirm_cancel_buttons(device_name, es_dirs=None):
+    """Confirm/cancel joystick buttons on dArkOS, following the system A/B swap.
+
+    EmulationStation knows which joystick button is the physical A and B (es_input.cfg),
+    and the dArkOSRE setting / dArkOSen Button Mapper store the swap as InvertButtons
+    in es_settings.cfg. Returns ((confirm_id, label), (cancel_id, label), inverted) or None.
+    """
+    import xml.etree.ElementTree as ET
+    es_dirs = es_dirs or (os.path.expanduser("~/.emulationstation"), "/etc/emulationstation")
+    ids = {}
+    for es_dir in es_dirs:
+        try:
+            root = ET.parse(os.path.join(es_dir, "es_input.cfg")).getroot()
+        except (OSError, ET.ParseError):
+            continue
+        for device in root.iter("inputConfig"):
+            if device.get("type") == "joystick" and device.get("deviceName") == device_name:
+                for item in device.iter("input"):
+                    if item.get("type") == "button" and item.get("name") in ("a", "b") and str(item.get("id", "")).isdigit():
+                        ids[item.get("name")] = int(item.get("id"))
+                break
+        if ids:
+            break
+    if "a" not in ids or "b" not in ids:
+        return None
+
+    inverted = False
+    for es_dir in es_dirs:
+        try:
+            with open(os.path.join(es_dir, "es_settings.cfg"), encoding="utf-8", errors="ignore") as f:
+                # es_settings.cfg has no single XML root, so it is matched as text
+                inverted = re.search(r'<bool\s+name="InvertButtons"\s+value="true"', f.read()) is not None
+            break
+        except OSError:
+            continue
+
+    a_button, b_button = (ids["a"], "A"), (ids["b"], "B")
+    return (b_button, a_button, True) if inverted else (a_button, b_button, False)
+
+
 def load_controls_config(path=CONTROLS_CONFIG_PATH):
     """Charge la configuration des contrôles.
     Priorité:
@@ -695,6 +735,17 @@ def load_controls_config(path=CONTROLS_CONFIG_PATH):
                         if isinstance(dev_field, str) and _sanitize(dev_field) == target_norm:
                             logging.getLogger(__name__).info(f"Chargement préréglage (device) depuis le fichier: {fname}")
                             print(f"Chargement prereglage (device) depuis le fichier: {fname}")
+                            ab_buttons = darkos_confirm_cancel_buttons(device_name) if getattr(config, 'IS_DARKOS', False) else None
+                            if ab_buttons:
+                                (confirm_id, confirm_label), (cancel_id, cancel_label), inverted = ab_buttons
+                                preset["confirm"] = {"type": "button", "button": confirm_id, "display": confirm_label}
+                                preset["cancel"] = {"type": "button", "button": cancel_id, "display": cancel_label}
+                                # Footer icons: the Nintendo layout puts Confirm on the east button (A on the R36S)
+                                config.nintendo_layout = not inverted
+                                logging.getLogger(__name__).info(
+                                    f"dArkOS A/B: confirm={confirm_label} (button {confirm_id}), "
+                                    f"cancel={cancel_label} (button {cancel_id}), swapped={inverted}"
+                                )
                             return preset
                 except Exception as e:
                     logging.getLogger(__name__).warning(f"Échec scan préréglages par device: {e}")
@@ -2661,6 +2712,11 @@ def handle_controls(event, sources, joystick, screen):
                     config.startup_update_confirmed = True
                     config.menu_state = "loading"
                     config.needs_redraw = True
+                elif viewer_mode == "ota_update" and is_input_matched(event, "cancel"):
+                    # Skip the update for this session; the loading loop goes on without it.
+                    config.pending_update_version = ""
+                    config.menu_state = "loading"
+                    config.needs_redraw = True
                 elif viewer_mode != "ota_update" and (is_input_matched(event, "cancel") or is_input_matched(event, "confirm")):
                     config.menu_state = validate_menu_state(config.previous_menu_state)
                     config.needs_redraw = True
@@ -3363,6 +3419,13 @@ def handle_controls(event, sources, joystick, screen):
                 api_keys_index = 7
                 connection_status_index = 8
                 back_index = 9
+                if config.IS_DARKOS:
+                    # No custom DNS entry on dArkOS (see draw_pause_settings_menu)
+                    total = 9
+                    custom_dns_index = -1
+                    api_keys_index = 6
+                    connection_status_index = 7
+                    back_index = 8
             
             if is_input_matched(event, "up"):
                 config.pause_settings_selection = (sel - 1) % total

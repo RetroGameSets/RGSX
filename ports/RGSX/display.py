@@ -3939,6 +3939,7 @@ def draw_pause_menu(screen, selected_option):
     button_height = ideal_button_height
     button_spacing = ideal_spacing
     margin_top_bottom = 24
+    visible_count = len(options)
     menu_height = len(options) * button_height + max(0, len(options) - 1) * button_spacing + 2 * margin_top_bottom
 
     if menu_height > available_height:
@@ -3951,11 +3952,11 @@ def draw_pause_menu(screen, selected_option):
         menu_height = len(options) * button_height + max(0, len(options) - 1) * button_spacing + 2 * margin_top_bottom
 
         if menu_height > available_height:
+            # Not even the smallest buttons fit (640x480): scroll through the options instead
             button_height = min_button_height
-            remaining_height = available_height - 2 * margin_top_bottom - len(options) * button_height
-            button_spacing = max(1, remaining_height // max(1, len(options) - 1)) if len(options) > 1 else 0
-            menu_height = len(options) * button_height + max(0, len(options) - 1) * button_spacing + 2 * margin_top_bottom
-    
+            visible_count = max(1, (available_height - 2 * margin_top_bottom + button_spacing) // (button_height + button_spacing))
+            menu_height = visible_count * button_height + max(0, visible_count - 1) * button_spacing + 2 * margin_top_bottom
+
     # Calculer largeur maximale nécessaire pour le texte
     max_text_width = 0
     for option in options:
@@ -3972,22 +3973,42 @@ def draw_pause_menu(screen, selected_option):
     
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], (menu_x, menu_y, menu_width, menu_height), 2, border_radius=12)
-    for i, option in enumerate(options):
-        fitted_option = truncate_text_end(option, config.font, menu_width - 72)
+    first, last = _scroll_window(len(options), selected_option, visible_count)
+    for row, i in enumerate(range(first, last)):
+        fitted_option = truncate_text_end(options[i], config.font, menu_width - 72)
         draw_stylized_button(
             screen,
             fitted_option,
             menu_x + 20,
-            menu_y + margin_top_bottom + i * (button_height + button_spacing),
+            menu_y + margin_top_bottom + row * (button_height + button_spacing),
             menu_width - 40,
             button_height,
             selected=i == selected_option
         )
+    _draw_scroll_arrows(screen, menu_x + menu_width - 10, menu_y + margin_top_bottom,
+                        menu_y + menu_height - margin_top_bottom, first > 0, last < len(options))
     config.pause_menu_total_options = len(options)
 
     # Dessiner l'instruction en haut
     if instruction_text:
         draw_menu_instruction(screen, instruction_text)
+
+def _scroll_window(num_options, selected_index, visible_count):
+    """Return (first, last) option indexes to draw so the selection stays visible."""
+    if num_options <= visible_count:
+        return 0, num_options
+    first = min(max(0, selected_index - visible_count // 2), num_options - visible_count)
+    return first, first + visible_count
+
+
+def _draw_scroll_arrows(screen, x, top_y, bottom_y, show_up, show_down):
+    """Small triangles telling that a scrolled menu has hidden options above/below."""
+    size = 6
+    if show_up:
+        pygame.draw.polygon(screen, THEME_COLORS["text"], [(x - size, top_y + size), (x + size, top_y + size), (x, top_y)])
+    if show_down:
+        pygame.draw.polygon(screen, THEME_COLORS["text"], [(x - size, bottom_y - size), (x + size, bottom_y - size), (x, bottom_y)])
+
 
 def _calc_submenu_dimensions(num_options, instruction_height=0):
     """Calcule les dimensions adaptatives pour un sous-menu.
@@ -4002,9 +4023,11 @@ def _calc_submenu_dimensions(num_options, instruction_height=0):
     margin_top_bottom = 20
     footer_height = 70
     
-    max_menu_height = int(config.screen_height * 0.85)
+    # Stay between the top instruction and the footer (matters on 640x480 screens)
+    max_menu_height = min(int(config.screen_height * 0.85), config.screen_height - instruction_height - footer_height - 8)
     available_height_for_buttons = max_menu_height - title_height - 2 * margin_top_bottom
-    
+    visible_count = num_options
+
     ideal_button_height = max(int(config.screen_height * 0.040), font_height + 12)
     ideal_spacing = 6
     total_ideal_height = num_options * ideal_button_height + (num_options - 1) * ideal_spacing
@@ -4020,17 +4043,18 @@ def _calc_submenu_dimensions(num_options, instruction_height=0):
         button_spacing = min_spacing
         total_height = num_options * button_height + (num_options - 1) * button_spacing
         if total_height > available_height_for_buttons:
+            # Not even the smallest buttons fit: scroll through the options instead
             button_height = min_button_height
-            button_spacing = max(1, (available_height_for_buttons - num_options * button_height) // max(1, num_options - 1))
-    
-    menu_height = title_height + num_options * button_height + (num_options - 1) * button_spacing + 2 * margin_top_bottom
+            visible_count = max(1, (available_height_for_buttons + button_spacing) // (button_height + button_spacing))
+
+    menu_height = title_height + visible_count * button_height + (visible_count - 1) * button_spacing + 2 * margin_top_bottom
     
     # Calculer menu_y en tenant compte de l'instruction en haut et du footer
     available_height = config.screen_height - instruction_height - footer_height
     menu_y = instruction_height + (available_height - menu_height) // 2
     
     start_y = menu_y + margin_top_bottom + title_height
-    last_button_bottom = start_y + (num_options - 1) * (button_height + button_spacing) + button_height
+    last_button_bottom = start_y + (visible_count - 1) * (button_height + button_spacing) + button_height
     
     return {
         'button_height': button_height,
@@ -4039,7 +4063,8 @@ def _calc_submenu_dimensions(num_options, instruction_height=0):
         'menu_y': menu_y,
         'start_y': start_y,
         'last_button_bottom': last_button_bottom,
-        'margin_top_bottom': margin_top_bottom
+        'margin_top_bottom': margin_top_bottom,
+        'visible_count': visible_count
     }
 
 def _draw_submenu_generic(screen, title, options, selected_index, instruction_text=None):
@@ -4086,16 +4111,20 @@ def _draw_submenu_generic(screen, title, options, selected_index, instruction_te
     screen.blit(title_surface, title_rect)
     # Options
     start_y = title_rect.bottom + 10
-    for i, opt in enumerate(options):
+    first, last = _scroll_window(len(options), selected_index, dims['visible_count'])
+    for row, i in enumerate(range(first, last)):
         draw_stylized_button(
             screen,
-            opt,
+            options[i],
             menu_x + 20,
-            start_y + i * (button_height + button_spacing),
+            start_y + row * (button_height + button_spacing),
             menu_width - 40,
             button_height,
             selected=(i == selected_index)
         )
+    _draw_scroll_arrows(screen, menu_x + menu_width - 10, start_y,
+                        start_y + (last - first) * (button_height + button_spacing) - button_spacing,
+                        first > 0, last < len(options))
     
     # Dessiner l'instruction en haut si présente
     if instruction_text:
@@ -4476,8 +4505,9 @@ def draw_pause_settings_menu(screen, selected_index):
         web_service_enabled = check_web_service_status()
         web_service_status = _("settings_web_service_enabled") if web_service_enabled else _("settings_web_service_disabled")
         web_service_txt = f"{_('settings_web_service')} : < {web_service_status} >"
-        
-        # Custom DNS at boot
+
+    # Custom DNS at boot (Batocera service; dArkOS DNS is managed by NetworkManager)
+    if config.OPERATING_SYSTEM == "Linux" and not config.IS_DARKOS:
         custom_dns_enabled = check_custom_dns_status()
         custom_dns_status = _("settings_custom_dns_enabled") if custom_dns_enabled else _("settings_custom_dns_disabled")
         custom_dns_txt = f"{_('settings_custom_dns')} : < {custom_dns_status} >"
@@ -6458,7 +6488,7 @@ def draw_text_file_viewer(screen):
         screen.blit(position_surface, position_rect)
 
         if viewer_mode == 'ota_update':
-            hint_surface = config.small_font.render("Confirm: Update", True, THEME_COLORS["text_selected"])
+            hint_surface = config.small_font.render("Confirm: Update   Cancel: Skip", True, THEME_COLORS["text_selected"])
             hint_rect = hint_surface.get_rect(left=rect_x + 30, bottom=rect_y + rect_height - 10)
             screen.blit(hint_surface, hint_rect)
     else:
@@ -6489,13 +6519,16 @@ def draw_game_info_screen(screen):
     
     # Titre
     title_text = _("game_info_title").format(config.game_info_game_name)
-    title_surface = config.title_font.render(title_text, True, THEME_COLORS["text"])
+    # Long game names: fall back to the regular font, then truncate (640x480 screens)
+    max_title_width = rect_width - 40
+    title_font = config.title_font if config.title_font.size(title_text)[0] <= max_title_width else config.font
+    title_surface = title_font.render(truncate_text_end(title_text, title_font, max_title_width), True, THEME_COLORS["text"])
     title_rect = title_surface.get_rect(center=(config.screen_width // 2, rect_y + 40))
     screen.blit(title_surface, title_rect)
     
     # Sous-titre avec plateforme
     subtitle_text = _("game_info_source").format(config.game_info_platform_name)
-    subtitle_surface = config.font.render(subtitle_text, True, THEME_COLORS["title_text"])
+    subtitle_surface = config.font.render(truncate_text_end(subtitle_text, config.font, rect_width - 40), True, THEME_COLORS["title_text"])
     subtitle_rect = subtitle_surface.get_rect(center=(config.screen_width // 2, rect_y + 80))
     screen.blit(subtitle_surface, subtitle_rect)
     
