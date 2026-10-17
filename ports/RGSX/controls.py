@@ -10,7 +10,7 @@ import logging
 import config
 import catalog_sync
 from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE, CONTROLS_CONFIG_PATH, Game
-from display import draw_validation_transition, show_toast
+from display import draw_validation_transition, pause_root_index, show_toast
 from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel, cleanup_torrent_temp, stop_active_seeder
 from utils import (
     load_games, clear_games_cache, check_extension_before_download, is_extension_supported,
@@ -1081,7 +1081,13 @@ def _save_screenscraper_account():
             config.popup_message = _("screenscraper_login_ok").format(remaining, max_per_day)
         except screenscraper.ScreenScraperError as exc:
             logger.warning(f"ScreenScraper login check failed: {exc.kind} ({exc})")
-            messages = {"auth": "screenscraper_login_failed", "config": "screenscraper_dev_credentials_missing"}
+            messages = {
+                "account_required": "screenscraper_account_required",
+                "auth": "screenscraper_login_failed",
+                "config": "screenscraper_dev_credentials_missing",
+                "quota": "media_quota_exhausted",
+                "rate_limited": "screenscraper_rate_limited",
+            }
             config.popup_message = _(messages[exc.kind]) if exc.kind in messages else _("media_error").format(exc.kind)
         config.popup_timer = 4000
         config.needs_redraw = True
@@ -2304,7 +2310,8 @@ def handle_controls(event, sources, joystick, screen):
                 options = []
                 
                 # Option commune: ScreenScraper details
-                options.append("game_info")
+                if not config.SCREENSCRAPER_TEMPORARILY_DISABLED:
+                    options.append("game_info")
                 
                 # Options selon statut
                 if status == "Queued":
@@ -2861,42 +2868,43 @@ def handle_controls(event, sources, joystick, screen):
                 config.selected_option = (config.selected_option + 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
-                if config.selected_option == 0:  # Games submenu
+                choice = pause_root_index(config.selected_option)
+                if choice == 0:  # Games submenu
                     config.menu_state = "pause_games_menu"
                     if not hasattr(config, 'pause_games_selection'):
                         config.pause_games_selection = 0
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 1:  # Language selector direct
+                elif choice == 1:  # Language selector direct
                     config.menu_state = "language_select"
                     config.previous_menu_state = "pause_menu"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 2:  # Controls submenu
+                elif choice == 2:  # Controls submenu
                     config.menu_state = "pause_controls_menu"
                     if not hasattr(config, 'pause_controls_selection'):
                         config.pause_controls_selection = 0
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 3:  # Display submenu
+                elif choice == 3:  # Display submenu
                     config.menu_state = "pause_display_menu"
                     if not hasattr(config, 'pause_display_selection'):
                         config.pause_display_selection = 0
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 4:  # Scrap submenu
+                elif choice == 4:  # Scrap submenu
                     config.menu_state = "pause_scrap_menu"
                     if not hasattr(config, 'pause_scrap_selection'):
                         config.pause_scrap_selection = 0
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 5:  # Settings submenu
+                elif choice == 5:  # Settings submenu
                     config.menu_state = "pause_settings_menu"
                     if not hasattr(config, 'pause_settings_selection'):
                         config.pause_settings_selection = 0
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 6:  # Support
+                elif choice == 6:  # Support
                     success, message, zip_path = generate_support_zip()
                     if success:
                         config.support_zip_path = zip_path
@@ -2907,13 +2915,13 @@ def handle_controls(event, sources, joystick, screen):
                     config.menu_state = "support_dialog"
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 7:  # Reset default settings (delete file + restart)
+                elif choice == 7:  # Reset default settings (delete file + restart)
                     config.previous_menu_state = "pause_menu"
                     config.menu_state = "reset_settings_confirm"
                     config.reset_settings_confirm_selection = 0  # 0=No, 1=Yes
                     config.last_state_change_time = pygame.time.get_ticks()
                     config.needs_redraw = True
-                elif config.selected_option == 8:  # Quit submenu
+                elif choice == 8:  # Quit submenu
                     # Capturer l'origine pause_menu pour retour si annulation
                     config.confirm_exit_origin = "pause_menu"
                     config.previous_menu_state = validate_menu_state(config.previous_menu_state)
@@ -4580,7 +4588,8 @@ def handle_controls(event, sources, joystick, screen):
                 elif target == 'pause_display_menu':
                     config.pause_display_selection = 4
                 else:
-                    config.selected_option = 5
+                    # Index visible de Settings (4 quand l'entrée Scrap est masquée)
+                    config.selected_option = 4 if config.SCREENSCRAPER_TEMPORARILY_DISABLED else 5
                 config.filter_return_to = None
 
             def _show_unsaved_exit_toast() -> None:

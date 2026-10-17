@@ -45,6 +45,20 @@ def _load_scaled(path, width, height):
         return None
 
 
+def _store_preview(key, path, status, summary):
+    _, _, width, height = key
+    surface = _load_scaled(path, width, height) if path else None
+    preview = {"status": status, "image": surface, "summary": summary}
+    with _lock:
+        _cache[key] = preview
+        while len(_cache) > CACHE_SIZE:
+            _cache.popitem(last=False)
+    with _lock:
+        current = _wanted[0] if _wanted else None
+    if current == key:
+        config.needs_redraw = True
+
+
 def _worker():
     while True:
         _wake.wait()
@@ -67,6 +81,9 @@ def _worker():
                 continue
         folder, rom_filename, width, height = key
         path = find_media(folder, rom_filename, "box")
+        if config.SCREENSCRAPER_TEMPORARILY_DISABLED:
+            _store_preview(key, path, "ready" if path else "unavailable", "")
+            continue
         summary = ""
         status = "unavailable"
         platform_name = ""
@@ -114,16 +131,7 @@ def _worker():
         except OSError as exc:
             logger.error(f"Could not save preview for {rom_filename}: {exc}")
             status = "ready" if path else "unavailable"
-        surface = _load_scaled(path, width, height) if path else None
-        preview = {"status": status, "image": surface, "summary": summary}
-        with _lock:
-            _cache[key] = preview
-            while len(_cache) > CACHE_SIZE:
-                _cache.popitem(last=False)
-        with _lock:
-            current = _wanted[0] if _wanted else None
-        if current == key:
-            config.needs_redraw = True
+        _store_preview(key, path, status, summary)
 
 
 def get_preview_data(folder, rom_filename, width, height):

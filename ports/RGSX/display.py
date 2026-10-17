@@ -3884,6 +3884,12 @@ def draw_display_menu(screen):
     # Dessiner l'instruction en haut
     draw_menu_instruction(screen, instruction_text)
 
+def pause_root_index(visible_index):
+    """Convertit l'index visible du menu pause racine en index logique (entrée Scrap masquée)."""
+    if config.SCREENSCRAPER_TEMPORARILY_DISABLED and visible_index >= 4:
+        return visible_index + 1
+    return visible_index
+
 def draw_pause_menu(screen, selected_option):
     """Dessine le menu pause racine (catégories)."""
     screen.blit(OVERLAY, (0, 0))
@@ -3916,6 +3922,9 @@ def draw_pause_menu(screen, selected_option):
         "instruction_pause_reset_settings",
         "instruction_pause_quit",
     ]
+    if config.SCREENSCRAPER_TEMPORARILY_DISABLED:
+        del options[4]
+        del instruction_keys[4]
     try:
         key = instruction_keys[selected_option]
         instruction_text = _(key)
@@ -4853,7 +4862,13 @@ def draw_media_manager(screen):
         row_type, group = rows[i]
         color = THEME_COLORS["text"]
         if row_type == "action":
-            text = _("media_cancel") if manager.running else _("media_start")
+            if manager.running:
+                text = _("media_cancel")
+            elif manager.account_configured:
+                text = _("media_start")
+            else:
+                text = _("screenscraper_account_required")
+                color = THEME_COLORS.get("text_dim", (130, 130, 130))
         elif row_type == "resume":
             text = _("media_resume").format(manager.pending)
         elif row_type == "profile":
@@ -6047,8 +6062,9 @@ def draw_history_game_options(screen):
     
     # Options communes
 
-    options.append("game_info")
-    option_labels.append(_("history_option_scraper"))
+    if not config.SCREENSCRAPER_TEMPORARILY_DISABLED:
+        options.append("game_info")
+        option_labels.append(_("history_option_scraper"))
  
     # Options selon statut
     if status == "Queued":

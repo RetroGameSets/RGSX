@@ -56,7 +56,7 @@ _system_cache = None
 
 
 class ScreenScraperError(Exception):
-    """kind: 'quota' | 'auth' | 'config' | 'network' | 'http' | 'proxy' | 'unsupported'"""
+    """kind: 'quota' | 'rate_limited' | 'auth' | 'config' | 'network' | 'http' | 'proxy' | 'unsupported'"""
 
     def __init__(self, kind, message=""):
         super().__init__(message or kind)
@@ -271,6 +271,8 @@ def _proxy_request(action, **params):
         kind = "proxy"
     elif reason == "config":
         kind = "config"
+    elif reason == "user_account_required":
+        kind = "account_required"
     elif reason in {
         "auth",
         "authentication_rejected",
@@ -279,8 +281,10 @@ def _proxy_request(action, **params):
         "software_rejected",
     } or response.status_code in (401, 403):
         kind = "auth"
-    elif reason in {"quota", "rate_limited"} or response.status_code == 429:
+    elif reason == "quota":
         kind = "quota"
+    elif reason in {"proxy_rate_limited", "upstream_rate_limited", "rate_limited"} or response.status_code == 429:
+        kind = "rate_limited"
     elif response.status_code >= 500:
         kind = "network"
     else:
@@ -353,9 +357,10 @@ def _decode_game_media(data):
 
 
 def get_user_info():
-    """Refresh the quota (works without an account too) and return LAST_ALLOWANCE.
+    """Refresh the account quota and return LAST_ALLOWANCE.
 
-    With an account, raises ScreenScraperError("auth") when the login is not accepted.
+    Needs a ScreenScraper account (ssuserInfos is refused without it). Raises
+    ScreenScraperError("auth") when the login is not accepted.
     """
     data = _proxy_request("user_info")
     username, password = load_account()

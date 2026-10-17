@@ -57,9 +57,11 @@ def _fetch_game_info(request_id, rom_filename, platform_name):
     except screenscraper.ScreenScraperError as exc:
         logger.warning("Could not load ScreenScraper details for %s: %s (%s)", rom_filename, exc.kind, exc)
         error_keys = {
+            "account_required": "screenscraper_account_required",
             "auth": "screenscraper_login_failed",
             "config": "screenscraper_dev_credentials_missing",
             "quota": "media_quota_exhausted",
+            "rate_limited": "screenscraper_rate_limited",
             "proxy": "screenscraper_proxy_outdated",
             "unsupported": "media_unsupported",
         }

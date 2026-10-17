@@ -113,6 +113,7 @@ class MediaManager:
         # Status shown in the UI: (translation key, format args) or None
         self.status = None
         self.allowance = None  # (remaining_today, max_per_day)
+        self.account_configured = False
         self.platforms = []
         self.pending = 0  # number of games waiting in the queue
 
@@ -151,8 +152,14 @@ class MediaManager:
         """On page open: read platforms and queue once (avoid DB/file reads every frame)."""
         self.platforms = self.list_platforms()
         self.pending = len(load_queue()["items"])
+        username, password = screenscraper.load_account()
+        self.account_configured = bool(username.strip() and password)
+        self.status = None
+        if not self.account_configured:
+            self.allowance = None
+            self.status = ("media_account_required", ())
+            return
         self.allowance = screenscraper.LAST_ALLOWANCE or self.allowance
-        # ssuserInfos also reports the quota of users without an account.
         threading.Thread(target=self._refresh_allowance, daemon=True).start()
         if screenscraper.system_catalog_cache_is_stale():
             threading.Thread(target=self._refresh_systems, daemon=True).start()
@@ -176,11 +183,19 @@ class MediaManager:
             self.allowance = screenscraper.get_user_info()
         except screenscraper.ScreenScraperError as exc:
             logger.warning(f"Could not read ScreenScraper quota: {exc.kind} ({exc})")
+            error_keys = {
+                "account_required": "media_account_required",
+                "auth": "screenscraper_login_failed",
+                "quota": "media_quota_exhausted",
+                "rate_limited": "media_rate_limited",
+            }
+            if exc.kind in error_keys:
+                self.status = (error_keys[exc.kind], ())
         config.needs_redraw = True
 
     def rows(self):
         rows = [("action", None)]
-        if self.pending and not self.running:
+        if self.account_configured and self.pending and not self.running:
             rows.append(("resume", None))
         rows += [("profile", None), ("select_all", None)]
         return rows + [("platform", group) for group in self.platforms]
@@ -203,6 +218,14 @@ class MediaManager:
     def start(self, resume=False):
         if self.running:
             return
+        username, password = screenscraper.load_account()
+        if not username.strip() or not password:
+            self.account_configured = False
+            self.allowance = None
+            self.status = ("media_account_required", ())
+            config.needs_redraw = True
+            return
+        self.account_configured = True
         self.cancel_event.clear()
         self.status = None
         self.progress = {"done": 0, "total": 0, "found": 0, "not_found": 0, "errors": 0}
@@ -301,9 +324,16 @@ class MediaManager:
                     not_found.append({"platform": item["platform"], "rom_filename": item["rom_filename"]})
                     logger.info(f"Media not found: {item['platform']}/{item['rom_filename']}")
             except screenscraper.ScreenScraperError as exc:
-                if exc.kind in ("quota", "auth"):
-                    # Quota/auth error: the remaining games, current one included, are queued and the job stops.
-                    self.status = ("media_quota_exhausted", ()) if exc.kind == "quota" else ("media_auth_error", ())
+                if exc.kind in ("quota", "rate_limited", "auth", "account_required"):
+                    # Stop and preserve the current item when the service limits or rejects the request.
+                    if exc.kind == "quota":
+                        self.status = ("media_quota_exhausted", ())
+                    elif exc.kind == "rate_limited":
+                        self.status = ("media_rate_limited", ())
+                    elif exc.kind == "account_required":
+                        self.status = ("media_account_required", ())
+                    else:
+                        self.status = ("media_auth_error", ())
                     logger.warning(f"ScreenScraper {exc.kind} error ({exc}), download paused")
                     break
                 if exc.kind == "network":

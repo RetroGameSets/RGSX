@@ -225,6 +225,8 @@ SCREENSCRAPER_PROXY_URL = os.environ.get(
     "RGSX_SCREENSCRAPER_PROXY_URL",
     "https://retrogamesets.fr/rgsx/manager/rgsx_screenscraper_api.php",
 ).strip()
+# Désactivation provisoire : menu Scrap masqué et aucun appel ScreenScraper depuis la liste de jeux.
+SCREENSCRAPER_TEMPORARILY_DISABLED = True
 
 PRECONF_CONTROLS_PATH = os.path.join(APP_FOLDER, "assets", "controls")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")

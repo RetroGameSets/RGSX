@@ -760,7 +760,8 @@ async def main():
         # A long confirm press opens ScreenScraper game details.
         if (config.menu_state == "game" and 
             config.confirm_press_start_time > 0 and 
-            not config.confirm_long_press_triggered):
+            not config.confirm_long_press_triggered and
+            not config.SCREENSCRAPER_TEMPORARILY_DISABLED):
             press_duration = current_time - config.confirm_press_start_time
             if press_duration >= config.confirm_long_press_threshold:
                 games = config.filtered_games if config.filter_active or config.search_mode else config.games
