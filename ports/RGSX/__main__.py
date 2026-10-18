@@ -90,7 +90,7 @@ from utils import (
     parse_torrent_download_url
 )
 from history import load_history, save_history, load_downloaded_games, check_history_write_access, get_history_write_status
-from rgsx_settings import get_display_fullscreen
+from rgsx_settings import get_display_fullscreen, is_screenscraper_disabled
 from accessibility import  load_accessibility_settings
 
 # Configuration du logging
@@ -761,7 +761,7 @@ async def main():
         if (config.menu_state == "game" and 
             config.confirm_press_start_time > 0 and 
             not config.confirm_long_press_triggered and
-            not config.SCREENSCRAPER_TEMPORARILY_DISABLED):
+            not is_screenscraper_disabled()):
             press_duration = current_time - config.confirm_press_start_time
             if press_duration >= config.confirm_long_press_threshold:
                 games = config.filtered_games if config.filter_active or config.search_mode else config.games

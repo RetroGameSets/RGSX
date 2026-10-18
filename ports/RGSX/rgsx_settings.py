@@ -83,7 +83,8 @@ def load_rgsx_settings():
     "last_gamelist_prompt_remote_update": None,
     "global_sort_option": "name_asc",
     "platform_custom_paths": {},  # Chemins personnalisés par plateforme
-    "max_simultaneous_downloads": 5  # Limite de téléchargements simultanés
+    "max_simultaneous_downloads": 5,  # Limite de téléchargements simultanés
+    "screenscraper_disabled": False  # Désactive ScreenScraper (menu Scrap, aperçu, téléchargements)
     }
     
     try:
@@ -364,6 +365,22 @@ def set_hide_premium_systems(enabled: bool) -> bool:
     settings["hide_premium_systems"] = bool(enabled)
     save_rgsx_settings(settings)
     return settings["hide_premium_systems"]
+
+# ----------------------- ScreenScraper toggle ----------------------- #
+
+def is_screenscraper_disabled(settings=None) -> bool:
+    """Retourne True si ScreenScraper est désactivé."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return bool(settings.get("screenscraper_disabled", False))
+
+
+def set_screenscraper_disabled(disabled: bool) -> bool:
+    """Active/désactive ScreenScraper et sauvegarde."""
+    settings = load_rgsx_settings()
+    settings["screenscraper_disabled"] = bool(disabled)
+    save_rgsx_settings(settings)
+    return settings["screenscraper_disabled"]
 
 # ----------------------- Display layout (grid) ----------------------- #
 

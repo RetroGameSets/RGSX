@@ -209,24 +209,32 @@ IMAGES_FOLDER = os.path.join(SAVE_FOLDER, "images")
 # Game preview images (Media Manager): media/{platform_folder}/{game}.jpg
 MEDIA_FOLDER = os.path.join(SAVE_FOLDER, "media")
 MEDIA_QUEUE_PATH = os.path.join(SAVE_FOLDER, "rgsx_media_queue.json")
-# ScreenScraper user account (Media Manager). Kept out of rgsx_settings.json: the web UI and the support zip expose that file.
-SCREENSCRAPER_ACCOUNT_PATH = os.path.join(SAVE_FOLDER, "screenscraper_account.json")
+
 
 # Local SQLite cache for the HTTPS catalog and user-specific state.
 DB_PATH = os.path.join(SAVE_FOLDER, "rgsx.sqlite3")
 
-# Public read-only catalog API. The database credentials stay on the PHP server.
+# Public read-only catalog API.
 CATALOG_SYNC_URL = os.environ.get(
     "RGSX_CATALOG_SYNC_URL",
     "https://retrogamesets.fr/rgsx/manager/rgsx_catalog_api.php",
 ).strip()
 CATALOG_SYNC_TIMEOUT_SEC = int(os.environ.get("RGSX_CATALOG_SYNC_TIMEOUT", "30"))
-SCREENSCRAPER_PROXY_URL = os.environ.get(
-    "RGSX_SCREENSCRAPER_PROXY_URL",
-    "https://retrogamesets.fr/rgsx/manager/rgsx_screenscraper_api.php",
+
+
+
+
+# Delay before auto scrap on game list
+SCREENSCRAPER_PREVIEW_DELAY_SEC = float(os.environ.get("RGSX_SCREENSCRAPER_PREVIEW_DELAY", "1.0"))
+# ScreenScraper user account (Media Manager).
+SCREENSCRAPER_ACCOUNT_PATH = os.path.join(SAVE_FOLDER, "screenscraper_account.json")
+# Endpoint returning the developer credentials, kept in memory for the session only.
+SCREENSCRAPER_CREDENTIALS_API_URL = os.environ.get(
+    "RGSX_SCREENSCRAPER_CREDENTIALS_URL",
+    "https://retrogamesets.fr/rgsx/manager/rgsx_screenscraper_credentials_api.php",
 ).strip()
-# Désactivation provisoire : menu Scrap masqué et aucun appel ScreenScraper depuis la liste de jeux.
-SCREENSCRAPER_TEMPORARILY_DISABLED = True
+
+
 
 PRECONF_CONTROLS_PATH = os.path.join(APP_FOLDER, "assets", "controls")
 CONTROLS_CONFIG_PATH = os.path.join(SAVE_FOLDER, "controls.json")

@@ -73,32 +73,25 @@ Download and extract the latest release: [RGSX_full_latest.zip](https://github.c
 
 ### Pause Menu Structure
 
-**Root menu** — Games, Language, Controls, Display, Settings, Support, Reset Default Settings, and Quit. Scrap is temporarily hidden (see below).
+**Root menu** — Games, Language, Controls, Display, Settings, Support, Reset Default Settings, and Quit.
 
 - **Games**: refresh the catalog, scan locally owned ROMs, open download history, show/hide unsupported systems, and choose visible platforms.
 - **Controls**: view the currently mapped actions or remap keyboard/controller inputs.
 - **Display**: choose from eight grids (3×3, 3×4, 4×3, 4×4, 5×4, 6×4, 6×6, or 8×6), adjust UI and footer font sizes separately, choose a font (Pixel, Bell Centennial, or DejaVu Sans), background theme, and Light Mode. Monitor selection appears only when multiple displays are detected; window/fullscreen mode is Windows-only. You can also hide unknown-extension warnings.
-- **Scrap** (temporarily hidden): edit ScreenScraper credentials and open the Media Manager.
+- **Scrap**: edit ScreenScraper credentials, open the Media Manager, and turn ScreenScraper on or off (**Enable ScreenScraper** / **Disable ScreenScraper**). While it is off, the Media Manager is blocked, running downloads are cancelled, and the preview panel is hidden. The choice is stored as `screenscraper_disabled` in `rgsx_settings.json`.
 - **Settings**: background music, symlink behavior, automatic extraction, ROM folder, maximum simultaneous downloads, API-key status, and connection status. Web service at boot and Custom DNS are available on Linux/Batocera.
 - **Support**: diagnostic tools and support archive generation.
 - **Quit**: quit or restart RGSX. Language selection is directly in the root menu.
 
 ### ScreenScraper and Media Manager
 
-> **Temporarily disabled.** RGSX does not call the ScreenScraper API for now, while the account quota attribution is being investigated:
-> - the game list only shows covers already present in the local media cache; no request is sent when a game is selected;
-> - the **Scrap** menu is hidden, and so is the Media Manager, which is reachable only from it;
-> - the two-second hold on **Confirm** no longer opens ScreenScraper details, and the **Scraper** entry of the history game options is hidden.
->
-> To re-enable these features, set `SCREENSCRAPER_TEMPORARILY_DISABLED = False` in `config.py`. The behaviour described below then applies again.
-
-In the game list, leaving a game selected for two seconds retrieves its cover for the local media cache and displays its ScreenScraper synopsis in the preview panel. If no information is available, the panel shows an unavailable placeholder. The preferred ScreenScraper system ID is stored per platform in the online RGSX catalog and can be edited in RGSX Sources Manager. If no ID is configured, RGSX falls back to the periodically refreshed ScreenScraper system list cached in SQLite, then to built-in aliases. A two-second hold on **Confirm** opens the ScreenScraper details page with the cover, screenshot, and synopsis. In **Pause > Scrap**, the ScreenScraper username and password can be edited together; a virtual keyboard is shown only when a controller is detected, otherwise type directly and use Tab to switch fields. The account is stored in the dedicated `screenscraper_account.json` file and can also be edited from the web interface.
+In the game list, the local cover of the selected game appears at once if it exists. When ScreenScraper is disabled, the preview panel is hidden and nothing is fetched automatically for the game list. After the configured delay (two seconds by default: `SCREENSCRAPER_PREVIEW_DELAY_SEC` in `config.py`, or the `RGSX_SCREENSCRAPER_PREVIEW_DELAY` environment variable) on the same game, RGSX shows its ScreenScraper synopsis in the preview panel: it is read from the local database when already stored (games not found on ScreenScraper are stored too, so they are not queried again), otherwise it is fetched and stored. The cover is downloaded only if it is missing locally and ScreenScraper has one; a game without a cover on ScreenScraper is not asked for it again. The synopsis appears once loaded. If no information is available, the panel shows an unavailable placeholder. The preferred ScreenScraper system ID is stored per platform in the online RGSX catalog and can be edited in RGSX Sources Manager. If no ID is configured, RGSX falls back to the periodically refreshed ScreenScraper system list cached in SQLite, then to built-in aliases. A two-second hold on **Confirm** opens the ScreenScraper details page with the cover, screenshot, and synopsis. In **Pause > Scrap**, the ScreenScraper username and password can be edited together; a virtual keyboard is shown only when a controller is detected, otherwise type directly, use Tab to switch fields and **ENTER** to confirm. A message shows the remaining quota. The account is stored in the dedicated `saves/ports/rgsx/screenscraper_account.json` file and can also be edited from the web interface.
 
 The Media Manager downloads media in bulk. Its **History** control shortcut starts, resumes, or cancels the current job without navigating back to the first row.
 
 ### Local Database and Migration
 
-The systems/games catalog, download history, locally detected owned games, and related persistent state are stored in `/saves/ports/rgsx/rgsx.sqlite3`. The initial catalog sync downloads a full snapshot; later syncs apply changes incrementally. When a source or platform is hidden or re-enabled, RGSX reconciles the visible platform list and transfers game data only for newly visible platforms. **Games > Refresh Game Catalog** runs synchronization again. General preferences remain in `rgsx_settings.json`, and custom controls remain in `controls.json`.
+The systems/games catalog, download history, locally detected owned games, ScreenScraper synopses (including "not found" answers), and related persistent state are stored in `/saves/ports/rgsx/rgsx.sqlite3`. The initial catalog sync downloads a full snapshot; later syncs apply changes incrementally. When a source or platform is hidden or re-enabled, RGSX reconciles the visible platform list and transfers game data only for newly visible platforms. **Games > Refresh Game Catalog** runs synchronization again. General preferences remain in `rgsx_settings.json`, and custom controls remain in `controls.json`.
 
 On the first launch after upgrading from the former JSON-based storage, RGSX imports the download history, owned-game records, and torrent cache when present. Any discovered legacy cache/data files are moved to `/saves/ports/rgsx/backup_old_rgsx/<date>/`. Do not delete the SQLite database while RGSX is running: it contains the catalog and persistent user data. SQLite may create temporary `-wal` and `-shm` files alongside the database.
 
@@ -202,7 +195,7 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 │   │   ├── network.py                 # Downloads
 │   │   ├── preview.py                 # Game-list cover preview and delayed fetch
 │   │   ├── rgsx_settings.py           # User preferences
-│   │   ├── screenscraper.py           # ScreenScraper proxy client
+│   │   ├── screenscraper.py           # ScreenScraper API client
 │   │   ├── rgsx_web.py                # Web interface and server
 │   │   ├── assets/                    # Profiles, images, fonts, music, and tools
 │   │   ├── languages/                 # Translations (EN/FR/DE/ES/IT/PT/TR)
@@ -220,7 +213,7 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 /saves/ports/rgsx/
 ├── rgsx_settings.json        # User preferences
 ├── controls.json             # Control mapping
-├── rgsx.sqlite3              # Catalog, history, and persistent user state
+├── rgsx.sqlite3 # Catalog, history, ScreenScraper synopses, and persistent user state
 ├── images/                   # System images
 ├── media/                    # Cached game covers, screenshots, and logos
 ├── screenscraper_account.json # Optional ScreenScraper account
@@ -246,7 +239,8 @@ The `-wal` and `-shm` files that may appear beside `rgsx.sqlite3` are temporary 
 | Catalog sync or database write failure | Check available disk space and write permissions in `/saves/ports/rgsx/`, then inspect the logs. Do not delete `rgsx.sqlite3` without a backup: it also contains history and owned-game records. |
 | App crashes | Check `/roms/ports/RGSX/logs/RGSX.log` (and `rgsx_web.log` for the web server). |
 | Layout change not applied | Restart RGSX after changing layout |
-| Covers missing from the game list | ScreenScraper is temporarily disabled (see *ScreenScraper and Media Manager*), so only covers already in the local media cache are shown. |
+| Covers missing from the game list | If ScreenScraper is disabled, the preview panel (cover and synopsis) is hidden. Re-enable it in **Pause > Scrap**. |
+| ScreenScraper error: account required, 403, or quota reached | Enter your own ScreenScraper login in **Pause > Scrap**. Developer credentials are fetched once per session from the RGSX credentials service and kept in memory only. A 403 means the credentials were rejected; a quota error means your account's daily limit is reached. |
 | Problem downloading some Games ? | Open Pause Menu > Settings > Connection Status. If one or more required sites are red, enable Custom DNS in Settings and reboot. Also check ISP/router protections (especially ASUS web threat blocking). |
 
 **Need help?** Share logs from `/roms/ports/RGSX/logs/` on [Discord](https://discord.gg/XPK8YG8XYC).

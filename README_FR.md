@@ -73,32 +73,28 @@ Télécharger et extraire la dernière release : [RGSX_full_latest.zip](https://
 
 ### Structure du menu pause
 
-**Menu racine** — Jeux, Langue, Contrôles, Affichage, Paramètres, Support, Réinitialiser les paramètres par défaut et Quitter. Scrap est provisoirement masqué (voir ci-dessous).
+**Menu racine** — Jeux, Langue, Contrôles, Affichage, Paramètres, Support, Réinitialiser les paramètres par défaut et Quitter.
 
 - **Jeux** : actualiser le catalogue, scanner les ROMs déjà présentes, ouvrir l'historique, afficher/masquer les systèmes non supportés et choisir les plateformes visibles.
 - **Contrôles** : consulter l'aide des commandes actuellement assignées ou remapper clavier/manette.
 - **Affichage** : choisir parmi huit grilles (3×3, 3×4, 4×3, 4×4, 5×4, 6×4, 6×6 ou 8×6), régler séparément la taille de police de l'interface et du pied de page, choisir la police (Pixel, Bell Centennial ou DejaVu Sans), le thème d'arrière-plan et le mode léger. Le choix du moniteur n'apparaît que si plusieurs écrans sont détectés ; le mode fenêtre/plein écran est réservé à Windows. Le menu permet aussi de masquer l'avertissement d'extension inconnue.
-- **Scrap** (provisoirement masqué) : modifier les identifiants ScreenScraper et ouvrir le Gestionnaire de médias.
+- **Scrap** : modifier les identifiants ScreenScraper, ouvrir le Gestionnaire de médias et activer ou désactiver ScreenScraper (**Activer ScreenScraper** / **Désactiver ScreenScraper**). Quand il est désactivé, le Gestionnaire de médias est bloqué, les téléchargements en cours sont annulés et le panneau d'aperçu est masqué. Le choix est enregistré dans `screenscraper_disabled` de `rgsx_settings.json`.
 - **Paramètres** : musique, comportement des liens symboliques, extraction automatique, dossier ROMs, nombre maximal de téléchargements simultanés, statut des clés API et état des connexions. Le service Web au démarrage et le DNS personnalisé sont proposés sous Linux/Batocera.
 - **Support** : outils de diagnostic et génération d'une archive de support.
 - **Quitter** : quitter ou redémarrer RGSX. La langue se choisit directement depuis le menu racine.
 
 ### ScreenScraper et Gestionnaire de médias
 
-> **Désactivation provisoire.** RGSX n'appelle pas l'API ScreenScraper pour le moment, le temps de vérifier l'attribution des quotas de compte :
-> - la liste des jeux n'affiche que les pochettes déjà présentes dans le cache média local ; aucune requête n'est envoyée à la sélection d'un jeu ;
-> - le menu **Scrap** est masqué, ainsi que le Gestionnaire de médias qui n'est accessible que depuis ce menu ;
-> - l'appui de deux secondes sur **Valider** n'ouvre plus les détails ScreenScraper, et l'entrée **Scraper** des options de l'historique est masquée.
->
-> Pour réactiver ces fonctions, passez `SCREENSCRAPER_TEMPORARILY_DISABLED` à `False` dans `config.py`. Le comportement décrit ci-dessous s'applique alors à nouveau.
+Dans la liste des jeux, la pochette locale d'un jeu sélectionné s'affiche immédiatement si elle existe. Lorsque ScreenScraper est désactivé, le panneau d'aperçu est masqué et la liste des jeux ne déclenche plus de récupération automatique. Après le délai configuré (deux secondes par défaut : `SCREENSCRAPER_PREVIEW_DELAY_SEC` dans `config.py`, ou variable d'environnement `RGSX_SCREENSCRAPER_PREVIEW_DELAY`) sur le même jeu, RGSX affiche son résumé ScreenScraper dans le panneau d'aperçu : il est lu dans la base locale s'il y est déjà enregistré (les jeux absents de ScreenScraper y sont aussi conservés, pour ne pas les interroger à nouveau), sinon il est récupéré puis enregistré. La pochette n'est téléchargée que si elle manque en local et que ScreenScraper en possède une ; si ScreenScraper n'en a pas, elle n'est plus redemandée. Le résumé apparaît une fois chargé. Si aucune information n'est disponible, un placeholder l'indique. L'ID ScreenScraper prioritaire est stocké par plateforme dans le catalogue RGSX en ligne et modifiable dans RGSX Sources Manager. S'il n'est pas renseigné, RGSX utilise la liste des systèmes ScreenScraper mise en cache dans SQLite et actualisée périodiquement, puis les alias intégrés. Un appui de deux secondes sur **Valider** ouvre sa page ScreenScraper avec la pochette, la capture d'écran et le résumé. 
 
-Dans la liste des jeux, laisser un jeu sélectionné pendant deux secondes récupère sa pochette dans le cache local et affiche son résumé ScreenScraper dans le panneau d'aperçu. Si aucune information n'est disponible, un placeholder l'indique. L'ID ScreenScraper prioritaire est stocké par plateforme dans le catalogue RGSX en ligne et modifiable dans RGSX Sources Manager. S'il n'est pas renseigné, RGSX utilise la liste des systèmes ScreenScraper mise en cache dans SQLite et actualisée périodiquement, puis les alias intégrés. Un appui de deux secondes sur **Valider** ouvre sa page ScreenScraper avec la pochette, la capture d'écran et le résumé. Dans **Pause > Scrap**, l'identifiant et le mot de passe ScreenScraper se modifient sur la même page : le clavier virtuel apparaît uniquement si une manette est détectée ; sinon, saisissez directement au clavier et utilisez Tab pour changer de champ. Le compte reste dans le fichier dédié `screenscraper_account.json` et peut aussi être modifié depuis l'interface Web.
+Dans **Pause > Scrap**, l'identifiant et le mot de passe ScreenScraper se modifient sur la même page : le clavier virtuel apparaît uniquement si une manette est détectée ; sinon, saisissez directement au clavier et utilisez Tab pour changer de champ puis **ENTRÉE** pour confirmer. Un message indiquera le quota restant. 
+Le compte est dans le fichier dédié `saves/ports/rgsx/screenscraper_account.json` et peut aussi être modifié depuis l'interface Web.
 
 Le Gestionnaire de médias permet les téléchargements en lot. Son raccourci de contrôle **Historique** lance, reprend ou annule le travail sans remonter à la première ligne.
 
 ### Base de données locale et migration
 
-Le catalogue des systèmes/jeux, l'historique des téléchargements, les ROMs détectées comme déjà possédées et l'état local associé sont enregistrés dans `/saves/ports/rgsx/rgsx.sqlite3`. La première synchronisation télécharge un snapshot complet ; les suivantes appliquent les changements de façon incrémentale. Lorsqu'une source ou une plateforme est masquée ou réactivée, RGSX compare la liste des plateformes visibles et ne transfère les jeux que pour celles qui réapparaissent. **Jeux > Actualiser le catalogue** relance la synchronisation. Les préférences générales restent dans `rgsx_settings.json` et les commandes personnalisées dans `controls.json`.
+Le catalogue des systèmes/jeux, l'historique des téléchargements, les ROMs détectées comme déjà possédées, les résumés ScreenScraper (y compris les réponses « non trouvé ») et l'état local associé sont enregistrés dans `/saves/ports/rgsx/rgsx.sqlite3`. La première synchronisation télécharge un snapshot complet ; les suivantes appliquent les changements de façon incrémentale. Lorsqu'une source ou une plateforme est masquée ou réactivée, RGSX compare la liste des plateformes visibles et ne transfère les jeux que pour celles qui réapparaissent. **Jeux > Actualiser le catalogue** relance la synchronisation. Les préférences générales restent dans `rgsx_settings.json` et les commandes personnalisées dans `controls.json`.
 
 Lors du premier lancement après la migration depuis l'ancien stockage JSON, RGSX importe l'historique, les jeux détectés comme possédés et le cache torrent lorsqu'ils sont présents. Les anciens fichiers de cache/données trouvés sont déplacés dans `/saves/ports/rgsx/backup_old_rgsx/<date>/`. Ne supprimez pas la base SQLite pendant que RGSX fonctionne : elle contient le catalogue et les données utilisateur persistantes. SQLite peut créer des fichiers temporaires `-wal` et `-shm` à côté de la base.
 
@@ -113,7 +109,7 @@ Lors du premier lancement après la migration depuis l'ancien stockage JSON, RGS
 - 🎮 **Pensé manette avant tout** – Auto-mapping pour les manettes populaires + remapping personnalisé
 - 🔍 **Filtrage avancé** – Recherche par nom, afficher/masquer les systèmes non supportés, filtre de plateformes
 - 📊 **Gestion des téléchargements** – File d'attente, historique, notifications de progression
-- 🖼️ **Médias ScreenScraper** (provisoirement désactivés) – Téléchargement différé des pochettes, détails des jeux, captures d'écran et gestionnaire de médias
+- 🖼️ **Médias ScreenScraper** (désactivables dans Pause > Scrap) – Téléchargement différé des pochettes, détails des jeux, captures d'écran et gestionnaire de médias
 - ♿ **Accessibilité** – Échelle de police séparée pour l'UI et le footer, support du mode clavier uniquement
 
 > ### 🔑 Configuration des clés API
@@ -202,7 +198,7 @@ RGSX inclut une interface web qui se lance automatiquement quand vous utilisez R
 │   │   ├── network.py                 # Téléchargements
 │   │   ├── preview.py                 # Aperçu des pochettes et téléchargement différé
 │   │   ├── rgsx_settings.py           # Préférences utilisateur
-│   │   ├── screenscraper.py           # Client du proxy ScreenScraper
+│   │   ├── screenscraper.py           # Client de l'API ScreenScraper
 │   │   ├── rgsx_web.py                # Interface et serveur Web
 │   │   ├── assets/                    # Profils, images, polices, musique et outils
 │   │   ├── languages/                 # Traductions (EN/FR/DE/ES/IT/PT/TR)
@@ -220,7 +216,7 @@ RGSX inclut une interface web qui se lance automatiquement quand vous utilisez R
 /saves/ports/rgsx/
 ├── rgsx_settings.json        # Préférences utilisateur
 ├── controls.json             # Mapping des contrôles
-├── rgsx.sqlite3              # Catalogue, historique et état utilisateur persistant
+├── rgsx.sqlite3 # Catalogue, historique, résumés ScreenScraper et état utilisateur persistant
 ├── images/                   # Images des systèmes
 ├── media/                    # Cache des pochettes, captures et logos des jeux
 ├── screenscraper_account.json # Compte ScreenScraper facultatif
@@ -246,7 +242,8 @@ Les fichiers `-wal` et `-shm` éventuellement visibles à côté de `rgsx.sqlite
 | Échec de synchronisation ou erreur d'écriture de la base | Vérifiez l'espace disque et les droits d'écriture dans `/saves/ports/rgsx/`, puis consultez les journaux. Ne supprimez pas `rgsx.sqlite3` sans en avoir fait une copie : elle contient aussi l'historique et les jeux détectés comme possédés. |
 | L'application crash | Vérifiez `/roms/ports/RGSX/logs/RGSX.log` (et `rgsx_web.log` pour le serveur Web). |
 | Changement de layout non appliqué | Redémarrez RGSX après modification du layout |
-| Pochettes absentes de la liste des jeux | ScreenScraper est provisoirement désactivé (voir *ScreenScraper et Gestionnaire de médias*) : seules les pochettes déjà présentes dans le cache média local s'affichent. |
+| Erreur ScreenScraper : compte requis, 403 ou quota atteint | Saisissez votre propre identifiant ScreenScraper dans **Pause > Scrap**. Les identifiants développeur sont récupérés une fois par session auprès du service d'identifiants RGSX et gardés uniquement en mémoire. Une erreur 403 signifie que les identifiants ont été refusés ; une erreur de quota signifie que la limite journalière de votre compte est atteinte. |
+| Pochettes absentes de la liste des jeux | Si ScreenScraper est désactivé, le panneau d'aperçu (pochette et résumé) est masqué. Réactivez-le dans **Pause > Scrap**. |
 | Problème de téléchargement de certains jeux ? | Ouvrez Menu Pause > Paramètres > Statut de connexion. Si un ou plusieurs sites requis sont en rouge, activez DNS personnalisé dans Paramètres et redémarrez. Vérifiez aussi les protections ISP/routeur (notamment ASUS web threat blocking). |
 
 **Besoin d'aide ?** Partagez les logs de `/roms/ports/RGSX/logs/` sur [Discord](https://discord.gg/Vph9jwg3VV).

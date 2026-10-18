@@ -11,7 +11,7 @@ from typing import Any, Iterable
 
 from sqlite_compat import sqlite3
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 PLATFORM_SOURCE_ALIASES = {
     "archive": "Archive",
@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS screenscraper_systems (
     name TEXT NOT NULL DEFAULT '',
     short_name TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS screenscraper_game_summaries (
+    system_id INTEGER NOT NULL,
+    rom_name TEXT NOT NULL,
+    found INTEGER NOT NULL DEFAULT 0,
+    summary TEXT NOT NULL DEFAULT '',
+    cover_checked INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (system_id, rom_name)
 );
 
 CREATE TABLE IF NOT EXISTS platforms (
@@ -244,6 +254,9 @@ def initialize_database(db_path: str | os.PathLike[str] | None = None) -> str:
             connection.execute("ALTER TABLE platforms ADD COLUMN source TEXT NOT NULL DEFAULT ''")
         if "screenscraper_system_id" not in columns:
             connection.execute("ALTER TABLE platforms ADD COLUMN screenscraper_system_id INTEGER")
+        summary_columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(screenscraper_game_summaries)").fetchall()}
+        if "cover_checked" not in summary_columns:
+            connection.execute("ALTER TABLE screenscraper_game_summaries ADD COLUMN cover_checked INTEGER NOT NULL DEFAULT 0")
         legacy_rows = connection.execute(
             "SELECT id, platform_name, source FROM platforms WHERE TRIM(source) = ''"
         ).fetchall()
@@ -492,6 +505,55 @@ def replace_screenscraper_systems(
             (now,),
         )
     return len(system_rows)
+
+
+def load_game_summary(
+    system_id: int,
+    rom_name: str,
+    db_path: str | os.PathLike[str] | None = None,
+) -> dict[str, Any] | None:
+    initialize_database(db_path)
+    with connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT found, summary, cover_checked FROM screenscraper_game_summaries WHERE system_id = ? AND rom_name = ?",
+            (int(system_id), str(rom_name)),
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "found": bool(row["found"]),
+        "summary": str(row["summary"]),
+        "cover_checked": bool(row["cover_checked"]),
+    }
+
+
+def save_game_summary(
+    system_id: int,
+    rom_name: str,
+    summary: str,
+    found: bool,
+    cover_checked: bool = False,
+    db_path: str | os.PathLike[str] | None = None,
+) -> None:
+    initialize_database(db_path)
+    with connect(db_path) as connection:
+        connection.execute(
+            """INSERT INTO screenscraper_game_summaries(system_id, rom_name, found, summary, cover_checked, updated_at)
+               VALUES(?, ?, ?, ?, ?, ?)
+               ON CONFLICT(system_id, rom_name) DO UPDATE SET
+                   found=excluded.found,
+                   summary=excluded.summary,
+                   cover_checked=excluded.cover_checked,
+                   updated_at=excluded.updated_at""",
+            (
+                int(system_id),
+                str(rom_name),
+                1 if found else 0,
+                str(summary or ""),
+                1 if cover_checked else 0,
+                utc_now(),
+            ),
+        )
 
 
 def list_platforms_with_game_counts(db_path: str | os.PathLike[str] | None = None) -> list[dict[str, Any]]:

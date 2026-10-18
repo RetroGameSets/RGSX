@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import config
 import database
 import screenscraper
+from rgsx_settings import is_screenscraper_disabled
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,7 @@ class MediaManager:
         self.pending = len(load_queue()["items"])
         username, password = screenscraper.load_account()
         self.account_configured = bool(username.strip() and password)
+        logger.info("Media Manager opened (ScreenScraper account configured: %s)", self.account_configured)
         self.status = None
         if not self.account_configured:
             self.allowance = None
@@ -169,11 +171,7 @@ class MediaManager:
             screenscraper.refresh_system_catalog()
         except screenscraper.ScreenScraperError as exc:
             logger.warning("Could not refresh ScreenScraper systems: %s (%s)", exc.kind, exc)
-            self.status = (
-                ("screenscraper_proxy_outdated", ())
-                if exc.kind == "proxy"
-                else ("media_error", (exc.kind,))
-            )
+            self.status = ("media_error", (exc.kind,))
         else:
             self.platforms = self.list_platforms()
         config.needs_redraw = True
@@ -216,7 +214,7 @@ class MediaManager:
         return games, per_game, capacity
 
     def start(self, resume=False):
-        if self.running:
+        if self.running or is_screenscraper_disabled():
             return
         username, password = screenscraper.load_account()
         if not username.strip() or not password:
@@ -270,7 +268,7 @@ class MediaManager:
         kinds = PROFILES[self.profile]
         for attempt in range(NETWORK_RETRIES):
             try:
-                urls = screenscraper.fetch_game_media(item["rom_filename"], platform_id, kinds)
+                urls = screenscraper.fetch_game_media(item["rom_filename"], platform_id, kinds, origin="media manager")
                 if not urls:
                     return "not_found"
                 for kind in kinds:
@@ -302,7 +300,7 @@ class MediaManager:
             return
 
         self.progress["total"] = len(items)
-        logger.info(f"Media download started: {len(items)} games, profile={self.profile}")
+        logger.info(f"Media download started: {len(items)} games, profile={self.profile}, {screenscraper.quota_summary()}")
         failed = []
         consecutive_network_failures = 0
         index = 0
@@ -368,7 +366,7 @@ class MediaManager:
         self.allowance = screenscraper.LAST_ALLOWANCE or self.allowance
         import preview  # "no image" entries in the preview cache may now be stale
         preview.clear_cache()
-        logger.info(f"Media download finished: {self.progress}, {len(remaining)} games queued")
+        logger.info(f"Media download finished: {self.progress}, {len(remaining)} games queued, {screenscraper.quota_summary()}")
         config.needs_redraw = True
 
 

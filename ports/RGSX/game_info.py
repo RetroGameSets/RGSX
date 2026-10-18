@@ -1,4 +1,4 @@
-"""Fetch and display metadata from the ScreenScraper proxy."""
+"""Fetch and display metadata from the ScreenScraper API."""
 import logging
 from io import BytesIO
 import threading
@@ -37,7 +37,7 @@ def open_game_info(rom_filename, game_name, platform_name, return_state="game"):
 def _fetch_game_info(request_id, rom_filename, platform_name):
     try:
         system_id = screenscraper.resolve_system_id(platform_name)
-        result = screenscraper.fetch_game_info(rom_filename, system_id)
+        result = screenscraper.fetch_game_info(rom_filename, system_id, origin="details")
         if result is None:
             summary = ""
             images = {}
@@ -62,7 +62,6 @@ def _fetch_game_info(request_id, rom_filename, platform_name):
             "config": "screenscraper_dev_credentials_missing",
             "quota": "media_quota_exhausted",
             "rate_limited": "screenscraper_rate_limited",
-            "proxy": "screenscraper_proxy_outdated",
             "unsupported": "media_unsupported",
         }
         key = error_keys.get(exc.kind)

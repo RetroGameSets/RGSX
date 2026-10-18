@@ -10,7 +10,7 @@ import logging
 import config
 import catalog_sync
 from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE, CONTROLS_CONFIG_PATH, Game
-from display import draw_validation_transition, pause_root_index, show_toast
+from display import draw_validation_transition, show_toast
 from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel, cleanup_torrent_temp, stop_active_seeder
 from utils import (
     load_games, clear_games_cache, check_extension_before_download, is_extension_supported,
@@ -34,7 +34,8 @@ from rgsx_settings import (
     get_show_unsupported_platforms, set_show_unsupported_platforms,
     set_allow_unknown_extensions, set_symlink_option, get_symlink_option,
     get_global_sort_option, set_global_sort_option,
-    load_rgsx_settings, save_rgsx_settings
+    load_rgsx_settings, save_rgsx_settings,
+    is_screenscraper_disabled, set_screenscraper_disabled
 )
 from accessibility import save_accessibility_settings
 from pathlib import Path
@@ -2310,7 +2311,7 @@ def handle_controls(event, sources, joystick, screen):
                 options = []
                 
                 # Option commune: ScreenScraper details
-                if not config.SCREENSCRAPER_TEMPORARILY_DISABLED:
+                if not is_screenscraper_disabled():
                     options.append("game_info")
                 
                 # Options selon statut
@@ -2868,7 +2869,7 @@ def handle_controls(event, sources, joystick, screen):
                 config.selected_option = (config.selected_option + 1) % total
                 config.needs_redraw = True
             elif is_input_matched(event, "confirm"):
-                choice = pause_root_index(config.selected_option)
+                choice = config.selected_option
                 if choice == 0:  # Games submenu
                     config.menu_state = "pause_games_menu"
                     if not hasattr(config, 'pause_games_selection'):
@@ -3318,7 +3319,7 @@ def handle_controls(event, sources, joystick, screen):
 
         # Sous-menu Scrap
         elif config.menu_state == "pause_scrap_menu":
-            options_count = 3
+            options_count = 4
             sel = getattr(config, "pause_scrap_selection", 0)
             if is_input_matched(event, "up"):
                 config.pause_scrap_selection = (sel - 1) % options_count
@@ -3336,11 +3337,20 @@ def handle_controls(event, sources, joystick, screen):
                     config.ss_input_return_state = "pause_scrap_menu"
                     config.menu_state = "screenscraper_input"
                 elif sel == 1:
-                    from media_manager import manager
-                    manager.open()
-                    config.media_manager_selection = 0
-                    config.media_manager_scroll_offset = 0
-                    config.menu_state = "media_manager"
+                    if is_screenscraper_disabled():
+                        show_toast(_("toast_screenscraper_disabled"))
+                    else:
+                        from media_manager import manager
+                        manager.open()
+                        config.media_manager_selection = 0
+                        config.media_manager_scroll_offset = 0
+                        config.menu_state = "media_manager"
+                elif sel == 2:
+                    disabled = set_screenscraper_disabled(not is_screenscraper_disabled())
+                    if disabled:
+                        from media_manager import manager
+                        manager.cancel()
+                    show_toast(_("toast_screenscraper_disabled") if disabled else _("toast_screenscraper_enabled"))
                 else:
                     config.menu_state = "pause_menu"
                 config.last_state_change_time = pygame.time.get_ticks()
@@ -4589,7 +4599,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.pause_display_selection = 4
                 else:
                     # Index visible de Settings (4 quand l'entrée Scrap est masquée)
-                    config.selected_option = 4 if config.SCREENSCRAPER_TEMPORARILY_DISABLED else 5
+                    config.selected_option = 5
                 config.filter_return_to = None
 
             def _show_unsaved_exit_toast() -> None:

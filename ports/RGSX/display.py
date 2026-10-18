@@ -23,7 +23,7 @@ from language import _, get_size_units, get_speed_unit, get_available_languages,
 from rgsx_settings import (load_rgsx_settings, get_light_mode, get_show_unsupported_platforms,
                             get_allow_unknown_extensions, get_display_monitor, get_display_fullscreen,
                             get_available_monitors, get_font_family, get_symlink_option,
-                            get_display_background_theme, DISPLAY_GRID_LAYOUTS)
+                            get_display_background_theme, DISPLAY_GRID_LAYOUTS, is_screenscraper_disabled)
 from game_filters import GameFilters  
 
 import json
@@ -2089,9 +2089,9 @@ def draw_game_list(screen):
     rect_x = (config.screen_width - rect_width) // 2
     rect_y = title_height + extra_margin_top + (config.screen_height - title_height - extra_margin_top - extra_margin_bottom - rect_height) // 2
 
-    # Right preview panel: disabled in Light Mode and on small screens (keeps the 640x480 layout intact).
+    # Right preview panel: disabled in Light Mode, when ScreenScraper is disabled, and on small screens (keeps the 640x480 layout intact).
     preview_width = 0
-    if config.screen_width >= PREVIEW_MIN_SCREEN_WIDTH and not get_light_mode():
+    if config.screen_width >= PREVIEW_MIN_SCREEN_WIDTH and not get_light_mode() and not is_screenscraper_disabled():
         preview_width = int(rect_width * 0.28)
         rect_width -= preview_width + PREVIEW_GAP
 
@@ -3884,12 +3884,6 @@ def draw_display_menu(screen):
     # Dessiner l'instruction en haut
     draw_menu_instruction(screen, instruction_text)
 
-def pause_root_index(visible_index):
-    """Convertit l'index visible du menu pause racine en index logique (entrée Scrap masquée)."""
-    if config.SCREENSCRAPER_TEMPORARILY_DISABLED and visible_index >= 4:
-        return visible_index + 1
-    return visible_index
-
 def draw_pause_menu(screen, selected_option):
     """Dessine le menu pause racine (catégories)."""
     screen.blit(OVERLAY, (0, 0))
@@ -3922,9 +3916,6 @@ def draw_pause_menu(screen, selected_option):
         "instruction_pause_reset_settings",
         "instruction_pause_quit",
     ]
-    if config.SCREENSCRAPER_TEMPORARILY_DISABLED:
-        del options[4]
-        del instruction_keys[4]
     try:
         key = instruction_keys[selected_option]
         instruction_text = _(key)
@@ -4530,14 +4521,17 @@ def draw_pause_settings_menu(screen, selected_index):
 
 
 def draw_pause_scrap_menu(screen, selected_index):
+    toggle_label = _("menu_screenscraper_enable") if is_screenscraper_disabled() else _("menu_screenscraper_disable")
     options = [
         _("menu_screenscraper_account"),
         _("settings_media_manager"),
+        toggle_label,
         _("menu_back"),
     ]
     instruction_keys = [
         "instruction_scrap_screenscraper_account",
         "instruction_settings_media_manager",
+        "instruction_scrap_screenscraper_toggle",
         "instruction_generic_back",
     ]
     key = instruction_keys[selected_index] if 0 <= selected_index < len(instruction_keys) else None
@@ -6062,7 +6056,7 @@ def draw_history_game_options(screen):
     
     # Options communes
 
-    if not config.SCREENSCRAPER_TEMPORARILY_DISABLED:
+    if not is_screenscraper_disabled():
         options.append("game_info")
         option_labels.append(_("history_option_scraper"))
  

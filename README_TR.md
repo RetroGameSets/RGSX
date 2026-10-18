@@ -73,32 +73,25 @@ En son sürümü indirip arşivden çıkarın: [RGSX_full_latest.zip](https://gi
 
 ### Duraklatma Menüsü Yapısı
 
-**Ana menü** — Oyunlar, Dil, Kontroller, Görünüm, Ayarlar, Destek, Varsayılan Ayarlara Sıfırla ve Çıkış. Scrap geçici olarak gizlidir (aşağıya bakın).
+**Ana menü** — Oyunlar, Dil, Kontroller, Görünüm, Ayarlar, Destek, Varsayılan Ayarlara Sıfırla ve Çıkış.
 
 - **Oyunlar**: kataloğu yenileyin, yerelde sahip olunan ROM'ları tarayın, indirme geçmişini açın, desteklenmeyen sistemleri gösterin/gizleyin ve görünür platformları seçin.
 - **Kontroller**: geçerli tuş atamalarını görüntüleyin veya klavye/kontrolcü tuşlarını yeniden atayın.
 - **Görünüm**: sekiz ızgara arasından seçim yapın (3×3, 3×4, 4×3, 4×4, 5×4, 6×4, 6×6 veya 8×6), arayüz ve alt bilgi yazı boyutlarını ayrı ayrı ayarlayın, yazı tipi (Pixel, Bell Centennial veya DejaVu Sans), arka plan teması ve Açık Mod seçin. Monitör seçimi yalnızca birden fazla ekran algılandığında görünür; pencere/tam ekran modu yalnızca Windows'ta vardır. Bilinmeyen uzantı uyarılarını da gizleyebilirsiniz.
-- **Scrap** (geçici olarak gizli): ScreenScraper kimlik bilgilerini düzenleyin ve Medya Yöneticisi'ni açın.
+- **Scrap**: ScreenScraper kimlik bilgilerini düzenleyin, Medya Yöneticisi'ni açın ve ScreenScraper'ı açıp kapatın (**ScreenScraper'ı etkinleştir** / **ScreenScraper'ı devre dışı bırak**). Devre dışıyken Medya Yöneticisi engellenir, çalışan indirmeler iptal edilir ve önizleme paneli gizlenir. Seçim `rgsx_settings.json` içinde `screenscraper_disabled` olarak saklanır.
 - **Ayarlar**: arka plan müziği, sembolik bağlantı davranışı, otomatik arşivden çıkarma, ROM klasörü, en fazla eşzamanlı indirme sayısı, API anahtarı durumu ve bağlantı durumu. Açılışta web servisi ve Özel DNS seçenekleri Linux/Batocera'da kullanılabilir.
 - **Destek**: tanılama araçları ve destek arşivi oluşturma.
 - **Çıkış**: RGSX'ten çıkın veya yeniden başlatın. Dil seçimi doğrudan ana menüdedir.
 
 ### ScreenScraper ve Medya Yöneticisi
 
-> **Geçici olarak devre dışı.** Hesap kotası atamasını incelerken RGSX şimdilik ScreenScraper API'sini çağırmaz:
-> - Oyun listesi yalnızca yerel medya önbelleğinde bulunan kapakları gösterir; bir oyun seçildiğinde istek gönderilmez;
-> - **Scrap** menüsü gizlidir; Medya Yöneticisi de yalnızca bu menüden erişilebildiği için gizlidir;
-> - **Onayla** düğmesine iki saniye basmak artık ScreenScraper ayrıntılarını açmaz ve geçmiş oyun seçeneklerindeki **Scraper** girişi gizlidir.
->
-> Bu özellikleri yeniden etkinleştirmek için `config.py` içinde `SCREENSCRAPER_TEMPORARILY_DISABLED` değerini `False` yapın. Aşağıda açıklanan davranış o zaman yeniden geçerli olur.
-
-Oyun listesinde bir oyunu iki saniye seçili tutmak kapağını yerel medya önbelleğine indirir ve ScreenScraper özetini önizleme panelinde gösterir. Bilgi bulunamazsa panelde uygun bir yer tutucu gösterilir. Öncelikli ScreenScraper sistem kimliği, çevrimiçi RGSX kataloğunda platform başına saklanır ve RGSX Sources Manager üzerinden düzenlenebilir. Kimlik tanımlı değilse RGSX, SQLite'ta düzenli güncellenen ScreenScraper sistem listesine, ardından yerleşik takma adlara geri döner. **Onayla** düğmesine iki saniye basmak, kapak, ekran görüntüsü ve özeti içeren ScreenScraper ayrıntı sayfasını açar. **Duraklat > Scrap** bölümünde ScreenScraper kullanıcı adı ve parolası aynı sayfada düzenlenir: sanal klavye yalnızca kontrolcü algılandığında görünür; aksi durumda doğrudan yazın ve alanlar arasında geçmek için Tab kullanın. Hesap ayrı `screenscraper_account.json` dosyasında saklanır ve Web arayüzünden de düzenlenebilir.
+Oyun listesinde seçili oyunun yerel kapağı varsa hemen gösterilir. ScreenScraper devre dışıyken önizleme paneli gizlenir ve oyun listesi otomatik bilgi almaz. Varsayılan olarak iki saniye (`config.py` içindeki `SCREENSCRAPER_PREVIEW_DELAY_SEC`, veya `RGSX_SCREENSCRAPER_PREVIEW_DELAY` ortam değişkeni) kalındığında RGSX ScreenScraper özetini önizleme panelinde gösterir: özet yerel veritabanında zaten kayıtlıysa oradan okunur (ScreenScraper'da bulunamayan oyunlar da kaydedilir ve yeniden sorgulanmaz), değilse alınıp kaydedilir. Kapak yalnızca yerelde yoksa ve ScreenScraper'da varsa indirilir; ScreenScraper'da kapağı olmayan oyun için kapak tekrar sorulmaz. Özet yüklendiğinde panelde görünür. Bilgi bulunamazsa panelde uygun bir yer tutucu gösterilir. Öncelikli ScreenScraper sistem kimliği, çevrimiçi RGSX kataloğunda platform başına saklanır ve RGSX Sources Manager üzerinden düzenlenebilir. Kimlik tanımlı değilse RGSX, SQLite'ta düzenli güncellenen ScreenScraper sistem listesine, ardından yerleşik takma adlara geri döner. **Onayla** düğmesine iki saniye basmak, kapak, ekran görüntüsü ve özeti içeren ScreenScraper ayrıntı sayfasını açar. **Duraklat > Scrap** bölümünde ScreenScraper kullanıcı adı ve parolası aynı sayfada düzenlenir: sanal klavye yalnızca kontrolcü algılandığında görünür; aksi durumda doğrudan yazın, alanlar arasında geçmek için Tab, onaylamak için **ENTER** kullanın. Kalan kotayı bir mesaj gösterir. Hesap ayrı `saves/ports/rgsx/screenscraper_account.json` dosyasında saklanır ve Web arayüzünden de düzenlenebilir.
 
 Medya Yöneticisi toplu indirme yapar. **Geçmiş** kontrol kısayolu, ilk satıra dönmeden işi başlatır, sürdürür veya iptal eder.
 
 ### Yerel Veritabanı ve Taşıma
 
-Sistem/oyun kataloğu, indirme geçmişi, yerelde algılanan sahip olunan oyunlar ve ilgili kalıcı veriler `/saves/ports/rgsx/rgsx.sqlite3` içinde saklanır. İlk katalog senkronizasyonu tam bir anlık görüntü indirir; sonraki senkronizasyonlar yalnızca değişiklikleri uygular. Bir kaynak veya platform gizlendiğinde ya da yeniden etkinleştirildiğinde RGSX görünür platform listesini günceller ve yalnızca yeni görünür olan platformların oyun verilerini aktarır. **Oyunlar > Oyun Kataloğunu Yenile** senkronizasyonu yeniden çalıştırır. Genel tercihler `rgsx_settings.json` içinde, özel tuş atamaları `controls.json` içinde kalır.
+Sistem/oyun kataloğu, indirme geçmişi, yerelde algılanan sahip olunan oyunlar, ScreenScraper özetleri ("bulunamadı" yanıtları dahil) ve ilgili kalıcı veriler `/saves/ports/rgsx/rgsx.sqlite3` içinde saklanır. İlk katalog senkronizasyonu tam bir anlık görüntü indirir; sonraki senkronizasyonlar yalnızca değişiklikleri uygular. Bir kaynak veya platform gizlendiğinde ya da yeniden etkinleştirildiğinde RGSX görünür platform listesini günceller ve yalnızca yeni görünür olan platformların oyun verilerini aktarır. **Oyunlar > Oyun Kataloğunu Yenile** senkronizasyonu yeniden çalıştırır. Genel tercihler `rgsx_settings.json` içinde, özel tuş atamaları `controls.json` içinde kalır.
 
 Eski JSON tabanlı depolamadan yükseltme sonrası ilk açılışta RGSX; indirme geçmişini, sahip olunan oyun kayıtlarını ve varsa torrent önbelleğini içe aktarır. Bulunan eski önbellek/veri dosyaları `/saves/ports/rgsx/backup_old_rgsx/<tarih>/` klasörüne taşınır. RGSX çalışırken SQLite veritabanını silmeyin: katalog ve kalıcı kullanıcı verileri bu dosyadadır. SQLite, veritabanının yanında geçici `-wal` ve `-shm` dosyaları oluşturabilir.
 
@@ -113,7 +106,7 @@ Eski JSON tabanlı depolamadan yükseltme sonrası ilk açılışta RGSX; indirm
 - 🎮 **Kontrolcü Odaklı Tasarım** – Popüler kontrolcüler için otomatik tuş atama + özel tuş atama desteği
 - 🔍 **Gelişmiş Filtreleme** – Ada göre arama, desteklenmeyen sistemleri gösterme/gizleme, platform filtreleme
 - 📊 **İndirme Yönetimi** – Kuyruk sistemi, geçmiş takibi, ilerleme bildirimleri
-- 🖼️ **ScreenScraper Medyaları** (geçici olarak devre dışı) – Gecikmeli kapak indirme, oyun ayrıntıları, ekran görüntüleri ve toplu medya yönetimi
+- 🖼️ **ScreenScraper Medyaları** (Duraklat > Scrap üzerinden kapatılabilir) – Gecikmeli kapak indirme, oyun ayrıntıları, ekran görüntüleri ve toplu medya yönetimi
 - ♿ **Erişilebilirlik** – Arayüz ve alt bilgi için ayrı yazı ölçekleme, yalnızca klavye modu desteği
 
 > ### 🔑 API Anahtarı Kurulumu
@@ -202,7 +195,7 @@ RGSX, ağınızdaki herhangi bir cihazdan uzaktan oyunlara göz atmak ve indirme
 │   │   ├── network.py                 # İndirmeler
 │   │   ├── preview.py                 # Oyun listesi kapak önizlemesi ve gecikmeli indirme
 │   │   ├── rgsx_settings.py           # Kullanıcı tercihleri
-│   │   ├── screenscraper.py           # ScreenScraper proxy istemcisi
+│   │   ├── screenscraper.py           # ScreenScraper API istemcisi
 │   │   ├── rgsx_web.py                # Web arayüzü ve sunucu
 │   │   ├── assets/                    # Profiller, görseller, yazı tipleri, müzik ve araçlar
 │   │   ├── languages/                 # Çeviriler (EN/FR/DE/ES/IT/PT/TR)
@@ -220,7 +213,7 @@ RGSX, ağınızdaki herhangi bir cihazdan uzaktan oyunlara göz atmak ve indirme
 /saves/ports/rgsx/
 ├── rgsx_settings.json        # Kullanıcı tercihleri
 ├── controls.json             # Tuş atamaları
-├── rgsx.sqlite3              # Katalog, geçmiş ve kalıcı kullanıcı verileri
+├── rgsx.sqlite3 # Katalog, geçmiş, ScreenScraper özetleri ve kalıcı kullanıcı verileri
 ├── images/                   # Sistem görselleri
 ├── media/                    # Oyun kapakları, ekran görüntüleri ve logoların önbelleği
 ├── screenscraper_account.json # İsteğe bağlı ScreenScraper hesabı
@@ -245,7 +238,8 @@ RGSX, ağınızdaki herhangi bir cihazdan uzaktan oyunlara göz atmak ve indirme
 | Listede eksik sistemler mi var? | RGSX sistemleri emülatör yapılandırmasından bulur. **Oyunlar** altında desteklenmeyen sistemlerin görünürlüğünü açın ve platform filtresini kontrol edin. |
 | Katalog senkronizasyonu veya veritabanı yazma hatası | `/saves/ports/rgsx/` içinde boş disk alanını ve yazma izinlerini kontrol edin, ardından logları inceleyin. `rgsx.sqlite3` dosyasını yedeksiz silmeyin: geçmiş ve sahip olunan oyun kayıtları da bu dosyadadır. |
 | Uygulama çöküyor | `/roms/ports/RGSX/logs/RGSX.log` (web sunucusu için `rgsx_web.log`) dosyasını kontrol edin. |
-| Oyun listesinde kapaklar eksik | ScreenScraper geçici olarak devre dışıdır (bkz. *ScreenScraper ve Medya Yöneticisi*); yalnızca yerel medya önbelleğinde bulunan kapaklar gösterilir. |
+| ScreenScraper hatası: hesap gerekli, 403 veya kota doldu | Kendi ScreenScraper girişinizi **Duraklat > Scrap** bölümünde girin. Geliştirici kimlik bilgileri oturum başına bir kez RGSX kimlik bilgisi servisinden alınır ve yalnızca bellekte tutulur. 403, kimlik bilgilerinin reddedildiği; kota hatası ise hesabınızın günlük limitinin dolduğu anlamına gelir. |
+| Oyun listesinde kapaklar eksik | ScreenScraper devre dışıysa önizleme paneli (kapak ve özet) gizlenir. **Duraklat > Scrap** bölümünden yeniden etkinleştirin. |
 | Düzen değişikliği uygulanmadı | Düzeni değiştirdikten sonra RGSX'i yeniden başlatın |
 | Bazı oyunları indirmede sorun mu var? | Duraklatma Menüsü > Ayarlar > Bağlantı Durumu'nu açın. Gerekli sitelerden biri veya birkaçı kırmızıysa Ayarlar'dan Özel DNS'i etkinleştirip yeniden başlatın. İnternet sağlayıcısı/modem korumalarını da kontrol edin (özellikle ASUS web tehdit engelleme). |
 
