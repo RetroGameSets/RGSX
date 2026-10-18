@@ -33,6 +33,7 @@ from language import _
 from datetime import datetime
 import sys
 import tempfile
+import getpass
 try:
     from PIL import Image  # type: ignore
 except Exception:
@@ -788,10 +789,36 @@ def is_mixer_available():
 unavailable_systems = []
 
 
+# Catalog folders use Batocera names; dArkOS EmulationStation scans these folders instead.
+DARKOS_FOLDER_ALIASES = {
+    "amiga500": "amiga",
+    "c20": "vic20",
+    "colecovision": "coleco",
+    "fbneo": "arcade",
+    "jaguar": "atarijaguar",
+    "lynx": "atarilynx",
+    "megacd": "segacd",
+    "msx1": "msx",
+    "o2em": "odyssey2",
+    "pokemini": "pokemonmini",
+    "sg1000": "sg-1000",
+    "wswan": "wonderswan",
+    "wswanc": "wonderswancolor",
+}
+
+
+def local_platform_folder(folder: str) -> str:
+    """Map a catalog (Batocera) ROM folder name to the folder used by the host OS."""
+    folder = str(folder or "").strip()
+    if getattr(config, "IS_DARKOS", False):
+        return DARKOS_FOLDER_ALIASES.get(folder, folder)
+    return folder
+
+
 def _cache_platform_folders(platform_rows) -> None:
     global _platform_folder_lookup, _platform_folder_lookup_db_path
     _platform_folder_lookup = {
-        str(row.get("platform_name") or "").strip(): str(row.get("folder") or row.get("dossier") or "").strip()
+        str(row.get("platform_name") or "").strip(): local_platform_folder(row.get("folder") or row.get("dossier"))
         for row in platform_rows
         if isinstance(row, dict)
         and str(row.get("platform_name") or "").strip()
@@ -1446,22 +1473,104 @@ def _ensure_versionclean_service():
         return (False, error_msg)
 
 
+def try_chmod(path, mode) -> None:
+    """chmod that never fails a download: FAT/exFAT ROM cards (dArkOS) may refuse permission changes."""
+    try:
+        os.chmod(path, mode)
+    except OSError as e:
+        logger.debug(f"chmod skipped for {path}: {e}")
+
+
+DARKOS_WEB_SERVICE_NAME = "rgsx-web.service"
+DARKOS_WEB_SERVICE_PATH = f"/etc/systemd/system/{DARKOS_WEB_SERVICE_NAME}"
+
+
+def is_darkos_web_service_active() -> bool:
+    """True when the dArkOS boot web service is already serving the web interface."""
+    try:
+        return subprocess.run(
+            ["systemctl", "is-active", "--quiet", DARKOS_WEB_SERVICE_NAME], timeout=5
+        ).returncode == 0
+    except Exception:
+        return False
+
+
+def _toggle_darkos_web_service(enable: bool):
+    """Enable/disable the web interface at boot on dArkOS with a systemd unit (ark has passwordless sudo)."""
+    def run_sudo(*args):
+        # -n: fail instead of waiting for a password nobody can type
+        result = subprocess.run(["sudo", "-n", *args], capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            raise RuntimeError(f"{' '.join(args)} failed: {result.stderr.strip()}")
+
+    try:
+        if enable:
+            unit = (
+                "[Unit]\n"
+                "Description=RGSX Web Service\n"
+                "Wants=network-online.target\n"
+                "After=network-online.target\n"
+                f"RequiresMountsFor={config.APP_FOLDER}\n"
+                "\n"
+                "[Service]\n"
+                "Type=simple\n"
+                f"User={getpass.getuser()}\n"
+                f"WorkingDirectory={config.APP_FOLDER}\n"
+                f"Environment=PYTHONPATH={os.path.join(config.APP_FOLDER, 'vendor_darkos')}\n"
+                f"ExecStart={sys.executable or '/usr/bin/python3'} {os.path.join(config.APP_FOLDER, 'rgsx_web.py')}\n"
+                "Restart=on-failure\n"
+                "RestartSec=10\n"
+                # Keep games smooth: the web service only serves the phone/PC interface.
+                "Nice=10\n"
+                "\n"
+                "[Install]\n"
+                "WantedBy=multi-user.target\n"
+            )
+            with tempfile.NamedTemporaryFile("w", suffix=".service", delete=False, encoding="utf-8") as tmp:
+                tmp.write(unit)
+            try:
+                run_sudo("install", "-m", "644", tmp.name, DARKOS_WEB_SERVICE_PATH)
+            finally:
+                os.unlink(tmp.name)
+            run_sudo("systemctl", "daemon-reload")
+            run_sudo("systemctl", "enable", "--now", DARKOS_WEB_SERVICE_NAME)
+            message = _("settings_web_service_success_enabled") if _ else "Web service enabled at boot"
+        else:
+            if os.path.exists(DARKOS_WEB_SERVICE_PATH):
+                run_sudo("systemctl", "disable", "--now", DARKOS_WEB_SERVICE_NAME)
+                run_sudo("rm", "-f", DARKOS_WEB_SERVICE_PATH)
+                run_sudo("systemctl", "daemon-reload")
+            message = _("settings_web_service_success_disabled") if _ else "Web service disabled at boot"
+    except Exception as e:
+        logger.error(f"dArkOS web service toggle failed: {e}")
+        return (False, str(e))
+
+    settings = load_rgsx_settings()
+    settings["web_service_at_boot"] = enable
+    save_rgsx_settings(settings)
+    logger.info(message)
+    return (True, message)
+
+
 def toggle_web_service_at_boot(enable: bool):
     """Active ou désactive le service web au démarrage de Batocera.
-    
+
     Args:
         enable: True pour activer, False pour désactiver
-        
+
     Returns:
         tuple: (success: bool, message: str)
     """
 
-    
+
     try:
         # Vérifier si on est sur un système compatible (Linux avec batocera-services)
         if config.OPERATING_SYSTEM != "Linux":
             return (False, "Web service auto-start is only available on Batocera/Linux systems")
-        
+
+        if config.IS_DARKOS:
+            return _toggle_darkos_web_service(enable)
+
         services_dir = "/userdata/system/services"
         service_file = os.path.join(services_dir, "rgsx_web")
         source_file = os.path.join(config.APP_FOLDER, "assets", "progs", "rgsx_web")
@@ -2006,14 +2115,15 @@ def _parse_es_systems_cfg(cfg_path):
             # Extraire le dossier après 'roms'
             folder = None
             norm = path_text.replace('\\', '/').lower()
-            marker = '/roms/'
-            if marker in norm:
+            # dArkOS uses /roms2/ when ROMs are on the second SD card.
+            marker = next((m for m in ('/roms/', '/roms2/') if m in norm), None)
+            if marker:
                 after = norm.split(marker, 1)[1]
                 folder = after.strip().strip('/\\')
             if not folder:
                 # fallback: si le chemin finit par .../roms/<folder>
                 parts = norm.strip('/').split('/')
-                if len(parts) >= 2 and parts[-2] == 'roms':
+                if len(parts) >= 2 and parts[-2] in ('roms', 'roms2'):
                     folder = parts[-1]
             if not folder:
                 continue
@@ -2226,7 +2336,7 @@ def load_sources(
             {
                 "platform_name": entry.get("platform_name", ""),
                 "source": entry.get("source", ""),
-                "folder": entry.get("folder", ""),
+                "folder": local_platform_folder(entry.get("folder", "")),
                 "platform_image": entry.get("platform_image", ""),
                 "screenscraper_system_id": entry.get("screenscraper_system_id"),
             }
@@ -3002,7 +3112,7 @@ def extract_rar(rar_path, dest_dir, url):
             file_path = os.path.join(dest_dir, expected_file)
             if os.path.exists(file_path):
                 extracted_size += file_size
-                os.chmod(file_path, 0o644)
+                try_chmod(file_path, 0o644)
                 
                 # Mise à jour progression basée sur nombre de fichiers
                 progress_percent = int(((i + 1) / total_files * 100)) if total_files > 0 else 0
@@ -3018,7 +3128,7 @@ def extract_rar(rar_path, dest_dir, url):
         # Permissions dossiers
         for root, dirs, files in os.walk(dest_dir):
             for dir_name in dirs:
-                os.chmod(os.path.join(root, dir_name), 0o755)
+                try_chmod(os.path.join(root, dir_name), 0o755)
 
         # Gestion plateformes spéciales (uniquement PS3 pour RAR)
         success, error_msg = _handle_special_platforms(dest_dir, rar_path, before_dirs, url=url)

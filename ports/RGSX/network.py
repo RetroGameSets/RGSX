@@ -17,7 +17,7 @@ try:
 except Exception:
     pygame = None  # type: ignore
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP, OTA_UPDATE_WINDOWS_ZIP
-from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, handle_ps3, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, resolve_platform_folder, load_api_keys, load_archive_org_cookie, get_clean_display_name, parse_torrent_download_url, load_games, get_disk_usage
+from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, handle_ps3, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, resolve_platform_folder, load_api_keys, load_archive_org_cookie, get_clean_display_name, parse_torrent_download_url, load_games, get_disk_usage, try_chmod
 from history import save_history, check_history_write_access, get_history_write_status
 from display import show_toast
 import qbittorrent_backend
@@ -2027,7 +2027,36 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
 
 cache = {}
 CACHE_TTL = 3600  # 1 heure
-        
+
+
+def get_network_adapter_status(net_root="/sys/class/net", route_path="/proc/net/route"):
+    """Return "connected", "disconnected" or "no_adapter" from Linux sysfs.
+
+    The R36S has no built-in WiFi, so any physical adapter is a USB WiFi dongle on the
+    OTG port (or USB tethering). "connected" means that adapter carries the default route.
+    """
+    try:
+        # Physical interfaces only: virtual ones (lo, dummy, ...) have no device link.
+        adapters = {
+            name for name in os.listdir(net_root)
+            if os.path.exists(os.path.join(net_root, name, "device"))
+        }
+    except OSError:
+        adapters = set()
+    try:
+        with open(route_path, encoding="ascii") as routes:
+            next(routes, None)
+            default_route_ifaces = {
+                fields[0] for fields in (line.split() for line in routes)
+                if len(fields) > 1 and fields[1] == "00000000"
+            }
+    except OSError:
+        default_route_ifaces = set()
+    if adapters & default_route_ifaces:
+        return "connected"
+    return "disconnected" if adapters else "no_adapter"
+
+
 def test_internet():
     """Teste la connexion Internet de manière complète et portable pour Windows et Linux/Batocera."""
     logger.debug("=== Début test de connexion Internet complet ===")
@@ -3208,7 +3237,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 result[1] = message
 
                 if success and os.path.exists(dest_path):
-                    os.chmod(dest_path, 0o644)
+                    try_chmod(dest_path, 0o644)
                 logger.debug(f"Téléchargement torrent terminé: {dest_path}")
             else:
             
@@ -3880,7 +3909,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             pass
                         return
             
-            os.chmod(dest_path, 0o644)
+            try_chmod(dest_path, 0o644)
             logger.info(f"Téléchargement terminé: {dest_path}")
             
             # Vérifier si l'extraction automatique est activée dans les paramètres
@@ -5352,7 +5381,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                             result[1] = f"Erreur téléchargement {game_name}: {str(e)}"
                     else:
                         logger.debug(f"Application des permissions sur {dest_path}")
-                        os.chmod(dest_path, 0o644)
+                        try_chmod(dest_path, 0o644)
                         logger.info(f"Téléchargement terminé: {dest_path}")
                         result[0] = True
                         result[1] = _("network_download_ok").format(game_name)

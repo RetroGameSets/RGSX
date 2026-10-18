@@ -41,16 +41,19 @@ def update_gamelist():
                 logger.info(f"{config.GAMELISTXML} est invalide, création d'une nouvelle structure")
                 root = ET.Element("gameList")
 
+        # dArkOS EmulationStation only lists launchers at the top of ports/, see tools/install_darkos.sh
+        entry = dict(RGSX_ENTRY, path="./RGSX.sh") if getattr(config, "IS_DARKOS", False) else RGSX_ENTRY
+
         # Supprimer l'ancienne entrée RGSX
         for game in root.findall("game"):
             path = game.find("path")
-            if path is not None and path.text == "./RGSX/RGSX.sh":
+            if path is not None and path.text in ("./RGSX/RGSX.sh", "./RGSX.sh"):
                 root.remove(game)
                 logger.info("Ancienne entrée RGSX supprimée")
 
         # Ajouter la nouvelle entrée
         game_elem = ET.SubElement(root, "game")
-        for key, value in RGSX_ENTRY.items():
+        for key, value in entry.items():
             elem = ET.SubElement(game_elem, key)
             elem.text = value
         logger.info("Nouvelle entrée RGSX ajoutée")
@@ -66,7 +69,11 @@ def update_gamelist():
         logger.info(f"{config.GAMELISTXML} mis à jour avec succès")
 
         # Définir les permissions
-        os.chmod(config.GAMELISTXML, 0o644)
+        try:
+            os.chmod(config.GAMELISTXML, 0o644)
+        except OSError as e:
+            # exFAT (dArkOS ROM card) cannot store permissions; the file is already written.
+            logger.debug(f"chmod skipped for {config.GAMELISTXML}: {e}")
 
     except Exception as e:
         logger.error(f"Erreur lors de la mise à jour de {config.GAMELISTXML}: {e}")

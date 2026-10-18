@@ -26,7 +26,7 @@ Un téléchargeur de ROMs gratuit et simple d'utilisation pour Batocera, Knulli 
 
 ## 🚀 Installation
 
-### Installation rapide (Batocera / Knulli)
+### Installation rapide (Batocera / Knulli / dArkOS)
 
 **Accès SSH ou Terminal requis :**
 ```bash
@@ -37,12 +37,38 @@ Après installation :
 1. Mettez à jour les listes de jeux : `Menu > Paramètres des jeux > Mettre à jour la liste des jeux`
 2. Trouvez RGSX dans **PORTS** ou **Homebrew and ports**
 
+Sur dArkOS, la même commande lance l'installateur dArkOS et EmulationStation redémarre tout seul : voir [dArkOS](#darkos--darkosre--darkosen-r36s-et-clones) plus bas.
+
 ### Installation manuelle (Tous systèmes)
 1. **Télécharger** : [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
 2. **Extraire** :
    - **Batocera/Knulli** : extraire le dossier `ports` dans `/roms/`
    - **RetroBat** : extraire les dossiers `ports` et `windows` dans `/roms/`
 3. **Rafraîchir** : `Menu > Paramètres des jeux > Mettre à jour la liste des jeux`
+
+### dArkOS / dArkOSRE / dArkOSen (R36S et clones)
+**Script d'installation (recommandé) :** [tools/install_darkos.sh](tools/install_darkos.sh) télécharge la dernière version, installe RGSX dans `/roms/ports` (ou `/roms2/ports` avec une deuxième carte SD), ajoute RGSX au `gamelist.xml` sans toucher à vos autres ports (une sauvegarde est enregistrée dans `gamelist.xml.rgsx-backup`), puis redémarre EmulationStation. Relancez-le de la même façon pour mettre à jour.
+- Par SSH (`ssh ark@ADRESSEIP`, mot de passe `ark` ; activez SSH avec `Options > Enable Remote Services`) :
+  ```bash
+  curl -L bit.ly/rgsx-install | sh
+  ```
+  Sans curl : `wget -qO- bit.ly/rgsx-install | sh`
+- Depuis le menu : copiez `install_darkos.sh` dans `/roms/tools/`, puis lancez-le depuis `Options` dans EmulationStation.
+- Un zip ou un dossier local fonctionne aussi : `bash install_darkos.sh /chemin/RGSX_full_latest.zip`
+
+**Installation manuelle :** copiez `ports/RGSX` depuis [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip) dans `/roms/ports/`, et `RGSX.png` / `RGSX.mp4` dans `/roms/ports/images/` et `/roms/ports/videos/`. Fusionnez les dossiers, ne les remplacez jamais : ils contiennent aussi vos autres ports. Ne copiez pas un `gamelist.xml` par-dessus le vôtre. dArkOS ne liste que les lanceurs placés directement dans `ports/`, créez donc aussi `/roms/ports/RGSX.sh` :
+```bash
+printf '#!/bin/bash\nexec "$(dirname "$0")/RGSX/RGSX.sh" "$@"\n' > /roms/ports/RGSX.sh
+```
+Redémarrez ensuite EmulationStation.
+
+Remarques :
+- La R36S n'a pas de WiFi intégré. Branchez un dongle WiFi USB sur le port OTG et connectez-vous depuis `Options > Wifi`. RGSX affiche un avertissement au démarrage si aucun adaptateur ou aucune connexion n'est trouvé.
+- pygame et requests ne font pas partie de dArkOS. Ils sont fournis dans `ports/RGSX/vendor_darkos` (créé avec `tools/build_darkos_vendor.sh` à partir des paquets Debian trixie, lié au SDL2 du système).
+- Les paramètres et la base de données locale sont stockés dans `/home/ark/.config/rgsx` (ext4), pas sur la carte ROM exFAT. Les jaquettes du Media Manager pouvant prendre beaucoup de place, elles sont enregistrées sur la carte ROM : `/roms/rgsx/media` (ou `/roms2/rgsx/media`).
+- Si des jeux ont été ajoutés pendant la session, EmulationStation redémarre automatiquement après avoir quitté RGSX pour qu'ils apparaissent.
+- L'inversion des boutons A/B (option « SWITCH A/B BUTTONS IN EMULATIONSTATION » d'EmulationStation ou outil Button Mapper de dArkOSen) est appliquée automatiquement au démarrage de RGSX.
+- Les téléchargements torrent ne sont pas encore disponibles sur les appareils ARM.
 
 ### Mise à jour manuelle (si la mise à jour automatique a échoué)
 Télécharger et extraire la dernière release : [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
