@@ -58,12 +58,34 @@ def _has_expected_installation_layout(app_folder: str) -> bool:
         for part in os.path.normpath(app_folder).replace("\\", "/").split("/")
         if part
     ]
-    expected_suffix = ["roms", "ports", "rgsx"]
+    # dArkOS mounts a second SD card at /roms2.
+    roms_dirs = ("roms", "roms2")
     roms_ports_count = sum(
-        path_parts[index:index + 2] == ["roms", "ports"]
+        path_parts[index] in roms_dirs and path_parts[index + 1] == "ports"
         for index in range(len(path_parts) - 1)
     )
-    return path_parts[-3:] == expected_suffix and roms_ports_count == 1
+    return (
+        len(path_parts) >= 3
+        and path_parts[-3] in roms_dirs
+        and path_parts[-2:] == ["ports", "rgsx"]
+        and roms_ports_count == 1
+    )
+
+
+def _detect_darkos() -> bool:
+    """Detect the dArkOS family (dArkOS, dArkOSRE, dArkOSen) the same way PortMaster does."""
+    if not sys.platform.startswith("linux"):
+        return False
+    if os.path.exists("/etc/darkos_version"):
+        return True
+    try:
+        with open("/usr/share/plymouth/themes/text.plymouth", encoding="utf-8", errors="ignore") as plymouth:
+            return "darkos" in plymouth.read().lower()
+    except OSError:
+        return False
+
+
+IS_DARKOS = _detect_darkos()
 
 
 ### CONSTANTES DES CHEMINS DE BASE
@@ -124,12 +146,23 @@ else:
     SAVE_FOLDER = CONFIG_FOLDER
     DATA_FOLDER = USERDATA_FOLDER
 
+    if IS_DARKOS:
+        # dArkOS: /roms[2]/ports/RGSX, the ROM card is mounted at /roms[2] and BIOS lives in /roms[2]/bios.
+        # Config and SQLite stay on the ext4 rootfs: the exFAT ROM card has no journal.
+        USERDATA_FOLDER = os.path.dirname(os.path.dirname(APP_FOLDER))
+        CONFIG_FOLDER = os.path.join(os.path.expanduser("~"), ".config", "rgsx")
+        SAVE_FOLDER = CONFIG_FOLDER
+        DATA_FOLDER = USERDATA_FOLDER
+
 INSTALLATION_PATH_WARNING = not _is_docker_mode and not _has_expected_installation_layout(APP_FOLDER)
 
 # ROMS_FOLDER - Can be customized via rgsx_settings.json
 
 # Default ROM location
-_default_roms_folder = os.path.join(DATA_FOLDER if _is_docker_mode else USERDATA_FOLDER, "roms")
+if IS_DARKOS and not _is_docker_mode:
+    _default_roms_folder = USERDATA_FOLDER
+else:
+    _default_roms_folder = os.path.join(DATA_FOLDER if _is_docker_mode else USERDATA_FOLDER, "roms")
 
 try:
     # Try to load custom roms_folder from settings
@@ -208,6 +241,10 @@ GAMELISTXML_WINDOWS = os.path.join(ROMS_FOLDER, "windows","gamelist.xml")
 IMAGES_FOLDER = os.path.join(SAVE_FOLDER, "images")
 # Game preview images (Media Manager): media/{platform_folder}/{game}.jpg
 MEDIA_FOLDER = os.path.join(SAVE_FOLDER, "media")
+if IS_DARKOS and not _is_docker_mode:
+    # Covers can take a lot of space: keep them on the ROM card (/roms[2]/rgsx/media), not on the small rootfs,
+    # and outside ports/RGSX, which the dArkOS installer replaces on update.
+    MEDIA_FOLDER = os.path.join(USERDATA_FOLDER, "rgsx", "media")
 MEDIA_QUEUE_PATH = os.path.join(SAVE_FOLDER, "rgsx_media_queue.json")
 
 
