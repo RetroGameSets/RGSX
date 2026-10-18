@@ -127,7 +127,7 @@ jobs:
           ### ON dArkOS / dArkOSRE / dArkOSen (R36S and clones) :
           1. The R36S has no built-in WiFi: plug a USB WiFi dongle into the OTG port and connect from `Options > Wifi`
           2. Enable SSH with `Options > Enable Remote Services`, then connect from a computer/smartphone on the same network (ssh ark@IPADDRESS , pass:ark)
-          3. Use the command line `curl -L https://raw.githubusercontent.com/RetroGameSets/RGSX/main/tools/install_darkos.sh | bash` (without curl: `wget -qO- https://raw.githubusercontent.com/RetroGameSets/RGSX/main/tools/install_darkos.sh | bash`)
+          3. Use the command line `curl -L bit.ly/rgsx-install | sh` (without curl: `wget -qO- bit.ly/rgsx-install | sh`)
           4. EmulationStation restarts by itself, then launch RGSX from "Ports" menu. Run the same command again to update.
 
           ## 📥 Manual Installation

@@ -26,7 +26,7 @@ Un téléchargeur de ROMs gratuit et simple d'utilisation pour Batocera, Knulli 
 
 ## 🚀 Installation
 
-### Installation rapide (Batocera / Knulli)
+### Installation rapide (Batocera / Knulli / dArkOS)
 
 **Accès SSH ou Terminal requis :**
 ```bash
@@ -36,6 +36,8 @@ curl -L bit.ly/rgsx-install | sh
 Après installation :
 1. Mettez à jour les listes de jeux : `Menu > Paramètres des jeux > Mettre à jour la liste des jeux`
 2. Trouvez RGSX dans **PORTS** ou **Homebrew and ports**
+
+Sur dArkOS, la même commande lance l'installateur dArkOS et EmulationStation redémarre tout seul : voir [dArkOS](#darkos--darkosre--darkosen-r36s-et-clones) plus bas.
 
 ### Installation manuelle (Tous systèmes)
 1. **Télécharger** : [RGSX_full_latest.zip](https://github.com/RetroGameSets/RGSX/releases/latest/download/RGSX_full_latest.zip)
@@ -48,9 +50,9 @@ Après installation :
 **Script d'installation (recommandé) :** [tools/install_darkos.sh](tools/install_darkos.sh) télécharge la dernière version, installe RGSX dans `/roms/ports` (ou `/roms2/ports` avec une deuxième carte SD), ajoute RGSX au `gamelist.xml` sans toucher à vos autres ports (une sauvegarde est enregistrée dans `gamelist.xml.rgsx-backup`), puis redémarre EmulationStation. Relancez-le de la même façon pour mettre à jour.
 - Par SSH (`ssh ark@ADRESSEIP`, mot de passe `ark` ; activez SSH avec `Options > Enable Remote Services`) :
   ```bash
-  curl -L https://raw.githubusercontent.com/RetroGameSets/RGSX/main/tools/install_darkos.sh | bash
+  curl -L bit.ly/rgsx-install | sh
   ```
-  Sans curl : `wget -qO- https://raw.githubusercontent.com/RetroGameSets/RGSX/main/tools/install_darkos.sh | bash`
+  Sans curl : `wget -qO- bit.ly/rgsx-install | sh`
 - Depuis le menu : copiez `install_darkos.sh` dans `/roms/tools/`, puis lancez-le depuis `Options` dans EmulationStation.
 - Un zip ou un dossier local fonctionne aussi : `bash install_darkos.sh /chemin/RGSX_full_latest.zip`
 
