@@ -8,3 +8,4 @@ windows/logs/
 .vscode/
 .venv/
 .idea
+.DS_Store
