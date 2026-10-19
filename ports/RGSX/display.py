@@ -23,7 +23,8 @@ from language import _, get_size_units, get_speed_unit, get_available_languages,
 from rgsx_settings import (load_rgsx_settings, get_light_mode, get_show_unsupported_platforms,
                             get_allow_unknown_extensions, get_display_monitor, get_display_fullscreen,
                             get_available_monitors, get_font_family, get_symlink_option,
-                            get_display_background_theme, normalize_display_theme, DISPLAY_GRID_LAYOUTS, is_screenscraper_disabled)
+                            get_display_background_theme, normalize_display_theme, DISPLAY_GRID_LAYOUTS, is_screenscraper_disabled,
+                            get_cover_preview)
 from game_filters import GameFilters  
 
 import json
@@ -2178,10 +2179,16 @@ def draw_game_list(screen):
     rect_y = title_height + extra_margin_top + (config.screen_height - title_height - extra_margin_top - extra_margin_bottom - rect_height) // 2
 
     # Right preview panel: disabled in Light Mode, when ScreenScraper is disabled, and on small screens (keeps the 640x480 layout intact).
+    # Small screens (e.g. R36S) can opt in to a cover-only panel; covers are local files, so it also works with ScreenScraper disabled.
+    # The opt-in is explicit, so it also applies in Light Mode.
     preview_width = 0
-    if config.screen_width >= PREVIEW_MIN_SCREEN_WIDTH and not get_light_mode() and not is_screenscraper_disabled():
+    cover_only = config.screen_width < PREVIEW_MIN_SCREEN_WIDTH and get_cover_preview()
+    full_preview = config.screen_width >= PREVIEW_MIN_SCREEN_WIDTH and not is_screenscraper_disabled() and not get_light_mode()
+    if full_preview or cover_only:
         preview_width = int(rect_width * 0.28)
         rect_width -= preview_width + PREVIEW_GAP
+    # Narrow list next to the cover panel: drop the date column so game names stay readable.
+    show_date_column = not (preview_width and cover_only)
 
     config.scroll_offset = max(0, min(config.scroll_offset, max(0, len(games) - items_per_page)))
     if config.current_game < config.scroll_offset:
@@ -2355,14 +2362,14 @@ def draw_game_list(screen):
     inner_col_width = max(0, rect_width - 40)
     ext_col_width = min(130, max(110, int(inner_col_width * 0.09)))
     size_col_width = min(150, max(120, int(inner_col_width * 0.13)))
-    date_col_width = min(145, max(115, int(inner_col_width * 0.15)))
+    date_col_width = min(145, max(115, int(inner_col_width * 0.15))) if show_date_column else 0
     name_col_width = max(40, inner_col_width - ext_col_width - size_col_width - date_col_width)
 
     # ---- En-tête ----
     header_name = _("game_header_name")
     header_ext = _("game_header_ext")
     header_size = _("game_header_size")
-    header_date = _("game_header_date")
+    header_date = _("game_header_date") if show_date_column else ""
     header_y_center = rect_y + margin_top_bottom + header_height // 2
     # Nom aligné gauche
     header_name_surface = config.small_font.render(header_name, True, THEME_COLORS["text"])
@@ -2398,8 +2405,8 @@ def draw_game_list(screen):
         item = games[i]
         game_name = item.display_name
         size_val = item.size
-        date_text = format_game_date(item.updated_at)
-      
+        date_text = format_game_date(item.updated_at) if show_date_column else ""
+
         # Vérifier si le jeu est déjà téléchargé en comparant le nom réel sans extension
         is_downloaded = is_game_downloaded(platform, item.name)
         
@@ -2477,7 +2484,7 @@ def draw_game_list(screen):
         rom_filename = games[config.current_game].name
         if preview_width:
             panel_rect = pygame.Rect(rect_x + rect_width + PREVIEW_GAP, rect_y, preview_width, rect_height)
-            draw_game_preview_panel(screen, folder, rom_filename, panel_rect)
+            draw_game_preview_panel(screen, folder, rom_filename, panel_rect, cover_only)
         elif folder:
             import preview
             preview.get_preview(folder, rom_filename, 1, 1)
@@ -2487,8 +2494,8 @@ PREVIEW_MIN_SCREEN_WIDTH = 1024
 PREVIEW_GAP = 12
 
 
-def draw_game_preview_panel(screen, folder, rom_filename, panel_rect):
-    """Draw the selected game's cover, synopsis, and loading/unavailable states."""
+def draw_game_preview_panel(screen, folder, rom_filename, panel_rect, cover_only=False):
+    """Draw the selected game's cover, synopsis, and loading/unavailable states (cover only on small screens)."""
     import preview
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], panel_rect, border_radius=12)
     pygame.draw.rect(screen, THEME_COLORS["border"], panel_rect, 2, border_radius=12)
@@ -2518,8 +2525,8 @@ def draw_game_preview_panel(screen, folder, rom_filename, panel_rect):
             screen.blit(text, text.get_rect(center=(inner.centerx, start_y + index * line_height)))
         return
 
-    summary_height = max(1, int(inner.height * 0.35))
-    image_area = pygame.Rect(inner.left, inner.top, inner.width, max(1, inner.height - summary_height - 12))
+    summary_height = 0 if cover_only else max(1, int(inner.height * 0.35)) + 12
+    image_area = pygame.Rect(inner.left, inner.top, inner.width, max(1, inner.height - summary_height))
     if image is not None:
         image_width, image_height = image.get_size()
         scale = min(image_area.width / image_width, image_area.height / image_height)
@@ -2536,6 +2543,8 @@ def draw_game_preview_panel(screen, folder, rom_filename, panel_rect):
         for index, line in enumerate(lines):
             text = config.small_font.render(line, True, THEME_COLORS["title_text"])
             screen.blit(text, text.get_rect(center=(image_area.centerx, start_y + index * line_height)))
+    if cover_only:
+        return
 
     summary_y = image_area.bottom + 12
     summary_label = config.small_font.render(_("game_info_summary"), True, THEME_COLORS["neon"])
@@ -4326,6 +4335,10 @@ def draw_pause_display_menu(screen, selected_index):
     light_status = _('status_on') if light_mode else _('status_off')
     light_txt = f"{_('display_light_mode') if _ else 'Light mode'}: < {light_status} >"
 
+    # Cover preview on small screens
+    cover_status = _('status_on') if get_cover_preview() else _('status_off')
+    cover_txt = f"{_('display_cover_preview') if _ else 'Cover preview'}: < {cover_status} >"
+
     # Background gradient theme
     background_theme_label = get_background_theme_label()
     background_txt = f"{_('display_theme') if _ else 'Theme'}: < {background_theme_label} >"
@@ -4353,10 +4366,11 @@ def draw_pause_display_menu(screen, selected_index):
     if not bg_instruction or bg_instruction == "instruction_display_background_theme":
         bg_instruction = "Left/Right: change theme"
 
-    options.extend([background_txt, light_txt, unknown_txt, back_txt])
+    options.extend([background_txt, light_txt, cover_txt, unknown_txt, back_txt])
     instructions.extend([
         bg_instruction,
         _("instruction_display_light_mode"),
+        _("instruction_display_cover_preview"),
         _("instruction_display_unknown_ext"),
         _("instruction_generic_back"),
     ])

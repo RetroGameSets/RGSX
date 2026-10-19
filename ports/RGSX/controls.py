@@ -3059,7 +3059,7 @@ def handle_controls(event, sources, joystick, screen):
         # Sous-menu Display
         elif config.menu_state == "pause_display_menu":
             sel = getattr(config, 'pause_display_selection', 0)
-            # layout, font submenu, family, [monitor if multi], [display mode on Windows], light, unknown, back
+            # layout, font submenu, family, [monitor if multi], [display mode on Windows], background, light, cover preview, unknown, back
             from rgsx_settings import get_available_monitors
             monitors = get_available_monitors()
             show_monitor = len(monitors) > 1
@@ -3078,7 +3078,8 @@ def handle_controls(event, sources, joystick, screen):
 
             background_index = next_index
             light_index = background_index + 1
-            unknown_index = light_index + 1
+            cover_index = light_index + 1
+            unknown_index = cover_index + 1
             back_index = unknown_index + 1
             total = back_index + 1
             if is_input_matched(event, "up"):
@@ -3193,6 +3194,16 @@ def handle_controls(event, sources, joystick, screen):
                         config.needs_redraw = True
                     except Exception as e:
                         logger.error(f"Erreur toggle light mode: {e}")
+                # Cover preview toggle (small screens)
+                elif sel == cover_index and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
+                    try:
+                        from rgsx_settings import get_cover_preview, set_cover_preview
+                        new_val = set_cover_preview(not get_cover_preview())
+                        config.popup_message = _("display_cover_preview_enabled") if new_val else _("display_cover_preview_disabled")
+                        config.popup_timer = 2000
+                        config.needs_redraw = True
+                    except Exception as e:
+                        logger.error(f"Error toggling cover preview: {e}")
                 # Allow unknown extensions
                 elif sel == unknown_index and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:

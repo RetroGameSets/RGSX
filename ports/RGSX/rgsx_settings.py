@@ -68,7 +68,8 @@ def load_rgsx_settings():
             "font_family": "pixel",
             "monitor": 0,
             "fullscreen": True,
-            "light_mode": False
+            "light_mode": False,
+            "cover_preview": False
         },
         "symlink": {
             "enabled": False,
@@ -461,6 +462,20 @@ def set_light_mode(enabled: bool):
     disp["light_mode"] = bool(enabled)
     save_rgsx_settings(settings)
     return disp["light_mode"]
+
+def get_cover_preview(settings=None):
+    """Return True if the cover-only preview panel is enabled on small screens."""
+    if settings is None:
+        settings = load_rgsx_settings()
+    return settings.get("display", {}).get("cover_preview", False)
+
+def set_cover_preview(enabled: bool):
+    """Set and save the small-screen cover preview option."""
+    settings = load_rgsx_settings()
+    disp = settings.setdefault("display", {})
+    disp["cover_preview"] = bool(enabled)
+    save_rgsx_settings(settings)
+    return disp["cover_preview"]
 
 
 DISPLAY_THEME_KEYS = ("blue", "green", "sunset", "midnight", "high_contrast")
