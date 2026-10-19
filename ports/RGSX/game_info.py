@@ -6,10 +6,26 @@ import threading
 import pygame
 
 import config
+import media_manager
+import preview
 import screenscraper
 from language import _
 
 logger = logging.getLogger(__name__)
+
+GAME_INFO_KINDS = ("box", "ss")
+
+
+def _save_downloaded_media(folder, rom_filename, media):
+    """Keep downloaded images in the media folder so the next opening reads them locally."""
+    for kind, (payload, extension) in media.items():
+        if media_manager.find_media(folder, rom_filename, kind):
+            continue
+        try:
+            media_manager.save_media(folder, rom_filename, kind, (payload, extension))
+        except (OSError, screenscraper.ScreenScraperError) as exc:
+            logger.warning("Could not save ScreenScraper %s for %s: %s", kind, rom_filename, exc)
+    preview.clear_cache()
 
 
 def open_game_info(rom_filename, game_name, platform_name, return_state="game"):
@@ -34,25 +50,48 @@ def open_game_info(rom_filename, game_name, platform_name, return_state="game"):
     ).start()
 
 
+def _platform_folder(platform_name):
+    platform_dict = getattr(config, "platform_dict_by_name", {}).get(platform_name) or {}
+    return str(platform_dict.get("folder") or "")
+
+
+def _decode_images(rom_filename, media, from_files):
+    """Decode images read from the local media folder (paths) or downloaded this time (payloads)."""
+    images = {}
+    for kind, source in media.items():
+        try:
+            if from_files:
+                images[kind] = pygame.image.load(source)
+            else:
+                payload, extension = source
+                images[kind] = pygame.image.load(BytesIO(payload), f"{kind}{extension}")
+        except (pygame.error, OSError, ValueError) as exc:
+            logger.warning("Could not decode %s image for %s: %s", kind, rom_filename, exc)
+    return images
+
+
 def _fetch_game_info(request_id, rom_filename, platform_name):
     try:
         system_id = screenscraper.resolve_system_id(platform_name)
-        result = screenscraper.fetch_game_info(rom_filename, system_id, origin="details")
-        if result is None:
-            summary = ""
-            images = {}
-            error_message = _("screenscraper_game_not_found")
+        folder = _platform_folder(platform_name)
+        local = media_manager.local_game(folder, rom_filename, system_id, GAME_INFO_KINDS, need_summary=True) if folder else None
+        if local is not None:
+            found = local["found"]
+            summary = local["summary"][:12000] if found else ""
+            images = _decode_images(rom_filename, local["media"], from_files=True) if found else {}
         else:
-            summary = result["summary"][:12000]
-            images = {}
-            for kind, (payload, extension) in result["media"].items():
-                try:
-                    images[kind] = pygame.image.load(
-                        BytesIO(payload),
-                        f"{kind}{extension}",
-                    )
-                except (pygame.error, OSError, ValueError) as exc:
-                    logger.warning("Could not decode ScreenScraper %s for %s: %s", kind, rom_filename, exc)
+            result = screenscraper.fetch_game_info(rom_filename, system_id, origin="details", kinds=GAME_INFO_KINDS)
+            found = result is not None
+            summary = result["summary"][:12000] if found else ""
+            images = _decode_images(rom_filename, result["media"], from_files=False) if found else {}
+            if found and folder:
+                _save_downloaded_media(folder, rom_filename, result["media"])
+        if not found:
+            error_message = _("screenscraper_game_not_found")
+        elif not summary and not images:
+            logger.info("ScreenScraper has no synopsis or media for %s", rom_filename)
+            error_message = _("screenscraper_game_no_content")
+        else:
             error_message = ""
     except screenscraper.ScreenScraperError as exc:
         logger.warning("Could not load ScreenScraper details for %s: %s (%s)", rom_filename, exc.kind, exc)

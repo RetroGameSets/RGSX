@@ -28,7 +28,7 @@ API_BASE_URL = "https://api.screenscraper.fr/api2/"
 SOFTNAME = "RGSX"
 MEDIA_MAX_BYTES = 3 * 1024 * 1024
 # Media kind -> ScreenScraper media types (first type with a URL wins); regions by preference
-MEDIA_TYPES = {"box": ("box-2D",), "ss": ("ss",), "logo": ("wheel-hd", "wheel")}
+MEDIA_TYPES = {"box": ("box-2D",), "ss": ("ss",)}
 MEDIA_REGIONS = ("wor", "us", "eu", "ss", "jp")
 
 
@@ -566,7 +566,7 @@ def _rom_name(rom_filename):
     return os.path.basename(str(rom_filename))
 
 
-def _store_game_summary(rom_filename, system_id, game, cover_checked=False):
+def _store_game_summary(rom_filename, system_id, game, cover_checked=None, screenshot_checked=None):
     try:
         database.save_game_summary(
             int(system_id),
@@ -574,6 +574,7 @@ def _store_game_summary(rom_filename, system_id, game, cover_checked=False):
             _game_summary(game) if game is not None else "",
             found=game is not None,
             cover_checked=cover_checked,
+            screenshot_checked=screenshot_checked,
             db_path=config.DB_PATH,
         )
     except (OSError, sqlite3.Error, ValueError) as exc:
@@ -581,7 +582,7 @@ def _store_game_summary(rom_filename, system_id, game, cover_checked=False):
 
 
 def cached_game_info(rom_filename, system_id):
-    """Return {"found", "summary", "cover_checked"} stored for a ROM, or None when it was never queried."""
+    """Return {"found", "summary", "cover_checked", "screenshot_checked"} stored for a ROM, or None when it was never queried."""
     try:
         return database.load_game_summary(int(system_id), _rom_name(rom_filename), config.DB_PATH)
     except (OSError, sqlite3.Error, ValueError) as exc:
@@ -589,18 +590,18 @@ def cached_game_info(rom_filename, system_id):
         return None
 
 
-def _has_box_media(game):
+def _has_media(game, kind):
     medias = game.get("medias")
     medias = [item for item in medias if isinstance(item, dict)] if isinstance(medias, list) else []
-    return _pick_media(medias, "box") is not None
+    return _pick_media(medias, kind) is not None
 
 
-def _query_game(rom_filename, system_id, cover_requested=False):
+def _query_game(rom_filename, system_id, kinds=()):
     """Return (game or None, ssuser) for one ROM. The caller records the quota counters.
 
     The outcome is stored in SQLite, including 'not found', so a repeated visit costs no request.
-    The cover counts as checked only when it was requested and ScreenScraper lists none,
-    so a cover that is listed but failed to download is still retried.
+    A media kind counts as checked only when it was requested and ScreenScraper lists none,
+    so a kind that is listed but failed to download is still retried.
     """
     block = _api_request("jeuInfos.php", {
         "systemeid": int(system_id),
@@ -613,8 +614,10 @@ def _query_game(rom_filename, system_id, cover_requested=False):
     ssuser = block.get("ssuser") if isinstance(block.get("ssuser"), dict) else {}
     game = block.get("jeu")
     game = game if isinstance(game, dict) else None
-    cover_checked = bool(cover_requested) and game is not None and not _has_box_media(game)
-    _store_game_summary(rom_filename, system_id, game, cover_checked)
+    wanted = set(kinds)
+    cover_checked = (not _has_media(game, "box")) if game is not None and "box" in wanted else None
+    screenshot_checked = (not _has_media(game, "ss")) if game is not None and "ss" in wanted else None
+    _store_game_summary(rom_filename, system_id, game, cover_checked, screenshot_checked)
     return game, ssuser
 
 
@@ -646,7 +649,7 @@ def get_user_info():
 def fetch_game_media(rom_filename, system_id, kinds, origin):
     """Return a game's downloaded media bytes by kind, without exposing upstream URLs."""
     _check_quota()
-    game, ssuser = _query_game(rom_filename, system_id, cover_requested="box" in kinds)
+    game, ssuser = _query_game(rom_filename, system_id, kinds)
     _record_game_response(ssuser, found=game is not None, origin=origin)
     if game is None:
         return None
@@ -657,7 +660,7 @@ def fetch_game_media(rom_filename, system_id, kinds, origin):
 def fetch_game_info(rom_filename, system_id, origin, kinds=("box", "ss")):
     """Return a game's ScreenScraper synopsis and the requested cover/screenshot bytes."""
     _check_quota()
-    game, ssuser = _query_game(rom_filename, system_id, cover_requested="box" in kinds)
+    game, ssuser = _query_game(rom_filename, system_id, kinds)
     _record_game_response(ssuser, found=game is not None, origin=origin)
     if game is None:
         return None

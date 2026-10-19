@@ -33,7 +33,7 @@ except Exception:
     pygame = None  # type: ignore
 
 # Version actuelle de l'application
-app_version = "2.7.1.2"
+app_version = "2.7.1.4"
 
 # Nombre de jours avant de proposer la mise à jour de la liste des jeux
 GAMELIST_UPDATE_DAYS = 1
@@ -660,7 +660,7 @@ error_message = ""  # Message d'erreur à afficher
 
 # Détection d'appui long sur confirm (menu game)
 confirm_press_start_time = 0  # Timestamp du début de l'appui sur confirm
-confirm_long_press_threshold = 2000  # Durée en ms pour déclencher l'appui long (2 secondes)
+confirm_long_press_threshold = 1000  # Durée en ms pour déclencher l'appui long (2 secondes)
 confirm_long_press_triggered = False  # Flag pour éviter de déclencher plusieurs fois
 
 # Détection d'appui long sur confirm (menu platform - pour config dossier)

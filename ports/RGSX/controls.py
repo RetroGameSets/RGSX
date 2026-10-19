@@ -3164,34 +3164,24 @@ def handle_controls(event, sources, joystick, screen):
                 # Background gradient theme cycle
                 elif sel == background_index and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:
-                        from rgsx_settings import get_display_background_theme, set_display_background_theme
-
-                        theme_keys = ["default", "sunset", "forest", "midnight"]
-                        theme_label_keys = {
-                            "default": "background_theme_default",
-                            "sunset": "background_theme_sunset",
-                            "forest": "background_theme_forest",
-                            "midnight": "background_theme_midnight",
-                        }
+                        from rgsx_settings import get_display_background_theme, set_display_background_theme, DISPLAY_THEME_KEYS
+                        from display import apply_display_theme, get_background_theme_label
 
                         current = get_display_background_theme()
                         try:
-                            idx = theme_keys.index(current)
+                            idx = DISPLAY_THEME_KEYS.index(current)
                         except ValueError:
                             idx = 0
 
                         direction = -1 if is_input_matched(event, "left") else 1
-                        new_theme = set_display_background_theme(theme_keys[(idx + direction) % len(theme_keys)])
+                        new_theme = set_display_background_theme(DISPLAY_THEME_KEYS[(idx + direction) % len(DISPLAY_THEME_KEYS)])
+                        apply_display_theme(new_theme)
 
-                        label_key = theme_label_keys.get(new_theme, "")
-                        translated_label = _(label_key) if (_ and label_key) else new_theme
-                        if translated_label == label_key:
-                            translated_label = new_theme
-                        config.popup_message = f"{_('display_background') if _ else 'Background'}: {translated_label}"
+                        config.popup_message = f"{_('display_theme') if _ else 'Theme'}: {get_background_theme_label(new_theme)}"
                         config.popup_timer = 1800
                         config.needs_redraw = True
                     except Exception as e:
-                        logger.error(f"Erreur changement theme de fond: {e}")
+                        logger.error(f"Erreur changement theme: {e}")
                 # Light mode toggle
                 elif sel == light_index and (is_input_matched(event, "left") or is_input_matched(event, "right") or is_input_matched(event, "confirm")):
                     try:

@@ -20,6 +20,10 @@ Batocera, Knulli ve RetroBat için çoklu kaynak desteğine sahip, ücretsiz ve 
   <img width="49%" alt="RGSX indirme geçmişi" src="screenshots/downloads-history.png" />
   <img width="49%" alt="RGSX Web ayarları" src="screenshots/settings-web.png" />
 </p>
+<p align="center">
+  <img width="49%" alt="RGSX ROM kaynak seçimi" src="screenshots/source-choice.png" />
+  <img width="49%" alt="RGSX ScreenScraper oyun ayrıntıları" src="screenshots/game-info.png" />
+</p>
 
 
 ---
@@ -111,9 +115,9 @@ En son sürümü indirip arşivden çıkarın: [RGSX_full_latest.zip](https://gi
 
 ### ScreenScraper ve Medya Yöneticisi
 
-Oyun listesinde seçili oyunun yerel kapağı varsa hemen gösterilir. ScreenScraper devre dışıyken önizleme paneli gizlenir ve oyun listesi otomatik bilgi almaz. Varsayılan olarak iki saniye (`config.py` içindeki `SCREENSCRAPER_PREVIEW_DELAY_SEC`, veya `RGSX_SCREENSCRAPER_PREVIEW_DELAY` ortam değişkeni) kalındığında RGSX ScreenScraper özetini önizleme panelinde gösterir: özet yerel veritabanında zaten kayıtlıysa oradan okunur (ScreenScraper'da bulunamayan oyunlar da kaydedilir ve yeniden sorgulanmaz), değilse alınıp kaydedilir. Kapak yalnızca yerelde yoksa ve ScreenScraper'da varsa indirilir; ScreenScraper'da kapağı olmayan oyun için kapak tekrar sorulmaz. Özet yüklendiğinde panelde görünür. Bilgi bulunamazsa panelde uygun bir yer tutucu gösterilir. Öncelikli ScreenScraper sistem kimliği, çevrimiçi RGSX kataloğunda platform başına saklanır ve RGSX Sources Manager üzerinden düzenlenebilir. Kimlik tanımlı değilse RGSX, SQLite'ta düzenli güncellenen ScreenScraper sistem listesine, ardından yerleşik takma adlara geri döner. **Onayla** düğmesine iki saniye basmak, kapak, ekran görüntüsü ve özeti içeren ScreenScraper ayrıntı sayfasını açar. **Duraklat > Scrap** bölümünde ScreenScraper kullanıcı adı ve parolası aynı sayfada düzenlenir: sanal klavye yalnızca kontrolcü algılandığında görünür; aksi durumda doğrudan yazın, alanlar arasında geçmek için Tab, onaylamak için **ENTER** kullanın. Kalan kotayı bir mesaj gösterir. Hesap ayrı `saves/ports/rgsx/screenscraper_account.json` dosyasında saklanır ve Web arayüzünden de düzenlenebilir.
+Oyun listesinde seçili oyunun yerel kapağı varsa hemen gösterilir. ScreenScraper devre dışıyken önizleme paneli gizlenir ve oyun listesi otomatik bilgi almaz. Varsayılan olarak iki saniye (`config.py` içindeki `SCREENSCRAPER_PREVIEW_DELAY_SEC`, veya `RGSX_SCREENSCRAPER_PREVIEW_DELAY` ortam değişkeni) kalındığında RGSX ScreenScraper özetini önizleme panelinde gösterir: özet yerel veritabanında zaten kayıtlıysa oradan okunur (ScreenScraper'da bulunamayan oyunlar da kaydedilir ve yeniden sorgulanmaz), değilse alınıp kaydedilir. Kapak yalnızca yerelde yoksa ve ScreenScraper'da varsa indirilir; ScreenScraper'da kapağı olmayan oyun için kapak tekrar sorulmaz. Özet yüklendiğinde panelde görünür. Bilgi bulunamazsa panelde uygun bir yer tutucu gösterilir. Öncelikli ScreenScraper sistem kimliği, çevrimiçi RGSX kataloğunda platform başına saklanır ve RGSX Sources Manager üzerinden düzenlenebilir. Kimlik tanımlı değilse RGSX, SQLite'ta düzenli güncellenen ScreenScraper sistem listesine, ardından yerleşik takma adlara geri döner. **Onayla** düğmesine iki saniye basmak, kapak, ekran görüntüsü ve özeti içeren oyun ayrıntı sayfasını açar. Bunlar önce yerel `media` klasöründen ve veritabanından okunur; ScreenScraper yalnızca yerelde eksik olanlar için sorgulanır. **Duraklat > Scrap** bölümünde ScreenScraper kullanıcı adı ve parolası aynı sayfada düzenlenir: sanal klavye yalnızca kontrolcü algılandığında görünür; aksi durumda doğrudan yazın, alanlar arasında geçmek için Tab, onaylamak için **ENTER** kullanın. Kalan kotayı bir mesaj gösterir. Hesap ayrı `saves/ports/rgsx/screenscraper_account.json` dosyasında saklanır ve Web arayüzünden de düzenlenebilir.
 
-Medya Yöneticisi toplu indirme yapar. **Geçmiş** kontrol kısayolu, ilk satıra dönmeden işi başlatır, sürdürür veya iptal eder.
+Medya Yöneticisi toplu indirme yapar. Profilleri **Kapak** (`default`) ve **Kapak + Ekran Görüntüsü + Özet** (`max`)'tir. Her oyun bir detay isteği ve medya türü başına bir istek harcar: Kapak için 2, tam profil için 3 istek (tahminde gösterilir). Yerelde zaten bulunan dosyalar ve özetler, ScreenScraper'da bulunamayanlar dahil, yeniden istenmez. **Geçmiş** kontrol kısayolu, ilk satıra dönmeden işi başlatır, sürdürür veya iptal eder.
 
 ### Yerel Veritabanı ve Taşıma
 
@@ -241,7 +245,7 @@ RGSX, ağınızdaki herhangi bir cihazdan uzaktan oyunlara göz atmak ve indirme
 ├── controls.json             # Tuş atamaları
 ├── rgsx.sqlite3 # Katalog, geçmiş, ScreenScraper özetleri ve kalıcı kullanıcı verileri
 ├── images/                   # Sistem görselleri
-├── media/                    # Oyun kapakları, ekran görüntüleri ve logoların önbelleği
+├── media/                    # Oyun kapaklarının ve ekran görüntülerinin önbelleği
 ├── screenscraper_account.json # İsteğe bağlı ScreenScraper hesabı
 ├── backup_old_rgsx/          # Taşıma sırasında arşivlenen eski dosyalar (varsa)
 ├── 1FichierAPI.txt           # 1Fichier API anahtarı

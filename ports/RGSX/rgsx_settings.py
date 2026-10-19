@@ -463,27 +463,34 @@ def set_light_mode(enabled: bool):
     return disp["light_mode"]
 
 
+DISPLAY_THEME_KEYS = ("blue", "green", "sunset", "midnight", "high_contrast")
+_DISPLAY_THEME_ALIASES = {"default": "blue", "forest": "green"}
+
+
+def normalize_display_theme(theme_key) -> str:
+    """Normalise une clé de thème (accepte les anciennes valeurs default/forest)."""
+    value = str(theme_key or "blue").strip().lower()
+    value = _DISPLAY_THEME_ALIASES.get(value, value)
+    return value if value in DISPLAY_THEME_KEYS else "blue"
+
+
 def get_display_background_theme(settings=None):
-    """Retourne le thème de fond configuré pour le dégradé principal."""
+    """Retourne le thème d'affichage configuré (couleurs de fond, sélection et cadres)."""
     if settings is None:
         settings = load_rgsx_settings()
-    value = str(settings.get("display", {}).get("background_theme", "default") or "default").strip().lower()
-    allowed = {"default", "sunset", "forest", "midnight"}
-    return value if value in allowed else "default"
+    return normalize_display_theme(settings.get("display", {}).get("background_theme", "blue"))
 
 
 def set_display_background_theme(theme_key: str):
-    """Définit et sauvegarde le thème de fond du dégradé principal."""
-    allowed = {"default", "sunset", "forest", "midnight"}
-    normalized = str(theme_key or "default").strip().lower()
-    if normalized not in allowed:
-        normalized = "default"
+    """Définit et sauvegarde le thème d'affichage."""
+    normalized = normalize_display_theme(theme_key)
 
     settings = load_rgsx_settings()
     disp = settings.setdefault("display", {})
     disp["background_theme"] = normalized
     save_rgsx_settings(settings)
     return normalized
+
 
 def get_available_monitors():
     """Retourne la liste des moniteurs disponibles avec leurs informations.

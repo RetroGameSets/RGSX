@@ -20,6 +20,10 @@ A free, user-friendly ROM downloader for Batocera, Knulli, and RetroBat with mul
   <img width="49%" alt="RGSX download history" src="screenshots/downloads-history.png" />
   <img width="49%" alt="RGSX Web settings" src="screenshots/settings-web.png" />
 </p>
+<p align="center">
+  <img width="49%" alt="RGSX ROM source choice" src="screenshots/source-choice.png" />
+  <img width="49%" alt="RGSX ScreenScraper game details" src="screenshots/game-info.png" />
+</p>
 
 
 ---
@@ -111,9 +115,9 @@ Download and extract the latest release: [RGSX_full_latest.zip](https://github.c
 
 ### ScreenScraper and Media Manager
 
-In the game list, the local cover of the selected game appears at once if it exists. When ScreenScraper is disabled, the preview panel is hidden and nothing is fetched automatically for the game list. After the configured delay (two seconds by default: `SCREENSCRAPER_PREVIEW_DELAY_SEC` in `config.py`, or the `RGSX_SCREENSCRAPER_PREVIEW_DELAY` environment variable) on the same game, RGSX shows its ScreenScraper synopsis in the preview panel: it is read from the local database when already stored (games not found on ScreenScraper are stored too, so they are not queried again), otherwise it is fetched and stored. The cover is downloaded only if it is missing locally and ScreenScraper has one; a game without a cover on ScreenScraper is not asked for it again. The synopsis appears once loaded. If no information is available, the panel shows an unavailable placeholder. The preferred ScreenScraper system ID is stored per platform in the online RGSX catalog and can be edited in RGSX Sources Manager. If no ID is configured, RGSX falls back to the periodically refreshed ScreenScraper system list cached in SQLite, then to built-in aliases. A two-second hold on **Confirm** opens the ScreenScraper details page with the cover, screenshot, and synopsis. In **Pause > Scrap**, the ScreenScraper username and password can be edited together; a virtual keyboard is shown only when a controller is detected, otherwise type directly, use Tab to switch fields and **ENTER** to confirm. A message shows the remaining quota. The account is stored in the dedicated `saves/ports/rgsx/screenscraper_account.json` file and can also be edited from the web interface.
+In the game list, the local cover of the selected game appears at once if it exists. When ScreenScraper is disabled, the preview panel is hidden and nothing is fetched automatically for the game list. After the configured delay (two seconds by default: `SCREENSCRAPER_PREVIEW_DELAY_SEC` in `config.py`, or the `RGSX_SCREENSCRAPER_PREVIEW_DELAY` environment variable) on the same game, RGSX shows its ScreenScraper synopsis in the preview panel: it is read from the local database when already stored (games not found on ScreenScraper are stored too, so they are not queried again), otherwise it is fetched and stored. The cover is downloaded only if it is missing locally and ScreenScraper has one; a game without a cover on ScreenScraper is not asked for it again. The synopsis appears once loaded. If no information is available, the panel shows an unavailable placeholder. The preferred ScreenScraper system ID is stored per platform in the online RGSX catalog and can be edited in RGSX Sources Manager. If no ID is configured, RGSX falls back to the periodically refreshed ScreenScraper system list cached in SQLite, then to built-in aliases. A two-second hold on **Confirm** opens the game details page with the cover, screenshot, and synopsis. These are read first from the local `media` folder and the database; ScreenScraper is queried only for what is missing locally. In **Pause > Scrap**, the ScreenScraper username and password can be edited together; a virtual keyboard is shown only when a controller is detected, otherwise type directly, use Tab to switch fields and **ENTER** to confirm. A message shows the remaining quota. The account is stored in the dedicated `saves/ports/rgsx/screenscraper_account.json` file and can also be edited from the web interface.
 
-The Media Manager downloads media in bulk. Its **History** control shortcut starts, resumes, or cancels the current job without navigating back to the first row.
+The Media Manager downloads media in bulk. Its profiles are **Cover** (`default`) and **Cover + Screenshot + Synopsis** (`max`). Each game costs one details request plus one request per media kind: 2 requests for Cover, 3 for the full profile, as shown in the estimate. Files and synopses already stored locally, including "not found" answers, are not requested again. Its **History** control shortcut starts, resumes, or cancels the current job without navigating back to the first row.
 
 ### Local Database and Migration
 
@@ -241,7 +245,7 @@ RGSX includes a web interface that launched automatically when using RGSX for re
 ├── controls.json             # Control mapping
 ├── rgsx.sqlite3 # Catalog, history, ScreenScraper synopses, and persistent user state
 ├── images/                   # System images
-├── media/                    # Cached game covers, screenshots, and logos
+├── media/                    # Cached game covers and screenshots
 ├── screenscraper_account.json # Optional ScreenScraper account
 ├── backup_old_rgsx/          # Legacy files archived during migration, if present
 ├── 1FichierAPI.txt           # 1Fichier API key

@@ -23,7 +23,7 @@ from language import _, get_size_units, get_speed_unit, get_available_languages,
 from rgsx_settings import (load_rgsx_settings, get_light_mode, get_show_unsupported_platforms,
                             get_allow_unknown_extensions, get_display_monitor, get_display_fullscreen,
                             get_available_monitors, get_font_family, get_symlink_option,
-                            get_display_background_theme, DISPLAY_GRID_LAYOUTS, is_screenscraper_disabled)
+                            get_display_background_theme, normalize_display_theme, DISPLAY_GRID_LAYOUTS, is_screenscraper_disabled)
 from game_filters import GameFilters  
 
 import json
@@ -340,7 +340,10 @@ def _render_icons_line_singleline(actions, text, target_col_width, font, text_co
     if not getattr(config, 'joystick', True):
         action_labels = []
         for action_name in actions:
-            label = get_control_display(action_name, action_name.upper())
+            base_action, _sep, hold = action_name.partition("@")
+            label = get_control_display(base_action, base_action.upper())
+            if hold:
+                label = f"{label} ({hold})"
             action_labels.append(f"[{label}]")
         full_text = " ".join(action_labels) + " : " + text
         fitted_text = truncate_text_end(full_text, font, target_col_width)
@@ -349,9 +352,12 @@ def _render_icons_line_singleline(actions, text, target_col_width, font, text_co
         surf.blit(text_surface, (0, 0))
         return surf
 
+    hold_text = next((a.partition("@")[2] for a in actions if "@" in a), "")
+    if hold_text:
+        text = f"({hold_text}) {text}"
     icon_surfs = []
     for action_name in actions:
-        surf = get_help_icon_surface(action_name, icon_size)
+        surf = get_help_icon_surface(action_name.partition("@")[0], icon_size)
         if surf is not None:
             icon_surfs.append(surf)
 
@@ -516,49 +522,130 @@ THEME_COLORS = {
     "accent_gradient_end": (120, 80, 200),  # Fin dégradé accent
 }
 
-BACKGROUND_THEME_PRESETS = {
-    "default": {
-        "label_key": "background_theme_default",
-        "top": THEME_COLORS["background_top"],
-        "bottom": THEME_COLORS["background_bottom"],
+DISPLAY_THEME_PRESETS = {
+    "blue": {
+        "label_key": "background_theme_blue",
+        "colors": {
+            "background_top": (20, 25, 35),
+            "background_bottom": (45, 55, 75),
+            "fond_lignes": (0, 255, 0),
+            "text_selected": (0, 255, 0),
+            "neon": (0, 134, 179),
+            "border": (100, 120, 150),
+            "border_selected": (0, 255, 150),
+            "button_idle": (45, 50, 65, 180),
+            "button_selected": (70, 80, 110, 220),
+            "button_hover": (255, 0, 255, 240),
+            "fond_image": (50, 50, 70),
+            "glow": (100, 180, 255, 40),
+            "text": (255, 255, 255),
+            "title_text": (220, 220, 230),
+        },
+    },
+    "green": {
+        "label_key": "background_theme_green",
+        "colors": {
+            "background_top": (18, 36, 32),
+            "background_bottom": (50, 88, 72),
+            "fond_lignes": (120, 240, 160),
+            "text_selected": (120, 240, 160),
+            "neon": (60, 180, 120),
+            "border": (90, 130, 110),
+            "border_selected": (120, 240, 160),
+            "button_idle": (30, 58, 50, 180),
+            "button_selected": (50, 95, 80, 220),
+            "button_hover": (40, 150, 95, 240),
+            "fond_image": (32, 60, 52),
+            "glow": (120, 240, 160, 40),
+            "text": (255, 255, 255),
+            "title_text": (220, 235, 225),
+        },
     },
     "sunset": {
         "label_key": "background_theme_sunset",
-        "top": (52, 24, 44),
-        "bottom": (173, 82, 56),
-    },
-    "forest": {
-        "label_key": "background_theme_forest",
-        "top": (18, 36, 32),
-        "bottom": (50, 88, 72),
+        "colors": {
+            "background_top": (52, 24, 44),
+            "background_bottom": (173, 82, 56),
+            "fond_lignes": (255, 200, 80),
+            "text_selected": (255, 200, 80),
+            "neon": (240, 120, 60),
+            "border": (170, 110, 90),
+            "border_selected": (255, 200, 80),
+            "button_idle": (70, 35, 45, 180),
+            "button_selected": (120, 55, 55, 220),
+            "button_hover": (230, 90, 50, 240),
+            "fond_image": (80, 40, 50),
+            "glow": (255, 180, 90, 40),
+            "text": (255, 255, 255),
+            "title_text": (250, 230, 215),
+        },
     },
     "midnight": {
         "label_key": "background_theme_midnight",
-        "top": (8, 13, 26),
-        "bottom": (27, 43, 79),
+        "colors": {
+            "background_top": (8, 13, 26),
+            "background_bottom": (27, 43, 79),
+            "fond_lignes": (130, 190, 255),
+            "text_selected": (130, 190, 255),
+            "neon": (70, 130, 230),
+            "border": (80, 105, 160),
+            "border_selected": (130, 190, 255),
+            "button_idle": (15, 22, 42, 180),
+            "button_selected": (35, 55, 100, 220),
+            "button_hover": (50, 100, 210, 240),
+            "fond_image": (20, 30, 58),
+            "glow": (130, 190, 255, 40),
+            "text": (255, 255, 255),
+            "title_text": (215, 225, 245),
+        },
+    },
+    "high_contrast": {
+        "label_key": "background_theme_high_contrast",
+        "selected_border_width": 4,
+        "colors": {
+            "background_top": (0, 0, 0),
+            "background_bottom": (0, 0, 0),
+            "fond_lignes": (255, 255, 0),
+            "text_selected": (255, 255, 0),
+            "neon": (255, 255, 0),
+            "border": (255, 255, 255),
+            "border_selected": (255, 255, 0),
+            "button_idle": (0, 0, 0, 255),
+            "button_selected": (40, 40, 40, 255),
+            "button_hover": (60, 60, 60, 255),
+            "fond_image": (0, 0, 0),
+            "glow": (255, 255, 0, 40),
+            "text": (200, 200, 200),
+            "title_text": (255, 255, 255),
+        },
     },
 }
 
 
-def get_background_theme_colors(theme_key=None):
-    selected_theme = (theme_key or get_display_background_theme() or "default").lower()
-    preset = BACKGROUND_THEME_PRESETS.get(selected_theme, BACKGROUND_THEME_PRESETS["default"])
-    return preset["top"], preset["bottom"]
+def apply_display_theme(theme_key=None):
+    """Applique le thème d'affichage en mettant à jour THEME_COLORS sur place."""
+    key = get_display_background_theme() if theme_key is None else normalize_display_theme(theme_key)
+    preset = DISPLAY_THEME_PRESETS[key]
+    THEME_COLORS.update(preset["colors"])
+    THEME_COLORS["selected_border_width"] = preset.get("selected_border_width", 2)
+    return key
+
+
+def get_background_theme_colors():
+    return THEME_COLORS["background_top"], THEME_COLORS["background_bottom"]
 
 
 def get_background_theme_label(theme_key=None):
-    selected_theme = (theme_key or get_display_background_theme() or "default").lower()
-    preset = BACKGROUND_THEME_PRESETS.get(selected_theme, BACKGROUND_THEME_PRESETS["default"])
-    label_key = preset.get("label_key")
-    if not label_key:
-        return selected_theme
+    key = get_display_background_theme() if theme_key is None else normalize_display_theme(theme_key)
+    label_key = DISPLAY_THEME_PRESETS[key]["label_key"]
     translated = _(label_key) if _ else label_key
-    return translated if translated != label_key else selected_theme
+    return translated if translated != label_key else key
 
 
 def draw_app_background(screen, light_mode=None):
     top_color, bottom_color = get_background_theme_colors()
     draw_gradient(screen, top_color, bottom_color, light_mode=light_mode)
+
 
 # Général, résolution, overlay
 def init_display():
@@ -572,6 +659,7 @@ def init_display():
     # Charger les paramètres d'affichage
     settings = load_rgsx_settings()
     logger.debug(f"Settings chargés: display={settings.get('display', {})}")
+    apply_display_theme(settings.get("display", {}).get("background_theme"))
     target_monitor = settings.get("display", {}).get("monitor", 0)
     is_fullscreen = get_display_fullscreen(settings)
     
@@ -1582,7 +1670,7 @@ def draw_platform_grid(screen):
         title_bg = pygame.Surface((title_rect_inflated.width, title_rect_inflated.height), pygame.SRCALPHA)
         for i in range(title_rect_inflated.height):
             ratio = i / title_rect_inflated.height
-            alpha = int(THEME_COLORS["button_idle"][3] * (1 + ratio * 0.1))
+            alpha = min(255, int(THEME_COLORS["button_idle"][3] * (1 + ratio * 0.1)))
             pygame.draw.line(title_bg, (*THEME_COLORS["button_idle"][:3], alpha), 
                             (0, i), (title_rect_inflated.width, i))
         screen.blit(title_bg, title_rect_inflated.topleft)
@@ -1824,18 +1912,18 @@ def draw_platform_grid(screen):
             screen.blit(highlight, (container_left + 4, container_top + 4))
         else:
             # Mode performance : fond simple sans effets
-            bg_color = THEME_COLORS["button_idle"] if is_selected else THEME_COLORS["fond_image"]
+            bg_color = THEME_COLORS["button_selected"] if is_selected else THEME_COLORS["fond_image"]
             pygame.draw.rect(screen, bg_color, (container_left, container_top, rect_width, rect_height), border_radius=border_radius)
         
         # Bordure
         if light_mode and is_selected:
             # Mode performance : bordure épaisse et très visible pour l'item sélectionné
-            border_color = THEME_COLORS["neon"]  # Couleur verte bien visible
+            border_color = THEME_COLORS["fond_lignes"]  # Vert de sélection utilisé dans toute l'app
             border_width = 4  # Bordure plus épaisse
         elif not light_mode and is_selected:
-            # Mode normal : bordure neon
+            # Mode normal : bordure neon, épaisseur définie par le thème
             border_color = THEME_COLORS["neon"]
-            border_width = 2
+            border_width = THEME_COLORS.get("selected_border_width", 2)
         else:
             # Non sélectionné : bordure standard
             border_color = THEME_COLORS["border"]
@@ -3364,6 +3452,8 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
     if menu_state == "platform_search" and getattr(config, 'joystick', False) and getattr(config, 'global_search_editing', False):
         menu_state = "platform_search_edit"
     
+    hold_label = f"{config.confirm_long_press_threshold / 1000:g}s"
+
     # Mapping des contrôles par menu_state
     controls_map = {
         "platform": [
@@ -3388,7 +3478,8 @@ def draw_controls(screen, menu_state, current_music_name=None, music_popup_start
             ("cancel", _("controls_cancel_back")),
         ],
         "game": [
-            ("confirm", _("controls_confirm_select")),
+            ("confirm", _("controls_action_download")),
+            *([(f"confirm@{hold_label}", _("controls_longpress_game_info"))] if not is_screenscraper_disabled() else []),
             ("clear_history", _("controls_action_queue")),
             (("page_up", "page_down"), _("controls_pages")),
             ("filter", _("controls_filter_search")),
@@ -4237,7 +4328,7 @@ def draw_pause_display_menu(screen, selected_index):
 
     # Background gradient theme
     background_theme_label = get_background_theme_label()
-    background_txt = f"{_('display_background') if _ else 'Background'}: < {background_theme_label} >"
+    background_txt = f"{_('display_theme') if _ else 'Theme'}: < {background_theme_label} >"
 
     back_txt = _("menu_back") if _ else "Back"
     
@@ -4260,7 +4351,7 @@ def draw_pause_display_menu(screen, selected_index):
     
     bg_instruction = _("instruction_display_background_theme") if _ else ""
     if not bg_instruction or bg_instruction == "instruction_display_background_theme":
-        bg_instruction = "Left/Right: change background theme"
+        bg_instruction = "Left/Right: change theme"
 
     options.extend([background_txt, light_txt, unknown_txt, back_txt])
     instructions.extend([
@@ -4856,6 +4947,12 @@ def draw_media_manager(screen):
     if manager.running or manager.progress["total"]:
         p = manager.progress
         info_lines.append((_("media_progress").format(p["done"], p["total"], p["found"], p["not_found"], p["errors"]), THEME_COLORS["text"]))
+        if manager.running and manager.current:
+            info_lines.append((_("media_current_game").format(manager.current["game"]), THEME_COLORS["text"]))
+            found = manager.current["found"]
+            if found is not None:
+                details = ", ".join(_("media_kind_" + kind).format(value) for kind, value in found.items())
+                info_lines.append((_("media_found_line").format(details), THEME_COLORS["text"]))
     if manager.status and not manager.running:
         key, args = manager.status
         info_lines.append((_(key).format(*args), THEME_COLORS["warning_text"]))

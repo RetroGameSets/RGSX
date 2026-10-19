@@ -20,6 +20,10 @@ Un téléchargeur de ROMs gratuit et simple d'utilisation pour Batocera, Knulli 
   <img width="49%" alt="Historique des téléchargements RGSX" src="screenshots/downloads-history.png" />
   <img width="49%" alt="Paramètres de RGSX Web" src="screenshots/settings-web.png" />
 </p>
+<p align="center">
+  <img width="49%" alt="Choix de la source de téléchargement dans RGSX" src="screenshots/source-choice.png" />
+  <img width="49%" alt="Détails ScreenScraper d'un jeu dans RGSX" src="screenshots/game-info.png" />
+</p>
 
 
 ---
@@ -111,12 +115,12 @@ Télécharger et extraire la dernière release : [RGSX_full_latest.zip](https://
 
 ### ScreenScraper et Gestionnaire de médias
 
-Dans la liste des jeux, la pochette locale d'un jeu sélectionné s'affiche immédiatement si elle existe. Lorsque ScreenScraper est désactivé, le panneau d'aperçu est masqué et la liste des jeux ne déclenche plus de récupération automatique. Après le délai configuré (deux secondes par défaut : `SCREENSCRAPER_PREVIEW_DELAY_SEC` dans `config.py`, ou variable d'environnement `RGSX_SCREENSCRAPER_PREVIEW_DELAY`) sur le même jeu, RGSX affiche son résumé ScreenScraper dans le panneau d'aperçu : il est lu dans la base locale s'il y est déjà enregistré (les jeux absents de ScreenScraper y sont aussi conservés, pour ne pas les interroger à nouveau), sinon il est récupéré puis enregistré. La pochette n'est téléchargée que si elle manque en local et que ScreenScraper en possède une ; si ScreenScraper n'en a pas, elle n'est plus redemandée. Le résumé apparaît une fois chargé. Si aucune information n'est disponible, un placeholder l'indique. L'ID ScreenScraper prioritaire est stocké par plateforme dans le catalogue RGSX en ligne et modifiable dans RGSX Sources Manager. S'il n'est pas renseigné, RGSX utilise la liste des systèmes ScreenScraper mise en cache dans SQLite et actualisée périodiquement, puis les alias intégrés. Un appui de deux secondes sur **Valider** ouvre sa page ScreenScraper avec la pochette, la capture d'écran et le résumé. 
+Dans la liste des jeux, la pochette locale d'un jeu sélectionné s'affiche immédiatement si elle existe. Lorsque ScreenScraper est désactivé, le panneau d'aperçu est masqué et la liste des jeux ne déclenche plus de récupération automatique. Après le délai configuré (deux secondes par défaut : `SCREENSCRAPER_PREVIEW_DELAY_SEC` dans `config.py`, ou variable d'environnement `RGSX_SCREENSCRAPER_PREVIEW_DELAY`) sur le même jeu, RGSX affiche son résumé ScreenScraper dans le panneau d'aperçu : il est lu dans la base locale s'il y est déjà enregistré (les jeux absents de ScreenScraper y sont aussi conservés, pour ne pas les interroger à nouveau), sinon il est récupéré puis enregistré. La pochette n'est téléchargée que si elle manque en local et que ScreenScraper en possède une ; si ScreenScraper n'en a pas, elle n'est plus redemandée. Le résumé apparaît une fois chargé. Si aucune information n'est disponible, un placeholder l'indique. L'ID ScreenScraper prioritaire est stocké par plateforme dans le catalogue RGSX en ligne et modifiable dans RGSX Sources Manager. S'il n'est pas renseigné, RGSX utilise la liste des systèmes ScreenScraper mise en cache dans SQLite et actualisée périodiquement, puis les alias intégrés. Un appui de deux secondes sur **Valider** ouvre la page de détails du jeu avec la pochette, la capture d'écran et le résumé. Ces éléments sont d'abord lus dans le dossier local `media` et dans la base ; ScreenScraper n'est interrogé que pour ce qui manque en local.
 
 Dans **Pause > Scrap**, l'identifiant et le mot de passe ScreenScraper se modifient sur la même page : le clavier virtuel apparaît uniquement si une manette est détectée ; sinon, saisissez directement au clavier et utilisez Tab pour changer de champ puis **ENTRÉE** pour confirmer. Un message indiquera le quota restant. 
 Le compte est dans le fichier dédié `saves/ports/rgsx/screenscraper_account.json` et peut aussi être modifié depuis l'interface Web.
 
-Le Gestionnaire de médias permet les téléchargements en lot. Son raccourci de contrôle **Historique** lance, reprend ou annule le travail sans remonter à la première ligne.
+Le Gestionnaire de médias permet les téléchargements en lot. Ses profils sont **Pochette** (`default`) et **Pochette + Capture + Résumé** (`max`). Chaque jeu coûte une requête de détails plus une requête par type de média : 2 requêtes pour Pochette, 3 pour le profil complet, comme affiché dans l'estimation. Les fichiers et résumés déjà présents en local, y compris les réponses « non trouvé », ne sont pas redemandés. Son raccourci de contrôle **Historique** lance, reprend ou annule le travail sans remonter à la première ligne.
 
 ### Base de données locale et migration
 
@@ -244,7 +248,7 @@ RGSX inclut une interface web qui se lance automatiquement quand vous utilisez R
 ├── controls.json             # Mapping des contrôles
 ├── rgsx.sqlite3 # Catalogue, historique, résumés ScreenScraper et état utilisateur persistant
 ├── images/                   # Images des systèmes
-├── media/                    # Cache des pochettes, captures et logos des jeux
+├── media/                    # Cache des pochettes et captures d'écran des jeux
 ├── screenscraper_account.json # Compte ScreenScraper facultatif
 ├── backup_old_rgsx/          # Anciennes données archivées lors de la migration (si présentes)
 ├── 1FichierAPI.txt           # Clé API 1Fichier

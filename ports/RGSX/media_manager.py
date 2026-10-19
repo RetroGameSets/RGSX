@@ -1,14 +1,17 @@
 """Media Manager: bulk-download game images from ScreenScraper.fr into the local cache.
 
 The UI only reads this module's state; all network work runs in a background thread.
-Images: config.MEDIA_FOLDER/{platform_folder}/{game}.jpg (+ _ss / _logo)
+Images: config.MEDIA_FOLDER/{platform_folder}/{game}.jpg (+ _ss)
 """
+import io
 import json
 import logging
 import os
 import re
 import threading
 from datetime import datetime, timezone
+
+import pygame
 
 import config
 import database
@@ -28,9 +31,13 @@ MAX_CONSECUTIVE_NETWORK_FAILURES = 3
 # Profile -> media kinds to download. Missing "box" falls back to a screenshot (screenscraper.fetch_game_media).
 PROFILES = {
     "default": ("box",),
-    "max": ("box", "ss", "logo"),
+    "max": ("box", "ss"),
 }
-MEDIA_SUFFIX = {"box": "", "ss": "_ss", "logo": "_logo"}
+# Profiles that also need the ScreenScraper summary stored locally.
+PROFILES_WITH_SUMMARY = {"max"}
+MEDIA_SUFFIX = {"box": "", "ss": "_ss"}
+# Stored flag that tells a kind is absent on ScreenScraper, so a missing file is final.
+CHECKED_FLAG = {"box": "cover_checked", "ss": "screenshot_checked"}
 MEDIA_EXTENSIONS = (".jpg", ".png")
 
 
@@ -55,6 +62,28 @@ def find_media(folder, rom_filename, kind="box"):
     return None
 
 
+def local_game(folder, rom_filename, system_id, kinds, need_summary=False):
+    """Answer from disk and SQLite only, before any ScreenScraper request.
+
+    Returns {"found", "summary", "media": {kind: path}} when every requested kind is either on disk
+    or marked as absent on ScreenScraper, and the summary is stored when requested.
+    Returns None when ScreenScraper must still be asked.
+    """
+    record = screenscraper.cached_game_info(rom_filename, system_id)
+    if record is not None and not record["found"]:
+        return {"found": False, "summary": "", "media": {}}
+    if need_summary and record is None:
+        return None
+    media = {}
+    for kind in kinds:
+        path = find_media(folder, rom_filename, kind)
+        if path:
+            media[kind] = path
+        elif not (record and record[CHECKED_FLAG[kind]]):
+            return None
+    return {"found": True, "summary": record["summary"] if record else "", "media": media}
+
+
 def _atomic_write_bytes(path, payload):
     """Write to .tmp first, then rename: no partial files are left behind."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -64,15 +93,72 @@ def _atomic_write_bytes(path, payload):
     os.replace(tmp_path, path)
 
 
+def _png_to_jpg(payload, path):
+    """Re-encode PNG bytes as JPEG at path with pygame (no Pillow needed). Transparent pixels become black.
+
+    Returns False and leaves no file behind when the conversion fails.
+    """
+    tmp_path = path + ".tmp.jpg"
+    try:
+        image = pygame.image.load(io.BytesIO(payload), "image.png")
+        flat = pygame.Surface(image.get_size())
+        flat.fill((0, 0, 0))
+        flat.blit(image, (0, 0))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        pygame.image.save(flat, tmp_path)
+        os.replace(tmp_path, path)
+        return True
+    except Exception as exc:
+        logger.debug("PNG to JPEG conversion failed: %s", exc)
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return False
+
+
 def save_media(folder, rom_filename, kind, media):
-    """Persist one validated ScreenScraper media payload in the shared local cache."""
+    """Persist one validated ScreenScraper media payload in the shared local cache. PNG is stored as JPEG when possible."""
     payload, ext = media
     ext = str(ext or ".jpg").lower().replace(".jpeg", ".jpg")
     if not isinstance(payload, bytes) or not payload:
         raise screenscraper.ScreenScraperError("http", "invalid image payload")
+    if ext == ".png":
+        jpg_path = media_path(folder, rom_filename, kind, ".jpg")
+        if _png_to_jpg(payload, jpg_path):
+            return jpg_path
     path = media_path(folder, rom_filename, kind, ext if ext in MEDIA_EXTENSIONS else ".jpg")
     _atomic_write_bytes(path, payload)
     return path
+
+
+def convert_png_cache(root=None):
+    """Convert every cached PNG under root to JPEG, then delete the PNG. Returns (converted, failed).
+
+    A PNG whose JPEG already exists is only deleted, since find_media() already prefers the JPEG.
+    """
+    root = root or config.MEDIA_FOLDER
+    converted = failed = 0
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for name in filenames:
+            if not name.lower().endswith(".png"):
+                continue
+            png_path = os.path.join(dirpath, name)
+            jpg_path = os.path.splitext(png_path)[0] + ".jpg"
+            try:
+                if os.path.exists(jpg_path):
+                    os.remove(png_path)
+                    converted += 1
+                    continue
+                with open(png_path, "rb") as handle:
+                    payload = handle.read()
+                if _png_to_jpg(payload, jpg_path):
+                    os.remove(png_path)
+                    converted += 1
+                else:
+                    failed += 1
+            except OSError as exc:
+                logger.debug("PNG cache conversion skipped %s: %s", png_path, exc)
+                failed += 1
+    return converted, failed
 
 
 def load_queue():
@@ -113,6 +199,8 @@ class MediaManager:
         self.progress = {"done": 0, "total": 0, "found": 0, "not_found": 0, "errors": 0}
         # Status shown in the UI: (translation key, format args) or None
         self.status = None
+        # Game being processed: {"game": name, "found": None while searching, else {kind: 0|1}} or None
+        self.current = None
         self.allowance = None  # (remaining_today, max_per_day)
         self.account_configured = False
         self.platforms = []
@@ -205,11 +293,11 @@ class MediaManager:
     def estimate(self):
         """(selected game count, requests per game, games the quota covers or None).
 
-        Requests per game: jeuInfos = 1 for every profile (it returns all media URLs).
-        Media downloads are assumed not to count against the daily quota.
+        Requests per game: 1 jeuInfos request, then 1 request per media kind in the profile
+        (box2d = 2, full = 3). This is an upper bound: games already complete on disk need none.
         """
         games = sum(g["count"] for g in self.platforms if g["folder"] in self.selected and g["platform_id"])
-        per_game = 1
+        per_game = 1 + len(PROFILES[self.profile])
         capacity = self.allowance[0] // per_game if self.allowance else None
         return games, per_game, capacity
 
@@ -237,6 +325,7 @@ class MediaManager:
         queue = load_queue()
         not_found = {(item.get("platform"), item.get("rom_filename")) for item in queue["not_found"]}
         kinds = PROFILES[self.profile]
+        need_summary = self.profile in PROFILES_WITH_SUMMARY
         items = []
         for group in platforms:
             if group["folder"] not in self.selected or not group["platform_id"]:
@@ -249,7 +338,7 @@ class MediaManager:
                     if not rom_filename or rom_filename in seen or key in not_found:
                         continue
                     seen.add(rom_filename)
-                    if all(find_media(group["folder"], rom_filename, kind) for kind in kinds):
+                    if local_game(group["folder"], rom_filename, group["platform_id"], kinds, need_summary) is not None:
                         continue
                     items.append({
                         "platform": group["folder"],
@@ -266,14 +355,21 @@ class MediaManager:
     def _process_item(self, item, platform_id):
         """Process one game. Returns 'found' | 'not_found'. Retries with backoff on network errors."""
         kinds = PROFILES[self.profile]
+        need_summary = self.profile in PROFILES_WITH_SUMMARY
         for attempt in range(NETWORK_RETRIES):
+            local = local_game(item["platform"], item["rom_filename"], platform_id, kinds, need_summary)
+            if local is not None:
+                self._set_current_found(item, platform_id)
+                return "found" if local["found"] else "not_found"
             try:
                 urls = screenscraper.fetch_game_media(item["rom_filename"], platform_id, kinds, origin="media manager")
-                if not urls:
+                if urls is None:
+                    self._set_current_found(item, platform_id)
                     return "not_found"
                 for kind in kinds:
                     if urls.get(kind) and not find_media(item["platform"], item["rom_filename"], kind):
                         self._download(urls[kind], item["platform"], item["rom_filename"], kind)
+                    self._set_current_found(item, platform_id)
                 return "found"
             except screenscraper.ScreenScraperError as exc:
                 error = exc
@@ -281,6 +377,15 @@ class MediaManager:
                 raise error
             if self.cancel_event.wait(2 ** attempt):
                 raise error
+
+    def _set_current_found(self, item, platform_id):
+        """Record what the current game has on disk (and a stored summary for the full profile)."""
+        found = {kind: int(find_media(item["platform"], item["rom_filename"], kind) is not None) for kind in PROFILES[self.profile]}
+        if self.profile in PROFILES_WITH_SUMMARY:
+            record = screenscraper.cached_game_info(item["rom_filename"], platform_id)
+            found["summary"] = int(bool(record and record["found"] and record["summary"]))
+        self.current = {"game": item["game_name"], "found": found}
+        config.needs_redraw = True
 
     def _run(self, resume):
         queue = load_queue()
@@ -309,11 +414,14 @@ class MediaManager:
                 self.status = ("media_cancelled", ())
                 break
             item = items[index]
+            self.current = {"game": item["game_name"], "found": None}
             try:
                 platform_id = platform_ids.get(item["platform"])
                 if not platform_id:
                     raise screenscraper.ScreenScraperError("unsupported", item["platform"])
+                self._set_current_found(item, platform_id)
                 result = self._process_item(item, platform_id)
+                self._set_current_found(item, platform_id)
                 consecutive_network_failures = 0
                 if result == "found":
                     self.progress["found"] += 1
@@ -358,6 +466,7 @@ class MediaManager:
             self.progress["done"] = index
             config.needs_redraw = True
 
+        self.current = None
         remaining = failed + items[index:]
         save_queue(self.profile, remaining, not_found)
         self.pending = len(remaining)
