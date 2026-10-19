@@ -1955,8 +1955,24 @@ def draw_platform_grid(screen):
                 source_count_template = "{0} sources"
             source_count_text = source_count_template.format(len(group_platforms))
             badge_font = config.tiny_font or config.small_font or config.font
-            source_count_surface = badge_font.render(source_count_text, True, (52, 64, 91))
             badge_padding_x = 7
+            if badge_font.size(source_count_text)[0] + badge_padding_x * 2 > border_rect.width * 0.4:
+                # Small tiles (e.g. 640x480): the label would cover the logo, so draw the count in a dot
+                # centered on the card corner; most of it sits in the grid gutter (cell_padding >= 12 px).
+                radius = max(8, min(12, border_rect.width // 16))
+                center = (border_rect.right - 2, border_rect.top + 2)
+                count_surface = badge_font.render(str(len(group_platforms)), True, (52, 64, 91))
+                max_text_height = radius * 2  # font height includes line spacing, so the digit stays inside the dot
+                if count_surface.get_height() > max_text_height:
+                    ratio = max_text_height / count_surface.get_height()
+                    count_surface = pygame.transform.smoothscale(
+                        count_surface, (max(1, int(count_surface.get_width() * ratio)), max_text_height)
+                    )
+                pygame.draw.circle(screen, (255, 255, 255), center, radius)
+                pygame.draw.circle(screen, (205, 213, 229), center, radius, 1)
+                screen.blit(count_surface, count_surface.get_rect(center=center))
+                continue
+            source_count_surface = badge_font.render(source_count_text, True, (52, 64, 91))
             badge_padding_y = 4
             badge_rect = pygame.Rect(
                 border_rect.right - source_count_surface.get_width() - badge_padding_x * 2 - 6,
