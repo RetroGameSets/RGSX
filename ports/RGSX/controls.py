@@ -10,7 +10,7 @@ import logging
 import config
 import catalog_sync
 from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE, CONTROLS_CONFIG_PATH, Game
-from display import draw_validation_transition, show_toast
+from display import draw_validation_transition, show_toast, SCREENSCRAPER_KEYBOARD_LAYOUT
 from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel, cleanup_torrent_temp, stop_active_seeder
 from utils import (
     load_games, clear_games_cache, check_extension_before_download, is_extension_supported,
@@ -1104,14 +1104,6 @@ def _get_search_input_char(event) -> str | None:
     return None
 
 
-GLOBAL_SEARCH_KEYBOARD_LAYOUT = [
-    ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
-    ['A', 'Z', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
-    ['Q', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M'],
-    ['W', 'X', 'C', 'V', 'B', 'N', '.', '_', '-', ',']
-]
-
-
 def _save_screenscraper_account():
     """Save both ScreenScraper credentials and check the account in the background."""
     import screenscraper
@@ -1687,11 +1679,11 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
             elif getattr(config, 'joystick', False) and getattr(config, 'global_search_editing', False):
                 row, col = config.selected_key
-                max_row = len(GLOBAL_SEARCH_KEYBOARD_LAYOUT) - 1
-                max_col = len(GLOBAL_SEARCH_KEYBOARD_LAYOUT[row]) - 1
+                max_row = len(SCREENSCRAPER_KEYBOARD_LAYOUT) - 1
+                max_col = len(SCREENSCRAPER_KEYBOARD_LAYOUT[row]) - 1
                 if is_global_search_input_matched(event, "up"):
                     target_row = max_row if row == 0 else row - 1
-                    config.selected_key = (target_row, min(col, len(GLOBAL_SEARCH_KEYBOARD_LAYOUT[target_row]) - 1))
+                    config.selected_key = (target_row, min(col, len(SCREENSCRAPER_KEYBOARD_LAYOUT[target_row]) - 1))
                     config.repeat_action = "up"
                     config.repeat_start_time = current_time + REPEAT_DELAY
                     config.repeat_last_action = current_time
@@ -1699,8 +1691,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.needs_redraw = True
                 elif is_global_search_input_matched(event, "down"):
                     target_row = 0 if row == max_row else row + 1
-                    config.selected_key = (target_row, min(col, len(GLOBAL_SEARCH_KEYBOARD_LAYOUT[target_row]) - 1))
-                    config.repeat_action = "down"
+                    config.selected_key = (target_row, min(col, len(SCREENSCRAPER_KEYBOARD_LAYOUT[target_row]) - 1))
                     config.repeat_start_time = current_time + REPEAT_DELAY
                     config.repeat_last_action = current_time
                     config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
@@ -1726,7 +1717,7 @@ def handle_controls(event, sources, joystick, screen):
                         config.repeat_key = event.key if event.type == pygame.KEYDOWN else event.button if event.type == pygame.JOYBUTTONDOWN else (event.axis, 1 if event.value > 0 else -1) if event.type == pygame.JOYAXISMOTION else event.value
                         config.needs_redraw = True
                 elif is_global_search_input_matched(event, "confirm"):
-                    config.global_search_query += GLOBAL_SEARCH_KEYBOARD_LAYOUT[row][col]
+                    config.global_search_query += SCREENSCRAPER_KEYBOARD_LAYOUT[row][col]
                     refresh_global_search_results()
                     config.needs_redraw = True
                 elif is_global_search_input_matched(event, "delete"):
@@ -1805,7 +1796,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.scroll_offset = 0
                     config.search_mode = True
                     config.needs_redraw = True
-                keyboard_layout = GLOBAL_SEARCH_KEYBOARD_LAYOUT
+                keyboard_layout = SCREENSCRAPER_KEYBOARD_LAYOUT
                 row, col = config.selected_key
                 max_row = len(keyboard_layout) - 1
                 max_col = len(keyboard_layout[row]) - 1
@@ -3597,7 +3588,6 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
 
         elif config.menu_state == "screenscraper_input":
-            from display import SCREENSCRAPER_KEYBOARD_LAYOUT
             row, col = getattr(config, 'ss_input_selected_key', (0, 0))
             rows, cols = len(SCREENSCRAPER_KEYBOARD_LAYOUT), len(SCREENSCRAPER_KEYBOARD_LAYOUT[0])
             field_name = "ss_input_" + config.ss_input_field
@@ -3628,6 +3618,12 @@ def handle_controls(event, sources, joystick, screen):
                 elif is_input_matched(event, "confirm") and getattr(config, "joystick", False):
                     char = SCREENSCRAPER_KEYBOARD_LAYOUT[row][col]
                     setattr(config, field_name, value + (char.upper() if config.ss_input_shift else char))
+                elif event.type != pygame.KEYDOWN and is_input_matched(event, "page_up"):
+                    setattr(config, field_name, value[:-1])
+                elif event.type != pygame.KEYDOWN and is_input_matched(event, "page_down"):
+                    setattr(config, field_name, value + " ")
+                elif event.type != pygame.KEYDOWN and (is_input_matched(event, "delete") or is_input_matched(event, "space")):
+                    config.ss_input_field = "password" if config.ss_input_field == "username" else "username"
                 elif is_input_matched(event, "delete"):
                     setattr(config, field_name, value[:-1])
                 elif is_input_matched(event, "space"):
@@ -4837,7 +4833,7 @@ def handle_controls(event, sources, joystick, screen):
                 (config.controls_config.get(action_name, {}).get("type") == "key" and \
                  config.controls_config.get(action_name, {}).get("key") == event.key)):
                     press_duration = current_time - config.confirm_press_start_time
-                    # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
+                    # Si appui court (< seuil d'appui long) et pas déjà traité par l'appui long
                     if press_duration < config.confirm_long_press_threshold and not config.confirm_long_press_triggered:
                         # Déclencher le téléchargement normal
                         games = config.filtered_games if config.filter_active or config.search_mode else config.games
@@ -4923,7 +4919,7 @@ def handle_controls(event, sources, joystick, screen):
                 (config.controls_config.get(action_name, {}).get("type") == "key" and \
                  config.controls_config.get(action_name, {}).get("key") == event.key)):
                     press_duration = current_time - getattr(config, 'platform_confirm_press_start_time', 0)
-                    # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
+                    # Si appui court (< seuil d'appui long) et pas déjà traité par l'appui long
                     if press_duration < config.confirm_long_press_threshold and not getattr(config, 'platform_confirm_long_press_triggered', False):
                         if _open_selected_platform(screen):
                             logger.debug(f"Appui court clavier sur confirm ({press_duration}ms), navigation vers les jeux de {config.platforms[config.current_platform]}")
@@ -4943,7 +4939,7 @@ def handle_controls(event, sources, joystick, screen):
                 # Gestion spéciale pour confirm dans le menu game (ne dépend pas du key_state)
                 if action_name == "confirm" and config.menu_state == "game":
                     press_duration = current_time - config.confirm_press_start_time
-                    # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
+                    # Si appui court (< seuil d'appui long) et pas déjà traité par l'appui long
                     if press_duration < config.confirm_long_press_threshold and not config.confirm_long_press_triggered:
                         # Déclencher le téléchargement normal (même code que pour KEYUP)
                         games = config.filtered_games if config.filter_active or config.search_mode else config.games
@@ -5026,7 +5022,7 @@ def handle_controls(event, sources, joystick, screen):
                 # Gestion spéciale pour confirm dans le menu platform (appui court = aller aux jeux)
                 if action_name == "confirm" and config.menu_state == "platform":
                     press_duration = current_time - getattr(config, 'platform_confirm_press_start_time', 0)
-                    # Si appui court (< 2 secondes) et pas déjà traité par l'appui long
+                    # Si appui court (< seuil d'appui long) et pas déjà traité par l'appui long
                     if press_duration < config.confirm_long_press_threshold and not getattr(config, 'platform_confirm_long_press_triggered', False):
                         if _open_selected_platform(screen):
                             logger.debug(f"Appui court sur confirm ({press_duration}ms), navigation vers les jeux de {config.platforms[config.current_platform]}")

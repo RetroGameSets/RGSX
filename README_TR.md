@@ -134,10 +134,10 @@ Eski JSON tabanlı depolamadan yükseltme sonrası ilk açılışta RGSX; indirm
 - 🔑 **Premium Kilit Açma** – Sınırsız indirme için 1Fichier API + AllDebrid/Debrid-Link/Real-Debrid/TorBox yedeği
 - 🎨 **Tamamen Özelleştirilebilir** – 8×6'ya kadar sekiz düzen, Pixel/Bell Centennial/DejaVu Sans yazı tipleri, yazı boyutları (arayüz + alt bilgi), diller (EN/FR/DE/ES/IT/PT/TR)
 - 🎮 **Kontrolcü Odaklı Tasarım** – Popüler kontrolcüler için otomatik tuş atama + özel tuş atama desteği
-- 🔍 **Gelişmiş Filtreleme** – Ada göre arama, desteklenmeyen sistemleri gösterme/gizleme, platform filtreleme
+- 🔍 **Gelişmiş Filtreleme** – Ada göre arama, desteklenmeyen sistemleri gösterme/gizleme, platform filtreleme; manette ile sanal arama klavyesi ScreenScraper ile aynı düzeni kullanır
 - 📊 **İndirme Yönetimi** – Kuyruk sistemi, geçmiş takibi, ilerleme bildirimleri
 - 🖼️ **ScreenScraper Medyaları** (Duraklat > Scrap üzerinden kapatılabilir) – Gecikmeli kapak indirme, oyun ayrıntıları, ekran görüntüleri ve toplu medya yönetimi
-- ♿ **Erişilebilirlik** – Arayüz ve alt bilgi için ayrı yazı ölçekleme, yalnızca klavye modu desteği
+- ♿ **Erişilebilirlik** – Arayüz ve alt bilgi için ayrı yazı ölçekleme, yalnızca klavye modu desteği; metin kesilmeden önce küçültülür, böylece çerçevesinin dışına taşmaz
 
 > ### 🔑 API Anahtarı Kurulumu
 > Sınırsız 1Fichier indirmeleri için API anahtar(lar)ınızı `/saves/ports/rgsx/` içine ekleyin:

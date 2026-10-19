@@ -1608,19 +1608,45 @@ async def main():
                 catalog_sync_error = None
                 catalog_sync_result = None
                 try:
-                    def _report_catalog_sync_progress(_stage, progress, detail):
+                    def _report_catalog_sync_progress(stage, progress, detail):
+                        step_title = None
                         detail_lines = []
-                        if detail:
-                            entity, separator, counts = str(detail).partition(":")
-                            if separator and "/" in counts:
-                                loaded, total = counts.split("/", 1)
-                                if entity == "games":
+                        name, separator, value = str(detail or "").partition(":")
+                        if stage == "sync_step":
+                            if name == "changes" and "/" in value:
+                                current_seq, total_seq = value.split("/", 1)
+                                step_title = _("loading_sync_step_changes").format(current_seq, total_seq)
+                            elif name == "visibility_platform" and "/" in value:
+                                done, total = value.split("/", 1)
+                                step_title = _("loading_sync_step_visibility_platform").format(done, total)
+                            else:
+                                step_keys = {
+                                    "db_open": "loading_sync_step_db_open",
+                                    "manifest": "loading_sync_step_manifest",
+                                    "full": "loading_sync_step_full",
+                                    "visibility": "loading_sync_step_visibility",
+                                    "visibility_write": "loading_sync_step_visibility_write",
+                                    "recheck": "loading_sync_step_recheck",
+                                    "cursor": "loading_sync_step_cursor",
+                                }
+                                if name in step_keys:
+                                    step_title = _(step_keys[name])
+                        elif stage == "sync_snapshot":
+                            if name == "platforms" or name == "games":
+                                step_title = _("loading_sync_snapshot_platforms" if name == "platforms" else "loading_sync_snapshot_games")
+                                loaded, _sep, total = value.partition("/")
+                                if name == "games" and total:
                                     detail_lines.append(_("loading_catalog_games_progress").format(loaded, total))
-                                elif entity == "platforms":
+                                elif name == "platforms" and total:
                                     detail_lines.append(_("loading_platform_counter").format(loaded, total))
+                            elif name == "platform_assets":
+                                step_title = _("loading_sync_snapshot_assets")
+                                detail_lines.append(_("loading_catalog_assets_progress").format(value.partition("/")[0]))
+                        if step_title is None:
+                            step_title = _("loading_sync_catalog")
                         _refresh_loading_feedback(
-                            current_system=_("loading_sync_catalog"),
-                            progress=progress,
+                            current_system=step_title,
+                            progress=40.0 + (max(0.0, min(100.0, float(progress))) * 0.18),
                             detail_lines=detail_lines,
                             force=True,
                         )
@@ -1660,7 +1686,16 @@ async def main():
                 if catalog_sync_error is not None or sync_mode == "local":
                     config.loading_detail_lines = [_ ("loading_catalog_offline_cache")]
                 else:
-                    config.loading_detail_lines = [_ ("loading_catalog_source_api")]
+                    applied_changes = int((catalog_sync_result or {}).get("applied") or 0)
+                    if sync_mode == "https-full":
+                        mode_line = _("loading_catalog_mode_full")
+                    elif sync_mode == "https-visibility":
+                        mode_line = _("loading_catalog_mode_visibility")
+                    elif applied_changes > 0:
+                        mode_line = _("loading_catalog_mode_incremental").format(applied_changes)
+                    else:
+                        mode_line = _("loading_catalog_mode_up_to_date")
+                    config.loading_detail_lines = [_ ("loading_catalog_source_api"), mode_line]
                 config.needs_redraw = True
                 loading_step = "load_sources"
                 continue

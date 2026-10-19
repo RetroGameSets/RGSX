@@ -411,7 +411,9 @@ def get_platform_source_badge_surface(source_key: str, badge_size: int):
     icon_surface = None
     svg_name = style.get('svg')
     icon_scale = float(style.get('icon_scale', 0.76))
-    target_icon_size = max(22, int(badge_size * icon_scale))
+    # L'icône doit rester dans la zone intérieure du badge (bordure et marge comprises).
+    max_icon_size = badge_size - 2 * (inner_margin + max(2, badge_size // 18))
+    target_icon_size = max(8, min(int(badge_size * icon_scale), max_icon_size))
     if svg_name:
         svg_path = os.path.join(config.APP_FOLDER, 'assets', 'images', svg_name)
         if os.path.exists(svg_path):
@@ -2660,6 +2662,47 @@ def truncate_text_end(text, font, max_width):
     except Exception as e:
         logger.error(f"Erreur lors du rendu du texte '{text}': {str(e)}")
         return text  # Retourne le texte brut en cas d'erreur
+
+_FONT_SIZE_CACHE = {}
+
+def make_font(size):
+    """Retourne (avec cache) une police de la famille courante à la taille pixel donnée."""
+    size = max(8, int(size))
+    family_id = config.FONT_FAMILIES[config.current_font_family_index] if 0 <= config.current_font_family_index < len(config.FONT_FAMILIES) else "pixel"
+    family_id = config._resolve_font_family(family_id)
+    cache_key = (family_id, size)
+    if cache_key in _FONT_SIZE_CACHE:
+        return _FONT_SIZE_CACHE[cache_key]
+    try:
+        if family_id == "pixel":
+            font = pygame.font.Font(os.path.join(config.APP_FOLDER, "assets", "fonts", "Pixel-UniCode.ttf"), size)
+        elif family_id == "bell_centennial":
+            font = pygame.font.Font(os.path.join(config.APP_FOLDER, "assets", "fonts", "Bell-centennial.otf"), size)
+        else:
+            try:
+                font = pygame.font.SysFont("dejavusans", size)
+            except Exception:
+                font = pygame.font.SysFont("dejavu sans", size)
+    except Exception:
+        font = config.font
+    _FONT_SIZE_CACHE[cache_key] = font
+    return font
+
+def fit_font(text, base_size, max_width, scale=None, min_size=12, truncator=None):
+    """Réduit la police (base_size x échelle) jusqu'à ce que text tienne dans max_width.
+    Tronque en dernier recours (truncator par défaut : troncature en fin). Retourne (police, texte affichable)."""
+    if scale is None:
+        scale = config.accessibility_settings.get("font_scale", 1.0)
+    size = max(min_size, int(base_size * scale))
+    font = make_font(size)
+    if not isinstance(text, str):
+        return font, ""
+    while size > min_size and font.size(text)[0] > max_width:
+        size = max(min_size, size - 2)
+        font = make_font(size)
+    if font.size(text)[0] > max_width:
+        text = (truncator or truncate_text_end)(text, font, max_width)
+    return font, text
 
 def sanitize_filename(name):
     """Sanitise les noms de fichiers en remplaçant les caractères interdits."""

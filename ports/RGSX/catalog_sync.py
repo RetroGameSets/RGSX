@@ -190,7 +190,7 @@ def _replace_local_catalog_from_api(
     progress_ranges = {
         "platforms": (5.0, 12.0, max(1, int(manifest.get("platforms") or 0))),
         "games": (12.0, 92.0, max(1, int(manifest.get("games") or 0))),
-        "platform_assets": (92.0, 98.0, 1),
+        "platform_assets": (92.0, 98.0, None),
     }
     target_directory = os.path.dirname(os.path.abspath(db_path))
     with tempfile.TemporaryDirectory(prefix="rgsx-catalog-stage-", dir=target_directory) as staging_directory:
@@ -208,14 +208,14 @@ def _replace_local_catalog_from_api(
                 for page in _snapshot_pages(entity):
                     _insert_snapshot_page(staging, entity, page)
                     counts[entity] += len(page)
-                    entity_progress = min(1.0, counts[entity] / expected_count)
-                    current_progress = start_progress + (end_progress - start_progress) * entity_progress
-                    _notify_progress(
-                        progress_callback,
-                        "sync_snapshot",
-                        current_progress,
-                        f"{entity}:{counts[entity]}/{expected_count}",
-                    )
+                    if expected_count:
+                        entity_progress = min(1.0, counts[entity] / expected_count)
+                        current_progress = start_progress + (end_progress - start_progress) * entity_progress
+                        detail = f"{entity}:{counts[entity]}/{expected_count}"
+                    else:
+                        current_progress = start_progress
+                        detail = f"{entity}:{counts[entity]}"
+                    _notify_progress(progress_callback, "sync_snapshot", current_progress, detail)
             staging.commit()
         except Exception:
             staging.rollback()
@@ -288,7 +288,13 @@ def _sync_catalog_visibility(db_path: str, progress_callback=None) -> dict[str, 
             new_platform_ids = sorted(remote_platform_ids - local_platform_ids)
             counts["platforms"] = len(remote_platforms)
 
-            for platform_id in new_platform_ids:
+            for index, platform_id in enumerate(new_platform_ids, start=1):
+                _notify_progress(
+                    progress_callback,
+                    "sync_step",
+                    10 + 84 * (index - 1) / len(new_platform_ids),
+                    f"visibility_platform:{index}/{len(new_platform_ids)}",
+                )
                 for entity in ("games", "platform_assets"):
                     for page in _snapshot_pages(entity, platform_id=platform_id):
                         _insert_snapshot_page(staging, entity, page)
@@ -337,7 +343,7 @@ def _sync_catalog_visibility(db_path: str, progress_callback=None) -> dict[str, 
                 _restore_local_catalog_triggers(connection)
                 connection.execute("DETACH DATABASE catalog_stage")
         connection.close()
-    _notify_progress(progress_callback, "sync_snapshot", 98, "platforms:1/1")
+    _notify_progress(progress_callback, "sync_step", 98, "visibility_write")
     return counts
 
 
@@ -495,7 +501,9 @@ def _notify_progress(callback, stage: str, progress: float, detail: str = "") ->
 def sync_catalog(db_path: str | None = None, progress_callback=None) -> dict[str, Any]:
     """Synchronize only catalog tables from the HTTPS API; preserve local user state."""
     target = os.path.abspath(db_path or config.DB_PATH)
+    _notify_progress(progress_callback, "sync_step", 0, "db_open")
     database.initialize_database(target)
+    _notify_progress(progress_callback, "sync_step", 1, "manifest")
     manifest = _get_json("manifest")
     remote_sequence = int(manifest.get("sequence") or 0)
     remote_visibility_revision = int(manifest.get("visibility_revision") or 0)
@@ -518,7 +526,7 @@ def sync_catalog(db_path: str | None = None, progress_callback=None) -> dict[str
             or (local_games == 0 and int(manifest.get("games") or 0) > 0)
         )
     if full_snapshot:
-        _notify_progress(progress_callback, "sync_snapshot", 5, "platforms")
+        _notify_progress(progress_callback, "sync_step", 5, "full")
         snapshot_counts = _replace_local_catalog_from_api(
             target,
             remote_sequence,
@@ -527,7 +535,7 @@ def sync_catalog(db_path: str | None = None, progress_callback=None) -> dict[str
         )
         current = remote_sequence
         mode = "https-full"
-        _notify_progress(progress_callback, "sync_snapshot", 98, "changes")
+        _notify_progress(progress_callback, "sync_step", 98, "recheck")
         latest_manifest = _get_json("manifest")
         target_sequence = max(current, int(latest_manifest.get("sequence") or current))
         applied = 0
@@ -536,14 +544,22 @@ def sync_catalog(db_path: str | None = None, progress_callback=None) -> dict[str
         target_sequence = remote_sequence
         applied = 0
         if visibility_changed:
-            _notify_progress(progress_callback, "sync_snapshot", 5, "platforms:0/1")
+            _notify_progress(progress_callback, "sync_step", 5, "visibility")
             snapshot_counts = _sync_catalog_visibility(target, progress_callback)
             mode = "https-visibility"
         else:
             snapshot_counts = {}
             mode = "https-incremental"
 
+    changes_start = current
     while current < target_sequence:
+        span = max(1, target_sequence - changes_start)
+        _notify_progress(
+            progress_callback,
+            "sync_step",
+            10 + 84 * (current - changes_start) / span,
+            f"changes:{current}/{target_sequence}",
+        )
         payload = _get_json("changes", since=current, limit=500)
         target_sequence = max(target_sequence, int(payload.get("sequence") or current))
         raw_changes = payload.get("changes") if isinstance(payload.get("changes"), list) else []
@@ -567,6 +583,7 @@ def sync_catalog(db_path: str | None = None, progress_callback=None) -> dict[str
                 continue
         break
 
+    _notify_progress(progress_callback, "sync_step", 98, "cursor")
     if database.get_sync_cursor(target) != current:
         database.set_sync_cursor(current, target)
     database.set_catalog_visibility_revision(remote_visibility_revision, target)
