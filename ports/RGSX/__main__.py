@@ -1607,6 +1607,7 @@ async def main():
                 config.needs_redraw = True
                 catalog_sync_error = None
                 catalog_sync_result = None
+                catalog_sync_state = {"title": None, "progress": 40.0, "detail_lines": [], "changed_at": time.time()}
                 try:
                     def _report_catalog_sync_progress(stage, progress, detail):
                         step_title = None
@@ -1644,17 +1645,33 @@ async def main():
                                 detail_lines.append(_("loading_catalog_assets_progress").format(value.partition("/")[0]))
                         if step_title is None:
                             step_title = _("loading_sync_catalog")
-                        _refresh_loading_feedback(
-                            current_system=step_title,
+                        catalog_sync_state.update(
+                            title=step_title,
                             progress=40.0 + (max(0.0, min(100.0, float(progress))) * 0.18),
+                            detail_lines=detail_lines,
+                            changed_at=time.time(),
+                        )
+
+                    # La synchro tourne dans un thread pour que l'écran de chargement continue
+                    # d'être redessiné pendant les appels réseau.
+                    sync_task = asyncio.create_task(asyncio.to_thread(
+                        catalog_sync.sync_catalog,
+                        config.DB_PATH,
+                        progress_callback=_report_catalog_sync_progress,
+                    ))
+                    while not sync_task.done():
+                        await asyncio.sleep(0.1)
+                        detail_lines = list(catalog_sync_state["detail_lines"])
+                        waiting = time.time() - catalog_sync_state["changed_at"]
+                        if waiting >= 2.0:
+                            detail_lines.append(_("loading_sync_waiting_server").format(int(waiting)))
+                        _refresh_loading_feedback(
+                            current_system=catalog_sync_state["title"] or _("loading_sync_catalog"),
+                            progress=catalog_sync_state["progress"],
                             detail_lines=detail_lines,
                             force=True,
                         )
-
-                    catalog_sync_result = catalog_sync.sync_catalog(
-                        config.DB_PATH,
-                        progress_callback=_report_catalog_sync_progress,
-                    )
+                    catalog_sync_result = await sync_task
                     logger.info("Synchronisation du catalogue: %s", catalog_sync_result)
                 except Exception as sync_error:
                     catalog_sync_error = sync_error

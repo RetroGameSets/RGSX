@@ -20,6 +20,7 @@
     "loading_catalog_games_progress": "Senkronize edilen oyunlar: {0}/{1}",
     "loading_sync_step_db_open": "Yerel katalog veritabanı açılıyor...",
     "loading_sync_step_manifest": "Sunucudaki katalog sürümü kontrol ediliyor...",
+    "loading_sync_waiting_server": "Sunucu yanıtı bekleniyor ({} s)",
     "loading_sync_step_full": "Katalog tamamen indiriliyor (ilk senkronizasyon veya tutarsız önbellek)...",
     "loading_sync_step_visibility": "Görünür platformlar güncelleniyor...",
     "loading_sync_step_visibility_platform": "Yeni platformlar içe aktarılıyor: {0}/{1}",

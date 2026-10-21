@@ -20,6 +20,7 @@
     "loading_catalog_games_progress": "Games synchronized: {0}/{1}",
     "loading_sync_step_db_open": "Opening local catalog database...",
     "loading_sync_step_manifest": "Checking catalog version on the server...",
+    "loading_sync_waiting_server": "Waiting for server response ({} s)",
     "loading_sync_step_full": "Full catalog download (first sync or inconsistent cache)...",
     "loading_sync_step_visibility": "Updating visible platforms...",
     "loading_sync_step_visibility_platform": "Importing new platforms: {0}/{1}",

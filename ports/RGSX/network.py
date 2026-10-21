@@ -2467,22 +2467,32 @@ async def apply_pending_update(latest_version):
     update_zip_path = os.path.join(UPDATE_FOLDER, f"RGSX_update_v{latest_version}.zip")
     logger.debug(f"Téléchargement de {UPDATE_ZIP} vers {update_zip_path}")
 
-    with requests.get(UPDATE_ZIP, stream=True, timeout=10) as r:
-        r.raise_for_status()
-        total_size = int(r.headers.get('content-length', 0))
-        downloaded = 0
-        start_time = time.time()
-        with open(update_zip_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    config.loading_progress = 10.0 + (40.0 * downloaded / total_size) if total_size > 0 else 10.0
-                    elapsed = max(time.time() - start_time, 0.001)
-                    speed = downloaded / elapsed
-                    progress_line = f"Download: {_format_size(downloaded)} / {_format_size(total_size)}" if total_size > 0 else f"Download: {_format_size(downloaded)}"
-                    _set_loading_details(progress_line, f"Speed: {_format_size(speed)}/s")
-                    await asyncio.sleep(0)
+    # Téléchargement dans un thread : la boucle de rendu ne fait pas le travail réseau
+    # et l'écran de progression n'est pas redessiné à chaque bloc.
+    progress = {"downloaded": 0, "total": 0}
+
+    def _download_update_zip():
+        with requests.get(UPDATE_ZIP, stream=True, timeout=10) as r:
+            r.raise_for_status()
+            progress["total"] = int(r.headers.get('content-length', 0))
+            with open(update_zip_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        f.write(chunk)
+                        progress["downloaded"] += len(chunk)
+
+    download_task = asyncio.create_task(asyncio.to_thread(_download_update_zip))
+    start_time = time.time()
+    while not download_task.done():
+        await asyncio.sleep(0.25)
+        downloaded = progress["downloaded"]
+        total_size = progress["total"]
+        config.loading_progress = 10.0 + (40.0 * downloaded / total_size) if total_size > 0 else 10.0
+        elapsed = max(time.time() - start_time, 0.001)
+        speed = downloaded / elapsed
+        progress_line = f"Download: {_format_size(downloaded)} / {_format_size(total_size)}" if total_size > 0 else f"Download: {_format_size(downloaded)}"
+        _set_loading_details(progress_line, f"Speed: {_format_size(speed)}/s")
+    await download_task
     logger.debug(f"ZIP téléchargé : {update_zip_path}")
 
     config.current_loading_system = _("network_extracting_update")
