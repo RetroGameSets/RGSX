@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 import config
 from history import load_history, save_history
+from language import load_language
 from utils import load_sources, load_games, get_clean_display_name, format_game_size, parse_torrent_download_url, request_torrent_manifest_refresh, _resolve_platform_image_path, get_platform_image_payload
 from network import download_rom, download_from_1fichier
 from pathlib import Path
@@ -60,6 +61,7 @@ def load_translations():
 
 # Charger les traductions globalement
 TRANSLATIONS = load_translations()
+load_language(get_language())
 
 # Cache configuration
 CACHE_TTL_SECONDS = 60  # seconds
@@ -1963,10 +1965,10 @@ DO NOT share this file publicly as it may contain sensitive information.
             <p style="font-size: 0.85em; opacity: 0.8; margin-top: 5px;">v{version}</p>
             <label class="theme-switcher" for="web-theme-select">
                 <span aria-hidden="true">🎨</span>
-                <span>Thème</span>
-                <select id="web-theme-select" aria-label="Choisir le thème de l'interface">
-                    <option value="modern">Moderne</option>
-                    <option value="legacy">Legacy</option>
+                <span data-translate="display_theme">Theme</span>
+                <select id="web-theme-select">
+                    <option value="modern" data-translate="web_theme_modern">Modern</option>
+                    <option value="legacy" data-translate="web_theme_legacy">Legacy</option>
                 </select>
             </label>
             
