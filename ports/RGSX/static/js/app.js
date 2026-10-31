@@ -665,7 +665,13 @@
         
         // Variables globales pour la recherche
         let searchTimeout = null;
+        let searchInFlight = false;
         let currentSearchTerm = '';
+        
+        function isCurrentPlatformSearch(term) {
+            const input = document.getElementById('platform-search');
+            return !!input && input.value.trim().toLowerCase() === term;
+        }
         
         // Filtrer les plateformes avec recherche universelle
         async function filterPlatforms(searchTerm) {
@@ -677,6 +683,9 @@
             if (clearBtn) {
                 clearBtn.style.display = searchTerm ? 'block' : 'none';
             }
+            
+            // Debounce pour éviter trop de requêtes
+            if (searchTimeout) clearTimeout(searchTimeout);
             
             // Si la recherche est vide, afficher toutes les plateformes normalement
             if (!term) {
@@ -690,15 +699,18 @@
                 return;
             }
             
-            // Debounce pour éviter trop de requêtes
-            if (searchTimeout) clearTimeout(searchTimeout);
-            
             searchTimeout = setTimeout(async () => {
+                // The server handles one request at a time and can't stop a search it has
+                // started, so a second request would only queue. The newest term runs next.
+                if (searchInFlight || !isCurrentPlatformSearch(term)) return;
+                searchInFlight = true;
+                
                 try {
                     // Appeler l'API de recherche universelle
                     const response = await fetch('/api/search?q=' + encodeURIComponent(term));
                     const data = await response.json();
                     
+                    if (!isCurrentPlatformSearch(term)) return;
                     if (!data.success) throw new Error(data.error);
                     
                     const results = data.results;
@@ -814,9 +826,13 @@
                 } catch (error) {
                     console.error('Erreur recherche:', error);
                     const searchResults = document.getElementById('search-results');
-                    if (searchResults) {
+                    if (searchResults && isCurrentPlatformSearch(term)) {
                         searchResults.innerHTML = `<p style="color: red;">❌ ${t('web_error_search')}: ${error.message}</p>`;
                     }
+                } finally {
+                    searchInFlight = false;
+                    const input = document.getElementById('platform-search');
+                    if (input && !isCurrentPlatformSearch(term)) filterPlatforms(input.value);
                 }
             }, 300); // Attendre 300ms après la dernière frappe
         }
