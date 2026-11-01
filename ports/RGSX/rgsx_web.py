@@ -1099,6 +1099,11 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 
                 task_id = f"web_{int(time.time() * 1000)}"
                 
+                # save_history réécrit toute la table depuis cette liste : ce processus ne l'a jamais chargée
+                # au démarrage, et l'app peut y avoir ajouté des lignes depuis.
+                from history import load_history
+                config.history = load_history()
+                
                 # Déterminer si on doit ajouter à la queue selon le mode et les slots disponibles.
                 max_dl = getattr(config, 'max_simultaneous_downloads', 5)
                 active_count = getattr(config, 'active_download_count', 0)
