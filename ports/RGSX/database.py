@@ -780,6 +780,18 @@ def save_downloaded_games(downloaded: dict[str, dict[str, Any]], db_path: str | 
                 )
 
 
+def add_downloaded_game(platform: str, game_name: str, db_path: str | os.PathLike[str] | None = None) -> None:
+    initialize_database(db_path)
+    now = utc_now()
+    with connect(db_path) as connection:
+        connection.execute(
+            """INSERT INTO downloaded_games(platform, game_name, metadata_json, created_at, updated_at)
+               VALUES(?, ?, '{}', ?, ?)
+               ON CONFLICT(platform, game_name) DO NOTHING""",
+            (str(platform), str(game_name), now, now),
+        )
+
+
 def load_local_state(key: str, default: Any = None, db_path: str | os.PathLike[str] | None = None) -> Any:
     initialize_database(db_path)
     with connect(db_path) as connection:
