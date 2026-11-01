@@ -265,7 +265,7 @@ def scan_roms_for_downloaded_games():
     """Scanne les dossiers ROMs et ajoute les jeux trouvés à downloaded_games.json."""
     from utils import load_games
 
-    downloaded = _normalize_downloaded_games_dict(getattr(config, 'downloaded_games', {}))
+    downloaded = load_downloaded_games()
     platform_dicts = list(getattr(config, 'platform_dicts', []) or [])
 
     if not platform_dicts:
@@ -356,8 +356,11 @@ def mark_game_as_downloaded(platform_name, game_name, file_size=None):
     
     downloaded[platform_name][normalized_name] = {}
     
-    # Sauvegarder immédiatement
-    save_downloaded_games(downloaded)
+    # Une seule ligne : le web et l'app sont deux processus avec chacun leur copie en mémoire
+    try:
+        database.add_downloaded_game(platform_name, normalized_name, config.DB_PATH)
+    except Exception as exc:
+        logger.error(f"Erreur lors de l'écriture des jeux téléchargés SQLite: {exc}")
     logger.info(f"Jeu marqué comme téléchargé : {platform_name} / {normalized_name}")
 
 
