@@ -573,6 +573,8 @@
         
         // Afficher un onglet
         function showTab(tab, updateHistory = true) {
+            if (tab !== 'platforms') rememberPlatformsScroll();
+            
             // Arrêter les intervalles existants
             if (progressInterval) {
                 clearInterval(progressInterval);
@@ -1457,6 +1459,14 @@
             document.querySelector(`[data-sort="${sortType}"]`)?.classList.add('active');
         }
         
+        let platformsScrollY = 0;
+        
+        // Mémoriser la position dans la liste des systèmes avant de la quitter
+        function rememberPlatformsScroll() {
+            const grid = document.querySelector('#platforms-content .platform-grid');
+            if (grid && grid.offsetParent) platformsScrollY = window.scrollY;
+        }
+        
         // Charger les plateformes
         async function loadPlatforms() {
             const container = document.getElementById('platforms-content');
@@ -1512,6 +1522,8 @@
                 html += '</div>';
                 container.innerHTML = html;
                 attachPlatformGroupHandlers(container, platformGroups);
+                window.scrollTo(0, platformsScrollY);
+                platformsScrollY = 0;
                 
             } catch (error) {
                 let errorMsg = t('web_error');
@@ -1521,6 +1533,7 @@
         
         // Charger les jeux d'une plateforme
         async function loadGames(platform, updateHistory = true) {
+            rememberPlatformsScroll();
             currentPlatform = platform;
             const container = document.getElementById('platforms-content');
             container.innerHTML = '<div class="loading">⏳ ' + t('web_loading_games') + '</div>';
