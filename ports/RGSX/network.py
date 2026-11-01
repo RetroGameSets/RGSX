@@ -4077,7 +4077,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             # Mettre à jour l'historique
                         if isinstance(config.history, list):
                             for entry in config.history:
-                                if "url" in entry and entry["url"] == original_history_url:
+                                if "url" in entry and entry["url"] == original_history_url and entry["status"] != "Canceled":
                                     entry["progress"] = progress_percent
                                     entry["downloaded_size"] = downloaded
                                     entry["total_size"] = total_size

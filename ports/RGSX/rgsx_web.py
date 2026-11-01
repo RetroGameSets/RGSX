@@ -1326,6 +1326,11 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             break
                     
                     if task_id:
+                        # Le thread écrit son statut final depuis config.history : sans ceci, "Canceled" devient "Erreur"
+                        for live_entry in config.history:
+                            if live_entry.get('task_id') == task_id:
+                                live_entry.update(status='Canceled', progress=0, message=get_translation('web_download_canceled'))
+                        
                         # Tenter d'annuler le téléchargement
                         cancel_success = request_cancel(task_id)
                         logger.info(f"Annulation demandée pour task_id={task_id}, success={cancel_success}")
