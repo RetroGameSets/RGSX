@@ -3676,6 +3676,11 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             r = session.get(url, stream=True, timeout=timeout_val, allow_redirects=True, headers=hv)
                             last_status = r.status_code
                             logger.debug(f"Status code tentative {attempt}: {r.status_code}")
+                            # archive.org répond souvent 5xx puis sert le même fichier à la tentative suivante
+                            if 'archive.org' in url and r.status_code in (500, 502, 503, 504) and attempt < total_max_attempts:
+                                r.close()
+                                time.sleep(min(3 * attempt, 15))
+                                continue
                             if _is_browser_challenge_response(r):
                                 browser_challenge_detected = True
                                 try:
