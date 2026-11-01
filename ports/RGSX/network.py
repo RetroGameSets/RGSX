@@ -1030,14 +1030,17 @@ def _is_lolroms_url(url: str | None) -> bool:
 
 def _normalize_lolroms_url(url: str) -> str:
     parsed = urllib.parse.urlsplit(url)
+    # The site now serves files as /?file=<path>, and "Nintendo - DS" became "Nintendo/DS".
+    if parsed.path not in ('', '/') and not parsed.query:
+        file_path = urllib.parse.unquote(parsed.path).lstrip('/')
+        if file_path.startswith('Nintendo - '):
+            file_path = 'Nintendo/' + file_path[len('Nintendo - '):]
+        return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, '/', 'file=' + urllib.parse.quote_plus(file_path), ''))
     normalized_path = urllib.parse.quote(
         urllib.parse.unquote(parsed.path or '/'),
         safe="/@:$&'()*+,;=-._~",
     )
-    normalized_query = urllib.parse.quote_plus(
-        urllib.parse.unquote_plus(parsed.query),
-        safe="=&:$,;+-._~!*'()",
-    ) if parsed.query else ''
+    normalized_query = urllib.parse.quote(parsed.query, safe="=&%+:$,;-._~!*'()/") if parsed.query else ''
     return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, normalized_path, normalized_query, parsed.fragment))
 
 
@@ -3673,7 +3676,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
 
                             logger.debug(f"Tentative téléchargement {attempt}/{total_max_attempts} avec headers: {_redact_headers(hv)}")
                             timeout_val = (60, 90) if 'archive.org' in url else 30
-                            r = session.get(url, stream=True, timeout=timeout_val, allow_redirects=True, headers=hv)
+                            request_url = _normalize_lolroms_url(url) if _is_lolroms_url(url) else url
+                            r = session.get(request_url, stream=True, timeout=timeout_val, allow_redirects=True, headers=hv)
                             last_status = r.status_code
                             logger.debug(f"Status code tentative {attempt}: {r.status_code}")
                             if _is_browser_challenge_response(r):
@@ -3884,7 +3888,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     # Garde-fous anti faux-positifs: certains hôtes peuvent
                     # renvoyer une page HTML/challenge avec un status 200.
                     archive_ext = os.path.splitext(dest_path)[1].lower()
-                    if archive_ext in {'.7z', '.zip', '.rar'}:
+                    if archive_ext in {'.7z', '.zip', '.rar'} or _is_lolroms_url(url):
                         if _looks_like_html_or_challenge(dest_path):
                             _safe_remove_file(dest_path)
                             raise requests.HTTPError(
