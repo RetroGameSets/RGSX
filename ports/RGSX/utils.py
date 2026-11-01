@@ -3256,9 +3256,15 @@ def extract_7z(archive_path, dest_dir, url):
         extract_cmd = [seven_z_cmd, "x", archive_path, f"-o{dest_dir}", "-y"]
         logger.debug(f"Commande d'extraction 7z: {' '.join(extract_cmd)}")
         result = subprocess.run(extract_cmd, capture_output=True, text=True)
-        if result.returncode > 2:
+        # 1 est un avertissement ; 2 est une erreur fatale (archive tronquée ou corrompue, disque plein)
+        if result.returncode > 1:
             error_msg = result.stderr.strip() or f"Erreur extraction 7z (code {result.returncode})"
             logger.error(error_msg)
+            # Comme pour RAR : gardée, une nouvelle tentative la verrait comme "déjà présente" sans l'extraire.
+            try:
+                os.remove(archive_path)
+            except OSError as e:
+                logger.warning(f"Impossible de supprimer {archive_path}: {e}")
             return False, error_msg
         if result.returncode != 0:
             logger.warning(f"7z a retourné un avertissement (code {result.returncode}): {result.stderr}")
