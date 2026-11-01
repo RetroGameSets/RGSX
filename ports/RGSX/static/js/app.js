@@ -4,6 +4,8 @@
         let currentGames = [];  // Stocke les jeux actuels pour le tri
         const loggedUnparsedSizeTexts = new Set();
         let lastProgressUpdate = Date.now();
+        // Fixed for the page's life: going back reuses the images, reloading fetches them again.
+        const platformImageVersion = Date.now();
         let autoRefreshTimeout = null;
         let progressInterval = null;
         let queueInterval = null;
@@ -753,7 +755,7 @@
                         
                         platformGroups.forEach((group, groupIndex) => {
                             const platform = group.platforms[0];
-                            const imageUrl = '/api/image/' + encodeURIComponent(platform.platform_name);
+                            const imageUrl = '/api/image/' + encodeURIComponent(platform.platform_name) + '?v=' + platformImageVersion;
                             const platformTitle = escapeHtml(group.platform_display_name);
                             const accessibleLabel = group.platforms.length > 1
                                 ? `${platformTitle}, ${escapeHtml(t('web_source_count', group.platforms.length))}`
@@ -1501,7 +1503,6 @@
                 
                 // Construire le HTML avec les traductions
                 let searchPlaceholder = t('web_search_platform');
-                const platformImageCacheBuster = Date.now();
                 const platformGroups = groupPlatformsByDisplayName(data.platforms);
                 let html = `
                     <div class="search-box">
@@ -1525,9 +1526,9 @@
                     html += `
                         <div class="platform-card platform-group-card" data-platform-group-index="${groupIndex}" role="button" tabindex="0" aria-haspopup="${group.platforms.length > 1 ? 'dialog' : 'false'}" aria-label="${accessibleLabel}">
                             <div class="platform-card-art">
-                                <img src="/api/image/${encodeURIComponent(platform.platform_name)}?v=${platformImageCacheBuster}" 
+                                <img src="/api/image/${encodeURIComponent(platform.platform_name)}?v=${platformImageVersion}" 
                                      alt="${platformTitle}"
-                                     onerror="this.src='/api/image/default?v=${platformImageCacheBuster}'">
+                                     onerror="this.src='/api/image/default?v=${platformImageVersion}'">
                             </div>
                             <h3>${platformTitle}</h3>
                             ${renderPlatformMeta(platform, metaText, group.platforms.length)}
