@@ -1714,7 +1714,7 @@
                 btn.textContent = '❌';
                 btn.title = t('web_error');
                 btn.style.color = '#dc3545';
-                showToast(`Erreur: ${error.message}`, 'error', 5000);
+                showToast(`${t('web_error')}: ${error.message}`, 'error', 5000);
             } finally {
                 setTimeout(() => {
                     btn.disabled = false;
@@ -1763,6 +1763,12 @@
         }
         
         // Charger la progression
+        // Les statuts sont enregistrés en français ou en anglais selon le type de téléchargement
+        function getDownloadStatusText(status) {
+            if (status === 'Téléchargement' || status === 'Downloading') return t('web_status_downloading');
+            return status || t('web_in_progress');
+        }
+        
         async function loadProgress(autoRefresh = true) {
             const container = document.getElementById('downloads-content');
             
@@ -1795,7 +1801,7 @@
                     const percent = info.progress_percent || 0;
                     const downloaded = info.downloaded_size || 0;
                     const total = info.total_size || 0;
-                    const status = info.status || 'En cours';
+                    const status = getDownloadStatusText(info.status);
                     const speed = info.speed || 0;
                     
                     // Utiliser game_name si disponible, sinon extraire de l'URL
@@ -1865,7 +1871,7 @@
                                     const percent = info.progress_percent || 0;
                                     const downloaded = info.downloaded_size || 0;
                                     const total = info.total_size || 0;
-                                    const status = info.status || t('web_in_progress');
+                                    const status = getDownloadStatusText(info.status);
                                     const speed = info.speed || 0;
                                     
                                     let fileName = info.game_name || t('web_downloading');
@@ -1913,7 +1919,7 @@
                     }, 500);
                 }
             } catch (error) {
-                container.innerHTML = `<p style="color:red;">Erreur: ${error.message}</p>`;
+                container.innerHTML = `<p style="color:red;">${t('web_error')}: ${error.message}</p>`;
             }
         }
         
@@ -2082,7 +2088,7 @@
         // Charger l'historique
         async function loadHistory() {
             const container = document.getElementById('history-content');
-            container.innerHTML = '<div class="loading">⏳ Chargement...</div>';
+            container.innerHTML = '<div class="loading">⏳ ' + t('web_loading') + '</div>';
             
             try {
                 const response = await fetch('/api/history');
@@ -2215,7 +2221,7 @@
         // Charger les settings
         async function loadSettings() {
             const container = document.getElementById('settings-content');
-            container.innerHTML = '<div class="loading">⏳ Chargement...</div>';
+            container.innerHTML = '<div class="loading">⏳ ' + t('web_loading') + '</div>';
             
             try {
                 // Charger les settings et les infos système en parallèle
@@ -2788,7 +2794,7 @@
                 const data = await response.json();
                 
                 if (!data.success) {
-                    throw new Error(data.error || 'Erreur lors du listage des répertoires');
+                    throw new Error(data.error || t('web_error_unknown'));
                 }
                 
                 // Créer une modal pour afficher les répertoires

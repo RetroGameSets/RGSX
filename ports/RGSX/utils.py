@@ -2794,7 +2794,7 @@ def _update_extraction_progress(url, extracted_size, total_size, lock, last_save
                             progress_percent = max(0, min(100, progress_percent))
                             entry["status"] = "Extracting"
                             entry["progress"] = progress_percent
-                            entry["message"] = "Extraction en cours"
+                            entry["message"] = _("history_extracting")
                             if current_time - last_save_time_ref[0] >= save_interval:
                                 save_history(config.history)
                                 last_save_time_ref[0] = current_time

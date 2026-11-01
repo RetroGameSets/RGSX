@@ -1783,7 +1783,7 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
         
         # 1. GET page initiale
         if cancel_event and cancel_event.is_set():
-            return (False, None, "Annulé")
+            return (False, None, _("download_canceled"))
         
         r = session.get(url, allow_redirects=True, timeout=30)
         r.raise_for_status()
@@ -1797,13 +1797,13 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
             _log(f"{wait_s}s...")
             for remaining in range(wait_s, 0, -1):
                 if cancel_event and cancel_event.is_set():
-                    return (False, None, "Annulé")
+                    return (False, None, _("download_canceled"))
                 _wait(remaining, wait_s)
                 time.sleep(1)
         
         # 3. Chercher formulaire et soumettre
         if cancel_event and cancel_event.is_set():
-            return (False, None, "Annulé")
+            return (False, None, _("download_canceled"))
             
         form_match = re.search(r'<form[^>]*id=[\"\']f1[\"\'][^>]*>(.*?)</form>', html, re.DOTALL | re.IGNORECASE)
         
@@ -1860,7 +1860,7 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
                     # Attendre proprement en appelant le callback si fourni
                     for remaining in range(extra_wait, 0, -1):
                         if cancel_event and cancel_event.is_set():
-                            return (False, None, "Annulé")
+                            return (False, None, _("download_canceled"))
                         _wait(remaining, extra_wait)
                         time.sleep(1)
                     # essayer de soumettre à nouveau après la temporisation
@@ -1878,7 +1878,7 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
         
         # 4. Chercher lien de téléchargement
         if cancel_event and cancel_event.is_set():
-            return (False, None, "Annulé")
+            return (False, None, _("download_canceled"))
             
         patterns = [
             r'href=[\"\']([^\"\']+)[\"\'][^>]*>(?:cliquer|click|télécharger|download)',
@@ -1975,7 +1975,7 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
         
         # 5. HEAD pour infos fichier
         if cancel_event and cancel_event.is_set():
-            return (False, None, "Annulé")
+            return (False, None, _("download_canceled"))
             
         head = session.head(direct_link, allow_redirects=True, timeout=30)
         
@@ -2005,7 +2005,7 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
                 downloaded = 0
                 for chunk in resp.iter_content(chunk_size=128*1024):
                     if cancel_event and cancel_event.is_set():
-                        return (False, None, "Annulé")
+                        return (False, None, _("download_canceled"))
                     
                     f.write(chunk)
                     downloaded += len(chunk)
@@ -3136,7 +3136,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     "total_size": known_total_size,
                     "speed": 0,
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "message": f"Téléchargement de {game_name}",
+                    "message": f"{_('web_status_downloading')}: {game_name}",
                     "task_id": task_id
                 })
             
@@ -3778,7 +3778,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                     if not meta_json.get('files'):
                                         raise requests.HTTPError(f"Item archive.org sans fichiers listés: {identifier}")
                                     available = [f.get('name') for f in meta_json.get('files', [])][:10]
-                                    raise requests.HTTPError(f"Accès refusé (HTTP {last_status}). Fichiers disponibles exemples: {available}")
+                                    logger.debug(f"Fichiers disponibles exemples: {available}")
+                                    raise requests.HTTPError(_("network_access_denied").format(last_status))
                                 raise requests.HTTPError(f"HTTP {last_status} & metadata indisponible pour {identifier}")
                             except requests.HTTPError:
                                 raise
@@ -3959,7 +3960,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         if "url" in entry and entry["url"] == original_history_url and entry["status"] in ["Downloading", "Téléchargement"]:
                             entry["status"] = "Extracting"
                             entry["progress"] = 0
-                            entry["message"] = "Préparation de l'extraction..."
+                            entry["message"] = _("network_preparing_extraction")
                             _save_history_with_feedback("download_rom:extracting")
                             config.needs_redraw = True
                             break
@@ -3968,7 +3969,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 except Exception as e:
                     logger.error(f"Exception lors du post-traitement: {str(e)}")
                     result[0] = False
-                    result[1] = f"Erreur téléchargement {game_name}: {str(e)}"
+                    result[1] = _("network_download_error").format(game_name, str(e))
             else:
                 result[0] = True
                 result[1] = _("network_download_ok").format(game_name)
@@ -4342,7 +4343,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     "total_size": 0,
                     "speed": 0,
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "message": f"Téléchargement 1fichier de {game_name}",
+                    "message": f"{_('web_status_downloading')}: {game_name}",
                     "task_id": task_id
                 })
             
@@ -4427,7 +4428,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                             friendly = f"1F: {raw_err}"
                     if not friendly:
                         if response.status_code == 403:
-                            friendly = "1F: Accès refusé (403)"
+                            friendly = "1F: " + _("network_access_denied").format(403)
                         elif response.status_code == 401:
                             friendly = "1F: Non autorisé (401)"
                         else:
@@ -4570,7 +4571,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         friendly_1f = ONEFICHIER_ERROR_MAP.get(raw_error_1f)
                                 if not friendly_1f:
                                     if status_1f == 403:
-                                        friendly_1f = "1F: Accès refusé (403)"
+                                        friendly_1f = "1F: " + _("network_access_denied").format(403)
                                     elif status_1f == 401:
                                         friendly_1f = "1F: Non autorisé (401)"
                                     elif status_1f >= 500:
@@ -5382,7 +5383,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                     if "url" in entry and entry["url"] == url and entry["status"] in ["Téléchargement", "Downloading"]:
                                         entry["progress"] = 0
                                         entry["status"] = "Extracting"
-                                        entry["message"] = "Préparation de l'extraction..."
+                                        entry["message"] = _("network_preparing_extraction")
                                         _save_history_with_feedback("download_1fichier:extracting")
                                         config.needs_redraw = True
                                         break
@@ -5392,7 +5393,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         except Exception as e:
                             logger.error(f"Exception lors du post-traitement: {str(e)}")
                             result[0] = False
-                            result[1] = f"Erreur téléchargement {game_name}: {str(e)}"
+                            result[1] = _("network_download_error").format(game_name, str(e))
                     else:
                         logger.debug(f"Application des permissions sur {dest_path}")
                         try_chmod(dest_path, 0o644)
