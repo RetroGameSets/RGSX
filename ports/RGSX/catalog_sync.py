@@ -192,8 +192,9 @@ def _replace_local_catalog_from_api(
         "games": (12.0, 92.0, max(1, int(manifest.get("games") or 0))),
         "platform_assets": (92.0, 98.0, None),
     }
-    target_directory = os.path.dirname(os.path.abspath(db_path))
-    with tempfile.TemporaryDirectory(prefix="rgsx-catalog-stage-", dir=target_directory) as staging_directory:
+    # Staging hors du dossier de la base : sur un symlink vers un partage réseau (NAS),
+    # SQLite ne peut pas y créer son fichier intermédiaire (WinError 59).
+    with tempfile.TemporaryDirectory(prefix="rgsx-catalog-stage-") as staging_directory:
         staging_path = os.path.join(staging_directory, "catalog.sqlite3")
         staging = sqlite3.connect(staging_path, timeout=30.0)
         staging.row_factory = sqlite3.Row
@@ -270,8 +271,7 @@ def _sync_catalog_visibility(db_path: str, progress_callback=None) -> dict[str, 
         local_connection.close()
 
     counts = {"platforms": 0, "games": 0, "platform_assets": 0}
-    target_directory = os.path.dirname(os.path.abspath(db_path))
-    with tempfile.TemporaryDirectory(prefix="rgsx-catalog-visibility-", dir=target_directory) as staging_directory:
+    with tempfile.TemporaryDirectory(prefix="rgsx-catalog-visibility-") as staging_directory:
         staging_path = os.path.join(staging_directory, "catalog.sqlite3")
         staging = sqlite3.connect(staging_path, timeout=30.0)
         staging.row_factory = sqlite3.Row

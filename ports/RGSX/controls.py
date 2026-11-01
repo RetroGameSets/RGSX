@@ -68,6 +68,11 @@ def _has_download_url(url, game_name: str | None = None) -> bool:
     return False
 
 
+def _set_platform_index(index: int, systems_per_page: int) -> None:
+    config.selected_platform = index
+    config.current_page = index // systems_per_page
+
+
 def _wrap_index(current_index: int, delta: int, item_count: int) -> int:
     if item_count <= 0:
         return 0
@@ -1562,6 +1567,13 @@ def handle_controls(event, sources, joystick, screen):
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
                                     event.value)
+                else:
+                    # Bas de la liste : retour en haut de la même colonne
+                    _set_platform_index(min(col, platform_count - 1), systems_per_page)
+                    update_key_state("down", True, event.type, event.key if event.type == pygame.KEYDOWN else
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else
+                                    event.value)
             elif is_input_matched(event, "up"):
                 # Navigation vers le haut avec gestion des limites de page
                 if current_grid_index - config.GRID_COLS >= 0:
@@ -1582,6 +1594,14 @@ def handle_controls(event, sources, joystick, screen):
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
                                     event.value)
+                else:
+                    # Haut de la liste : dernière plateforme de la même colonne
+                    last_index = platform_count - 1
+                    _set_platform_index(last_index - ((last_index - col) % config.GRID_COLS), systems_per_page)
+                    update_key_state("up", True, event.type, event.key if event.type == pygame.KEYDOWN else
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else
+                                    event.value)
             elif is_input_matched(event, "left"):
                 if col > 0:
                     # Déplacement normal vers la gauche
@@ -1600,6 +1620,13 @@ def handle_controls(event, sources, joystick, screen):
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
                                     event.value)
+                elif config.selected_platform == 0:
+                    # Première plateforme : retour à la dernière de la liste
+                    _set_platform_index(platform_count - 1, systems_per_page)
+                    update_key_state("left", True, event.type, event.key if event.type == pygame.KEYDOWN else
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else
+                                    event.value)
             elif is_input_matched(event, "right"):
                 if col < config.GRID_COLS - 1 and current_grid_index < max_index:
                     # Déplacement normal vers la droite
@@ -1617,6 +1644,13 @@ def handle_controls(event, sources, joystick, screen):
                     update_key_state("right", True, event.type, event.key if event.type == pygame.KEYDOWN else 
                                     event.button if event.type == pygame.JOYBUTTONDOWN else 
                                     (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else 
+                                    event.value)
+                elif current_grid_index == max_index:
+                    # Dernière plateforme : retour à la première
+                    _set_platform_index(0, systems_per_page)
+                    update_key_state("right", True, event.type, event.key if event.type == pygame.KEYDOWN else
+                                    event.button if event.type == pygame.JOYBUTTONDOWN else
+                                    (event.axis, event.value) if event.type == pygame.JOYAXISMOTION else
                                     event.value)
             elif is_input_matched(event, "page_down"):
                 # Navigation rapide vers la page suivante
