@@ -226,6 +226,7 @@
     "utils_corrupt_zip": "Corrupted ZIP archive: {0}",
     "utils_permission_denied": "Permission denied during extraction: {0}",
     "utils_extraction_failed": "Extraction failed: {0}",
+    "utils_archive_unsafe_path": "Archive refused: {0} would be written outside the game folder",
     "utils_unrar_unavailable": "Unrar command not available",
     "utils_rar_list_failed": "Failed to list RAR files: {0}",
     "accessibility_font_size": "Font size: {0}",

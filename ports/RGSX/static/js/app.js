@@ -2174,15 +2174,15 @@
                         <div class="history-item ${isError ? 'error' : ''}">
                             <div style="display: flex; justify-content: space-between; align-items: start;">
                                 <div style="flex: 1;">
-                                    <strong>${statusIcon} ${h.game_name || 'Inconnu'}</strong>
+                                    <strong>${statusIcon} ${escapeHtml(h.game_name || 'Inconnu')}</strong>
                                     <div style="margin-top: 5px; font-size: 0.9em; color: #666;">
-                                        📦 ${platformLabel}: ${platform}
+                                        📦 ${platformLabel}: ${escapeHtml(platform)}
                                     </div>
                                     <div style="margin-top: 3px; font-size: 0.85em; color: #666;">
                                         💾 ${sizeLabel}: ${sizeFormatted}
                                     </div>
                                     <div style="margin-top: 3px; font-size: 0.85em; color: #666;">
-                                        📅 Date: ${timestamp}
+                                        📅 Date: ${escapeHtml(timestamp)}
                                     </div>
                                 </div>
                                 <div style="text-align: right; min-width: 100px;">
@@ -2191,7 +2191,7 @@
                                     </span>
                                 </div>
                             </div>
-                            ${h.message ? `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e0e0e0; font-size: 0.85em; color: #666;">${h.message}</div>` : ''}
+                            ${h.message ? `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e0e0e0; font-size: 0.85em; color: #666;">${escapeHtml(h.message)}</div>` : ''}
                         </div>
                     `;
                 }).join('') + `

@@ -225,6 +225,7 @@
     "utils_corrupt_zip": "Archivio ZIP corrotto: {0}",
     "utils_permission_denied": "Permesso negato durante l'estrazione: {0}",
     "utils_extraction_failed": "Estrazione fallita: {0}",
+    "utils_archive_unsafe_path": "Archivio rifiutato: {0} verrebbe scritto fuori dalla cartella del gioco",
     "utils_unrar_unavailable": "Comando unrar non disponibile",
     "utils_rar_list_failed": "Impossibile elencare i file RAR: {0}",
     "symlink_option_enabled": "Opzione symlink abilitata",

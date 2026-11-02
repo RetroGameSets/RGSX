@@ -2976,6 +2976,14 @@ def extract_zip(zip_path, dest_dir, url):
                         conflicts.add(parent_path)
                         logger.warning(f"Conflit détecté: '{parent_path}' est à la fois un fichier et un dossier parent")
             
+            # Tout vérifier avant d'écrire. realpath : un lien symbolique dans le dossier peut mener ailleurs
+            # Tout '..' est refusé : même revenu dans le dossier, le chemin en a créé d'autres au passage
+            base_dir = os.path.realpath(dest_dir)
+            for file_path in file_paths - conflicts:
+                if '..' in file_path.split(os.sep) or not os.path.realpath(os.path.join(base_dir, file_path)).startswith(os.path.join(base_dir, '')):
+                    logger.error(f"Archive refusée, chemin hors de {dest_dir}: {file_path}")
+                    return False, _("utils_archive_unsafe_path").format(file_path)
+            
             total_size = sum(info.file_size for info in zip_ref.infolist() if not info.is_dir())
             logger.info(f"Taille totale à extraire: {total_size} octets")
             
