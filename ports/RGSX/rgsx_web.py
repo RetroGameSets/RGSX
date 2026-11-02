@@ -1102,7 +1102,6 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 
                 # save_history réécrit toute la table depuis cette liste : ce processus ne l'a jamais chargée
                 # au démarrage, et l'app peut y avoir ajouté des lignes depuis.
-                from history import load_history
                 config.history = load_history()
                 
                 # Déterminer si on doit ajouter à la queue selon le mode et les slots disponibles.
@@ -1139,7 +1138,6 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             'task_id': task_id
                         }
                         config.history.append(queue_history_entry)
-                        from history import save_history
                         save_history(config.history)
                         self._send_json({
                             'success': True,
@@ -1223,7 +1221,6 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     config.history.append(queue_history_entry)
                     
                     # Sauvegarder l'historique
-                    from history import save_history
                     save_history(config.history)
                     
                     logger.info(f"📋 {game_name} ajouté à la file d'attente (mode=queue, active={active_count}/{max_dl})")
@@ -1260,7 +1257,6 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         'task_id': task_id
                     }
                     config.history.append(download_history_entry)
-                    from history import save_history
                     save_history(config.history)
                     
                     if is_1fichier:
@@ -1314,7 +1310,6 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 
                 try:
                     from network import request_cancel
-                    from history import load_history, save_history
                     
                     # Trouver le task_id correspondant à l'URL dans l'historique
                     history = load_history() or []
