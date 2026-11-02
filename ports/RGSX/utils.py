@@ -2232,6 +2232,12 @@ def check_extension_before_download(url, platform, game_name):
         except Exception:
             pass
 
+        # Arcade: l'archive est le jeu, les émulateurs lisent le romset compressé. Sans es_systems.cfg (Docker),
+        # le système est inconnu et l'archive serait extraite puis supprimée.
+        if dest_folder_name in ("fbneo", "arcade", "neogeo", "naomi") and extension in (".zip", ".7z"):
+            logger.debug(f"Romset arcade {sanitized_name}, pas d'extraction automatique")
+            return (url, platform, game_name, False)
+
         if is_supported:
             logger.debug(f"L'extension de {sanitized_name} est supportée pour {platform}")
             return (url, platform, game_name, False)
