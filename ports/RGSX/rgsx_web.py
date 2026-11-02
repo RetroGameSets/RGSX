@@ -1043,11 +1043,12 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 games, _, _ = get_cached_games(platform)
                 
                 # Si game_name est fourni, chercher l'index correspondant
-                if game_name_param and game_index is None:
+                # La liste peut avoir changé d'ordre depuis l'affichage de la page, et deux lignes peuvent porter le même nom
+                if game_name_param:
                     game_index = None
                     for idx, game in enumerate(games):
                         current_game_name = game.name
-                        if current_game_name == game_name_param:
+                        if current_game_name == game_name_param and data.get('game_url', game.url) == game.url:
                             game_index = idx
                             break
                     
