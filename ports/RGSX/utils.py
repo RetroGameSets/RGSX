@@ -2970,7 +2970,10 @@ def extract_zip(zip_path, dest_dir, url):
 
         # Vérification et extraction
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.testzip()  # Vérifier l'intégrité de l'archive
+            # Vérifier l'intégrité de l'archive
+            bad_member = zip_ref.testzip()
+            if bad_member:
+                raise zipfile.BadZipFile(f"Bad CRC-32 for file '{bad_member}'")
             
             # Pré-analyse pour détecter les conflits fichier/dossier
             all_paths = set()
@@ -3068,8 +3071,11 @@ def extract_zip(zip_path, dest_dir, url):
                         except Exception:
                             pass
                     
+                    already_there = os.path.exists(file_path)
                     with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
-                        written_files.append(file_path)
+                        # Le fichier d'un jeu précédent ou une sauvegarde reste en place en cas d'échec plus loin
+                        if not already_there:
+                            written_files.append(file_path)
                         while True:
                             chunk = source.read(chunk_size)
                             if not chunk:
