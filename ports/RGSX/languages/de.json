@@ -249,6 +249,7 @@
     "utils_corrupt_zip": "Beschädigtes ZIP-Archiv: {0}",
     "utils_permission_denied": "Berechtigung während der Extraktion verweigert: {0}",
     "utils_extraction_failed": "Extraktion fehlgeschlagen: {0}",
+    "utils_archive_unsafe_path": "Archiv abgelehnt: {0} würde außerhalb des Spielordners geschrieben",
     "utils_unrar_unavailable": "Befehl unrar nicht verfügbar",
     "utils_rar_list_failed": "Fehler beim Auflisten der RAR-Dateien: {0}",
     "symlink_option_enabled": "Symlink-Option aktiviert",

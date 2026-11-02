@@ -229,6 +229,7 @@
     "utils_corrupt_zip": "Arquivo ZIP corrupto: {0}",
     "utils_permission_denied": "Permissão negada durante a extração: {0}",
     "utils_extraction_failed": "Falha na extração: {0}",
+    "utils_archive_unsafe_path": "Arquivo recusado: {0} seria gravado fora da pasta do jogo",
     "utils_unrar_unavailable": "Comando unrar não disponível",
     "utils_rar_list_failed": "Falha ao listar arquivos RAR: {0}",
     "confirm_cancel_download": "Cancelar download atual?",
