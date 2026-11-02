@@ -3607,6 +3607,7 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archi
             logger.info("Extraction de l'ISO décrypté...")
             game_folder_name = os.path.splitext(os.path.basename(iso_file))[0] + ".ps3"
             game_folder_path = os.path.join(dest_dir, game_folder_name)
+            game_folder_existed = os.path.isdir(game_folder_path)
             os.makedirs(game_folder_path, exist_ok=True)
             
             try:
@@ -3618,9 +3619,12 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archi
                 logger.debug(f"Commande d'extraction ISO: {' '.join(extract_cmd)}")
                 result = subprocess.run(extract_cmd, capture_output=True, text=True)
                 
-                if result.returncode > 2:
+                # 1 est un avertissement ; 2 est une erreur fatale (écriture impossible, disque plein) : l'ISO décrypté reste la seule copie
+                if result.returncode > 1:
                     error_msg = f"Erreur critique lors de l'extraction ISO (code {result.returncode}): {result.stderr}"
                     logger.error(error_msg)
+                    if not game_folder_existed:
+                        shutil.rmtree(game_folder_path, ignore_errors=True)
                     return False, error_msg
                 
                 if result.returncode != 0:
