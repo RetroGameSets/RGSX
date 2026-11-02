@@ -1599,7 +1599,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     from history import clear_history
                     
                     clear_history()
-                    config.history = []  # Vider aussi la liste en mémoire
+                    config.history = load_history()  # Garder les téléchargements en cours en mémoire
                     
                     self._send_json({
                         'success': True,
