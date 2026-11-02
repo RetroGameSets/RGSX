@@ -808,8 +808,8 @@
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
                                             ${game.size ? `<span style="background: #667eea; color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.9em; white-space: nowrap;">${game.size}</span>` : '<span></span>'}
                                             <div class="download-btn-group" style="display: flex; gap: 4px;">
-                                                <button class="download-btn" title="${downloadTitle} (now)" onclick='downloadGame("${platformName.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", "${game.game_name.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", null, "now")' style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">⬇️</button>
-                                                <button class="download-btn" title="${downloadTitle} (queue)" onclick='downloadGame("${platformName.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", "${game.game_name.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", null, "queue")' style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">➕</button>
+                                                <button class="download-btn" title="${downloadTitle} (now)" onclick='downloadGame("${platformName.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", ${escapeHtml(JSON.stringify(game.game_name))}, null, "now", ${escapeHtml(JSON.stringify(game.url))})' style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">⬇️</button>
+                                                <button class="download-btn" title="${downloadTitle} (queue)" onclick='downloadGame("${platformName.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", ${escapeHtml(JSON.stringify(game.game_name))}, null, "queue", ${escapeHtml(JSON.stringify(game.url))})' style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">➕</button>
                                             </div>
                                         </div>
                                     </div>
@@ -1654,8 +1654,8 @@
                             <span class="game-size">${g.size || ''}</span>
                             <span class="game-date">${g.updated_at ? String(g.updated_at).slice(0, 10) : '-'}</span>
                             <div class="download-btn-group" style="display: flex; gap: 4px;">
-                                <button class="download-btn" title="${downloadTitle} (now)" onclick='downloadGame("${platform.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", "${g.name.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", ${idx}, "now")'>⬇️</button>
-                                <button class="download-btn" title="${downloadTitle} (queue)" onclick='downloadGame("${platform.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", "${g.name.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", ${idx}, "queue")' style="background: #e0e0e0; color: #333;">➕</button>
+                                <button class="download-btn" title="${downloadTitle} (now)" onclick='downloadGame("${platform.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", currentGames[${idx}].name, ${idx}, "now", currentGames[${idx}].url)'>⬇️</button>
+                                <button class="download-btn" title="${downloadTitle} (queue)" onclick='downloadGame("${platform.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", currentGames[${idx}].name, ${idx}, "queue", currentGames[${idx}].url)' style="background: #e0e0e0; color: #333;">➕</button>
                             </div>
                         </div>
                     `;
@@ -1664,6 +1664,7 @@
                 html += `
                     </div>
                 `;
+                currentGames = data.games;
                 container.innerHTML = html;
                 
                 // Restore filter states from loaded settings
@@ -1697,11 +1698,9 @@
             const mode = arguments.length > 3 ? arguments[3] : 'now';
             try {
                 // Préparer le body de la requête
-                const requestBody = { platform: platform };
+                const requestBody = { platform: platform, game_name: gameName, game_url: arguments[4] };
                 if (typeof gameIndex === 'number' && gameIndex >= 0) {
                     requestBody.game_index = gameIndex;
-                } else {
-                    requestBody.game_name = gameName;
                 }
                 requestBody.mode = mode;
                 const response = await fetch('/api/download', {
