@@ -1,4 +1,5 @@
 from pathlib import Path
+import errno
 import collections
 import io
 import shutil
@@ -2938,9 +2939,24 @@ def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=No
     
     return True, None
 
+def _check_room_for_extraction(dest_dir, members):
+    """Renvoie le message d'erreur si les fichiers (nom, taille) ne tiennent pas dans dest_dir.
+
+    Le téléchargement n'a vérifié que la place de l'archive. Un fichier remplacé rend la sienne.
+    """
+    from network import _ensure_sufficient_disk_space
+    required = 0
+    for name, size in members:
+        target = os.path.join(dest_dir, name)
+        required += max(0, size - (os.path.getsize(target) if os.path.isfile(target) else 0))
+    has_space, message = _ensure_sufficient_disk_space(dest_dir, required)
+    return None if has_space else message
+
 def extract_zip(zip_path, dest_dir, url):
     """Extrait le contenu du fichier ZIP dans le dossier cible avec un suivi progressif de la progression."""
     logger.debug(f"Extraction de {zip_path} dans {dest_dir}")
+    written_files = []
+    extraction_done = False
     try:
         # Capture état initial
         before_dirs = _capture_directories_before_extraction(dest_dir)
@@ -2990,6 +3006,13 @@ def extract_zip(zip_path, dest_dir, url):
             if total_size == 0:
                 logger.warning("ZIP vide ou ne contenant que des dossiers")
                 return True, "ZIP vide extrait avec succès"
+
+            low_space_message = _check_room_for_extraction(
+                dest_dir,
+                [(info.filename.replace('/', os.sep), info.file_size) for info in zip_ref.infolist() if not info.is_dir()]
+            )
+            if low_space_message:
+                raise OSError(errno.ENOSPC, low_space_message)
 
             # Variables de progression
             extracted_size = 0
@@ -3046,6 +3069,7 @@ def extract_zip(zip_path, dest_dir, url):
                             pass
                     
                     with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
+                        written_files.append(file_path)
                         while True:
                             chunk = source.read(chunk_size)
                             if not chunk:
@@ -3063,6 +3087,8 @@ def extract_zip(zip_path, dest_dir, url):
                     logger.error(f"Erreur extraction fichier {info.filename} vers {file_path}: {file_err}")
                     raise
 
+        extraction_done = True
+
         # Gestion plateformes spéciales
         success, error_msg = _handle_special_platforms(dest_dir, zip_path, before_dirs, iso_before, url, before_items)
         if not success:
@@ -3079,12 +3105,27 @@ def extract_zip(zip_path, dest_dir, url):
         return False, _("utils_permission_denied").format(str(e))
     except Exception as e:
         logger.error(f"Erreur lors de l'extraction de {zip_path}: {str(e)}")
+        if getattr(e, 'errno', None) == errno.ENOSPC:
+            return False, e.strerror
         return False, _("utils_extraction_failed").format(str(e))
+    finally:
+        if not extraction_done:
+            # Un jeu à moitié extrait passerait pour un jeu présent
+            for written_file in written_files:
+                try:
+                    os.remove(written_file)
+                    parent_dir = os.path.dirname(written_file)
+                    while parent_dir != dest_dir and parent_dir.startswith(dest_dir):
+                        os.rmdir(parent_dir)
+                        parent_dir = os.path.dirname(parent_dir)
+                except OSError:
+                    pass
      
 
 # Fonction pour extraire le contenu d'un fichier RAR
 def extract_rar(rar_path, dest_dir, url):
     """Extrait le contenu du fichier RAR dans le dossier cible."""
+    keep_archive = False
     try:
         os.makedirs(dest_dir, exist_ok=True)
         
@@ -3128,6 +3169,11 @@ def extract_rar(rar_path, dest_dir, url):
         if total_size == 0:
             logger.warning("RAR vide, ne contenant que des dossiers, ou erreur de parsing")
             return False, "RAR vide ou erreur lors de la liste des fichiers"
+
+        low_space_message = _check_room_for_extraction(dest_dir, files_to_extract)
+        if low_space_message:
+            keep_archive = True
+            return False, low_space_message
 
         # Capture état initial
         before_dirs = _capture_directories_before_extraction(dest_dir)
@@ -3194,7 +3240,7 @@ def extract_rar(rar_path, dest_dir, url):
         return False, f"Erreur lors de l'extraction: {str(e)}"
     finally:
         # Nettoyage en cas d'erreur
-        if os.path.exists(rar_path):
+        if not keep_archive and os.path.exists(rar_path):
             try:
                 os.remove(rar_path)
                 logger.info(f"Fichier RAR {rar_path} supprimé après échec de l'extraction")
@@ -3223,20 +3269,25 @@ def extract_7z(archive_path, dest_dir, url):
 
         # Calcul taille totale via 7z l -slt (best effort)
         total_size = 0
+        listed_files = []
         try:
             list_cmd = [seven_z_cmd, "l", "-slt", archive_path]
             result = subprocess.run(list_cmd, capture_output=True, text=True)
             if result.returncode == 0:
                 current_size = None
+                current_path = ""
                 is_dir = False
                 for line in result.stdout.splitlines():
                     line = line.strip()
                     if not line:
                         if current_size is not None and not is_dir:
                             total_size += current_size
+                            listed_files.append((current_path, current_size))
                         current_size = None
                         is_dir = False
                         continue
+                    if line.startswith("Path ="):
+                        current_path = line.split("=", 1)[1].strip()
                     if line.startswith("Attributes ="):
                         attrs = line.split("=", 1)[1].strip()
                         if "D" in attrs:
@@ -3248,8 +3299,13 @@ def extract_7z(archive_path, dest_dir, url):
                             current_size = None
                 if current_size is not None and not is_dir:
                     total_size += current_size
+                    listed_files.append((current_path, current_size))
         except Exception as e:
             logger.debug(f"Impossible de calculer la taille 7z: {e}")
+
+        low_space_message = _check_room_for_extraction(dest_dir, listed_files)
+        if low_space_message:
+            return False, low_space_message
 
         if url not in getattr(config, 'download_progress', {}):
             config.download_progress[url] = {}

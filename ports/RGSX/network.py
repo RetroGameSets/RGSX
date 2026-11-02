@@ -3145,7 +3145,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             
             cancel_ev = cancel_events.get(task_id)
             # Use symlink path if enabled
-            from rgsx_settings import apply_symlink_path, get_platform_custom_path
+            from rgsx_settings import apply_symlink_path, get_platform_custom_path, get_auto_extract
             
             # Vérifier si un dossier personnalisé est configuré pour cette plateforme
             custom_path = get_platform_custom_path(platform)
@@ -3392,6 +3392,9 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             with urls_lock:
                                 urls_in_progress.discard(original_history_url)
                             return
+                    elif is_zip_non_supported and get_auto_extract() and os.path.splitext(dest_path)[1].lower() in ('.zip', '.7z', '.rar'):
+                        # Archive qui aurait dû être extraite puis supprimée : reste d'une extraction ratée, on télécharge à nouveau
+                        logger.info(f"Le fichier {dest_path} existe mais n'a pas été extrait, nouveau téléchargement")
                     else:
                         # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
                         logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
@@ -3835,7 +3838,15 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     if not has_space:
                         raise InsufficientDiskSpaceError(low_space_message)
 
-                    transfer = _stream_response_to_path(response, dest_path, task_id, cancel_ev, progress_queues.get(task_id), fallback_total_size=vimm_file_size or known_total_size)
+                    try:
+                        transfer = _stream_response_to_path(response, dest_path, task_id, cancel_ev, progress_queues.get(task_id), fallback_total_size=vimm_file_size or known_total_size)
+                    except PermissionError:
+                        # Ouverture refusée : le fichier existant n'a pas été touché, il doit rester
+                        raise
+                    except Exception:
+                        # Coupure, source muette ou disque plein : ne pas laisser un fichier incomplet à la place du jeu
+                        _safe_remove_file(dest_path)
+                        raise
                     total_size = int(transfer['total_size'])
                     downloaded = int(transfer['downloaded'])
                     last_downloaded = int(transfer['last_downloaded'])
