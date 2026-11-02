@@ -3005,9 +3005,13 @@ def extract_zip(zip_path, dest_dir, url):
             # Tout '..' est refusé : même revenu dans le dossier, le chemin en a créé d'autres au passage
             base_dir = os.path.realpath(dest_dir)
             for file_path in file_paths - conflicts:
-                if '..' in file_path.split(os.sep) or not os.path.realpath(os.path.join(base_dir, file_path)).startswith(os.path.join(base_dir, '')):
+                target_path = os.path.realpath(os.path.join(base_dir, file_path))
+                if '..' in file_path.split(os.sep) or not target_path.startswith(os.path.join(base_dir, '')):
                     logger.error(f"Archive refusée, chemin hors de {dest_dir}: {file_path}")
                     return False, _("utils_archive_unsafe_path").format(file_path)
+                if os.path.isdir(target_path) and os.listdir(target_path):
+                    logger.error(f"Archive refusée, un dossier non vide porte le nom du fichier: {target_path}")
+                    return False, _("utils_archive_folder_conflict").format(file_path)
             
             total_size = sum(info.file_size for info in zip_ref.infolist() if not info.is_dir())
             logger.info(f"Taille totale à extraire: {total_size} octets")
@@ -3063,9 +3067,9 @@ def extract_zip(zip_path, dest_dir, url):
                 try:
                     # Vérifier si un dossier existe avec le même nom (conflit)
                     if os.path.isdir(file_path):
-                        logger.warning(f"Conflit: dossier existant avec le même nom que le fichier {file_path}, suppression du dossier")
+                        logger.warning(f"Conflit: dossier vide existant avec le même nom que le fichier {file_path}, suppression du dossier")
                         try:
-                            shutil.rmtree(file_path)
+                            os.rmdir(file_path)
                         except Exception as rm_err:
                             logger.error(f"Impossible de supprimer le dossier {file_path}: {rm_err}")
                             raise

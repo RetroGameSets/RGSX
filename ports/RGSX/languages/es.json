@@ -250,6 +250,7 @@
     "utils_permission_denied": "Permiso denegado durante la extracción: {0}",
     "utils_extraction_failed": "Error en la extracción: {0}",
     "utils_archive_unsafe_path": "Archivo rechazado: {0} se escribiría fuera de la carpeta del juego",
+    "utils_archive_folder_conflict": "El archivo comprimido contiene un fichero llamado {0}, pero aquí ya existe una carpeta con ese nombre. Mueve o renombra la carpeta e inténtalo de nuevo",
     "utils_unrar_unavailable": "Comando unrar no disponible",
     "utils_rar_list_failed": "Error al listar los archivos RAR: {0}",
     "symlink_option_enabled": "Opción symlink habilitada",
