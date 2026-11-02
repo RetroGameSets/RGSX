@@ -3183,6 +3183,7 @@ def extract_rar(rar_path, dest_dir, url):
 
         # Capture état initial
         before_dirs = _capture_directories_before_extraction(dest_dir)
+        before_items = _capture_all_items_before_extraction(dest_dir)
 
         # Variables de progression
         lock = threading.Lock()
@@ -3234,7 +3235,7 @@ def extract_rar(rar_path, dest_dir, url):
                 try_chmod(os.path.join(root, dir_name), 0o755)
 
         # Gestion plateformes spéciales (uniquement PS3 pour RAR)
-        success, error_msg = _handle_special_platforms(dest_dir, rar_path, before_dirs, url=url)
+        success, error_msg = _handle_special_platforms(dest_dir, rar_path, before_dirs, url=url, before_items=before_items)
         if not success:
             return False, error_msg
 
