@@ -1460,7 +1460,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
             # Route: Sauvegarder les settings
             elif path == '/api/settings':
                 try:
-                    from rgsx_settings import save_rgsx_settings, set_auto_extract
+                    from rgsx_settings import load_rgsx_settings, save_rgsx_settings, set_auto_extract
                     from utils import toggle_web_service_at_boot, toggle_custom_dns_at_boot, save_api_keys
                     
                     settings = data.get('settings')
@@ -1526,7 +1526,15 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             ss_check = {'status': 'save_error'}
                         del settings['screenscraper']
                     
-                    save_rgsx_settings(settings)
+                    # La page n'envoie que ses champs : le reste du fichier (plateformes masquées, dossiers
+                    # personnalisés, limite de téléchargements...) doit survivre à la sauvegarde.
+                    current_settings = load_rgsx_settings()
+                    for key, value in settings.items():
+                        if isinstance(value, dict) and isinstance(current_settings.get(key), dict):
+                            current_settings[key].update(value)
+                        else:
+                            current_settings[key] = value
+                    save_rgsx_settings(current_settings)
                     
                     self._send_json({
                         'success': True,
