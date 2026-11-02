@@ -3706,11 +3706,12 @@ def handle_dos(dest_dir, before_items, extracted_basename=None):
                             except (OSError, PermissionError):
                                 pass
 
+                    # Jeu déjà installé : garder ce que le joueur y a ajouté (sauvegardes, configuration)
                     if os.path.exists(target_path):
-                        shutil.rmtree(target_path, ignore_errors=True)
-                        time.sleep(1)
-
-                    os.rename(item_path, target_path)
+                        shutil.copytree(item_path, target_path, dirs_exist_ok=True, copy_function=shutil.move)
+                        shutil.rmtree(item_path)
+                    else:
+                        os.rename(item_path, target_path)
                     logger.info(f"Dossier DOS renommé avec succès: {item_path} -> {target_path}")
                     return True, None
 
@@ -3726,12 +3727,7 @@ def handle_dos(dest_dir, before_items, extracted_basename=None):
     # Cas 2: Un seul fichier OU plusieurs fichiers/dossiers -> créer un dossier .pc et tout y déplacer
     logger.debug(f"DOS: {len(new_items)} élément(s) détecté(s), création du dossier '{target_name}'")
     try:
-        # Créer le dossier .pc s'il n'existe pas
-        if os.path.exists(target_path):
-            logger.warning(f"Le dossier {target_path} existe déjà, il sera remplacé")
-            shutil.rmtree(target_path, ignore_errors=True)
-            time.sleep(1)
-
+        # Créer le dossier .pc s'il n'existe pas ; s'il existe, garder ce que le joueur y a ajouté
         os.makedirs(target_path, exist_ok=True)
 
         # Déplacer tous les nouveaux éléments dans le dossier .pc
@@ -3741,7 +3737,9 @@ def handle_dos(dest_dir, before_items, extracted_basename=None):
             
             try:
                 if os.path.isdir(src_path):
-                    shutil.move(src_path, dst_path)
+                    # Fichier par fichier : un dossier déjà là est complété, sans copie qui prendrait deux fois la place
+                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True, copy_function=shutil.move)
+                    shutil.rmtree(src_path)
                 else:
                     shutil.move(src_path, dst_path)
                     os.chmod(dst_path, 0o644)
