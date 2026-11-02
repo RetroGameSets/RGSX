@@ -469,6 +469,7 @@
     "web_settings_saved": "Paramètres enregistrés avec succès !",
     "web_settings_saved_restart": "Paramètres enregistrés avec succès !\\n\\n⚠️ Certains paramètres nécessitent un redémarrage du serveur :\\n- Dossier ROMs personnalisé\\n- Langue\\n\\nVeuillez redémarrer le serveur web pour appliquer ces changements.",
     "web_error_save_settings": "Erreur lors de l'enregistrement : {0}",
+    "web_settings_not_saved": "le fichier de paramètres n'a pas pu être écrit. Vérifiez l'espace disque libre et qu'il n'est pas en lecture seule",
     "web_browse_title": "Parcourir les dossiers",
     "web_browse_select_drive": "Sélectionnez un lecteur...",
     "web_browse_drives": "Lecteurs",

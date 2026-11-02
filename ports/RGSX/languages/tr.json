@@ -469,6 +469,7 @@
     "web_settings_saved": "Ayarlar başarıyla kaydedildi!",
     "web_settings_saved_restart": "Ayarlar başarıyla kaydedildi!\\n\\n⚠️ Bazı ayarlar sunucunun yeniden başlatılmasını gerektirir:\\n- Özel ROM klasörü\\n- Dil\\n\\nBu değişiklikleri uygulamak için lütfen web sunucusunu yeniden başlatın.",
     "web_error_save_settings": "Ayarlar kaydedilirken hata: {0}",
+    "web_settings_not_saved": "ayar dosyası yazılamadı. Boş disk alanını ve dosyanın salt okunur olmadığını kontrol edin",
     "web_browse_title": "Klasörlere Gözat",
     "web_browse_select_drive": "Bir sürücü seçin...",
     "web_browse_drives": "Sürücüler",

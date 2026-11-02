@@ -2,6 +2,8 @@
 import json
 import os
 import logging
+import threading
+import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
@@ -100,6 +102,13 @@ def load_rgsx_settings():
                 return settings
         else:
             logger.warning(f"Fichier settings non trouvé: {RGSX_SETTINGS_PATH}")
+    except (ValueError, TypeError) as e:
+        # Contenu illisible : le mettre de côté, la prochaine sauvegarde l'écraserait
+        logger.error(f"Fichier settings invalide, conservé sous {RGSX_SETTINGS_PATH}.bad: {e}")
+        try:
+            os.replace(RGSX_SETTINGS_PATH, f"{RGSX_SETTINGS_PATH}.bad")
+        except OSError as move_err:
+            logger.error(f"Impossible de mettre de côté le fichier settings: {move_err}")
     except Exception as e:
         print(f"Erreur lors du chargement de rgsx_settings.json: {str(e)}")
         logger.error(f"Erreur chargement settings: {e}")
@@ -108,15 +117,38 @@ def load_rgsx_settings():
 
 
 def save_rgsx_settings(settings):
-    """Sauvegarde tous les paramètres dans rgsx_settings.json."""
+    """Sauvegarde tous les paramètres dans rgsx_settings.json. Renvoie False si rien n'a été enregistré."""
     from config import RGSX_SETTINGS_PATH, SAVE_FOLDER
     
+    target_path = os.path.realpath(RGSX_SETTINGS_PATH)
+    temp_path = f"{target_path}.{os.getpid()}.{threading.get_ident()}.tmp"
     try:
         os.makedirs(SAVE_FOLDER, exist_ok=True)
-        with open(RGSX_SETTINGS_PATH, 'w', encoding='utf-8') as f:
+        # Sur Linux le remplacement passerait outre un fichier en lecture seule
+        if os.path.exists(target_path) and not os.access(target_path, os.W_OK):
+            raise PermissionError(f"{target_path} is read-only")
+        with open(temp_path, 'w', encoding='utf-8') as f:
             json.dump(settings, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        # Sous Windows, le remplacement échoue tant qu'un autre thread lit le fichier
+        for attempt in range(5):
+            try:
+                os.replace(temp_path, target_path)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.1)
+        return True
     except Exception as e:
         print(f"Erreur lors de la sauvegarde de rgsx_settings.json: {str(e)}")
+        logger.error(f"Erreur lors de la sauvegarde de rgsx_settings.json: {e}")
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+        return False
 
 
 def get_last_gamelist_update(settings=None):

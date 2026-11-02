@@ -1540,7 +1540,12 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             current_settings[key].update(value)
                         else:
                             current_settings[key] = value
-                    save_rgsx_settings(current_settings)
+                    if not save_rgsx_settings(current_settings):
+                        self._send_json({
+                            'success': False,
+                            'error': get_translation('web_settings_not_saved')
+                        }, status=500)
+                        return
                     
                     self._send_json({
                         'success': True,
@@ -1574,7 +1579,12 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     current_settings['game_filters']['region_priority'] = data.get('region_priority', ['USA', 'Canada', 'World', 'Europe', 'Japan', 'Other'])
                     
                     # Sauvegarder
-                    save_rgsx_settings(current_settings)
+                    if not save_rgsx_settings(current_settings):
+                        self._send_json({
+                            'success': False,
+                            'error': get_translation('web_settings_not_saved')
+                        }, status=500)
+                        return
                     
                     # Mettre à jour config.game_filter_obj
                     if hasattr(config, 'game_filter_obj'):

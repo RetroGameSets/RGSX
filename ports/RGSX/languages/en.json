@@ -469,6 +469,7 @@
     "web_settings_saved": "Settings saved successfully!",
     "web_settings_saved_restart": "Settings saved successfully!\\n\\n⚠️ Some settings require a server restart:\\n- Custom ROMs folder\\n- Language\\n\\nPlease restart the web server to apply these changes.",
     "web_error_save_settings": "Error saving settings: {0}",
+    "web_settings_not_saved": "the settings file could not be written. Check the free disk space and that it is not read-only",
     "web_browse_title": "Browse Directories",
     "web_browse_select_drive": "Select a drive...",
     "web_browse_drives": "Drives",
