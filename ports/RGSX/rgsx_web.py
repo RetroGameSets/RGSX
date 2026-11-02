@@ -1587,7 +1587,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         return
                     
                     # Mettre à jour config.game_filter_obj
-                    if hasattr(config, 'game_filter_obj'):
+                    if getattr(config, 'game_filter_obj', None) is not None:
                         config.game_filter_obj.region_filters = data.get('region_filters', {})
                         config.game_filter_obj.hide_non_release = data.get('hide_non_release', False)
                         config.game_filter_obj.one_rom_per_game = data.get('one_rom_per_game', False)
