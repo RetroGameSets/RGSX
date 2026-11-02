@@ -1314,6 +1314,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     # Trouver le task_id correspondant à l'URL dans l'historique
                     history = load_history() or []
                     task_id = None
+                    cancel_success = False
                     
                     for entry in history:
                         if entry.get('url') == url and entry.get('status') in ['Downloading', 'Téléchargement', 'Downloading', 'Connecting']:
@@ -1342,8 +1343,9 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     save_history(history)
                     
                     # Réinitialiser le flag de téléchargement actif et lancer le prochain
-                    config.download_active = False
-                    if config.download_queue:
+                    config.download_active = getattr(config, 'active_download_count', 0) > 0
+                    # Le thread annulé ou un autre encore en cours lance lui-même le suivant en se terminant
+                    if config.download_queue and not cancel_success and not config.download_active:
                         next_item = config.download_queue.pop(0)
                         logger.info(f"📋 Traitement du prochain élément de la queue après annulation: {next_item['game_name']}")
                         # Relancer de manière asynchrone
