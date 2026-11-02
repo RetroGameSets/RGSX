@@ -1389,7 +1389,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     config.download_queue.clear()
                     
                     # Mettre à jour l'historique pour annuler les téléchargements en statut "Queued"
-                    history = load_history()
+                    # Le téléchargement en cours réécrit config.history en se terminant
+                    config.history = history = load_history()
                     for entry in history:
                         if entry.get("status") == "Queued":
                             entry["status"] = "Canceled"
@@ -1430,7 +1431,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             found = True
                             
                             # Mettre à jour l'historique pour cet élément
-                            history = load_history()
+                            # Le téléchargement en cours réécrit config.history en se terminant
+                            config.history = history = load_history()
                             for entry in history:
                                 if entry.get('task_id') == task_id and entry.get('status') == 'Queued':
                                     entry['status'] = 'Canceled'
