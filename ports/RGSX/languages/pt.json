@@ -469,6 +469,7 @@
     "web_settings_saved_restart": "Configurações salvas com sucesso!\\n\\n⚠️ Algumas configurações exigem reiniciar o servidor:\\n- Pasta ROMs personalizada\\n- Idioma\\n\\nPor favor, reinicie o servidor web para aplicar essas alterações.",
     "web_error_save_settings": "Erro ao salvar configurações: {0}",
     "web_settings_not_saved": "não foi possível gravar o arquivo de configurações. Verifique o espaço livre em disco e se ele não está somente leitura",
+    "web_api_keys_not_saved": "as outras configurações foram salvas, mas estas chaves de API não puderam ser gravadas: {0}. Verifique se os arquivos não são somente leitura.",
     "web_browse_title": "Procurar diretórios",
     "web_browse_select_drive": "Selecione uma unidade...",
     "web_browse_drives": "Unidades",

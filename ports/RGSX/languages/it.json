@@ -463,6 +463,7 @@
     "web_settings_saved_restart": "Impostazioni salvate con successo!\\n\\n⚠️ Alcune impostazioni richiedono il riavvio del server:\\n- Cartella ROMs personalizzata\\n- Lingua\\n\\nRiavviare il server web per applicare queste modifiche.",
     "web_error_save_settings": "Errore durante il salvataggio delle impostazioni: {0}",
     "web_settings_not_saved": "non è stato possibile scrivere il file delle impostazioni. Controlla lo spazio libero su disco e che non sia di sola lettura",
+    "web_api_keys_not_saved": "le altre impostazioni sono state salvate, ma queste chiavi API non sono state scritte: {0}. Controlla che i loro file non siano di sola lettura.",
     "web_browse_title": "Sfoglia directory",
     "web_browse_select_drive": "Seleziona un'unità...",
     "web_browse_drives": "Unità",

@@ -1501,11 +1501,13 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         del settings['custom_dns_at_boot']
                     
                     # Gérer API keys séparément
+                    failed_api_keys = []
                     if 'api_keys' in settings:
                         try:
-                            save_api_keys(settings['api_keys'])
+                            failed_api_keys = save_api_keys(settings['api_keys'])
                         except Exception as e:
                             logger.error(f"Erreur sauvegarde API keys: {e}")
+                            failed_api_keys = list(settings['api_keys'])
                         del settings['api_keys']
 
                     # ScreenScraper account: stored in its own file; an empty password keeps the saved one,
@@ -1544,6 +1546,13 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         self._send_json({
                             'success': False,
                             'error': get_translation('web_settings_not_saved')
+                        }, status=500)
+                        return
+                    
+                    if failed_api_keys:
+                        self._send_json({
+                            'success': False,
+                            'error': get_translation('web_api_keys_not_saved').format(', '.join(failed_api_keys))
                         }, status=500)
                         return
                     
