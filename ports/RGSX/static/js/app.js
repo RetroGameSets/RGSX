@@ -1412,23 +1412,24 @@
             if (!gamesList) return;
 
             const grid = currentGameView === 'grid';
-            const header = document.querySelector('.game-list-header');
+            const header = gamesList.querySelector('.game-list-header');
             const listButton = document.getElementById('game-view-list');
             const gridButton = document.getElementById('game-view-grid');
             gamesList.classList.toggle('is-grid', grid);
             if (header) header.style.display = grid ? 'none' : '';
             if (listButton) listButton.classList.toggle('active', !grid);
             if (gridButton) gridButton.classList.toggle('active', grid);
+            const headerMarkup = header?.outerHTML || '';
 
-            gamesList.innerHTML = currentGames.map((game, index) => {
+            gamesList.innerHTML = headerMarkup + currentGames.map((game, index) => {
                 const name = String(game.name ?? '');
                 const media = currentGameMedia[name] || {};
                 const hasBox = Boolean(media.box2d);
                 const summary = String(media.summary || '');
                 const imageParams = new URLSearchParams({ platform: currentPlatform || '', game: name, kind: 'box' });
                 const image = hasBox
-                    ? `<img class="game-card-box-image" src="/api/game-media/image?${escapeHtml(imageParams)}" alt="${escapeHtml(name)}" loading="lazy">`
-                    : `<div class="game-card-box-placeholder">🖼</div>`;
+                    ? `<img class="game-card-box-image" src="/api/game-media/image?${escapeHtml(imageParams)}" alt="" loading="lazy">`
+                    : `<span class="game-card-box-placeholder" aria-hidden="true">🖼</span>`;
                 const summaryPreview = summary
                     ? escapeHtml(summary) + (summary.length >= 240 ? '…' : '')
                     : `<span class="game-card-summary-empty">${escapeHtml(t('game_media_not_cached'))}</span>`;
@@ -1439,19 +1440,32 @@
                     ? `📝 ${escapeHtml(t('game_media_summary'))}`
                     : `⬇ ${escapeHtml(t('game_media_summary'))}`;
                 const date = game.updated_at ? String(game.updated_at).slice(0, 10) : '-';
-                return `
-                    <div class="game-item${grid ? ' game-card' : ''}">
-                        ${grid ? `<div class="game-card-preview">${image}<p class="game-card-summary">${summaryPreview}</p></div>` : ''}
+                const itemMarkup = grid
+                    ? `
+                        <button class="game-card-art-button" data-game-media-kind="details" data-game-index="${index}" aria-label="${escapeHtml(t('game_media_open_details'))}: ${escapeHtml(name)}">
+                            ${image}
+                        </button>
                         <span class="game-name">${escapeHtml(name)}</span>
-                        <span class="game-size">${escapeHtml(game.size || '')}</span>
+                        <div class="game-card-actions">
+                            <span class="game-size">${escapeHtml(game.size || '—')}</span>
+                            <button class="game-card-action-button game-download-action" data-download-mode="now" data-game-index="${index}" title="${escapeHtml(t('web_download'))}">${escapeHtml(t('web_download'))}</button>
+                            <button class="game-card-action-button game-download-action" data-download-mode="queue" data-game-index="${index}" title="${escapeHtml(t('game_card_queue'))}">${escapeHtml(t('game_card_queue'))}</button>
+                        </div>
+                        <p class="game-card-summary">${summaryPreview}</p>`
+                    : `
+                        <span class="game-name">${escapeHtml(name)}</span>
                         <span class="game-date">${escapeHtml(date)}</span>
-                        <div class="download-btn-group">
+                        <div class="game-card-actions">
+                            <span class="game-size">${escapeHtml(game.size || '—')}</span>
+                            <button class="game-card-action-button game-download-action" data-download-mode="now" data-game-index="${index}" title="${escapeHtml(t('web_download'))}">${escapeHtml(t('web_download'))}</button>
+                            <button class="game-card-action-button game-download-action" data-download-mode="queue" data-game-index="${index}" title="${escapeHtml(t('game_card_queue'))}">${escapeHtml(t('game_card_queue'))}</button>
+                        </div>
+                        <div class="game-media-actions">
                             <button class="game-media-button" data-game-media-kind="box" data-game-index="${index}" title="${escapeHtml(t('game_media_box2d'))}">${boxButtonLabel}</button>
                             <button class="game-media-button" data-game-media-kind="summary" data-game-index="${index}" title="${escapeHtml(t('game_media_summary'))}">${summaryButtonLabel}</button>
-                            <button class="download-btn game-download-action" data-download-mode="now" data-game-index="${index}" title="${escapeHtml(t('web_download'))}">⬇️</button>
-                            <button class="download-btn game-download-action" data-download-mode="queue" data-game-index="${index}" title="${escapeHtml(t('web_download'))} (${escapeHtml(t('web_added_to_queue'))})" style="background: #e0e0e0; color: #333;">➕</button>
-                        </div>
-                    </div>
+                        </div>`;
+                return `
+                    <div class="game-item${grid ? ' game-card' : ''}">${itemMarkup}</div>
                 `;
             }).join('');
 
@@ -1504,27 +1518,58 @@
             const payload = await response.json();
             if (!response.ok || !payload.success) throw new Error(payload.error || t('web_error_unknown'));
 
-            const item = payload[kind];
-            let body = '';
-            if (item.available && kind === 'box') {
-                body = `<img class="game-media-modal-image" src="${escapeHtml(item.url)}" alt="${escapeHtml(game)}">`;
-            } else if (item.available) {
-                body = `<div class="game-media-modal-summary">${escapeHtml(item.text)}</div>`;
-            } else {
-                body = `<p class="game-media-modal-status">${escapeHtml(gameMediaStatusMessage(payload, item))}</p>`;
-                if (item.can_search && !['queued', 'running'].includes(item.job?.status)) {
-                    body += `<button type="button" class="game-media-search-link">${escapeHtml(t('game_media_search'))}</button>`;
+            const renderItem = mediaKind => {
+                const item = payload[mediaKind];
+                let html = '';
+                if (item.available && mediaKind === 'box') {
+                    html = `<img class="game-media-modal-image" src="${escapeHtml(item.url)}" alt="${escapeHtml(game)}">`;
+                } else if (item.available) {
+                    html = `<div class="game-media-modal-summary">${escapeHtml(item.text)}</div>`;
+                } else {
+                    html = `<p class="game-media-modal-status">${escapeHtml(gameMediaStatusMessage(payload, item))}</p>`;
+                    if (item.can_search && !['queued', 'running'].includes(item.job?.status)) {
+                        html += `<button type="button" class="game-media-search-link" data-game-media-kind="${mediaKind}">${escapeHtml(t('game_media_search'))}</button>`;
+                    }
                 }
+                return { html, item };
+            };
+
+            let item;
+            let body;
+            if (kind === 'details') {
+                const box = renderItem('box');
+                const summary = renderItem('summary');
+                body = `
+                    <div class="game-media-details-layout">
+                        <section class="game-media-details-section">
+                            <h3>${escapeHtml(t('game_media_box2d'))}</h3>
+                            <div class="game-media-details-box">${box.html}</div>
+                        </section>
+                        <section class="game-media-details-section">
+                            <h3>${escapeHtml(t('game_media_summary'))}</h3>
+                            <div class="game-media-details-summary">${summary.html}</div>
+                        </section>
+                    </div>`;
+            } else {
+                const rendered = renderItem(kind);
+                item = rendered.item;
+                body = rendered.html;
             }
             content.innerHTML = body;
-            const searchButton = content.querySelector('.game-media-search-link');
-            if (searchButton) {
-                searchButton.addEventListener('click', () => requestGameMediaDownload(modal, platform, game, kind, true));
-            }
+            content.querySelectorAll('.game-media-search-link').forEach(searchButton => {
+                searchButton.addEventListener('click', () => requestGameMediaDownload(
+                    modal,
+                    platform,
+                    game,
+                    searchButton.dataset.gameMediaKind,
+                    true,
+                    kind,
+                ));
+            });
             return { payload, item };
         }
 
-        async function requestGameMediaDownload(modal, platform, game, kind, forceSearch = false) {
+        async function requestGameMediaDownload(modal, platform, game, kind, forceSearch = false, displayKind = kind) {
             const content = modal.querySelector('.game-media-modal-content');
             if (!content || content.dataset.requesting === 'true') return;
             content.dataset.requesting = 'true';
@@ -1547,8 +1592,11 @@
                     return;
                 }
                 for (let attempt = 0; attempt < 240 && modal.isConnected; attempt++) {
-                    const state = await renderGameMediaModal(modal, platform, game, kind);
-                    if (!state || !['queued', 'running'].includes(state.item.job?.status)) break;
+                    const state = await renderGameMediaModal(modal, platform, game, displayKind);
+                    const jobs = displayKind === 'details'
+                        ? [state?.payload.box.job, state?.payload.summary.job]
+                        : [state?.item?.job];
+                    if (!jobs.some(job => ['queued', 'running'].includes(job?.status))) break;
                     await new Promise(resolve => setTimeout(resolve, 1500));
                 }
             } catch (error) {
@@ -1568,7 +1616,11 @@
         async function openGameMedia(platform, game, kind) {
             const existing = document.getElementById('game-media-modal');
             if (existing) existing.remove();
-            const title = kind === 'box' ? t('game_media_box2d') : t('game_media_summary');
+            const title = kind === 'details'
+                ? t('game_media_details')
+                : kind === 'box'
+                    ? t('game_media_box2d')
+                    : t('game_media_summary');
             const modal = document.createElement('div');
             modal.id = 'game-media-modal';
             modal.className = 'game-media-modal-overlay';
@@ -1665,7 +1717,9 @@
             });
             
             // Réafficher les éléments dans l'ordre
+            const header = gamesList.querySelector('.game-list-header');
             gamesList.innerHTML = '';
+            if (header) gamesList.appendChild(header);
             items.forEach(item => {
                 gamesList.appendChild(item);
             });
@@ -1853,13 +1907,14 @@
                         <button id="game-view-list" class="active" onclick="setGameView('list')">${escapeHtml(t('game_media_view_list'))}</button>
                         <button id="game-view-grid" onclick="setGameView('grid')">${escapeHtml(t('game_media_view_grid'))}</button>
                     </div>
-                    <div class="game-list-header">
-                        <span>${t('game_header_name')}</span>
-                        <span>${t('game_header_size')}</span>
-                        <span>${t('game_header_date')}</span>
-                        <span></span>
-                    </div>
-                    <div class="games-list"></div>`;
+                    <div class="games-list">
+                        <div class="game-list-header">
+                            <span>${t('game_header_name')}</span>
+                            <span>${t('game_header_date')}</span>
+                            <span>${t('game_header_size')}</span>
+                            <span></span>
+                        </div>
+                    </div>`;
                 currentGames = data.games;
                 currentGameMedia = {};
                 container.innerHTML = html;
@@ -1900,6 +1955,9 @@
         async function downloadGame(platform, gameName, gameIndex, mode = 'now', gameUrl = '', button = null) {
             const btn = button;
             if (!btn) return;
+            const originalText = btn.textContent;
+            const originalTitle = btn.title;
+            const originalColor = btn.style.color;
             btn.disabled = true;
             btn.textContent = '⏳';
             btn.title = t('web_download') + '...';
@@ -1938,9 +1996,9 @@
             } finally {
                 setTimeout(() => {
                     btn.disabled = false;
-                    btn.textContent = '⬇️';
-                    btn.title = t('web_download');
-                    btn.style.color = '';
+                    btn.textContent = originalText;
+                    btn.title = originalTitle;
+                    btn.style.color = originalColor;
                 }, 3000);
             }
         }
