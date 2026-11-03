@@ -53,10 +53,15 @@ def normalize_platform_name(platform_name):
 
 # Daily quota from the last API response: (remaining_today, max_per_day) or None
 LAST_ALLOWANCE = None
+MAX_THREADS = None
 # Quota counters from the last ssuser block. The API docs make quota handling by the client mandatory.
 QUOTA = {}
 _request_lock = threading.Lock()
 _last_request_at = 0.0
+_quota_lock = threading.Lock()
+_game_requests_in_flight = 0
+_api_thread_condition = threading.Condition()
+_api_requests_in_flight = 0
 _system_cache_lock = threading.Lock()
 _system_refresh_lock = threading.Lock()
 _system_cache = None
@@ -84,13 +89,17 @@ def load_account():
 
 
 def save_account(username, password):
-    global LAST_ALLOWANCE
+    global LAST_ALLOWANCE, MAX_THREADS
     os.makedirs(os.path.dirname(config.SCREENSCRAPER_ACCOUNT_PATH), exist_ok=True)
     with open(config.SCREENSCRAPER_ACCOUNT_PATH, "w", encoding="utf-8") as handle:
         json.dump({"username": username, "password": password}, handle)
     # The quota belongs to the account: the last known values are no longer valid.
-    LAST_ALLOWANCE = None
-    QUOTA.clear()
+    with _quota_lock:
+        LAST_ALLOWANCE = None
+        MAX_THREADS = None
+        QUOTA.clear()
+    with _api_thread_condition:
+        _api_thread_condition.notify_all()
     logger.info("ScreenScraper user account saved (complete: %s)", bool(username and password))
 
 
@@ -219,12 +228,31 @@ def resolve_system_id(platform_name, configured_system_id=None):
 def _wait_for_request_slot():
     global _last_request_at
     with _request_lock:
-        max_per_min = QUOTA.get("max_min")
+        with _quota_lock:
+            max_per_min = QUOTA.get("max_min")
         if max_per_min:
             wait = _last_request_at + 60.0 / max_per_min - time.monotonic()
             if wait > 0:
                 time.sleep(wait)
         _last_request_at = time.monotonic()
+
+
+def _acquire_api_thread():
+    global _api_requests_in_flight
+    with _api_thread_condition:
+        # The first ssuserInfos call must run before the server can report maxthreads.
+        limit = MAX_THREADS if isinstance(MAX_THREADS, int) and MAX_THREADS > 0 else 1
+        while _api_requests_in_flight >= limit:
+            _api_thread_condition.wait()
+            limit = MAX_THREADS if isinstance(MAX_THREADS, int) and MAX_THREADS > 0 else 1
+        _api_requests_in_flight += 1
+
+
+def _release_api_thread():
+    global _api_requests_in_flight
+    with _api_thread_condition:
+        _api_requests_in_flight = max(0, _api_requests_in_flight - 1)
+        _api_thread_condition.notify_all()
 
 
 _developer_credentials_lock = threading.Lock()
@@ -281,11 +309,14 @@ def _api_request(endpoint, params):
         "ssid": username,
         "sspassword": password,
     }
-    _wait_for_request_slot()
+    _acquire_api_thread()
     try:
+        _wait_for_request_slot()
         response = requests.get(API_BASE_URL + endpoint, params=query, timeout=30, allow_redirects=False)
     except requests.RequestException:
         raise ScreenScraperError("network", "request failed") from None
+    finally:
+        _release_api_thread()
     status = response.status_code
     if status == 404:
         return None
@@ -312,10 +343,8 @@ def _api_request(endpoint, params):
     return block
 
 
-def _update_allowance(ssuser):
-    """Store the quota counters of an ssuser block (also sent for users without an account)."""
-    global LAST_ALLOWANCE
-
+def _update_allowance_locked(ssuser, reset_counts=False):
+    global LAST_ALLOWANCE, MAX_THREADS
     def number(*names):
         for name in names:
             try:
@@ -331,36 +360,66 @@ def _update_allowance(ssuser):
         "max_ko_day": number("maxrequestskoperday"),
         # Spelled maxrequestspermin in ssuserInfos and maxrequestsperdmin in jeuInfos docs
         "max_min": number("maxrequestspermin", "maxrequestsperdmin"),
+        "max_threads": number("maxthreads"),
     }
-    QUOTA.update({key: value for key, value in values.items() if value is not None})
+    for key in ("today", "ko_today"):
+        value = values[key]
+        if value is not None:
+            QUOTA[key] = value if reset_counts else max(QUOTA.get(key, 0), value)
+    QUOTA.update({
+        key: value
+        for key, value in values.items()
+        if key not in ("today", "ko_today", "max_threads") and value is not None
+    })
+    if values["max_threads"] is not None:
+        MAX_THREADS = values["max_threads"]
+        with _api_thread_condition:
+            _api_thread_condition.notify_all()
     if QUOTA.get("max_day"):
         LAST_ALLOWANCE = (max(0, QUOTA["max_day"] - QUOTA.get("today", 0)), QUOTA["max_day"])
 
 
-def _check_quota():
-    """Stop before the server refuses with 430/431 when the known counters are used up."""
-    if QUOTA.get("max_day") and QUOTA.get("today", 0) >= QUOTA["max_day"]:
+def _check_quota_locked():
+    if QUOTA.get("max_day") and QUOTA.get("today", 0) + _game_requests_in_flight >= QUOTA["max_day"]:
         raise ScreenScraperError("quota", "daily request quota reached")
     if QUOTA.get("max_ko_day") and QUOTA.get("ko_today", 0) >= QUOTA["max_ko_day"]:
         raise ScreenScraperError("quota", "daily not-found quota reached")
 
 
+def _reserve_game_request():
+    global _game_requests_in_flight
+    with _quota_lock:
+        _check_quota_locked()
+        _game_requests_in_flight += 1
+
+
+def _release_game_request():
+    global _game_requests_in_flight
+    with _quota_lock:
+        _game_requests_in_flight = max(0, _game_requests_in_flight - 1)
+
+
 def quota_summary():
     """Remaining requests for today, for the logs."""
-    if not LAST_ALLOWANCE:
+    with _quota_lock:
+        allowance = LAST_ALLOWANCE
+    if not allowance:
         return "quota unknown"
-    remaining, maximum = LAST_ALLOWANCE
+    remaining, maximum = allowance
     return f"{remaining} of {maximum} requests left today"
 
 
 def _record_game_response(ssuser, found, origin):
-    if ssuser:
-        _update_allowance(ssuser)
-    else:
-        _update_allowance({
-            "requeststoday": QUOTA.get("today", 0) + 1,
-            "requestskotoday": QUOTA.get("ko_today", 0) + (0 if found else 1),
-        })
+    global _game_requests_in_flight
+    with _quota_lock:
+        if ssuser:
+            _update_allowance_locked(ssuser)
+        else:
+            _update_allowance_locked({
+                "requeststoday": QUOTA.get("today", 0) + 1,
+                "requestskotoday": QUOTA.get("ko_today", 0) + (0 if found else 1),
+            })
+        _game_requests_in_flight = max(0, _game_requests_in_flight - 1)
     # Batch downloads would log one line per game; their end-of-batch summary covers them.
     if origin != "media manager":
         logger.info(
@@ -641,15 +700,24 @@ def get_user_info():
     if niveau == "0":
         logger.warning("ScreenScraper login refused (level 0)")
         raise ScreenScraperError("auth", "ScreenScraper login refused")
-    _update_allowance(ssuser)
+    global MAX_THREADS
+    with _quota_lock:
+        MAX_THREADS = None
+        _update_allowance_locked(ssuser, reset_counts=True)
+    with _api_thread_condition:
+        _api_thread_condition.notify_all()
     logger.info("ScreenScraper login OK (level %s): %s", niveau, quota_summary())
     return LAST_ALLOWANCE
 
 
 def fetch_game_media(rom_filename, system_id, kinds, origin):
     """Return a game's downloaded media bytes by kind, without exposing upstream URLs."""
-    _check_quota()
-    game, ssuser = _query_game(rom_filename, system_id, kinds)
+    _reserve_game_request()
+    try:
+        game, ssuser = _query_game(rom_filename, system_id, kinds)
+    except Exception:
+        _release_game_request()
+        raise
     _record_game_response(ssuser, found=game is not None, origin=origin)
     if game is None:
         return None
@@ -659,8 +727,12 @@ def fetch_game_media(rom_filename, system_id, kinds, origin):
 
 def fetch_game_info(rom_filename, system_id, origin, kinds=("box", "ss")):
     """Return a game's ScreenScraper synopsis and the requested cover/screenshot bytes."""
-    _check_quota()
-    game, ssuser = _query_game(rom_filename, system_id, kinds)
+    _reserve_game_request()
+    try:
+        game, ssuser = _query_game(rom_filename, system_id, kinds)
+    except Exception:
+        _release_game_request()
+        raise
     _record_game_response(ssuser, found=game is not None, origin=origin)
     if game is None:
         return None

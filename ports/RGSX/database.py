@@ -531,6 +531,36 @@ def load_game_summary(
     }
 
 
+def load_game_summaries(
+    system_id: int,
+    rom_names: list[str],
+    db_path: str | os.PathLike[str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    names = list(dict.fromkeys(os.path.basename(str(name)) for name in rom_names if name))
+    if not names:
+        return {}
+
+    initialize_database(db_path)
+    summaries: dict[str, dict[str, Any]] = {}
+    with connect(db_path) as connection:
+        for offset in range(0, len(names), 900):
+            batch = names[offset:offset + 900]
+            placeholders = ",".join("?" for _ in batch)
+            rows = connection.execute(
+                f"SELECT rom_name, found, summary, cover_checked, screenshot_checked "
+                f"FROM screenscraper_game_summaries WHERE system_id = ? AND rom_name IN ({placeholders})",
+                (int(system_id), *batch),
+            ).fetchall()
+            for row in rows:
+                summaries[str(row["rom_name"])] = {
+                    "found": bool(row["found"]),
+                    "summary": str(row["summary"]),
+                    "cover_checked": bool(row["cover_checked"]),
+                    "screenshot_checked": bool(row["screenshot_checked"]),
+                }
+    return summaries
+
+
 def save_game_summary(
     system_id: int,
     rom_name: str,

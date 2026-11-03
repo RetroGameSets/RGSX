@@ -120,7 +120,9 @@ Dans la liste des jeux, la pochette locale d'un jeu sélectionné s'affiche imm�
 Dans **Pause > Scrap**, l'identifiant et le mot de passe ScreenScraper se modifient sur la même page : le clavier virtuel apparaît uniquement si une manette est détectée ; sinon, saisissez directement au clavier et utilisez Tab pour changer de champ puis **ENTRÉE** pour confirmer. Un message indiquera le quota restant. 
 Le compte est dans le fichier dédié `saves/ports/rgsx/screenscraper_account.json` et peut aussi être modifié depuis l'interface Web.
 
-Le Gestionnaire de médias permet les téléchargements en lot. Ses profils sont **Pochette** (`default`) et **Pochette + Capture + Résumé** (`max`). Chaque jeu coûte une requête de détails plus une requête par type de média : 2 requêtes pour Pochette, 3 pour le profil complet, comme affiché dans l'estimation. Les fichiers et résumés déjà présents en local, y compris les réponses « non trouvé », ne sont pas redemandés. Son raccourci de contrôle **Historique** lance, reprend ou annule le travail sans remonter à la première ligne.
+Le Gestionnaire de médias permet les téléchargements en lot. Ses profils sont **Pochette** (`default`) et **Pochette + Capture + Résumé** (`max`). Le nombre de jeux traités simultanément correspond à `ssuser.maxthreads`, vérifié auprès de `ssuserInfos.php` pour le compte enregistré ; le lancement attend cette vérification et ne démarre pas si la limite est absente ou invalide. Cette limite est distincte du quota de requêtes par minute, appliqué séparément. L'estimation compte une requête API par jeu, sans compter les téléchargements directs des images. Les plateformes affichent le nombre de jeux avec au moins une image locale. La liste des jeux signale également ces médias par une petite icône d'image. Les fichiers et résumés déjà présents en local ne sont pas redemandés : seuls les jeux ou types de médias manquants sont traités. Les réponses « non trouvé » sont mises en cache pour éviter des requêtes répétées. La file persistante peut être reprise après une annulation ou une limite de quota. Le raccourci de contrôle **Historique** lance, reprend ou annule le travail sans remonter à la première ligne.
+
+Dans l'interface Web, chaque plateforme propose les vues **Liste** et **Grille**. La grille affiche les Box2D présentes localement et un extrait des résumés en cache ; les boutons Box2D et Résumé sont aussi disponibles dans la liste. La vue choisie et le tri restent mémorisés dans un cookie du navigateur ; la grille est utilisée par défaut. Si un média est absent ou indisponible, la fenêtre propose **Rechercher sur ScreenScraper** : cette action lance une nouvelle recherche en arrière-plan, même si une réponse négative précédente est en cache. Les résultats et leur état sont affichés dans la fenêtre et utilisent le même cache local et la même base SQLite que l'application. Le verrou partagé évite qu'une recherche Web entre en conflit avec le Gestionnaire de médias.
 
 ### Base de données locale et migration
 
@@ -194,6 +196,7 @@ RGSX inclut une interface web qui se lance automatiquement quand vous utilisez R
 - 🔍 **Parcourir tous les systèmes** – Voir toutes les plateformes et jeux
 - ⬇️ **Téléchargements à distance** – Ajouter des téléchargements directement vers Batocera
 - 📊 **Statut en temps réel** – Voir les téléchargements actifs et l'historique
+- 🖼️ **Scrap ScreenScraper** – Sélectionner des plateformes, reprendre la file, suivre l'avancement et respecter la limite de threads du compte ; les médias déjà présents sont réutilisés
 - 🎮 **Même liste de jeux** – Utilise les mêmes sources que l'application principale
 
 

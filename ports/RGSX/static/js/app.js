@@ -1,7 +1,37 @@
         // ===== VARIABLES GLOBALES =====
+        const GAME_VIEW_OPTIONS = new Set(['list', 'grid']);
+        const GAME_SORT_OPTIONS = new Set(['name_asc', 'name_desc', 'size_asc', 'size_desc', 'date_asc', 'date_desc']);
+
+        function readGamePreferences() {
+            const cookie = document.cookie.split('; ').find(value => value.startsWith('rgsxGamePreferences='));
+            if (!cookie) return {};
+            try {
+                const preferences = JSON.parse(decodeURIComponent(cookie.slice(cookie.indexOf('=') + 1)));
+                if (!preferences || typeof preferences !== 'object') return {};
+                return {
+                    view: GAME_VIEW_OPTIONS.has(preferences.view) ? preferences.view : null,
+                    sort: GAME_SORT_OPTIONS.has(preferences.sort) ? preferences.sort : null
+                };
+            } catch (error) {
+                console.warn('Unable to read saved game view preferences.', error);
+                return {};
+            }
+        }
+
+        function saveGamePreferences() {
+            const preferences = {
+                view: GAME_VIEW_OPTIONS.has(currentGameView) ? currentGameView : 'grid',
+                sort: GAME_SORT_OPTIONS.has(currentGameSort) ? currentGameSort : 'name_asc'
+            };
+            document.cookie = `rgsxGamePreferences=${encodeURIComponent(JSON.stringify(preferences))}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        }
+
+        const savedGamePreferences = readGamePreferences();
         let currentPlatform = null;
-        let currentGameSort = 'name_asc'; // Type de tri actuel: 'name_asc', 'name_desc', 'size_asc', 'size_desc', 'date_asc', 'date_desc'
+        let currentGameSort = savedGamePreferences.sort || 'name_asc'; // Type de tri actuel: 'name_asc', 'name_desc', 'size_asc', 'size_desc', 'date_asc', 'date_desc'
         let currentGames = [];  // Stocke les jeux actuels pour le tri
+        let currentGameView = savedGamePreferences.view || 'grid';
+        let currentGameMedia = {};
         const loggedUnparsedSizeTexts = new Set();
         let lastProgressUpdate = Date.now();
         // Fixed for the page's life: going back reuses the images, reloading fetches them again.
@@ -9,6 +39,13 @@
         let autoRefreshTimeout = null;
         let progressInterval = null;
         let queueInterval = null;
+        let scrapInterval = null;
+        let webScrapSelected = new Set();
+        let webScrapSelectionLoaded = false;
+        let webScrapProfile = null;
+        let webScrapData = null;
+        let webScrapNotice = null;
+        let scrapLoadInFlight = false;
         let translations = {};  // Contiendra toutes les traductions
         function setWebTheme(theme, persist = true) {
             const selectedTheme = theme === 'legacy' ? 'legacy' : 'modern';
@@ -516,37 +553,6 @@
             }
         }
                
-        // Fonction pour mettre à jour la liste des jeux (clear cache)
-        async function updateGamesList() {
-            if (!confirm(t('web_update_title') + '\\n\\nThis will clear the cache and reload all games data.\\nThis may take a few moments.')) {
-                return;
-            }
-            
-            try {
-                // Afficher un message de chargement
-                const container = document.querySelector('.content');
-                const originalContent = container.innerHTML;
-                container.innerHTML = '<div class="loading" style="padding: 100px; text-align: center;"><h2>🔄 ' + t('web_update_title') + '</h2><p>' + t('web_update_message') + '</p><p style="margin-top: 20px; font-size: 0.9em; color: #666;">' + t('web_update_wait') + '</p></div>';
-                
-                const response = await fetch('/api/update-cache');
-                const data = await response.json();
-                
-                if (data.success) {
-                    // Attendre 2 secondes pour que le serveur se recharge
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    
-                    // Recharger la page
-                    location.reload();
-                } else {
-                    alert(t('web_error') + ': ' + (data.error || t('web_error_unknown')));
-                    container.innerHTML = originalContent;
-                }
-            } catch (error) {
-                alert(t('web_error_update', error.message));
-                location.reload();
-            }
-        }
-        
         // Détecter les blocages de progression et rafraîchir automatiquement
         function checkProgressTimeout() {
             const now = Date.now();
@@ -586,11 +592,15 @@
                 clearInterval(queueInterval);
                 queueInterval = null;
             }
+            if (scrapInterval) {
+                clearInterval(scrapInterval);
+                scrapInterval = null;
+            }
             
             // Mettre à jour l'UI - tabs desktop
             document.querySelectorAll('.tab[data-tab]').forEach(t => t.classList.remove('active'));
             const tabButtons = Array.from(document.querySelectorAll('.tab[data-tab]'));
-            const tabNames = ['platforms', 'downloads', 'queue', 'history', 'settings'];
+            const tabNames = ['platforms', 'downloads', 'queue', 'scrap', 'history', 'settings'];
             const tabIndex = tabNames.indexOf(tab);
             if (tabIndex >= 0 && tabButtons[tabIndex]) {
                 tabButtons[tabIndex].classList.add('active');
@@ -619,6 +629,10 @@
                 loadQueue();
                 // Rafraîchir la queue toutes les 2 secondes
                 queueInterval = setInterval(loadQueue, 2000);
+            }
+            else if (tab === 'scrap') {
+                loadScrap();
+                scrapInterval = setInterval(loadScrap, 2000);
             }
             else if (tab === 'history') loadHistory();
             else if (tab === 'settings') loadSettings();
@@ -658,6 +672,8 @@
                 showTab('history', false);
             } else if (path === '/settings') {
                 showTab('settings', false);
+            } else if (path === '/scrap') {
+                showTab('scrap', false);
             } else {
                 // État initial - définir l'historique sans recharger
                 window.history.replaceState({ tab: 'platforms' }, '', '/');
@@ -808,8 +824,8 @@
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
                                             ${game.size ? `<span style="background: #667eea; color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.9em; white-space: nowrap;">${game.size}</span>` : '<span></span>'}
                                             <div class="download-btn-group" style="display: flex; gap: 4px;">
-                                                <button class="download-btn" title="${downloadTitle} (now)" onclick='downloadGame("${platformName.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", ${escapeHtml(JSON.stringify(game.game_name))}, null, "now", ${escapeHtml(JSON.stringify(game.url))})' style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">⬇️</button>
-                                                <button class="download-btn" title="${downloadTitle} (queue)" onclick='downloadGame("${platformName.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", ${escapeHtml(JSON.stringify(game.game_name))}, null, "queue", ${escapeHtml(JSON.stringify(game.url))})' style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">➕</button>
+                                                <button class="download-btn" title="${downloadTitle} (now)" onclick='downloadGame("${platformName.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", ${escapeHtml(JSON.stringify(game.game_name))}, null, "now", ${escapeHtml(JSON.stringify(game.url))}, event.currentTarget)' style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">⬇️</button>
+                                                <button class="download-btn" title="${downloadTitle} (queue)" onclick='downloadGame("${platformName.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", ${escapeHtml(JSON.stringify(game.game_name))}, null, "queue", ${escapeHtml(JSON.stringify(game.url))}, event.currentTarget)' style="background: transparent; color: #28a745; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 1.5em; min-width: 40px;">➕</button>
                                             </div>
                                         </div>
                                     </div>
@@ -1381,10 +1397,206 @@
         function filterGames(searchTerm) {
             return applyAllFilters();
         }
+
+        function setGameView(view) {
+            if (!GAME_VIEW_OPTIONS.has(view)) return;
+            currentGameView = view;
+            saveGamePreferences();
+            renderGameItems();
+            sortGames(currentGameSort);
+            applyAllFilters();
+        }
+
+        function renderGameItems() {
+            const gamesList = document.querySelector('.games-list');
+            if (!gamesList) return;
+
+            const grid = currentGameView === 'grid';
+            const header = document.querySelector('.game-list-header');
+            const listButton = document.getElementById('game-view-list');
+            const gridButton = document.getElementById('game-view-grid');
+            gamesList.classList.toggle('is-grid', grid);
+            if (header) header.style.display = grid ? 'none' : '';
+            if (listButton) listButton.classList.toggle('active', !grid);
+            if (gridButton) gridButton.classList.toggle('active', grid);
+
+            gamesList.innerHTML = currentGames.map((game, index) => {
+                const name = String(game.name ?? '');
+                const media = currentGameMedia[name] || {};
+                const hasBox = Boolean(media.box2d);
+                const summary = String(media.summary || '');
+                const imageParams = new URLSearchParams({ platform: currentPlatform || '', game: name, kind: 'box' });
+                const image = hasBox
+                    ? `<img class="game-card-box-image" src="/api/game-media/image?${escapeHtml(imageParams)}" alt="${escapeHtml(name)}" loading="lazy">`
+                    : `<div class="game-card-box-placeholder">🖼</div>`;
+                const summaryPreview = summary
+                    ? escapeHtml(summary) + (summary.length >= 240 ? '…' : '')
+                    : `<span class="game-card-summary-empty">${escapeHtml(t('game_media_not_cached'))}</span>`;
+                const boxButtonLabel = hasBox
+                    ? `🖼 ${escapeHtml(t('game_media_box2d'))}`
+                    : `⬇ ${escapeHtml(t('game_media_box2d'))}`;
+                const summaryButtonLabel = summary
+                    ? `📝 ${escapeHtml(t('game_media_summary'))}`
+                    : `⬇ ${escapeHtml(t('game_media_summary'))}`;
+                const date = game.updated_at ? String(game.updated_at).slice(0, 10) : '-';
+                return `
+                    <div class="game-item${grid ? ' game-card' : ''}">
+                        ${grid ? `<div class="game-card-preview">${image}<p class="game-card-summary">${summaryPreview}</p></div>` : ''}
+                        <span class="game-name">${escapeHtml(name)}</span>
+                        <span class="game-size">${escapeHtml(game.size || '')}</span>
+                        <span class="game-date">${escapeHtml(date)}</span>
+                        <div class="download-btn-group">
+                            <button class="game-media-button" data-game-media-kind="box" data-game-index="${index}" title="${escapeHtml(t('game_media_box2d'))}">${boxButtonLabel}</button>
+                            <button class="game-media-button" data-game-media-kind="summary" data-game-index="${index}" title="${escapeHtml(t('game_media_summary'))}">${summaryButtonLabel}</button>
+                            <button class="download-btn game-download-action" data-download-mode="now" data-game-index="${index}" title="${escapeHtml(t('web_download'))}">⬇️</button>
+                            <button class="download-btn game-download-action" data-download-mode="queue" data-game-index="${index}" title="${escapeHtml(t('web_download'))} (${escapeHtml(t('web_added_to_queue'))})" style="background: #e0e0e0; color: #333;">➕</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            gamesList.querySelectorAll('[data-game-media-kind]').forEach(button => {
+                button.addEventListener('click', () => {
+                    const game = currentGames[Number(button.dataset.gameIndex)];
+                    if (game) openGameMedia(currentPlatform, game.name, button.dataset.gameMediaKind);
+                });
+            });
+            gamesList.querySelectorAll('.game-download-action').forEach(button => {
+                button.addEventListener('click', () => {
+                    const game = currentGames[Number(button.dataset.gameIndex)];
+                    if (game) {
+                        downloadGame(
+                            currentPlatform,
+                            game.name,
+                            Number(button.dataset.gameIndex),
+                            button.dataset.downloadMode,
+                            game.url,
+                            button
+                        );
+                    }
+                });
+            });
+        }
+
+        async function fetchGameMediaCatalog(platform) {
+            const params = new URLSearchParams({ platform });
+            const response = await fetch(`/api/game-media/catalog?${params}`);
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || t('web_error_unknown'));
+            return data.entries || {};
+        }
+
+        function gameMediaStatusMessage(payload, item) {
+            const jobStatus = item.job?.status;
+            if (jobStatus === 'queued' || jobStatus === 'running') return t('game_media_queued');
+            if (jobStatus === 'failed') return t('game_media_failed');
+            if (item.status === 'unavailable' || item.status === 'not_found') return t('game_media_unavailable');
+            if (!payload.screenscraper_enabled) return t('game_media_disabled');
+            if (!payload.account_configured) return t('game_media_account_required');
+            return t('game_media_unavailable');
+        }
+
+        async function renderGameMediaModal(modal, platform, game, kind) {
+            const content = modal.querySelector('.game-media-modal-content');
+            if (!content) return null;
+            const params = new URLSearchParams({ platform, game });
+            const response = await fetch(`/api/game-media?${params}`);
+            const payload = await response.json();
+            if (!response.ok || !payload.success) throw new Error(payload.error || t('web_error_unknown'));
+
+            const item = payload[kind];
+            let body = '';
+            if (item.available && kind === 'box') {
+                body = `<img class="game-media-modal-image" src="${escapeHtml(item.url)}" alt="${escapeHtml(game)}">`;
+            } else if (item.available) {
+                body = `<div class="game-media-modal-summary">${escapeHtml(item.text)}</div>`;
+            } else {
+                body = `<p class="game-media-modal-status">${escapeHtml(gameMediaStatusMessage(payload, item))}</p>`;
+                if (item.can_search && !['queued', 'running'].includes(item.job?.status)) {
+                    body += `<button type="button" class="game-media-search-link">${escapeHtml(t('game_media_search'))}</button>`;
+                }
+            }
+            content.innerHTML = body;
+            const searchButton = content.querySelector('.game-media-search-link');
+            if (searchButton) {
+                searchButton.addEventListener('click', () => requestGameMediaDownload(modal, platform, game, kind, true));
+            }
+            return { payload, item };
+        }
+
+        async function requestGameMediaDownload(modal, platform, game, kind, forceSearch = false) {
+            const content = modal.querySelector('.game-media-modal-content');
+            if (!content || content.dataset.requesting === 'true') return;
+            content.dataset.requesting = 'true';
+            content.innerHTML = `<p class="game-media-modal-status">${escapeHtml(t('game_media_searching'))}</p>`;
+            try {
+                const response = await fetch('/api/game-media/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ platform, game, kind, force_search: forceSearch })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    if (data.error === 'media_account_required') {
+                        content.innerHTML = `<p class="game-media-modal-status">${escapeHtml(t('game_media_account_required'))}</p>`;
+                    } else if (data.error === 'media_scraper_disabled') {
+                        content.innerHTML = `<p class="game-media-modal-status">${escapeHtml(t('game_media_disabled'))}</p>`;
+                    } else {
+                        content.innerHTML = `<p class="game-media-modal-status">${escapeHtml(t('game_media_failed'))}</p>`;
+                    }
+                    return;
+                }
+                for (let attempt = 0; attempt < 240 && modal.isConnected; attempt++) {
+                    const state = await renderGameMediaModal(modal, platform, game, kind);
+                    if (!state || !['queued', 'running'].includes(state.item.job?.status)) break;
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                }
+            } catch (error) {
+                content.innerHTML = `<p class="game-media-modal-status">${escapeHtml(t('game_media_failed'))}</p>`;
+            } finally {
+                if (content.isConnected) delete content.dataset.requesting;
+                const catalog = await fetchGameMediaCatalog(platform).catch(() => null);
+                if (catalog && currentPlatform === platform) {
+                    currentGameMedia = catalog;
+                    renderGameItems();
+                    sortGames(currentGameSort);
+                    applyAllFilters();
+                }
+            }
+        }
+
+        async function openGameMedia(platform, game, kind) {
+            const existing = document.getElementById('game-media-modal');
+            if (existing) existing.remove();
+            const title = kind === 'box' ? t('game_media_box2d') : t('game_media_summary');
+            const modal = document.createElement('div');
+            modal.id = 'game-media-modal';
+            modal.className = 'game-media-modal-overlay';
+            modal.innerHTML = `
+                <section class="game-media-modal-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+                    <header class="game-media-modal-header">
+                        <div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(game)}</p></div>
+                        <button class="game-media-modal-close" aria-label="${escapeHtml(t('game_media_close'))}">✕</button>
+                    </header>
+                    <div class="game-media-modal-content"><p>${escapeHtml(t('game_media_loading'))}</p></div>
+                </section>`;
+            const close = () => modal.remove();
+            modal.addEventListener('click', event => {
+                if (event.target === modal || event.target.closest('.game-media-modal-close')) close();
+            });
+            document.body.appendChild(modal);
+            try {
+                await renderGameMediaModal(modal, platform, game, kind);
+            } catch (error) {
+                const content = modal.querySelector('.game-media-modal-content');
+                if (content) content.innerHTML = `<p class="game-media-modal-status">${escapeHtml(t('game_media_failed'))}</p>`;
+            }
+        }
         
         // Trier les jeux
         function sortGames(sortType) {
             currentGameSort = sortType;
+            saveGamePreferences();
             const items = Array.from(document.querySelectorAll('.game-item'));
             const gamesList = document.querySelector('.games-list');
 
@@ -1577,7 +1789,6 @@
                     ? `<span class="platform-page-source">${databaseIconSvg()}<span>${escapeHtml(platformSource)}</span></span>`
                     : '';
                 let searchPlaceholder = t('web_search_game');
-                let downloadTitle = t('web_download');
                 let sortLabel = t('web_sort');
                 let sortNameAsc = t('web_sort_name_asc');
                 let sortNameDesc = t('web_sort_name_desc');
@@ -1638,40 +1849,36 @@
                         <button class="sort-btn" data-sort="date_desc" onclick="sortGames('date_desc')" title="${sortDateDesc}">${sortDateDesc}</button>
                     </div>
                     <div id="filter-status" style="margin-bottom: 8px; font-size: 0.9em; color: #666;"></div>
+                    <div class="game-view-toggle" role="group" aria-label="${escapeHtml(t('game_media_view'))}">
+                        <button id="game-view-list" class="active" onclick="setGameView('list')">${escapeHtml(t('game_media_view_list'))}</button>
+                        <button id="game-view-grid" onclick="setGameView('grid')">${escapeHtml(t('game_media_view_grid'))}</button>
+                    </div>
                     <div class="game-list-header">
                         <span>${t('game_header_name')}</span>
                         <span>${t('game_header_size')}</span>
                         <span>${t('game_header_date')}</span>
                         <span></span>
                     </div>
-                    <div class="games-list">`;
-                
-                // Ajouter chaque jeu
-                data.games.forEach((g, idx) => {
-                    html += `
-                        <div class="game-item">
-                            <span class="game-name">${g.name}</span>
-                            <span class="game-size">${g.size || ''}</span>
-                            <span class="game-date">${g.updated_at ? String(g.updated_at).slice(0, 10) : '-'}</span>
-                            <div class="download-btn-group" style="display: flex; gap: 4px;">
-                                <button class="download-btn" title="${downloadTitle} (now)" onclick='downloadGame("${platform.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", currentGames[${idx}].name, ${idx}, "now", currentGames[${idx}].url)'>⬇️</button>
-                                <button class="download-btn" title="${downloadTitle} (queue)" onclick='downloadGame("${platform.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", currentGames[${idx}].name, ${idx}, "queue", currentGames[${idx}].url)' style="background: #e0e0e0; color: #333;">➕</button>
-                            </div>
-                        </div>
-                    `;
-                });
-                
-                html += `
-                    </div>
-                `;
+                    <div class="games-list"></div>`;
                 currentGames = data.games;
+                currentGameMedia = {};
                 container.innerHTML = html;
+                renderGameItems();
                 
                 // Restore filter states from loaded settings
                 restoreFilterStates();
                 
                 // Appliquer le tri par défaut (A-Z)
                 sortGames(currentGameSort);
+                fetchGameMediaCatalog(platform).then(entries => {
+                    if (currentPlatform !== platform) return;
+                    currentGameMedia = entries;
+                    renderGameItems();
+                    sortGames(currentGameSort);
+                    applyAllFilters();
+                }).catch(error => {
+                    console.warn('Unable to load cached game media.', error);
+                });
                 
             } catch (error) {
                 let backText = t('web_back');
@@ -1690,15 +1897,15 @@
         }
         
         // Télécharger un jeu
-        async function downloadGame(platform, gameName, gameIndex) {
-            const btn = event.target;
+        async function downloadGame(platform, gameName, gameIndex, mode = 'now', gameUrl = '', button = null) {
+            const btn = button;
+            if (!btn) return;
             btn.disabled = true;
             btn.textContent = '⏳';
             btn.title = t('web_download') + '...';
-            const mode = arguments.length > 3 ? arguments[3] : 'now';
             try {
                 // Préparer le body de la requête
-                const requestBody = { platform: platform, game_name: gameName, game_url: arguments[4] };
+                const requestBody = { platform: platform, game_name: gameName, game_url: gameUrl };
                 if (typeof gameIndex === 'number' && gameIndex >= 0) {
                     requestBody.game_index = gameIndex;
                 }
@@ -2099,6 +2306,233 @@
         }
         
         // Charger l'historique
+        function webScrapStatusText(data) {
+            if (data.busy_elsewhere) return t('media_job_busy');
+            if (!data.screenscraper_enabled) return t('media_scraper_disabled');
+            if (!data.account_configured) return t('media_account_required');
+            if (data.running) {
+                const progress = data.progress || {};
+                return t('media_toast_progress', progress.done || 0, progress.total || 0);
+            }
+            if (data.status) return t(data.status.key, ...(data.status.args || []));
+            if (!data.thread_limit_ready) return t('media_threads_loading');
+            if (!data.max_threads) return t('media_threads_unavailable');
+            return '';
+        }
+
+        function updateWebScrapEstimate() {
+            if (!webScrapData) return;
+            const profile = document.getElementById('web-scrap-profile')?.value || webScrapProfile || 'default';
+            const groups = (webScrapData.platforms || []).filter(group =>
+                group.supported && webScrapSelected.has(group.folder)
+            );
+            const games = groups.reduce((total, group) => {
+                const count = webScrapData.media_counts_ready && profile === 'default'
+                    ? (group.missing_count ?? group.count)
+                    : group.count;
+                return total + count;
+            }, 0);
+            const estimate = document.getElementById('web-scrap-estimate');
+            if (estimate) estimate.textContent = t('media_estimate', games, games);
+        }
+
+        async function loadScrap() {
+            const container = document.getElementById('scrap-content');
+            if (!container || scrapLoadInFlight) return;
+            scrapLoadInFlight = true;
+            const scrollTop = container.scrollTop;
+            const focusedAction = document.activeElement?.dataset?.scrapAction;
+            const focusedFolder = document.activeElement?.dataset?.scrapFolder;
+
+            try {
+                const response = await fetch('/api/media/status', { cache: 'no-store' });
+                const data = await response.json();
+                if (!response.ok || !data.success) throw new Error(data.error || 'media_status_failed');
+                webScrapData = data;
+                if (!webScrapSelectionLoaded) {
+                    webScrapSelected = new Set(data.selected || []);
+                    webScrapSelectionLoaded = true;
+                }
+                if (webScrapProfile === null || data.running) webScrapProfile = data.profile || 'default';
+
+                const progress = data.progress || {};
+                const total = Number(progress.total || 0);
+                const done = Number(progress.done || 0);
+                const percent = total ? Math.max(0, Math.min(100, Math.round(done * 100 / total))) : 0;
+                const statusText = webScrapNotice || webScrapStatusText(data);
+                const accountAction = [
+                    !data.account_configured
+                        ? `<button type="button" class="btn-action" data-scrap-action="settings">${escapeHtml(t('web_tab_settings'))}</button>`
+                        : '',
+                    !data.screenscraper_enabled
+                        ? `<button type="button" class="btn-action" data-scrap-action="enable">${escapeHtml(t('menu_screenscraper_enable'))}</button>`
+                        : ''
+                ].join('');
+                const canChange = !data.running && !data.busy_elsewhere;
+                const canStart = canChange && data.account_configured && data.screenscraper_enabled;
+                const hasSelection = (data.platforms || []).some(group =>
+                    group.supported && webScrapSelected.has(group.folder)
+                );
+                const platformCards = (data.platforms || []).map(group => {
+                    const folder = String(group.folder || '');
+                    const checked = webScrapSelected.has(folder);
+                    const unsupported = !group.supported;
+                    const scrapedText = data.media_counts_ready
+                        ? t('media_platform_progress', group.scraped_count || 0, group.count || 0)
+                        : t('media_scan_in_progress');
+                    const missingText = data.media_counts_ready
+                        ? t('media_scrap_missing', group.missing_count || 0)
+                        : '';
+                    return `
+                        <label class="media-scrap-platform${checked ? ' is-selected' : ''}${unsupported ? ' is-unsupported' : ''}">
+                            <input type="checkbox" data-scrap-folder="${escapeHtml(folder)}"
+                                ${checked ? 'checked' : ''} ${unsupported || !canChange ? 'disabled' : ''}>
+                            <span class="media-scrap-platform-info">
+                                <strong>${escapeHtml(group.label || folder)}</strong>
+                                <span class="media-scrap-platform-summary">${escapeHtml(scrapedText)}</span>
+                                ${missingText ? `<small class="media-scrap-platform-missing">${escapeHtml(missingText)}</small>` : ''}
+                            </span>
+                            ${unsupported ? `<span class="media-scrap-unsupported">${escapeHtml(t('media_unsupported'))}</span>` : ''}
+                        </label>`;
+                }).join('');
+
+                let html = `<section class="media-scrap">
+                    <h2>${escapeHtml(t('media_manager_title'))}</h2>
+                    <div class="media-scrap-overview">
+                        <div class="info-item">${escapeHtml(data.allowance
+                            ? t('media_allowance', data.allowance[0], data.allowance[1])
+                            : t('media_allowance_unknown'))}</div>
+                        <div class="info-item">${escapeHtml(data.thread_limit_ready
+                            ? (data.max_threads ? t('media_thread_limit', data.max_threads) : t('media_threads_unavailable'))
+                            : t('media_threads_loading'))}</div>
+                        <div class="info-item" id="web-scrap-estimate"></div>
+                        <div class="info-item">${escapeHtml(t('media_scrap_queue', data.pending || 0))}</div>
+                    </div>
+                    ${statusText ? `<div class="media-scrap-status" role="status" aria-live="polite">${escapeHtml(statusText)}</div>` : ''}
+                    ${(data.running || total) ? `<div class="media-scrap-progress">
+                        <div class="media-scrap-progress-track"><span style="width:${percent}%"></span></div>
+                        <span>${escapeHtml(t('media_progress', done, total, progress.found || 0, progress.not_found || 0, progress.errors || 0))}</span>
+                    </div>` : ''}
+                    ${accountAction}
+                    <div class="media-scrap-toolbar">
+                        <label>${escapeHtml(t('media_profile'))}
+                            <select id="web-scrap-profile" ${canChange ? '' : 'disabled'}>
+                                <option value="default" ${webScrapProfile === 'default' ? 'selected' : ''}>${escapeHtml(t('media_profile_default'))}</option>
+                                <option value="max" ${webScrapProfile === 'max' ? 'selected' : ''}>${escapeHtml(t('media_profile_max'))}</option>
+                            </select>
+                        </label>
+                        <button type="button" class="btn-action" data-scrap-action="select-all" ${canChange ? '' : 'disabled'}>${escapeHtml(t('media_select_all'))}</button>
+                        ${data.running
+                            ? `<button type="button" class="btn-action" data-scrap-action="cancel">${escapeHtml(t('media_cancel'))}</button>`
+                            : `<button type="button" class="btn-action" data-scrap-action="start" ${canStart && hasSelection ? '' : 'disabled'}>${escapeHtml(t('media_start'))}</button>
+                               ${(data.pending || 0) > 0 ? `<button type="button" class="btn-action" data-scrap-action="resume" ${canStart ? '' : 'disabled'}>${escapeHtml(t('media_resume', data.pending))}</button>` : ''}`}
+                    </div>
+                    ${!data.media_counts_ready ? `<p>${escapeHtml(t('media_scan_in_progress'))}</p>` : ''}
+                    <div class="media-scrap-platforms">${platformCards || `<p>${escapeHtml(t('web_no_results'))}</p>`}</div>
+                </section>`;
+                container.innerHTML = html;
+                updateWebScrapEstimate();
+                container.scrollTop = scrollTop;
+
+                container.querySelectorAll('[data-scrap-folder]').forEach(input => {
+                    input.addEventListener('change', event => {
+                        const folder = event.currentTarget.dataset.scrapFolder;
+                        if (event.currentTarget.checked) webScrapSelected.add(folder);
+                        else webScrapSelected.delete(folder);
+                        updateWebScrapEstimate();
+                    });
+                });
+                container.querySelector('[data-scrap-action="select-all"]')?.addEventListener('click', () => {
+                    const supported = (data.platforms || []).filter(group => group.supported).map(group => group.folder);
+                    const allSelected = supported.length > 0 && supported.every(folder => webScrapSelected.has(folder));
+                    webScrapSelected = allSelected ? new Set() : new Set(supported);
+                    container.querySelectorAll('[data-scrap-folder]').forEach(input => {
+                        input.checked = webScrapSelected.has(input.dataset.scrapFolder);
+                    });
+                    updateWebScrapEstimate();
+                });
+                container.querySelector('#web-scrap-profile')?.addEventListener('change', event => {
+                    webScrapProfile = event.currentTarget.value;
+                    updateWebScrapEstimate();
+                });
+                container.querySelector('[data-scrap-action="start"]')?.addEventListener('click', () => startWebScrap(false));
+                container.querySelector('[data-scrap-action="resume"]')?.addEventListener('click', () => startWebScrap(true));
+                container.querySelector('[data-scrap-action="cancel"]')?.addEventListener('click', cancelWebScrap);
+                container.querySelector('[data-scrap-action="settings"]')?.addEventListener('click', () => showTab('settings'));
+                container.querySelector('[data-scrap-action="enable"]')?.addEventListener('click', () => toggleWebScraper(true));
+
+                if (focusedFolder) {
+                    [...container.querySelectorAll('[data-scrap-folder]')]
+                        .find(input => input.dataset.scrapFolder === focusedFolder)?.focus();
+                } else if (focusedAction) {
+                    container.querySelector(`[data-scrap-action="${focusedAction}"]`)?.focus();
+                }
+                webScrapNotice = null;
+            } catch (error) {
+                container.innerHTML = `<p class="media-scrap-status" role="alert">${escapeHtml(t('media_error', error.message))}</p>`;
+            } finally {
+                scrapLoadInFlight = false;
+            }
+        }
+
+        async function startWebScrap(resume) {
+            try {
+                const response = await fetch('/api/media/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        profile: document.getElementById('web-scrap-profile')?.value || webScrapProfile || 'default',
+                        folders: [...webScrapSelected],
+                        resume
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    webScrapNotice = translations[data.error] ? t(data.error) : t('media_error', data.error || 'media_start_failed');
+                } else {
+                    webScrapNotice = null;
+                    if (!resume) webScrapSelectionLoaded = false;
+                }
+            } catch (error) {
+                webScrapNotice = t('media_error', error.message);
+            }
+            await loadScrap();
+        }
+
+        async function cancelWebScrap() {
+            try {
+                const response = await fetch('/api/media/cancel', { method: 'POST' });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    webScrapNotice = translations[data.error] ? t(data.error) : t('media_error', data.error || 'media_cancel_failed');
+                } else {
+                    webScrapNotice = null;
+                }
+            } catch (error) {
+                webScrapNotice = t('media_error', error.message);
+            }
+            await loadScrap();
+        }
+
+        async function toggleWebScraper(enabled) {
+            try {
+                const response = await fetch('/api/media/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    webScrapNotice = translations[data.error] ? t(data.error) : t('media_error', data.error || 'media_toggle_failed');
+                } else {
+                    webScrapNotice = null;
+                }
+            } catch (error) {
+                webScrapNotice = t('media_error', error.message);
+            }
+            await loadScrap();
+        }
+
         async function loadHistory() {
             const container = document.getElementById('history-content');
             container.innerHTML = '<div class="loading">⏳ ' + t('web_loading') + '</div>';

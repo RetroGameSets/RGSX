@@ -2416,6 +2416,8 @@ def draw_game_list(screen):
     size_col_width = min(150, max(120, int(inner_col_width * 0.13)))
     date_col_width = min(145, max(115, int(inner_col_width * 0.15))) if show_date_column else 0
     name_col_width = max(40, inner_col_width - ext_col_width - size_col_width - date_col_width)
+    media_folder = (getattr(config, "platform_dict_by_name", {}).get(platform) or {}).get("folder", "")
+    from media_manager import has_local_media
 
     # ---- En-tête ----
     header_name = _("game_header_name")
@@ -2461,6 +2463,7 @@ def draw_game_list(screen):
 
         # Vérifier si le jeu est déjà téléchargé en comparant le nom réel sans extension
         is_downloaded = is_game_downloaded(platform, item.name)
+        has_scraped_media = bool(media_folder and has_local_media(media_folder, item.name))
         
         ext_text = truncate_text_end(get_display_extension(item.name), config.small_font, ext_col_width - 8)
         size_text = truncate_text_end(format_game_size(size_val) or "N/A", config.small_font, size_col_width - 8)
@@ -2469,7 +2472,13 @@ def draw_game_list(screen):
         
         # Ajouter un marqueur vert si le jeu est déjà téléchargé
         prefix = "[>] " if is_downloaded else ""
-        truncated_name = truncate_text_middle(prefix + game_name, config.small_font, name_col_width, is_filename=False)
+        media_icon_width = 16 if has_scraped_media else 0
+        truncated_name = truncate_text_middle(
+            prefix + game_name,
+            config.small_font,
+            max(1, name_col_width - media_icon_width),
+            is_filename=False,
+        )
         
         # Utiliser une couleur verte pour les jeux téléchargés
         name_color = (100, 255, 100) if is_downloaded else color  # Vert clair si téléchargé
@@ -2480,7 +2489,7 @@ def draw_game_list(screen):
         row_center_y = list_start_y + (i - config.scroll_offset) * line_height + line_height // 2
         # Position nom (aligné à gauche dans la boite)
         name_rect = name_surface.get_rect()
-        name_rect.midleft = (rect_x + 20, row_center_y)
+        name_rect.midleft = (rect_x + 20 + media_icon_width, row_center_y)
         ext_rect = ext_surface.get_rect()
         ext_rect.center = (rect_x + rect_width - 20 - date_col_width - size_col_width - ext_col_width // 2, row_center_y)
         size_rect = size_surface.get_rect()
@@ -2512,6 +2521,26 @@ def draw_game_list(screen):
             border_rect = pygame.Rect(rect_x + 20, row_center_y - glow_height // 2, glow_width, glow_height)
             pygame.draw.rect(screen, (*THEME_COLORS["fond_lignes"][:3], 120), border_rect, width=1, border_radius=8)
         
+        if has_scraped_media:
+            icon_rect = pygame.Rect(rect_x + 22, row_center_y - 6, 12, 12)
+            icon_color = THEME_COLORS.get("green", (100, 255, 100))
+            pygame.draw.rect(screen, icon_color, icon_rect, 1, border_radius=2)
+            pygame.draw.circle(screen, icon_color, (icon_rect.right - 3, icon_rect.top + 3), 1)
+            pygame.draw.polygon(
+                screen,
+                icon_color,
+                ((icon_rect.left + 1, icon_rect.bottom - 1),
+                 (icon_rect.left + 4, icon_rect.top + 6),
+                 (icon_rect.left + 6, icon_rect.bottom - 1)),
+            )
+            pygame.draw.polygon(
+                screen,
+                icon_color,
+                ((icon_rect.left + 5, icon_rect.bottom - 1),
+                 (icon_rect.left + 8, icon_rect.top + 5),
+                 (icon_rect.right - 1, icon_rect.bottom - 1)),
+            )
+
         screen.blit(name_surface, name_rect)
         screen.blit(ext_surface, ext_rect)
         screen.blit(size_surface, size_rect)
@@ -4994,6 +5023,12 @@ def draw_media_manager(screen):
         info_lines.append((_("media_allowance").format(manager.allowance[0], manager.allowance[1]), THEME_COLORS["text"]))
     else:
         info_lines.append((_("media_allowance_unknown"), THEME_COLORS["text"]))
+    if manager.max_threads:
+        info_lines.append((_("media_thread_limit").format(manager.max_threads), THEME_COLORS["text"]))
+    elif manager.account_configured and not manager.thread_limit_ready.is_set():
+        info_lines.append((_("media_threads_loading"), THEME_COLORS["text"]))
+    if not manager.media_counts_ready:
+        info_lines.append((_("media_scan_in_progress"), THEME_COLORS["text"]))
     games, per_game, capacity = manager.estimate()
     info_lines.append((_("media_estimate").format(games, games * per_game), THEME_COLORS["text"]))
     if capacity is not None and capacity < games:
@@ -5001,10 +5036,12 @@ def draw_media_manager(screen):
     if manager.running or manager.progress["total"]:
         p = manager.progress
         info_lines.append((_("media_progress").format(p["done"], p["total"], p["found"], p["not_found"], p["errors"]), THEME_COLORS["text"]))
-        if manager.running and manager.current:
-            info_lines.append((_("media_current_game").format(manager.current["game"]), THEME_COLORS["text"]))
-            found = manager.current["found"]
-            if found is not None:
+        if manager.running:
+            for current in manager.active_games:
+                info_lines.append((_("media_current_game").format(current["game"]), THEME_COLORS["text"]))
+                found = current["found"]
+                if found is None:
+                    continue
                 details = ", ".join(_("media_kind_" + kind).format(value) for kind, value in found.items())
                 info_lines.append((_("media_found_line").format(details), THEME_COLORS["text"]))
     if manager.status and not manager.running:
@@ -5053,7 +5090,14 @@ def draw_media_manager(screen):
             text = f"{checkbox} {_('media_select_all')}"
         elif group["platform_id"]:
             checkbox = "[X]" if group["folder"] in manager.selected else "[ ]"
-            text = f"{checkbox}   {group['label']} ({group['count']})"
+            if manager.media_counts_ready:
+                progress = _("media_platform_progress").format(
+                    group.get("scraped_count", 0),
+                    group["count"],
+                )
+                text = f"{checkbox}   {group['label']} ({progress})"
+            else:
+                text = f"{checkbox}   {group['label']} ({group['count']})"
         else:
             # Platform without a ScreenScraper system id: disabled/greyed out
             text = f"[-]   {group['label']} - {_('media_unsupported')}"
@@ -6146,42 +6190,51 @@ def draw_popup(screen):
 
 
 def draw_toast(screen):
-    """Affiche une notification toast dans le coin supérieur droit (2s max).
-    
-    Utilise config.toast_message pour le contenu.
-    Utilise config.toast_duration (par défaut 2000ms) pour la durée.
-    """
-    if not hasattr(config, 'toast_message') or not config.toast_message:
-        return
-    
-    if not hasattr(config, 'toast_start_time'):
-        config.toast_start_time = pygame.time.get_ticks()
-    
+    """Affiche les notifications temporaires et le suivi persistant du scrap."""
     current_time = pygame.time.get_ticks()
-    elapsed = current_time - config.toast_start_time
-    
-    # Durée configurable (par défaut 2000ms)
-    toast_duration = getattr(config, 'toast_duration', 2000)
-    
-    # Disparaître après la durée définie
-    if elapsed > toast_duration:
-        config.toast_message = ""
-        config.toast_start_time = 0
-        return
-    
-    # Animation: fade out dans les 300ms finales
+    from media_manager import manager
+    media_toast = manager.running
+    media_notification = media_toast or (
+        manager.toast_notification and current_time < getattr(manager, "toast_until", 0)
+    )
+    if media_toast:
+        message = _("media_toast_progress").format(
+            manager.progress["done"],
+            manager.progress["total"],
+        )
+        toast_duration = None
+        elapsed = 0
+    elif manager.toast_notification and current_time < getattr(manager, "toast_until", 0):
+        key, args = manager.toast_notification
+        message = _(key).format(*args)
+        toast_duration = manager.toast_duration
+        elapsed = current_time - manager.toast_start_time
+    else:
+        if not hasattr(config, 'toast_message') or not config.toast_message:
+            return
+        if not hasattr(config, 'toast_start_time'):
+            config.toast_start_time = current_time
+        elapsed = current_time - config.toast_start_time
+        toast_duration = getattr(config, 'toast_duration', 2000)
+        if elapsed > toast_duration:
+            config.toast_message = ""
+            config.toast_start_time = 0
+            return
+        message = config.toast_message
+
     opacity = 255
-    fade_start = max(0, toast_duration - 300)
-    if elapsed > fade_start:
-        opacity = int(255 * (1 - (elapsed - fade_start) / 300))
+    if toast_duration is not None:
+        fade_start = max(0, toast_duration - 300)
+        if elapsed > fade_start:
+            opacity = int(255 * (1 - (elapsed - fade_start) / 300))
     
     # Créer une surface temporaire pour le toast
     toast_padding = 15
     line_height = config.small_font.get_height() + 6
     
-    text_lines = config.toast_message.split('\n')
+    text_lines = message.split('\n')
     wrapped_lines = []
-    max_width = int(config.screen_width * 0.3)  # Max 30% de la largeur
+    max_width = int(config.screen_width * (0.25 if media_notification else 0.3))
     
     for line in text_lines:
         if line.strip() == "":
@@ -6190,6 +6243,9 @@ def draw_toast(screen):
             wrapped_lines.extend(wrap_text(line, config.small_font, max_width - 2 * toast_padding))
     
     toast_width = max_width
+    if media_notification:
+        widest_line = max((config.small_font.size(line)[0] for line in wrapped_lines), default=0)
+        toast_width = min(max_width, max(150, widest_line + 2 * toast_padding))
     toast_height = len(wrapped_lines) * line_height + 2 * toast_padding
     
     # Position: coin supérieur droit
