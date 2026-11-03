@@ -857,6 +857,27 @@ def _release_file_selection(session: requests.Session, torrent_hash: str, file_i
         logger.debug("qbittorrent_backend: désélection du fichier échouée: %s", exc)
 
 
+def _recheck_torrent(session: requests.Session, torrent_hash: str) -> None:
+    """Fichiers retirés du disque depuis un précédent téléchargement : qBittorrent reste en erreur,
+    ou se croit terminé tant qu'il n'a rien relu. Après revérification, il retélécharge ce qui manque."""
+    logger.info("qbittorrent_backend: fichiers du torrent absents, revérification de %s", torrent_hash)
+    try:
+        session.post(_url("/api/v2/torrents/recheck"), data={"hashes": torrent_hash},
+                     headers={"Referer": _base_url}, timeout=15)
+        # Un torrent arrêté le reste après la revérification
+        session.post(_url("/api/v2/torrents/resume"), data={"hashes": torrent_hash},
+                     headers={"Referer": _base_url}, timeout=5)
+    except requests.exceptions.RequestException as exc:
+        logger.debug("qbittorrent_backend: revérification échouée: %s", exc)
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        info = _torrent_info_by_hash(session, torrent_hash)
+        state = str((info or {}).get("state") or "")
+        if not info or (state != "missingFiles" and (state.startswith("checking") or float(info.get("progress") or 0) < 1.0)):
+            break
+        time.sleep(0.5)
+
+
 def _get_target_file_progress(files: list[dict], target_file_index: int | None, fallback_size: int) -> tuple[int, int, bool]:
     if target_file_index is None:
         normalized_size = max(0, int(fallback_size or 0))
@@ -1161,6 +1182,7 @@ def download_torrent_via_qbittorrent(
     registered_download_reference = False
     torrent_hash = None
     target_file_index = None
+    files_rechecked = False
 
     try:
         if progress_queue is not None:
@@ -1268,6 +1290,10 @@ def download_torrent_via_qbittorrent(
             if size > 0 or progress_queue is not None:
                 progress_queue.put((task_id, min(downloaded, size), size, speed_mib_s, active_senders, peers, phase))
 
+            if state == "missingFiles" and not files_rechecked:
+                files_rechecked = True
+                _recheck_torrent(session, torrent_hash)
+                continue
             if state in _ERROR_STATES:
                 raise RuntimeError(f"qBittorrent: état d'erreur ({state})")
 
@@ -1275,6 +1301,10 @@ def download_torrent_via_qbittorrent(
                 content_path = str(info.get("content_path") or "")
                 downloaded_path = _resolve_downloaded_file(content_path, temp_dir, relative_path, fallback_name)
                 if not downloaded_path or not os.path.isfile(downloaded_path):
+                    if not files_rechecked:
+                        files_rechecked = True
+                        _recheck_torrent(session, torrent_hash)
+                        continue
                     raise FileNotFoundError(f"Fichier téléchargé introuvable pour {relative_path}")
                 # Le téléchargement lui-même est terminé et intact à partir d'ici : un échec
                 # de finalisation (hard-link/copie vers dest_path) ne doit plus effacer
