@@ -1,4 +1,5 @@
 from pathlib import Path
+import errno
 import collections
 import io
 import shutil
@@ -2231,6 +2232,12 @@ def check_extension_before_download(url, platform, game_name):
         except Exception:
             pass
 
+        # Arcade: l'archive est le jeu, les émulateurs lisent le romset compressé. Sans es_systems.cfg (Docker),
+        # le système est inconnu et l'archive serait extraite puis supprimée.
+        if dest_folder_name in ("fbneo", "arcade", "neogeo", "naomi") and extension in (".zip", ".7z"):
+            logger.debug(f"Romset arcade {sanitized_name}, pas d'extraction automatique")
+            return (url, platform, game_name, False)
+
         if is_supported:
             logger.debug(f"L'extension de {sanitized_name} est supportée pour {platform}")
             return (url, platform, game_name, False)
@@ -2938,9 +2945,24 @@ def _handle_special_platforms(dest_dir, archive_path, before_dirs, iso_before=No
     
     return True, None
 
+def _check_room_for_extraction(dest_dir, members):
+    """Renvoie le message d'erreur si les fichiers (nom, taille) ne tiennent pas dans dest_dir.
+
+    Le téléchargement n'a vérifié que la place de l'archive. Un fichier remplacé rend la sienne.
+    """
+    from network import _ensure_sufficient_disk_space
+    required = 0
+    for name, size in members:
+        target = os.path.join(dest_dir, name)
+        required += max(0, size - (os.path.getsize(target) if os.path.isfile(target) else 0))
+    has_space, message = _ensure_sufficient_disk_space(dest_dir, required)
+    return None if has_space else message
+
 def extract_zip(zip_path, dest_dir, url):
     """Extrait le contenu du fichier ZIP dans le dossier cible avec un suivi progressif de la progression."""
     logger.debug(f"Extraction de {zip_path} dans {dest_dir}")
+    written_files = []
+    extraction_done = False
     try:
         # Capture état initial
         before_dirs = _capture_directories_before_extraction(dest_dir)
@@ -2954,7 +2976,10 @@ def extract_zip(zip_path, dest_dir, url):
 
         # Vérification et extraction
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.testzip()  # Vérifier l'intégrité de l'archive
+            # Vérifier l'intégrité de l'archive
+            bad_member = zip_ref.testzip()
+            if bad_member:
+                raise zipfile.BadZipFile(f"Bad CRC-32 for file '{bad_member}'")
             
             # Pré-analyse pour détecter les conflits fichier/dossier
             all_paths = set()
@@ -2980,9 +3005,13 @@ def extract_zip(zip_path, dest_dir, url):
             # Tout '..' est refusé : même revenu dans le dossier, le chemin en a créé d'autres au passage
             base_dir = os.path.realpath(dest_dir)
             for file_path in file_paths - conflicts:
-                if '..' in file_path.split(os.sep) or not os.path.realpath(os.path.join(base_dir, file_path)).startswith(os.path.join(base_dir, '')):
+                target_path = os.path.realpath(os.path.join(base_dir, file_path))
+                if '..' in file_path.split(os.sep) or not target_path.startswith(os.path.join(base_dir, '')):
                     logger.error(f"Archive refusée, chemin hors de {dest_dir}: {file_path}")
                     return False, _("utils_archive_unsafe_path").format(file_path)
+                if os.path.isdir(target_path) and os.listdir(target_path):
+                    logger.error(f"Archive refusée, un dossier non vide porte le nom du fichier: {target_path}")
+                    return False, _("utils_archive_folder_conflict").format(file_path)
             
             total_size = sum(info.file_size for info in zip_ref.infolist() if not info.is_dir())
             logger.info(f"Taille totale à extraire: {total_size} octets")
@@ -2990,6 +3019,13 @@ def extract_zip(zip_path, dest_dir, url):
             if total_size == 0:
                 logger.warning("ZIP vide ou ne contenant que des dossiers")
                 return True, "ZIP vide extrait avec succès"
+
+            low_space_message = _check_room_for_extraction(
+                dest_dir,
+                [(info.filename.replace('/', os.sep), info.file_size) for info in zip_ref.infolist() if not info.is_dir()]
+            )
+            if low_space_message:
+                raise OSError(errno.ENOSPC, low_space_message)
 
             # Variables de progression
             extracted_size = 0
@@ -3031,9 +3067,9 @@ def extract_zip(zip_path, dest_dir, url):
                 try:
                     # Vérifier si un dossier existe avec le même nom (conflit)
                     if os.path.isdir(file_path):
-                        logger.warning(f"Conflit: dossier existant avec le même nom que le fichier {file_path}, suppression du dossier")
+                        logger.warning(f"Conflit: dossier vide existant avec le même nom que le fichier {file_path}, suppression du dossier")
                         try:
-                            shutil.rmtree(file_path)
+                            os.rmdir(file_path)
                         except Exception as rm_err:
                             logger.error(f"Impossible de supprimer le dossier {file_path}: {rm_err}")
                             raise
@@ -3045,7 +3081,11 @@ def extract_zip(zip_path, dest_dir, url):
                         except Exception:
                             pass
                     
+                    already_there = os.path.exists(file_path)
                     with zip_ref.open(info) as source, open(file_path, 'wb') as dest:
+                        # Le fichier d'un jeu précédent ou une sauvegarde reste en place en cas d'échec plus loin
+                        if not already_there:
+                            written_files.append(file_path)
                         while True:
                             chunk = source.read(chunk_size)
                             if not chunk:
@@ -3063,6 +3103,8 @@ def extract_zip(zip_path, dest_dir, url):
                     logger.error(f"Erreur extraction fichier {info.filename} vers {file_path}: {file_err}")
                     raise
 
+        extraction_done = True
+
         # Gestion plateformes spéciales
         success, error_msg = _handle_special_platforms(dest_dir, zip_path, before_dirs, iso_before, url, before_items)
         if not success:
@@ -3079,12 +3121,27 @@ def extract_zip(zip_path, dest_dir, url):
         return False, _("utils_permission_denied").format(str(e))
     except Exception as e:
         logger.error(f"Erreur lors de l'extraction de {zip_path}: {str(e)}")
+        if getattr(e, 'errno', None) == errno.ENOSPC:
+            return False, e.strerror
         return False, _("utils_extraction_failed").format(str(e))
+    finally:
+        if not extraction_done:
+            # Un jeu à moitié extrait passerait pour un jeu présent
+            for written_file in written_files:
+                try:
+                    os.remove(written_file)
+                    parent_dir = os.path.dirname(written_file)
+                    while parent_dir != dest_dir and parent_dir.startswith(dest_dir):
+                        os.rmdir(parent_dir)
+                        parent_dir = os.path.dirname(parent_dir)
+                except OSError:
+                    pass
      
 
 # Fonction pour extraire le contenu d'un fichier RAR
 def extract_rar(rar_path, dest_dir, url):
     """Extrait le contenu du fichier RAR dans le dossier cible."""
+    keep_archive = False
     try:
         os.makedirs(dest_dir, exist_ok=True)
         
@@ -3129,8 +3186,14 @@ def extract_rar(rar_path, dest_dir, url):
             logger.warning("RAR vide, ne contenant que des dossiers, ou erreur de parsing")
             return False, "RAR vide ou erreur lors de la liste des fichiers"
 
+        low_space_message = _check_room_for_extraction(dest_dir, files_to_extract)
+        if low_space_message:
+            keep_archive = True
+            return False, low_space_message
+
         # Capture état initial
         before_dirs = _capture_directories_before_extraction(dest_dir)
+        before_items = _capture_all_items_before_extraction(dest_dir)
 
         # Variables de progression
         lock = threading.Lock()
@@ -3182,7 +3245,7 @@ def extract_rar(rar_path, dest_dir, url):
                 try_chmod(os.path.join(root, dir_name), 0o755)
 
         # Gestion plateformes spéciales (uniquement PS3 pour RAR)
-        success, error_msg = _handle_special_platforms(dest_dir, rar_path, before_dirs, url=url)
+        success, error_msg = _handle_special_platforms(dest_dir, rar_path, before_dirs, url=url, before_items=before_items)
         if not success:
             return False, error_msg
 
@@ -3194,7 +3257,7 @@ def extract_rar(rar_path, dest_dir, url):
         return False, f"Erreur lors de l'extraction: {str(e)}"
     finally:
         # Nettoyage en cas d'erreur
-        if os.path.exists(rar_path):
+        if not keep_archive and os.path.exists(rar_path):
             try:
                 os.remove(rar_path)
                 logger.info(f"Fichier RAR {rar_path} supprimé après échec de l'extraction")
@@ -3223,20 +3286,25 @@ def extract_7z(archive_path, dest_dir, url):
 
         # Calcul taille totale via 7z l -slt (best effort)
         total_size = 0
+        listed_files = []
         try:
             list_cmd = [seven_z_cmd, "l", "-slt", archive_path]
             result = subprocess.run(list_cmd, capture_output=True, text=True)
             if result.returncode == 0:
                 current_size = None
+                current_path = ""
                 is_dir = False
                 for line in result.stdout.splitlines():
                     line = line.strip()
                     if not line:
                         if current_size is not None and not is_dir:
                             total_size += current_size
+                            listed_files.append((current_path, current_size))
                         current_size = None
                         is_dir = False
                         continue
+                    if line.startswith("Path ="):
+                        current_path = line.split("=", 1)[1].strip()
                     if line.startswith("Attributes ="):
                         attrs = line.split("=", 1)[1].strip()
                         if "D" in attrs:
@@ -3248,8 +3316,13 @@ def extract_7z(archive_path, dest_dir, url):
                             current_size = None
                 if current_size is not None and not is_dir:
                     total_size += current_size
+                    listed_files.append((current_path, current_size))
         except Exception as e:
             logger.debug(f"Impossible de calculer la taille 7z: {e}")
+
+        low_space_message = _check_room_for_extraction(dest_dir, listed_files)
+        if low_space_message:
+            return False, low_space_message
 
         if url not in getattr(config, 'download_progress', {}):
             config.download_progress[url] = {}
@@ -3544,6 +3617,7 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archi
             logger.info("Extraction de l'ISO décrypté...")
             game_folder_name = os.path.splitext(os.path.basename(iso_file))[0] + ".ps3"
             game_folder_path = os.path.join(dest_dir, game_folder_name)
+            game_folder_existed = os.path.isdir(game_folder_path)
             os.makedirs(game_folder_path, exist_ok=True)
             
             try:
@@ -3555,9 +3629,12 @@ def handle_ps3(dest_dir, new_dirs=None, extracted_basename=None, url=None, archi
                 logger.debug(f"Commande d'extraction ISO: {' '.join(extract_cmd)}")
                 result = subprocess.run(extract_cmd, capture_output=True, text=True)
                 
-                if result.returncode > 2:
+                # 1 est un avertissement ; 2 est une erreur fatale (écriture impossible, disque plein) : l'ISO décrypté reste la seule copie
+                if result.returncode > 1:
                     error_msg = f"Erreur critique lors de l'extraction ISO (code {result.returncode}): {result.stderr}"
                     logger.error(error_msg)
+                    if not game_folder_existed:
+                        shutil.rmtree(game_folder_path, ignore_errors=True)
                     return False, error_msg
                 
                 if result.returncode != 0:
@@ -3643,11 +3720,12 @@ def handle_dos(dest_dir, before_items, extracted_basename=None):
                             except (OSError, PermissionError):
                                 pass
 
+                    # Jeu déjà installé : garder ce que le joueur y a ajouté (sauvegardes, configuration)
                     if os.path.exists(target_path):
-                        shutil.rmtree(target_path, ignore_errors=True)
-                        time.sleep(1)
-
-                    os.rename(item_path, target_path)
+                        shutil.copytree(item_path, target_path, dirs_exist_ok=True, copy_function=shutil.move)
+                        shutil.rmtree(item_path)
+                    else:
+                        os.rename(item_path, target_path)
                     logger.info(f"Dossier DOS renommé avec succès: {item_path} -> {target_path}")
                     return True, None
 
@@ -3663,12 +3741,7 @@ def handle_dos(dest_dir, before_items, extracted_basename=None):
     # Cas 2: Un seul fichier OU plusieurs fichiers/dossiers -> créer un dossier .pc et tout y déplacer
     logger.debug(f"DOS: {len(new_items)} élément(s) détecté(s), création du dossier '{target_name}'")
     try:
-        # Créer le dossier .pc s'il n'existe pas
-        if os.path.exists(target_path):
-            logger.warning(f"Le dossier {target_path} existe déjà, il sera remplacé")
-            shutil.rmtree(target_path, ignore_errors=True)
-            time.sleep(1)
-
+        # Créer le dossier .pc s'il n'existe pas ; s'il existe, garder ce que le joueur y a ajouté
         os.makedirs(target_path, exist_ok=True)
 
         # Déplacer tous les nouveaux éléments dans le dossier .pc
@@ -3678,7 +3751,9 @@ def handle_dos(dest_dir, before_items, extracted_basename=None):
             
             try:
                 if os.path.isdir(src_path):
-                    shutil.move(src_path, dst_path)
+                    # Fichier par fichier : un dossier déjà là est complété, sans copie qui prendrait deux fois la place
+                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True, copy_function=shutil.move)
+                    shutil.rmtree(src_path)
                 else:
                     shutil.move(src_path, dst_path)
                     os.chmod(dst_path, 0o644)

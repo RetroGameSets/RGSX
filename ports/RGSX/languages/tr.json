@@ -227,6 +227,7 @@
     "utils_permission_denied": "Çıkarma sırasında izin reddedildi: {0}",
     "utils_extraction_failed": "Çıkarma başarısız: {0}",
     "utils_archive_unsafe_path": "Arşiv reddedildi: {0} oyun klasörünün dışına yazılacaktı",
+    "utils_archive_folder_conflict": "Arşivde {0} adlı bir dosya var, ancak burada aynı adda bir klasör zaten mevcut. Klasörü taşıyın veya yeniden adlandırın, sonra tekrar deneyin",
     "utils_unrar_unavailable": "Unrar komutu kullanılamıyor",
     "utils_rar_list_failed": "RAR dosyaları listelenemedi: {0}",
     "accessibility_font_size": "Yazı boyutu: {0}",
