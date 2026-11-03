@@ -1638,7 +1638,6 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 
                 # save_history réécrit toute la table depuis cette liste : ce processus ne l'a jamais chargée
                 # au démarrage, et l'app peut y avoir ajouté des lignes depuis.
-                from history import load_history
                 config.history = load_history()
                 
                 # Déterminer si on doit ajouter à la queue selon le mode et les slots disponibles.
@@ -1675,7 +1674,6 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             'task_id': task_id
                         }
                         config.history.append(queue_history_entry)
-                        from history import save_history
                         save_history(config.history)
                         self._send_json({
                             'success': True,
@@ -1759,7 +1757,6 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     config.history.append(queue_history_entry)
                     
                     # Sauvegarder l'historique
-                    from history import save_history
                     save_history(config.history)
                     
                     logger.info(f"📋 {game_name} ajouté à la file d'attente (mode=queue, active={active_count}/{max_dl})")
@@ -1796,7 +1793,6 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         'task_id': task_id
                     }
                     config.history.append(download_history_entry)
-                    from history import save_history
                     save_history(config.history)
                     
                     if is_1fichier:
@@ -1850,11 +1846,11 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 
                 try:
                     from network import request_cancel
-                    from history import load_history, save_history
                     
                     # Trouver le task_id correspondant à l'URL dans l'historique
                     history = load_history() or []
                     task_id = None
+                    cancel_success = False
                     
                     for entry in history:
                         if entry.get('url') == url and entry.get('status') in ['Downloading', 'Téléchargement', 'Downloading', 'Connecting']:
@@ -1883,8 +1879,9 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     save_history(history)
                     
                     # Réinitialiser le flag de téléchargement actif et lancer le prochain
-                    config.download_active = False
-                    if config.download_queue:
+                    config.download_active = getattr(config, 'active_download_count', 0) > 0
+                    # Le thread annulé ou un autre encore en cours lance lui-même le suivant en se terminant
+                    if config.download_queue and not cancel_success and not config.download_active:
                         next_item = config.download_queue.pop(0)
                         logger.info(f"📋 Traitement du prochain élément de la queue après annulation: {next_item['game_name']}")
                         # Relancer de manière asynchrone
@@ -1930,7 +1927,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     config.download_queue.clear()
                     
                     # Mettre à jour l'historique pour annuler les téléchargements en statut "Queued"
-                    history = load_history()
+                    # Le téléchargement en cours réécrit config.history en se terminant
+                    config.history = history = load_history()
                     for entry in history:
                         if entry.get("status") == "Queued":
                             entry["status"] = "Canceled"
@@ -1971,7 +1969,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             found = True
                             
                             # Mettre à jour l'historique pour cet élément
-                            history = load_history()
+                            # Le téléchargement en cours réécrit config.history en se terminant
+                            config.history = history = load_history()
                             for entry in history:
                                 if entry.get('task_id') == task_id and entry.get('status') == 'Queued':
                                     entry['status'] = 'Canceled'
@@ -2157,7 +2156,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     from history import clear_history
                     
                     clear_history()
-                    config.history = []  # Vider aussi la liste en mémoire
+                    config.history = load_history()  # Garder les téléchargements en cours en mémoire
                     
                     self._send_json({
                         'success': True,
