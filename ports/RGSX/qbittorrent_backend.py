@@ -842,6 +842,21 @@ def _apply_file_selection(session: requests.Session, torrent_hash: str, relative
     return target_index, target_size
 
 
+def _release_file_selection(session: requests.Session, torrent_hash: str, file_index: int | None) -> None:
+    """Désélectionne un fichier abandonné : sinon qBittorrent continue de le télécharger tant que le torrent reste partagé."""
+    with _selected_file_indexes_lock:
+        selected_indexes = _selected_file_indexes_by_hash.get(torrent_hash)
+        if file_index is None or not selected_indexes or file_index not in selected_indexes:
+            return
+        selected_indexes.discard(file_index)
+    try:
+        session.post(_url("/api/v2/torrents/filePrio"),
+                     data={"hash": torrent_hash, "id": str(file_index), "priority": 0},
+                     headers={"Referer": _base_url}, timeout=5)
+    except requests.exceptions.RequestException as exc:
+        logger.debug("qbittorrent_backend: désélection du fichier échouée: %s", exc)
+
+
 def _get_target_file_progress(files: list[dict], target_file_index: int | None, fallback_size: int) -> tuple[int, int, bool]:
     if target_file_index is None:
         normalized_size = max(0, int(fallback_size or 0))
@@ -1127,13 +1142,17 @@ def download_torrent_via_qbittorrent(
     if progress_queue is not None:
         progress_queue.put((task_id, 0, total_size, 0.0, 0, 0, "qbt_fetching_metadata"))
     headers = _build_torrent_headers()
-    torrent_bytes = requests.get(source_url, timeout=30, headers=headers).content
+    torrent_response = requests.get(source_url, timeout=30, headers=headers)
+    torrent_response.raise_for_status()
+    torrent_bytes = torrent_response.content
 
     source_key = hashlib.sha1(source_url.encode("utf-8", errors="ignore")).hexdigest()[:12]
     temp_dir = os.path.join(dest_dir, ".rgsx_torrent", source_key)
     os.makedirs(temp_dir, exist_ok=True)
     download_completed = False
     registered_download_reference = False
+    torrent_hash = None
+    target_file_index = None
 
     try:
         if progress_queue is not None:
@@ -1142,7 +1161,6 @@ def download_torrent_via_qbittorrent(
         data = {"savepath": temp_dir, "tags": tag, "category": "rgsx"}
         resp = session.post(_url("/api/v2/torrents/add"), files=files, data=data,
                              headers={"Referer": _base_url}, timeout=15)
-        torrent_hash = None
         if resp.status_code == 409:
             logger.info("qbittorrent_backend: torrent déjà présent, réutilisation de l'instance existante")
             info = _find_existing_torrent_by_save_path(session, temp_dir)
@@ -1285,10 +1303,18 @@ def download_torrent_via_qbittorrent(
         if registered_download_reference:
             _pop_active_reference(task_id=task_id)
             registered_download_reference = False
-        if not download_completed:
-            if not _has_other_hash_references(torrent_hash or "", exclude_task_id=task_id):
+        # Sans hash, rien n'a été ajouté par cette tâche : temp_dir appartient peut-être à une autre tâche du même pack
+        if not download_completed and torrent_hash:
+            if not _has_other_hash_references(torrent_hash, exclude_task_id=task_id):
                 shutil.rmtree(temp_dir, ignore_errors=True)
-                _cleanup_hash_state_if_unused(torrent_hash or "")
+                _cleanup_hash_state_if_unused(torrent_hash)
+            else:
+                _release_file_selection(session, torrent_hash, target_file_index)
+        elif not download_completed:
+            try:
+                os.rmdir(temp_dir)
+            except OSError:
+                pass
         raise
 
 
