@@ -1077,7 +1077,9 @@ def stop_seed(task_id: str | None = None, original_history_url: str | None = Non
     tag = entry["tag"] if entry else f"rgsx_{task_id}"
     torrent_hash = str(entry.get("hash") or "") if entry else ""
 
-    if torrent_hash and _has_other_hash_references(torrent_hash, exclude_task_id=task_id):
+    def _detached_because_shared() -> bool:
+        if not torrent_hash or not _has_other_hash_references(torrent_hash, exclude_task_id=task_id):
+            return False
         history_url = original_history_url or (entry.get("original_history_url") if entry else "")
         if history_url:
             try:
@@ -1088,6 +1090,9 @@ def stop_seed(task_id: str | None = None, original_history_url: str | None = Non
         logger.info("qbittorrent_backend: seed détaché pour task_id=%s, torrent conservé car encore partagé", task_id)
         return True
 
+    if _detached_because_shared():
+        return True
+
     session = requests.Session()
     if not (_wait_for_webui(session, _base_url, timeout=5) and _login(session, _base_url, [])):
         _cleanup_hash_state_if_unused(torrent_hash)
@@ -1096,6 +1101,9 @@ def stop_seed(task_id: str | None = None, original_history_url: str | None = Non
     if info is None:
         _cleanup_hash_state_if_unused(torrent_hash)
         return entry is not None
+    # Une autre tâche a pu rejoindre ce torrent pendant la connexion à qBittorrent
+    if _detached_because_shared():
+        return True
     try:
         session.post(_url("/api/v2/torrents/delete"),
                      data={"hashes": info["hash"], "deleteFiles": "true"},
