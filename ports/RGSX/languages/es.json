@@ -479,6 +479,8 @@
     "web_settings_saved": "¡Configuración guardada con éxito!",
     "web_settings_saved_restart": "¡Configuración guardada con éxito!\\n\\n⚠️ Algunos ajustes requieren reiniciar el servidor:\\n- Carpeta ROMs personalizada\\n- Idioma\\n\\nPor favor, reinicie el servidor web para aplicar estos cambios.",
     "web_error_save_settings": "Error al guardar configuración: {0}",
+    "web_settings_not_saved": "no se pudo escribir el archivo de configuración. Comprueba el espacio libre en disco y que no sea de solo lectura",
+    "web_api_keys_not_saved": "los demás ajustes se guardaron, pero estas claves API no se pudieron escribir: {0}. Comprueba que sus archivos no sean de solo lectura.",
     "web_browse_title": "Explorar directorios",
     "web_browse_select_drive": "Seleccione una unidad...",
     "web_browse_drives": "Unidades",

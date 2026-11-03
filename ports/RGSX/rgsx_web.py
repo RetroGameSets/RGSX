@@ -2037,11 +2037,13 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         del settings['custom_dns_at_boot']
                     
                     # Gérer API keys séparément
+                    failed_api_keys = []
                     if 'api_keys' in settings:
                         try:
-                            save_api_keys(settings['api_keys'])
+                            failed_api_keys = save_api_keys(settings['api_keys'])
                         except Exception as e:
                             logger.error(f"Erreur sauvegarde API keys: {e}")
+                            failed_api_keys = list(settings['api_keys'])
                         del settings['api_keys']
 
                     # ScreenScraper account: stored in its own file; an empty password keeps the saved one,
@@ -2076,7 +2078,19 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             current_settings[key].update(value)
                         else:
                             current_settings[key] = value
-                    save_rgsx_settings(current_settings)
+                    if not save_rgsx_settings(current_settings):
+                        self._send_json({
+                            'success': False,
+                            'error': get_translation('web_settings_not_saved')
+                        }, status=500)
+                        return
+                    
+                    if failed_api_keys:
+                        self._send_json({
+                            'success': False,
+                            'error': get_translation('web_api_keys_not_saved').format(', '.join(failed_api_keys))
+                        }, status=500)
+                        return
                     
                     self._send_json({
                         'success': True,
@@ -2110,10 +2124,15 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     current_settings['game_filters']['region_priority'] = data.get('region_priority', ['USA', 'Canada', 'World', 'Europe', 'Japan', 'Other'])
                     
                     # Sauvegarder
-                    save_rgsx_settings(current_settings)
+                    if not save_rgsx_settings(current_settings):
+                        self._send_json({
+                            'success': False,
+                            'error': get_translation('web_settings_not_saved')
+                        }, status=500)
+                        return
                     
                     # Mettre à jour config.game_filter_obj
-                    if hasattr(config, 'game_filter_obj'):
+                    if getattr(config, 'game_filter_obj', None) is not None:
                         config.game_filter_obj.region_filters = data.get('region_filters', {})
                         config.game_filter_obj.hide_non_release = data.get('hide_non_release', False)
                         config.game_filter_obj.one_rom_per_game = data.get('one_rom_per_game', False)

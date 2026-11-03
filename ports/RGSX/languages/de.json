@@ -479,6 +479,8 @@
     "web_settings_saved": "Einstellungen erfolgreich gespeichert!",
     "web_settings_saved_restart": "Einstellungen erfolgreich gespeichert!\\n\\n⚠️ Einige Einstellungen erfordern einen Serverneustart:\\n- Benutzerdefinierter ROMs-Ordner\\n- Sprache\\n\\nBitte starten Sie den Webserver neu, um diese Änderungen anzuwenden.",
     "web_error_save_settings": "Fehler beim Speichern der Einstellungen: {0}",
+    "web_settings_not_saved": "die Einstellungsdatei konnte nicht geschrieben werden. Prüfe den freien Speicherplatz und ob sie schreibgeschützt ist",
+    "web_api_keys_not_saved": "die übrigen Einstellungen wurden gespeichert, aber diese API-Schlüssel konnten nicht geschrieben werden: {0}. Prüfe, ob ihre Dateien schreibgeschützt sind.",
     "web_browse_title": "Verzeichnisse durchsuchen",
     "web_browse_select_drive": "Laufwerk auswählen...",
     "web_browse_drives": "Laufwerke",

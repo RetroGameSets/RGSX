@@ -3086,7 +3086,7 @@
                     saveButton.disabled = false;
                     saveButton.textContent = originalText;
                 }
-                alert('❌ ' + t('web_error_save_settings') + ': ' + error.message);
+                alert('❌ ' + t('web_error_save_settings', error.message));
             }
         }
         

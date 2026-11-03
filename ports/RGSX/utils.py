@@ -4289,10 +4289,10 @@ def save_api_keys(api_keys: dict):
     Args:
         api_keys: dict avec les clés '1fichier', 'alldebrid', 'debridlink', 'realdebrid', 'torbox'
     
-    Retourne: True si au moins une clé a été sauvegardée avec succès
+    Retourne: les noms des clés qui n'ont pas pu être écrites
     """
     if not api_keys:
-        return False
+        return []
     
     paths = {
         '1fichier': getattr(config, 'API_KEY_1FICHIER_PATH', ''),
@@ -4302,7 +4302,7 @@ def save_api_keys(api_keys: dict):
         'torbox': getattr(config, 'API_KEY_TORBOX_PATH', ''),
     }
     
-    saved_any = False
+    failed = []
     
     for key_name, path in paths.items():
         if not path:
@@ -4339,13 +4339,15 @@ def save_api_keys(api_keys: dict):
                 cache_data = getattr(config, cache_attr)
                 cache_data[f"{key_name}_mtime"] = None
             
-            saved_any = True
             logger.info(f"Clé API {key_name} sauvegardée avec succès")
             
         except Exception as e:
             logger.error(f"Erreur sauvegarde clé {key_name}: {e}")
+            # La page renvoie toutes les clés : un fichier en lecture seule qui a déjà cette valeur n'a rien perdu
+            if load_api_keys(True).get(key_name, '') != value.strip():
+                failed.append(key_name)
     
-    return saved_any
+    return failed
 
 
 # Wrappers rétro-compatibilité (dépréciés)
