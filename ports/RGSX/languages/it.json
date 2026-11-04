@@ -203,6 +203,7 @@
     "network_download_failed": "Download fallito dopo {0} tentativi",
     "network_api_error": "Errore richiesta API, la chiave potrebbe essere errata: {0}",
     "network_download_error": "Errore download {0}: {1}",
+    "network_html_instead_of_game": "la fonte ha inviato una pagina web invece del file del gioco",
     "network_torrent_stalled": "Nessun dato ricevuto dai peer dopo diversi tentativi (il file potrebbe essere temporaneamente non disponibile). Riprova più tardi.",
     "network_connection_failed": "Connessione fallita dopo {0} tentativi",
     "network_http_error": "Errore HTTP {0}",

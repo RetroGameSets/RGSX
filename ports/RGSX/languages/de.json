@@ -229,6 +229,7 @@
     "network_download_failed": "Download nach {0} Versuchen fehlgeschlagen",
     "network_api_error": "Fehler bei der API-Anfrage, der Schlüssel könnte falsch sein: {0}",
     "network_download_error": "Downloadfehler {0}: {1}",
+    "network_html_instead_of_game": "die Quelle hat eine Webseite statt der Spieldatei geschickt",
     "network_torrent_stalled": "Nach mehreren Versuchen wurden keine Daten von Peers empfangen (die Datei ist möglicherweise vorübergehend nicht verfügbar). Bitte versuche es später erneut.",
     "network_connection_failed": "Verbindung nach {0} Versuchen fehlgeschlagen",
     "network_http_error": "HTTP-Fehler {0}",

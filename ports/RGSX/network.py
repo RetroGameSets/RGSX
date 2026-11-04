@@ -3939,6 +3939,15 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             logger.warning(
                                 f"Archive partiellement incomplète mais acceptée malgré l'écart de taille: {reason}"
                             )
+                    # Le type annoncé seul ne suffit pas : certains hôtes servent de vrais fichiers en text/html
+                    elif (
+                        response is not None
+                        and 'html' in response.headers.get('content-type', '').lower()
+                        and archive_ext not in {'.html', '.htm'}
+                        and _looks_like_html_or_challenge(dest_path)
+                    ):
+                        _safe_remove_file(dest_path)
+                        raise requests.HTTPError(_("network_html_instead_of_game"))
 
                     if downloaded > 0 and downloaded != last_downloaded:
                         current_time = time.time()

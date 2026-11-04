@@ -223,6 +223,7 @@
     "network_download_failed": "Échec du téléchargement après {0} tentatives",
     "network_api_error": "Erreur lors de la requête API, la clé est peut-être incorrecte: {0}",
     "network_download_error": "Erreur téléchargement {0}: {1}",
+    "network_html_instead_of_game": "la source a renvoyé une page web au lieu du fichier du jeu",
     "network_torrent_stalled": "Aucune donnée reçue des pairs après plusieurs tentatives (le fichier est peut-être temporairement indisponible). Réessayez plus tard.",
     "network_connection_failed": "Échec de connexion après {0} tentatives",
     "network_http_error": "Erreur HTTP {0}",
