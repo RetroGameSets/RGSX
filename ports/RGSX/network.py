@@ -3506,8 +3506,9 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                             logger.warning(f"Taille mismatch (extension différente)! Local: {local_size}, Remote: {remote_size} - re-téléchargement")
                                             # Continuer le téléchargement normal
                                             break
-                                        elif _is_lolroms_url(url):
-                                            logger.info(f"Fichier lolroms avec extension différente non vérifiable, re-téléchargement forcé: {existing_path}")
+                                        # Un dossier est un jeu installé (.pc, .ps3...) : le remplacer effacerait ce que le joueur y a ajouté
+                                        elif (remote_size is None and not os.path.isdir(existing_path)) or _is_lolroms_url(url):
+                                            logger.info(f"Fichier avec extension différente non vérifiable, re-téléchargement forcé: {existing_path}")
                                             break
                                         else:
                                             # Les tailles correspondent, fichier complet
