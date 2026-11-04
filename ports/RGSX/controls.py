@@ -2210,7 +2210,7 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "cancel") or is_input_matched(event, "history"):
                 if config.history and config.current_history_item < len(config.history):
                     entry = config.history[config.current_history_item]
-                    if entry.get("status") in ["Downloading", "Téléchargement", "Extracting", "Seeding"] and is_input_matched(event, "cancel"):
+                    if entry.get("status") in ["Downloading", "Téléchargement", "Seeding"] and is_input_matched(event, "cancel"):
                         config.menu_state = "confirm_cancel_download"
                         config.confirm_cancel_selection = 0
                         config.needs_redraw = True
@@ -2397,7 +2397,7 @@ def handle_controls(event, sources, joystick, screen):
                     # En attente dans la queue
                     options.append("force_download")
                     options.append("remove_from_queue")
-                elif status in ["Downloading", "Téléchargement", "Extracting", "Paused"]:
+                elif status in ["Downloading", "Téléchargement", "Paused"]:
                     # Téléchargement en cours ou en pause - ajouter pause/resume avant cancel
                     options.append("pause_resume_download")
                     options.append("cancel_download")

@@ -2099,9 +2099,9 @@
                         <div class="info-item">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <strong>📥 ${fileName}${platformInfo}</strong>
-                                <button class="btn-action" onclick='cancelDownload("${url.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", this)' title="${t('web_cancel')}">
+                                ${info.status === 'Extracting' ? '' : `<button class="btn-action" onclick='cancelDownload("${url.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", this)' title="${t('web_cancel')}">
                                     ❌
-                                </button>
+                                </button>`}
                             </div>
                             <div style="margin-top: 10px;">
                                 <div style="background: #e0e0e0; border-radius: 10px; height: 20px; overflow: hidden;">
@@ -2167,9 +2167,9 @@
                                         <div class="info-item">
                                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                                 <strong>📥 ${fileName}${platformInfo}</strong>
-                                                <button class="btn-action" onclick='cancelDownload("${url.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", this)' title="${t('web_cancel')}">
+                                                ${info.status === 'Extracting' ? '' : `<button class="btn-action" onclick='cancelDownload("${url.replace(/"/g, "&quot;").replace(/'/g, "&#39;")}", this)' title="${t('web_cancel')}">
                                                     ❌
-                                                </button>
+                                                </button>`}
                                             </div>
                                             <div style="margin-top: 10px;">
                                                 <div style="background: #e0e0e0; border-radius: 10px; height: 20px; overflow: hidden;">
