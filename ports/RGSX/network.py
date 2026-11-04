@@ -4665,7 +4665,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         logger.debug("Requête AllDebrid link/unlock en cours")
                         response = requests.get("https://api.alldebrid.com/v4/link/unlock", params=params, timeout=30)
                         logger.debug(f"Réponse AllDebrid reçue, code: {response.status_code}")
-                        response.raise_for_status()
+                        # Les refus (clé invalide en 401, etc.) arrivent avec leur message en JSON
                         ad_json = response.json()
                         if ad_json.get('status') == 'success':
                             data = ad_json.get('data', {})
@@ -4677,6 +4677,9 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                 _set_provider_in_history(provider_used)
                         else:
                             logger.warning(f"AllDebrid status != success: {ad_json}")
+                            ad_error = ad_json.get('error')
+                            result[0] = False
+                            result[1] = f"AD: {(ad_error.get('message') if isinstance(ad_error, dict) else None) or ad_json.get('status')}"
                     except Exception as e:
                         logger.error(f"Erreur AllDebrid fallback: {e}")
                 # Tentative Debrid-Link si pas de final_url
@@ -5048,6 +5051,13 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                 pass
                     except Exception as e:
                         logger.error(f"Exception TorBox fallback: {e}")
+                if not final_url and (config.API_KEY_1FICHIER or config.API_KEY_ALLDEBRID or config.API_KEY_DEBRIDLINK or config.API_KEY_REALDEBRID or config.API_KEY_TORBOX):
+                    # Une clé refusée ne doit pas basculer sans rien dire vers le mode gratuit et son attente
+                    logger.error("Aucune URL obtenue avec les clés API, mode gratuit non tenté")
+                    result[0] = False
+                    if result[1] is None:
+                        result[1] = _("network_api_error").format("No provider available") if _ else "No provider available"
+                    return
                 if not final_url:
                     # NOUVEAU: Fallback mode gratuit 1fichier si aucune clé API disponible
                     logger.warning("Aucune URL directe obtenue via API - Tentative mode gratuit 1fichier")
