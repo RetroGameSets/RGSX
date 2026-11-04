@@ -81,13 +81,13 @@ from display import (
 )
 from language import _
 from network import is_1fichier_url, check_for_updates, apply_pending_update, cancel_all_downloads, shutdown_downloads, get_network_adapter_status
-from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls, clear_joystick_repeat_states, start_or_queue_download, should_open_pause_menu
+from controls import handle_controls, validate_menu_state, process_key_repeats, get_emergency_controls, clear_joystick_repeat_states, start_or_queue_download, should_open_pause_menu, _launch_next_queued_download
 from controls_mapper import map_controls, draw_controls_mapping, get_actions
 from controls import load_controls_config
 from utils import (
     load_sources, check_extension_before_download,
     play_random_music, load_music_config, load_api_keys, _refresh_loading_feedback, get_disk_usage,
-    parse_torrent_download_url
+    parse_torrent_download_url, queue_interrupted_downloads, is_darkos_web_service_active
 )
 from history import load_history, save_history, load_downloaded_games, check_history_write_access, get_history_write_status
 from rgsx_settings import get_display_fullscreen, is_screenscraper_disabled
@@ -690,19 +690,13 @@ async def main():
                 f"[RESUME] {len(interrupted_torrents)} reprise(s) torrent détectée(s): qBittorrent préchauffé au démarrage"
             )
 
-        if interrupted:
-            logger.info(f"[RESUME] {len(interrupted)} téléchargement(s) interrompu(s) détecté(s), reprise...")
-        for entry in interrupted:
-            _url = entry["url"]
-            _platform = entry.get("platform", "")
-            _game_name = entry.get("game_name", "")
-            _is_zip = entry.get("is_zip_non_supported", False)
-            _state, _task_id = start_or_queue_download(_url, _platform, _game_name, _is_zip)
-            logger.info(f"[RESUME] Reprise: {_game_name} ({_platform}) task_id={_task_id} state={_state}")
-            if _state == "queued":
-                entry["status"] = "Queued"
-                entry["message"] = _("download_queued") if _ else "Queued"
-                save_history(config.history)
+        # Sous dArkOS, le service web peut être en train de télécharger ces lignes
+        if not (config.IS_DARKOS and is_darkos_web_service_active()):
+            resumed = queue_interrupted_downloads()
+            if resumed:
+                logger.info(f"[RESUME] {resumed} téléchargement(s) interrompu(s) détecté(s), reprise...")
+                for _slot in range(resumed):
+                    _launch_next_queued_download()
     except Exception as _e:
         logger.error(f"[RESUME] Erreur lors de la reprise des téléchargements: {_e}")
 

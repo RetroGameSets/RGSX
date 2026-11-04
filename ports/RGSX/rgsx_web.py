@@ -23,7 +23,7 @@ from email.utils import formatdate, parsedate_to_datetime
 import config
 from history import load_history, save_history
 from language import load_language
-from utils import load_sources, load_games, get_clean_display_name, format_game_size, parse_torrent_download_url, request_torrent_manifest_refresh, _resolve_platform_image_path, get_platform_image_payload
+from utils import queue_interrupted_downloads, load_sources, load_games, get_clean_display_name, format_game_size, parse_torrent_download_url, request_torrent_manifest_refresh, _resolve_platform_image_path, get_platform_image_payload
 from network import download_rom, download_from_1fichier
 from pathlib import Path
 from rgsx_settings import get_language
@@ -2713,6 +2713,11 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=5000, help='Port (défaut: 5000)')
     
     args = parser.parse_args()
+
+    # Lancé à côté de l'application, ce serveur ne possède pas ses téléchargements : seul le mode Docker les reprend
+    if config.HEADLESS and queue_interrupted_downloads():
+        while config.download_queue and getattr(config, 'active_download_count', 0) < getattr(config, 'max_simultaneous_downloads', 5):
+            RGSXHandler.__new__(RGSXHandler)._process_queued_download(config.download_queue.pop(0))
     
     print(f"Lancement sur {args.host}:{args.port}...", flush=True)
     run_server(host=args.host, port=args.port)
