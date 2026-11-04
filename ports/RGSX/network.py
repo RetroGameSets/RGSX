@@ -2003,11 +2003,13 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
             if not has_space:
                 return (False, None, low_space_message)
             
+            canceled = False
             with open(filepath, 'wb') as f:
                 downloaded = 0
                 for chunk in resp.iter_content(chunk_size=128*1024):
                     if cancel_event and cancel_event.is_set():
-                        return (False, None, _("download_canceled"))
+                        canceled = True
+                        break
                     
                     f.write(chunk)
                     downloaded += len(chunk)
@@ -2015,6 +2017,9 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
                     if total:
                         pct = downloaded / total * 100
                         _progress(filename, downloaded, total, pct)
+            if canceled:
+                os.remove(filepath)
+                return (False, None, _("download_canceled"))
         
         _log(_("free_mode_completed").format(filepath))
         return (True, filepath, None)
@@ -5117,42 +5122,27 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         
                         if success:
                             logger.info(f"Téléchargement gratuit réussi: {filepath}")
-                            result[0] = True
-                            result[1] = _("network_download_ok").format(game_name) if _ else f"Download successful: {game_name}"
                             provider_used = 'FREE'
                             _set_provider_in_history(provider_used)
-                            
-                            # Mettre à jour l'historique
-                            if isinstance(config.history, list):
-                                for entry in config.history:
-                                    if "url" in entry and entry["url"] == url:
-                                        entry["status"] = "Completed"
-                                        entry["progress"] = 100
-                                        entry["message"] = result[1]
-                                        entry["provider"] = "FREE"
-                                        entry["provider_prefix"] = "FREE:"
-                                        _save_history_with_feedback("download_1fichier:free_success")
-                                        config.needs_redraw = True
-                                        break
-                            
-                            # Traiter le fichier (extraction si nécessaire)
-                            if not is_zip_non_supported:
-                                try:
-                                    if filepath.lower().endswith('.zip'):
-                                        logger.info(f"Extraction ZIP: {filepath}")
-                                        extract_zip(filepath, dest_dir, url)
-                                        logger.info("ZIP extrait")
-                                    elif filepath.lower().endswith('.rar'):
-                                        logger.info(f"Extraction RAR: {filepath}")
-                                        extract_rar(filepath, dest_dir, url)
-                                        logger.info("RAR extrait")
-                                    elif filepath.lower().endswith('.7z'):
-                                        logger.info(f"Extraction 7z: {filepath}")
-                                        extract_7z(filepath, dest_dir, url)
-                                        logger.info("7z extrait")
-                                except Exception as e:
-                                    logger.error(f"Erreur extraction: {e}")
-                            
+
+                            # Même règle d'extraction que pour les autres fournisseurs ; le statut final est posé par la boucle de progression
+                            from rgsx_settings import get_auto_extract
+                            is_ps3_target = _is_ps3_redump_target(platform_folder, platform)
+                            if get_auto_extract() and (is_zip_non_supported or is_ps3_target):
+                                if isinstance(config.history, list):
+                                    for entry in config.history:
+                                        if "url" in entry and entry["url"] == url and entry["status"] in ["Téléchargement", "Downloading"]:
+                                            entry["progress"] = 0
+                                            entry["status"] = "Extracting"
+                                            entry["message"] = _("network_preparing_extraction")
+                                            _save_history_with_feedback("download_1fichier:free_extracting")
+                                            config.needs_redraw = True
+                                            break
+                                result[0], result[1] = _postprocess_downloaded_file(filepath, dest_dir, url, game_name, is_ps3_target)
+                            else:
+                                try_chmod(filepath, 0o644)
+                                result[0] = True
+                                result[1] = _("network_download_ok").format(game_name)
                             return
                         else:
                             logger.error(f"Échec téléchargement gratuit: {error_msg}")
