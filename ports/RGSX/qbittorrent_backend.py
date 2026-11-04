@@ -883,8 +883,9 @@ def _get_target_file_progress(files: list[dict], target_file_index: int | None, 
         normalized_size = max(0, int(fallback_size or 0))
         return 0, normalized_size, False
 
-    for file_info in files:
-        idx = file_info.get("index")
+    # Avant l'API v2.8.2 (qBittorrent 4.1.x), les fichiers n'ont pas d'index : c'est leur position
+    for position, file_info in enumerate(files):
+        idx = file_info.get("index", position)
         if idx is None:
             continue
         try:
@@ -1297,7 +1298,10 @@ def download_torrent_via_qbittorrent(
             if state in _ERROR_STATES:
                 raise RuntimeError(f"qBittorrent: état d'erreur ({state})")
 
-            if file_completed or state in _DONE_STATES or float(info.get("progress") or 0) >= 1.0:
+            torrent_done = state in _DONE_STATES or float(info.get("progress") or 0) >= 1.0
+            # Un pack déjà fini pour une autre tâche paraît terminé avant que le fichier de celle-ci soit téléchargé :
+            # dès que ce fichier est connu, seule sa propre progression compte
+            if file_completed or (target_file_index is None and torrent_done):
                 content_path = str(info.get("content_path") or "")
                 downloaded_path = _resolve_downloaded_file(content_path, temp_dir, relative_path, fallback_name)
                 if not downloaded_path or not os.path.isfile(downloaded_path):
