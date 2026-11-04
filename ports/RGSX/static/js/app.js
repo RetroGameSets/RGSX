@@ -2618,7 +2618,7 @@
                 
                 container.innerHTML = data.history.map(h => {
                     const status = h.status || '';
-                    const isError = status === 'Erreur' || status === 'error';
+                    const isError = status === 'Erreur' || status === 'Error' || status === 'error';
                     const isCanceled = status === 'Canceled';
                     const isAlreadyPresent = status === 'Already_Present';
                     const isQueued = status === 'Queued';
@@ -2647,6 +2647,12 @@
                         statusIcon = '📋';
                         statusColor = '#6c757d';  // gris (en attente)
                         statusText = statusQueued;
+                    } else if (status === 'Converting') {
+                        statusIcon = '⬇️';
+                        statusColor = '#007bff';  // bleu (en cours)
+                        statusText = t('web_history_status_converting');
+                    } else if (status === 'Seeding') {
+                        statusText = t('aria2_phase_seeding');
                     } else if (isDownloading) {
                         statusIcon = '⬇️';
                         statusColor = '#007bff';  // bleu (en cours)

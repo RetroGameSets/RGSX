@@ -505,6 +505,7 @@
     "web_history_size": "Size",
     "web_history_status_completed": "Completed",
     "web_history_status_error": "Error",
+    "web_history_status_converting": "Converting",
     "web_settings_os": "Operating System",
     "web_system_info_title": "System Information",
     "web_settings_platforms_count": "Number of platforms",

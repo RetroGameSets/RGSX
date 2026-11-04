@@ -1184,8 +1184,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 
                 # Inclure: statuts terminés + en queue + en cours
                 included_statuses = [
-                    "Download_OK", "Erreur", "error", "Canceled", "Already_Present",  # Terminés
-                    "Queued", "Downloading", "Téléchargement", "Downloading", "Connecting", "Extracting",  # En cours
+                    "Download_OK", "Completed", "Erreur", "Error", "error", "Canceled", "Already_Present",  # Terminés
+                    "Queued", "Downloading", "Téléchargement", "Downloading", "Connecting", "Extracting", "Converting", "Seeding",  # En cours
                 ]
                 # Inclure aussi les statuts "Try X/Y" (tentatives)
                 visible_history = [
