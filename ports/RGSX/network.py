@@ -4460,7 +4460,16 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 logger.error(f"Pas de permission d'écriture dans {dest_dir}")
                 raise PermissionError(f"Pas de permission d'écriture dans {dest_dir}")
 
+            def _left_before_postprocessing(path):
+                # L'archive et l'ISO PS3 sont supprimés une fois traités : s'ils sont là, le traitement n'a pas abouti
+                from rgsx_settings import get_auto_extract as auto_extract
+                extension = os.path.splitext(path)[1].lower()
+                if not auto_extract():
+                    return False
+                return (is_zip_non_supported and extension in ('.zip', '.7z', '.rar')) or (extension == '.iso' and _is_ps3_redump_target(platform_folder, platform))
+
             final_url = None
+            verify_existing_size = False
             filename = game_name
             onefichier_error_message = None
             provider_download_session = requests.Session()
@@ -4575,6 +4584,8 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         result[0] = False
                                         result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
                                         return
+                                elif _left_before_postprocessing(dest_path):
+                                    logger.info(f"Le fichier {dest_path} existe mais n'a pas été extrait, nouveau téléchargement")
                                 else:
                                     logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
                                     result[0] = True
@@ -5220,6 +5231,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 
                 # Vérifier si le fichier existe déjà (exact ou avec autre extension)
                 file_found = False
+                from rgsx_settings import get_auto_extract
                 if os.path.exists(dest_path):
                     logger.info(f"Le fichier {dest_path} existe déjà, vérification de la taille...")
                     
@@ -5245,8 +5257,14 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                             result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
                             return
                         # Continuer le téléchargement normal (ne pas faire return)
+                    elif _left_before_postprocessing(dest_path):
+                        # Archive qui aurait dû être extraite puis supprimée: c'est un reste d'un échec, on télécharge à nouveau
+                        logger.info(f"Le fichier {dest_path} existe mais n'a pas été extrait, nouveau téléchargement")
+                    elif remote_size is None:
+                        # Pas de HEAD avec les débrideurs : la taille locale est comparée à celle de la réponse GET
+                        verify_existing_size = True
                     else:
-                        # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
+                        # Les tailles correspondent, considérer comme déjà téléchargé
                         logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
                         result[0] = True
                         result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
@@ -5278,8 +5296,9 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         local_size = os.path.getsize(existing_path)
                                         logger.debug(f"Taille du fichier local (extension différente): {local_size} octets")
                                         
-                                        # Comparer les tailles si on a obtenu la taille distante
-                                        if remote_size is not None and local_size != remote_size:
+                                        # Sans taille distante, ce fichier peut être une sauvegarde ou un fichier partiel.
+                                        # Un dossier est un jeu installé (.pc, .ps3...) : le remplacer effacerait ce que le joueur y a ajouté
+                                        if (remote_size is None and not os.path.isdir(existing_path)) or (remote_size is not None and local_size != remote_size):
                                             logger.warning(f"Taille mismatch (extension différente)! Local: {local_size}, Remote: {remote_size} - re-téléchargement")
                                             # Continuer le téléchargement normal
                                             break
@@ -5338,6 +5357,20 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         response.raise_for_status()
                         total_size = int(response.headers.get('content-length', 0))
                         logger.debug(f"Taille totale: {total_size} octets")
+
+                        # Une page HTML ne doit pas écraser un fichier peut-être complet
+                        if verify_existing_size and 'text/html' in response.headers.get('content-type', '').lower():
+                            raise requests.HTTPError(f"Source returned an HTML page instead of the file ({dest_path})")
+
+                        if verify_existing_size and total_size and os.path.exists(dest_path) and os.path.getsize(dest_path) == total_size:
+                            logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
+                            result[0] = True
+                            result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                            try:
+                                show_toast(result[1])
+                            except Exception as e:
+                                logger.debug(f"Impossible d'afficher le toast: {e}")
+                            return result[0], result[1]
 
                         has_space, low_space_message = _ensure_sufficient_disk_space(dest_dir, total_size)
                         if not has_space:
