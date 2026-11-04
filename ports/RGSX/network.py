@@ -160,6 +160,14 @@ def _is_ps3_redump_target(platform_folder, platform) -> bool:
         return False
 
 
+def _extraction_required(is_zip_non_supported, platform_folder, platform) -> bool:
+    # PS3 Redump : déchiffrement et extraction ISO obligatoires, quel que soit le réglage
+    if _is_ps3_redump_target(platform_folder, platform):
+        return True
+    from rgsx_settings import get_auto_extract
+    return get_auto_extract() and (is_zip_non_supported or platform_folder == "bios" or platform in {"BIOS", "- BIOS by TMCTV -", "- BIOS"})
+
+
 def _postprocess_downloaded_file(dest_path: str, dest_dir: str, url: str, game_name: str, is_ps3_target: bool):
     extension = os.path.splitext(dest_path)[1].lower()
     is_vimm_source = 'vimm.net' in str(url or '').lower()
@@ -3159,7 +3167,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             
             cancel_ev = cancel_events.get(task_id)
             # Use symlink path if enabled
-            from rgsx_settings import apply_symlink_path, get_platform_custom_path, get_auto_extract
+            from rgsx_settings import apply_symlink_path, get_platform_custom_path
             
             # Vérifier si un dossier personnalisé est configuré pour cette plateforme
             custom_path = get_platform_custom_path(platform)
@@ -3347,6 +3355,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 
                 # Vérifier si le fichier existe déjà (exact ou avec autre extension)
                 file_found = False
+                verify_existing_size = False
                 if os.path.exists(dest_path):
                     logger.info(f"Le fichier {dest_path} existe déjà, vérification de la taille...")
                     
@@ -3410,14 +3419,17 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             with urls_lock:
                                 urls_in_progress.discard(original_history_url)
                             return
-                    elif is_zip_non_supported and get_auto_extract() and os.path.splitext(dest_path)[1].lower() in ('.zip', '.7z', '.rar'):
-                        # Archive qui aurait dû être extraite puis supprimée : reste d'une extraction ratée, on télécharge à nouveau
+                    elif _extraction_required(is_zip_non_supported, platform_folder, platform) and os.path.splitext(dest_path)[1].lower() in ('.zip', '.7z', '.rar'):
+                        # Archive qui aurait dû être extraite puis supprimée: c'est un reste d'un échec, on télécharge à nouveau
                         logger.info(f"Le fichier {dest_path} existe mais n'a pas été extrait, nouveau téléchargement")
                     elif os.path.splitext(dest_path)[1].lower() == '.iso' and _is_ps3_redump_target(platform_folder, platform):
                         # L'ISO PS3 est supprimé après conversion : s'il est là, la conversion n'a pas abouti
                         logger.info(f"L'ISO {dest_path} existe mais n'a pas été converti, nouveau téléchargement")
+                    elif remote_size is None:
+                        # Certaines sources refusent HEAD : la taille locale est comparée à celle de la réponse GET
+                        verify_existing_size = True
                     else:
-                        # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
+                        # Les tailles correspondent, considérer comme déjà téléchargé
                         logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
                         result[0] = True
                         result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
@@ -3850,6 +3862,36 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             f"Vimm returned an HTML page instead of an archive (content-type={response_content_type})"
                         )
 
+                    # Une page HTML ne doit pas écraser un fichier resté sur le disque, il est peut-être complet
+                    if 'text/html' in response_content_type and os.path.exists(dest_path):
+                        raise requests.HTTPError(f"Source returned an HTML page instead of the file (content-type={response_content_type})")
+
+                    if verify_existing_size:
+                        existing_total_size = int(response.headers.get('content-length', 0) or 0)
+                        if existing_total_size and os.path.getsize(dest_path) == existing_total_size:
+                            response.close()
+                            logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
+                            result[0] = True
+                            result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                            for entry in config.history:
+                                if entry.get("url") == original_history_url:
+                                    entry["status"] = "Download_OK"
+                                    entry["progress"] = 100
+                                    entry["message"] = result[1]
+                                    _save_history_with_feedback("download_rom:file_already_present")
+                                    break
+                            try:
+                                show_toast(result[1])
+                            except Exception as e:
+                                logger.debug(f"Impossible d'afficher le toast: {e}")
+                            with urls_lock:
+                                urls_in_progress.discard(original_history_url)
+                            try:
+                                notify_download_finished()
+                            except Exception:
+                                pass
+                            return result[0], result[1]
+
                     if url in config.download_progress:
                         config.download_progress[url]["status"] = "Downloading"
                         config.needs_redraw = True
@@ -3973,26 +4015,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             try_chmod(dest_path, 0o644)
             logger.info(f"Téléchargement terminé: {dest_path}")
             
-            # Vérifier si l'extraction automatique est activée dans les paramètres
-            from rgsx_settings import get_auto_extract
-            auto_extract_enabled = get_auto_extract()
-            
-            # Forcer extraction si plateforme BIOS même si le pré-check ne l'avait pas marqué
-            force_extract = is_zip_non_supported and auto_extract_enabled
-            if not force_extract and auto_extract_enabled:
-                try:
-                    bios_like = {"BIOS", "- BIOS by TMCTV -", "- BIOS"}
-                    if platform_folder == "bios" or platform in bios_like:
-                        force_extract = True
-                        logger.debug("Extraction forcée activée pour BIOS")
-                except Exception:
-                    pass
-            
-            # Forcer extraction pour PS3 Redump (déchiffrement et extraction ISO obligatoire)
             is_ps3_target = _is_ps3_redump_target(platform_folder, platform)
-            if not force_extract and is_ps3_target:
-                force_extract = True
-                logger.debug("Extraction forcée activée pour PS3 Redump (déchiffrement ISO)")
+            force_extract = _extraction_required(is_zip_non_supported, platform_folder, platform)
 
             if force_extract:
                 logger.debug(f"Extraction automatique nécessaire pour {dest_path}")
