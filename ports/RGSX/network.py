@@ -5403,6 +5403,15 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     # Si annulé, ne pas continuer avec extraction
                     if download_canceled:
                         return
+
+                    # Le type annoncé seul ne suffit pas : certains hôtes servent de vrais fichiers en text/html
+                    if (
+                        'html' in response.headers.get('content-type', '').lower()
+                        and os.path.splitext(dest_path)[1].lower() not in {'.html', '.htm'}
+                        and _looks_like_html_or_challenge(dest_path)
+                    ):
+                        _safe_remove_file(dest_path)
+                        raise requests.HTTPError(f"Downloaded an HTML page instead of the file ({dest_path})")
                     
                     # Vérifier si l'extraction automatique est activée dans les paramètres
                     from rgsx_settings import get_auto_extract
