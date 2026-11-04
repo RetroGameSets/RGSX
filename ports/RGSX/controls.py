@@ -11,7 +11,7 @@ import config
 import catalog_sync
 from config import REPEAT_DELAY, REPEAT_INTERVAL, REPEAT_ACTION_DEBOUNCE, CONTROLS_CONFIG_PATH, Game
 from display import draw_validation_transition, show_toast, SCREENSCRAPER_KEYBOARD_LAYOUT
-from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel, cleanup_torrent_temp, stop_active_seeder
+from network import download_rom, download_from_1fichier, is_1fichier_url, request_cancel, cleanup_torrent_temp, stop_active_seeder, progress_queues
 from utils import (
     load_games, clear_games_cache, check_extension_before_download, is_extension_supported,
     load_extensions_json, play_random_music, sanitize_filename,
@@ -27,7 +27,7 @@ from utils import (
     parse_game_size_to_bytes,
     sort_games_list,
 )
-from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games
+from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games, reload_history
 from language import _, get_available_languages, set_language  
 from rgsx_settings import (
     DISPLAY_GRID_LAYOUTS, get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
@@ -2309,7 +2309,7 @@ def handle_controls(event, sources, joystick, screen):
                 # 0 = Non, 1 = Oui
                 if config.confirm_clear_selection == 1:  # Oui
                     clear_history()
-                    config.history = load_history()  # Recharger l'historique (conserve les téléchargements en cours)
+                    reload_history(progress_queues)  # Recharger l'historique (conserve les téléchargements en cours)
                     config.current_history_item = 0
                     config.history_scroll_offset = 0
                     config.menu_state = "history"
@@ -3366,7 +3366,7 @@ def handle_controls(event, sources, joystick, screen):
                         config.popup_timer = 5000
                         config.needs_redraw = True
                 elif sel == 2 and is_input_matched(event, "confirm"):  # history
-                    config.history = load_history()
+                    reload_history(progress_queues)
                     config.current_history_item = 0
                     config.history_scroll_offset = 0
                     config.previous_menu_state = "pause_games_menu"

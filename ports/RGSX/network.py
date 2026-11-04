@@ -18,7 +18,7 @@ except Exception:
     pygame = None  # type: ignore
 from config import OTA_VERSION_ENDPOINT,APP_FOLDER, UPDATE_FOLDER, OTA_UPDATE_ZIP, OTA_UPDATE_WINDOWS_ZIP
 from utils import sanitize_filename, extract_zip, extract_rar, extract_7z, handle_ps3, load_api_key_1fichier, load_api_key_alldebrid, normalize_platform_name, resolve_platform_folder, load_api_keys, load_archive_org_cookie, get_clean_display_name, parse_torrent_download_url, load_games, get_disk_usage, try_chmod
-from history import save_history, check_history_write_access, get_history_write_status
+from history import save_history, check_history_write_access, get_history_write_status, history_lock, reload_history
 from display import show_toast
 import qbittorrent_backend
 import logging
@@ -3102,46 +3102,52 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "Downloading"
             # pour que l'interface web puisse afficher le téléchargement en cours
             
-            # TOUJOURS charger l'historique existant depuis le fichier pour éviter d'écraser les anciennes entrées
-            config.history = load_history()
+            with history_lock:
+                # TOUJOURS charger l'historique existant depuis le fichier pour éviter d'écraser les anciennes entrées
+                reload_history(progress_queues)
             
-            # Vérifier si l'entrée existe déjà
-            entry_exists = False
-            for entry in config.history:
-                if entry.get("url") == original_history_url:
-                    entry_exists = True
-                    # Réinitialiser le status à "Downloading"
-                    entry["status"] = "Downloading"
-                    entry["progress"] = 0
-                    entry["downloaded_size"] = 0
-                    entry["platform"] = platform
-                    entry["game_name"] = game_name
-                    entry["display_name"] = get_clean_display_name(game_name, platform)
-                    entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    entry["task_id"] = task_id
-                    if int(entry.get("total_size", 0) or 0) <= 0 and known_total_size > 0:
-                        entry["total_size"] = known_total_size
-                    break
+                # La file d'attente et l'app ajoutent leur ligne sans regarder : sans ceci, l'ancienne
+                # ligne du jeu serait mise à jour et la nouvelle resterait "Downloading"
+                for old_entry in [e for e in config.history if e.get("url") == original_history_url][:-1]:
+                    config.history.remove(old_entry)
             
-            # Si l'entrée n'existe pas, la créer
-            if not entry_exists:
-                config.history.append({
-                    "platform": platform,
-                    "game_name": game_name,
-                    "display_name": get_clean_display_name(game_name, platform),
-                    "url": original_history_url,
-                    "status": "Downloading",
-                    "progress": 0,
-                    "downloaded_size": 0,
-                    "total_size": known_total_size,
-                    "speed": 0,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "message": f"{_('web_status_downloading')}: {game_name}",
-                    "task_id": task_id
-                })
+                # Vérifier si l'entrée existe déjà
+                entry_exists = False
+                for entry in config.history:
+                    if entry.get("url") == original_history_url:
+                        entry_exists = True
+                        # Réinitialiser le status à "Downloading"
+                        entry["status"] = "Downloading"
+                        entry["progress"] = 0
+                        entry["downloaded_size"] = 0
+                        entry["platform"] = platform
+                        entry["game_name"] = game_name
+                        entry["display_name"] = get_clean_display_name(game_name, platform)
+                        entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        entry["task_id"] = task_id
+                        if int(entry.get("total_size", 0) or 0) <= 0 and known_total_size > 0:
+                            entry["total_size"] = known_total_size
+                        break
             
-            # Sauvegarder history.json immédiatement
-            _save_history_with_feedback("download_rom:init")
+                # Si l'entrée n'existe pas, la créer
+                if not entry_exists:
+                    config.history.append({
+                        "platform": platform,
+                        "game_name": game_name,
+                        "display_name": get_clean_display_name(game_name, platform),
+                        "url": original_history_url,
+                        "status": "Downloading",
+                        "progress": 0,
+                        "downloaded_size": 0,
+                        "total_size": known_total_size,
+                        "speed": 0,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "message": f"{_('web_status_downloading')}: {game_name}",
+                        "task_id": task_id
+                    })
+            
+                # Sauvegarder history.json immédiatement
+                _save_history_with_feedback("download_rom:init")
             
             cancel_ev = cancel_events.get(task_id)
             # Use symlink path if enabled
@@ -4326,45 +4332,49 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
             # IMPORTANT: Créer l'entrée dans config.history dès le début avec status "Downloading"
             # pour que l'interface web puisse afficher le téléchargement en cours
 
-            # Charger l'historique existant depuis le fichier
-            if not isinstance(config.history, list):
-                config.history = load_history()
+            with history_lock:
+                # Charger l'historique existant depuis le fichier
+                if not isinstance(config.history, list):
+                    config.history = load_history()
             
-            # Vérifier si l'entrée existe déjà
-            entry_exists = False
-            for entry in config.history:
-                if entry.get("url") == url:
-                    entry_exists = True
-                    # Réinitialiser le status à "Downloading"
-                    entry["status"] = "Downloading"
-                    entry["progress"] = 0
-                    entry["downloaded_size"] = 0
-                    entry["platform"] = platform
-                    entry["game_name"] = game_name
-                    entry["display_name"] = get_clean_display_name(game_name, platform)
-                    entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    entry["task_id"] = task_id
-                    break
+                for old_entry in [e for e in config.history if e.get("url") == url][:-1]:
+                    config.history.remove(old_entry)
             
-            # Si l'entrée n'existe pas, la créer
-            if not entry_exists:
-                config.history.append({
-                    "platform": platform,
-                    "game_name": game_name,
-                    "display_name": get_clean_display_name(game_name, platform),
-                    "url": url,
-                    "status": "Downloading",
-                    "progress": 0,
-                    "downloaded_size": 0,
-                    "total_size": 0,
-                    "speed": 0,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "message": f"{_('web_status_downloading')}: {game_name}",
-                    "task_id": task_id
-                })
+                # Vérifier si l'entrée existe déjà
+                entry_exists = False
+                for entry in config.history:
+                    if entry.get("url") == url:
+                        entry_exists = True
+                        # Réinitialiser le status à "Downloading"
+                        entry["status"] = "Downloading"
+                        entry["progress"] = 0
+                        entry["downloaded_size"] = 0
+                        entry["platform"] = platform
+                        entry["game_name"] = game_name
+                        entry["display_name"] = get_clean_display_name(game_name, platform)
+                        entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        entry["task_id"] = task_id
+                        break
             
-            # Sauvegarder history.json immédiatement
-            _save_history_with_feedback("download_1fichier:init")
+                # Si l'entrée n'existe pas, la créer
+                if not entry_exists:
+                    config.history.append({
+                        "platform": platform,
+                        "game_name": game_name,
+                        "display_name": get_clean_display_name(game_name, platform),
+                        "url": url,
+                        "status": "Downloading",
+                        "progress": 0,
+                        "downloaded_size": 0,
+                        "total_size": 0,
+                        "speed": 0,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "message": f"{_('web_status_downloading')}: {game_name}",
+                        "task_id": task_id
+                    })
+            
+                # Sauvegarder history.json immédiatement
+                _save_history_with_feedback("download_1fichier:init")
             
             # Use symlink path if enabled
             from rgsx_settings import apply_symlink_path, get_platform_custom_path
