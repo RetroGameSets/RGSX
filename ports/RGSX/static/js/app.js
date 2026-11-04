@@ -2315,6 +2315,9 @@
             }
         }
         
+        // Au premier passage, l'historique existant est marqué comme déjà vu sans toast
+        let historySeen = false;
+        
         // Checker les téléchargements terminés pour afficher les toasts
         async function checkCompletedDownloads() {
             try {
@@ -2323,21 +2326,24 @@
                 
                 if (!data.success || !data.history) return;
                 
+                const notify = historySeen ? showToast : () => {};
+                
                 // Parcourir l'historique récent pour détecter les complétions
                 data.history.slice(0, 10).forEach(entry => {
-                    const gameKey = `${entry.platform}_${entry.game_name}`;
+                    // Le timestamp distingue deux téléchargements du même jeu
+                    const gameKey = `${entry.platform}_${entry.game_name}_${entry.timestamp}`;
                     const status = entry.status || '';
                     
                     // Si ce téléchargement n'était pas tracké et il est maintenant complété/erreur/etc
                     if (!trackedDownloads[gameKey]) {
                         if (status === 'Download_OK' || status === 'Completed') {
-                            showToast(`✅ "${entry.game_name}" ${t('web_download_success')}`, 'success', 4000);
+                            notify(`✅ "${entry.game_name}" ${t('web_download_success')}`, 'success', 4000);
                             trackedDownloads[gameKey] = 'completed';
                         } else if (status === 'Erreur' || status === 'error') {
-                            showToast(`❌ ${t('web_download_error_for')} "${entry.game_name}"`, 'error', 5000);
+                            notify(`❌ ${t('web_download_error_for')} "${entry.game_name}"`, 'error', 5000);
                             trackedDownloads[gameKey] = 'error';
                         } else if (status === 'Already_Present') {
-                            showToast(`ℹ️ "${entry.game_name}" ${t('web_already_present')}`, 'info', 3000);
+                            notify(`ℹ️ "${entry.game_name}" ${t('web_already_present')}`, 'info', 3000);
                             trackedDownloads[gameKey] = 'already_present';
                         } else if (status === 'Canceled') {
                             // Ne pas afficher de toast pour les téléchargements annulés
@@ -2345,6 +2351,8 @@
                         }
                     }
                 });
+                
+                historySeen = true;
                 
                 // Sauvegarder dans localStorage
                 localStorage.setItem('trackedDownloads', JSON.stringify(trackedDownloads));
