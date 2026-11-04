@@ -1947,17 +1947,18 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
                 logger.debug(f"1fichier: Direct link validated via HEAD: {direct_link}")
                 break
             except Exception as he:
-                # HEAD may be blocked; try a quick GET without streaming
+                # HEAD may be blocked; try a quick GET, reading only the start: this may be the whole game
                 try:
                     logger.debug(f"1fichier: HEAD failed ({he}), trying quick GET for candidate {candidate}")
-                    rtest = session.get(candidate, allow_redirects=True, timeout=10)
-                    if rtest.status_code >= 400:
-                        logger.debug(f"1fichier: quick GET returned status {rtest.status_code} for {candidate}, skipping")
-                        continue
-                    ctype = rtest.headers.get('content-type', '')
-                    if 'text/html' in ctype.lower() or '<html' in (rtest.text or '').lower():
-                        logger.debug(f"1fichier: quick GET appears to be HTML/landing for {candidate}, skipping")
-                        continue
+                    with session.get(candidate, allow_redirects=True, timeout=10, stream=True) as rtest:
+                        if rtest.status_code >= 400:
+                            logger.debug(f"1fichier: quick GET returned status {rtest.status_code} for {candidate}, skipping")
+                            continue
+                        ctype = rtest.headers.get('content-type', '')
+                        start = next(rtest.iter_content(chunk_size=4096), b'')
+                        if 'text/html' in ctype.lower() or b'<html' in start.lower():
+                            logger.debug(f"1fichier: quick GET appears to be HTML/landing for {candidate}, skipping")
+                            continue
                     direct_link = candidate
                     logger.debug(f"1fichier: Direct link validated via quick GET: {direct_link}")
                     break
