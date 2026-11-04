@@ -27,7 +27,7 @@ from utils import (
     parse_game_size_to_bytes,
     sort_games_list,
 )
-from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games, reload_history
+from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games, reload_history, history_lock
 from language import _, get_available_languages, set_language  
 from rgsx_settings import (
     DISPLAY_GRID_LAYOUTS, get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
@@ -2308,8 +2308,10 @@ def handle_controls(event, sources, joystick, screen):
             if is_input_matched(event, "confirm"):
                 # 0 = Non, 1 = Oui
                 if config.confirm_clear_selection == 1:  # Oui
-                    clear_history()
-                    reload_history(progress_queues)  # Recharger l'historique (conserve les téléchargements en cours)
+                    # Un téléchargement qui sauvegarde entre les deux ferait revenir les lignes effacées
+                    with history_lock:
+                        clear_history()
+                        reload_history(progress_queues)  # Recharger l'historique (conserve les téléchargements en cours)
                     config.current_history_item = 0
                     config.history_scroll_offset = 0
                     config.menu_state = "history"

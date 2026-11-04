@@ -109,7 +109,9 @@ def _warn_history_write_issue(context=""):
 
 
 def _save_history_with_feedback(context=""):
-    saved = save_history(config.history)
+    # Lire la liste une fois le verrou pris : celle d'avant un rechargement n'est plus la bonne
+    with history_lock:
+        saved = save_history(config.history)
     if not saved:
         _warn_history_write_issue(context)
     return saved

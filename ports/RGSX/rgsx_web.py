@@ -21,7 +21,7 @@ import queue
 from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 import config
-from history import load_history, save_history, history_lock, reload_history
+from history import load_history, save_history, clear_history, history_lock, reload_history
 from language import load_language
 from utils import load_sources, load_games, get_clean_display_name, format_game_size, parse_torrent_download_url, request_torrent_manifest_refresh, _resolve_platform_image_path, get_platform_image_payload
 from network import download_rom, download_from_1fichier, progress_queues
@@ -2159,10 +2159,9 @@ class RGSXHandler(BaseHTTPRequestHandler):
             # Route: Vider l'historique
             elif path == '/api/clear-history':
                 try:
-                    from history import clear_history
-                    
-                    clear_history()
-                    config.history = load_history()  # Garder les téléchargements en cours en mémoire
+                    with history_lock:
+                        clear_history()
+                        reload_history(progress_queues)  # Garder les téléchargements en cours en mémoire
                     
                     self._send_json({
                         'success': True,
