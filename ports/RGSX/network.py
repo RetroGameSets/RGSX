@@ -3399,6 +3399,9 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                     elif is_zip_non_supported and get_auto_extract() and os.path.splitext(dest_path)[1].lower() in ('.zip', '.7z', '.rar'):
                         # Archive qui aurait dû être extraite puis supprimée : reste d'une extraction ratée, on télécharge à nouveau
                         logger.info(f"Le fichier {dest_path} existe mais n'a pas été extrait, nouveau téléchargement")
+                    elif os.path.splitext(dest_path)[1].lower() == '.iso' and _is_ps3_redump_target(platform_folder, platform):
+                        # L'ISO PS3 est supprimé après conversion : s'il est là, la conversion n'a pas abouti
+                        logger.info(f"L'ISO {dest_path} existe mais n'a pas été converti, nouveau téléchargement")
                     else:
                         # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
                         logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
