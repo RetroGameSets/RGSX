@@ -2622,7 +2622,7 @@
                     const isCanceled = status === 'Canceled';
                     const isAlreadyPresent = status === 'Already_Present';
                     const isQueued = status === 'Queued';
-                    const isDownloading = status === 'Downloading' || status === 'Connecting' || 
+                    const isDownloading = status === 'Downloading' || status === 'Téléchargement' || status === 'Connecting' || 
                                          status === 'Extracting' || status.startsWith('Try ');
                     const isSuccess = status === 'Download_OK' || status === 'Completed';
                     
