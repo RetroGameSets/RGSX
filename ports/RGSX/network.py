@@ -3204,7 +3204,11 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 if os.path.exists(dest_path):
                     local_size = os.path.getsize(dest_path)
                     expected_size = int(torrent_meta.get("size_bytes") or 0)
-                    if expected_size <= 0 or local_size == expected_size:
+                    # Archive ou ISO PS3 encore là : extraction ou conversion interrompue, le téléchargement doit la relancer
+                    from rgsx_settings import get_auto_extract
+                    extension = os.path.splitext(dest_path)[1].lower()
+                    unprocessed = (is_zip_non_supported and get_auto_extract() and extension in ('.zip', '.7z', '.rar')) or (extension == '.iso' and _is_ps3_redump_target(platform_folder, platform))
+                    if (expected_size <= 0 or local_size == expected_size) and not unprocessed:
                         logger.info(f"Le fichier torrent {dest_path} existe déjà, téléchargement ignoré")
                         result[0] = True
                         result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
