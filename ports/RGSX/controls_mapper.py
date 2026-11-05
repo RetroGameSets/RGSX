@@ -291,6 +291,7 @@ MOUSE_BUTTON_NAMES = {
 
 # Durée de maintien pour valider une entrée (en millisecondes)
 HOLD_DURATION = 1000
+CANCEL_IDLE = 15000  # ms sans aucune entrée avant d'abandonner le remappage
 INPUT_ACCEPT_COOLDOWN = 350  # ms to ignore inputs right after accepting one (avoid axis release bounce)
 
 JOYHAT_DEBOUNCE = 200  # Délai anti-rebond pour JOYHATMOTION (ms)
@@ -492,7 +493,7 @@ def get_preferred_display_for_action(action_name: str, input_type: str, input_va
     return ""
 
 
-def map_controls(screen):
+def map_controls(screen, can_cancel=False):
     """Interface de mappage des contrôles avec maintien de 3 secondes"""
     # Construire un objet ordonné pour forcer l'ordre des clés dans le JSON final
     # Placer "device" en premier si disponible
@@ -511,6 +512,8 @@ def map_controls(screen):
     config.needs_redraw = True
     last_joyhat_time = 0
     next_input_allowed_time = 0  # timestamp until which new inputs are ignored after accept
+    idle_since = last_frame_time
+    cancel_in = None
     
     # État des entrées maintenues
     held_keys = set()
@@ -523,7 +526,7 @@ def map_controls(screen):
     while current_action_index < len(actions):
         if config.needs_redraw:
             progress = min(input_held_time / HOLD_DURATION, 1.0) if current_input else 0.0
-            draw_controls_mapping(screen, actions[current_action_index], last_input_name, current_input is not None, progress)
+            draw_controls_mapping(screen, actions[current_action_index], last_input_name, current_input is not None, progress, cancel_in)
             pygame.display.flip()
             config.needs_redraw = False
         
@@ -697,6 +700,20 @@ def map_controls(screen):
             
             config.needs_redraw = True
         
+        # Sans entrée pendant CANCEL_IDLE, on abandonne sans toucher à controls.json.
+        # Pas au premier lancement: sans mappage, la manette ne répondrait plus nulle part.
+        if current_input or not can_cancel:
+            idle_since = current_time
+            cancel_in = None
+        else:
+            idle_left = CANCEL_IDLE - (current_time - idle_since)
+            if idle_left <= 0:
+                logger.debug("Remappage des contrôles abandonné (aucune entrée)")
+                return None
+            if cancel_in != (idle_left + 999) // 1000:
+                cancel_in = (idle_left + 999) // 1000
+                config.needs_redraw = True
+
         pygame.time.wait(10)
     
     save_controls_config(controls_config)
@@ -705,7 +722,7 @@ def map_controls(screen):
 
 
 
-def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_progress):
+def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_progress, cancel_in=None):
     # Affiche l'interface de mappage des contrôles avec une barre de progression pour le maintien
     draw_gradient(screen, (28, 37, 38), (47, 59, 61))
 
@@ -722,7 +739,7 @@ def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_pr
     # Titre principal (traduction)
     title_text = language.get_text("controls_mapping_title", "Configuration des contrôles")
     title_surface = config.title_font.render(title_text, True, (255, 255, 255))
-    title_rect = title_surface.get_rect(center=(config.screen_width // 2, 80))
+    title_rect = title_surface.get_rect(center=(config.screen_width // 2, min(80, config.screen_height // 8)))
     screen.blit(title_surface, title_rect)
 
     # Icône de l'action courante (facultatif si dépendances disponibles)
@@ -761,7 +778,7 @@ def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_pr
     popup_height = min(popup_height, config.screen_height - 40)
 
     popup_x = (config.screen_width - popup_width) // 2
-    popup_y = (config.screen_height - popup_height) // 2
+    popup_y = max((config.screen_height - popup_height) // 2, title_rect.bottom + padding_between)
 
     # Ombre portée
     shadow_rect = pygame.Rect(popup_x + shadow_offset, popup_y + shadow_offset, popup_width, popup_height)
@@ -815,3 +832,9 @@ def draw_controls_mapping(screen, action, last_input, waiting_for_input, hold_pr
         progress_surface = config.small_font.render(progress_text, True, (255, 255, 255))
         progress_rect = progress_surface.get_rect(center=(bar_x + bar_width // 2, bar_y + bar_height // 2))
         screen.blit(progress_surface, progress_rect)
+
+    if cancel_in is not None:
+        cancel_text = language.get_text("controls_mapping_cancel", "Cancels in {0} s without input").format(cancel_in)
+        cancel_surface = config.small_font.render(cancel_text, True, (200, 200, 200))
+        cancel_rect = cancel_surface.get_rect(center=(config.screen_width // 2, popup_y + popup_height + 2 * padding_between))
+        screen.blit(cancel_surface, cancel_rect)

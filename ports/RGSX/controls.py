@@ -381,6 +381,8 @@ def _open_platform_source(screen, source_index: int) -> bool:
 
     config.current_platform = platform_index
     config.games = load_games(platform_id)
+    config.search_mode = False
+    config.search_query = ""
 
     # Apply saved filters automatically if any
     if config.game_filter_obj and config.game_filter_obj.is_active():
@@ -402,6 +404,24 @@ def _open_platform_source(screen, source_index: int) -> bool:
     config.needs_redraw = True
     logger.debug(f"Navigation vers les jeux de {platform_id}")
     return True
+
+
+def _reload_sources_keeping_open_platform() -> None:
+    open_platform = None
+    if 0 <= config.current_platform < len(config.platforms):
+        open_platform = config.platforms[config.current_platform]
+    load_sources()
+    if open_platform in config.platforms:
+        config.current_platform = config.platforms.index(open_platform)
+        return
+    config.current_platform = 0
+    # The pause menu, or the filter screens it came from, would lead back to the list of a console that is gone
+    if getattr(config, "pause_origin_state", None) != "platform_search":
+        config.pause_origin_state = "platform"
+    if config.previous_menu_state == "game":
+        config.previous_menu_state = "platform"
+    if getattr(config, "global_search_return_state", None) == "game":
+        config.global_search_return_state = "platform"
 
 
 def _is_windows_os() -> bool:
@@ -596,6 +616,18 @@ def should_open_pause_menu(menu_state: str | None) -> bool:
         "screenscraper_input",
         "media_manager",
         "game_info",
+        "language_select",
+        "confirm_exit",
+        "restart_popup",
+        "support_dialog",
+        "filter_platforms",
+        "folder_browser",
+        "folder_browser_new_folder",
+        "extension_warning",
+        "error",
+        "history_error_details",
+        "history_show_folder",
+        "text_file_viewer",
     }
 
 
@@ -1267,9 +1299,16 @@ def _get_global_search_source_items() -> tuple[list[dict], tuple]:
                 for item in source_items
                 if item.get('game_obj') is not None
             }
-            filtered_games = filter_obj.apply_filters(
-                [item.get('game_obj') for item in source_items if item.get('game_obj') is not None]
-            )
+            games_by_platform = {}
+            for item in source_items:
+                if item.get('game_obj') is not None:
+                    games_by_platform.setdefault(item['platform_id'], []).append(item['game_obj'])
+            # One ROM per game must only merge games of the same console
+            filtered_games = [
+                game
+                for games in games_by_platform.values()
+                for game in filter_obj.apply_filters(games)
+            ]
             source_items = [
                 item_by_game[id(game)]
                 for game in filtered_games
@@ -3039,13 +3078,10 @@ def handle_controls(event, sources, joystick, screen):
                 selected = options[sel]["key"]
                 if selected == "help":
                     config.previous_menu_state = "pause_controls_menu"
+                    config.controls_help_scroll = 0
                     config.menu_state = "controls_help"
                 elif selected == "remap":
-                    if os.path.exists(config.CONTROLS_CONFIG_PATH):
-                        try:
-                            os.remove(config.CONTROLS_CONFIG_PATH)
-                        except Exception as e:
-                            logger.error(f"Erreur suppression controls_config: {e}")
+                    config.remap_controls = True
                     config.previous_menu_state = "pause_controls_menu"
                     config.menu_state = "controls_mapping"
                 # invert_abxy moved to controls_help submenu (interactive)
@@ -3061,8 +3097,12 @@ def handle_controls(event, sources, joystick, screen):
         
         # Menu Aide Contrôles (affichage interactif du style manette)
         elif config.menu_state == "controls_help":
+            if is_input_matched(event, "up") or is_input_matched(event, "down"):
+                row_step = config.small_font.get_height() + 8
+                config.controls_help_scroll = max(0, getattr(config, 'controls_help_scroll', 0) + (row_step if is_input_matched(event, "down") else -row_step))
+                config.needs_redraw = True
             # Left/Right change controller style immediately
-            if is_input_matched(event, "left") or is_input_matched(event, "right"):
+            elif is_input_matched(event, "left") or is_input_matched(event, "right"):
                 try:
                     from rgsx_settings import set_nintendo_layout, get_nintendo_layout
                     # Toggle style
@@ -3378,7 +3418,7 @@ def handle_controls(event, sources, joystick, screen):
                     try:
                         current = get_show_unsupported_platforms()
                         new_val = set_show_unsupported_platforms(not current)
-                        load_sources()
+                        _reload_sources_keeping_open_platform()
                         config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
                         config.popup_timer = 3000
                         config.needs_redraw = True
@@ -3598,6 +3638,7 @@ def handle_controls(event, sources, joystick, screen):
                 # Option Connection Status
                 elif sel == connection_status_index and is_input_matched(event, "confirm"):
                     start_connection_status_check(force=True)
+                    config.connection_status_scroll = 0
                     config.menu_state = "pause_connection_status"
                     config.needs_redraw = True
                 # Options ScreenScraper account: edit with the virtual keyboard
@@ -3618,7 +3659,11 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
 
         elif config.menu_state == "pause_connection_status":
-            if is_input_matched(event, "cancel") or is_input_matched(event, "confirm") or is_input_matched(event, "start"):
+            if is_input_matched(event, "up") or is_input_matched(event, "down"):
+                row_step = config.small_font.get_height() + 14
+                config.connection_status_scroll = max(0, getattr(config, 'connection_status_scroll', 0) + (row_step if is_input_matched(event, "down") else -row_step))
+                config.needs_redraw = True
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "confirm") or is_input_matched(event, "start"):
                 config.menu_state = "pause_settings_menu"
                 config.last_state_change_time = pygame.time.get_ticks()
                 config.needs_redraw = True
@@ -4367,7 +4412,7 @@ def handle_controls(event, sources, joystick, screen):
         # Filtrage avancé
         elif config.menu_state == "filter_advanced":
             from game_filters import GameFilters
-            from rgsx_settings import save_game_filters
+            from rgsx_settings import save_game_filters, load_game_filters
             
             # Initialiser le filtre si nécessaire
             if not hasattr(config, 'game_filter_obj'):
@@ -4532,6 +4577,7 @@ def handle_controls(event, sources, joystick, screen):
                     
                     elif button_idx == 2:
                         # Back
+                        config.game_filter_obj.load_from_dict(load_game_filters())
                         scope = getattr(config, 'filter_target_scope', 'local')
                         if scope == 'global':
                             config.menu_state = "filter_menu_choice"
@@ -4543,6 +4589,7 @@ def handle_controls(event, sources, joystick, screen):
                         logger.debug("Retour sans appliquer les filtres")
             
             elif is_input_matched(event, "cancel"):
+                config.game_filter_obj.load_from_dict(load_game_filters())
                 scope = getattr(config, 'filter_target_scope', 'local')
                 if scope == 'global':
                     config.menu_state = "filter_menu_choice"
@@ -4556,7 +4603,7 @@ def handle_controls(event, sources, joystick, screen):
         # Configuration priorité régions
         elif config.menu_state == "filter_priority_config":
             from game_filters import GameFilters
-            from rgsx_settings import save_game_filters
+            from rgsx_settings import save_game_filters, load_game_filters
             
             if not hasattr(config, 'game_filter_obj'):
                 config.game_filter_obj = GameFilters()
@@ -4576,7 +4623,10 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "confirm"):
                 if config.selected_priority_index >= len(priority_list):
                     # Bouton Back : retour au menu filtrage avancé
-                    save_game_filters(config.game_filter_obj.to_dict())
+                    # Seul l'ordre est validé ici : les régions cochées attendent Apply
+                    saved_filters = load_game_filters()
+                    saved_filters['region_priority'] = priority_list
+                    save_game_filters(saved_filters)
                     config.menu_state = "filter_advanced"
                     config.needs_redraw = True
                     logger.debug("Retour au filtrage avancé")
@@ -4716,7 +4766,7 @@ def handle_controls(event, sources, joystick, screen):
                 hidden_list = sorted({name for name, is_hidden in hidden_map_local.items() if is_hidden}, key=lambda s: str(s).lower())
                 settings_local["hidden_platforms"] = hidden_list
                 save_rgsx_settings(settings_local)
-                load_sources()
+                _reload_sources_keeping_open_platform()
                 try:
                     systems_per_page = config.GRID_COLS * config.GRID_ROWS
                     platform_group_count = len(getattr(config, "platform_groups", []) or config.platforms)
@@ -4834,8 +4884,15 @@ def handle_controls(event, sources, joystick, screen):
                 _apply_filter()
                 config.needs_redraw = True
             elif is_input_matched(event, "cancel"):
-                _show_unsaved_exit_toast()
-                _return_from_filter()
+                # Avec des changements non appliqués, un premier retour avertit, un second pendant le toast les abandonne
+                if getattr(config, 'filter_platforms_dirty', False) and current_time - getattr(config, 'filter_platforms_warned_at', -3000) >= 3000:
+                    config.filter_platforms_warned_at = current_time
+                    _show_unsaved_exit_toast()
+                else:
+                    config.filter_platforms_dirty = False
+                    config.filter_platforms_selection = []
+                    config.filter_platforms_warned_at = -3000
+                    _return_from_filter()
                 config.needs_redraw = True
 
 
