@@ -4864,8 +4864,15 @@ def handle_controls(event, sources, joystick, screen):
                 _apply_filter()
                 config.needs_redraw = True
             elif is_input_matched(event, "cancel"):
-                _show_unsaved_exit_toast()
-                _return_from_filter()
+                # Avec des changements non appliqués, un premier retour avertit, un second pendant le toast les abandonne
+                if getattr(config, 'filter_platforms_dirty', False) and current_time - getattr(config, 'filter_platforms_warned_at', -3000) >= 3000:
+                    config.filter_platforms_warned_at = current_time
+                    _show_unsaved_exit_toast()
+                else:
+                    config.filter_platforms_dirty = False
+                    config.filter_platforms_selection = []
+                    config.filter_platforms_warned_at = -3000
+                    _return_from_filter()
                 config.needs_redraw = True
 
 

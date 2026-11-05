@@ -163,7 +163,7 @@
     "filter_platforms_title": "Systemsichtbarkeit",
     "filter_platforms_info": "Sichtbar: {0} | Versteckt: {1} / Gesamt: {2}",
     "filter_unsaved_warning": "Ungespeicherte Änderungen",
-    "filter_unsaved_toast": "Ungespeicherte Anderungen\nMit History/Start anwenden, bevor du zuruckgehst",
+    "filter_unsaved_toast": "Ungespeicherte Änderungen\nMit History anwenden oder erneut Abbrechen drücken, um sie zu verwerfen",
     "menu_show_unsupported_enabled": "Sichtbarkeit nicht unterstützter Systeme aktiviert",
     "menu_show_unsupported_disabled": "Sichtbarkeit nicht unterstützter Systeme deaktiviert",
     "menu_allow_unknown_ext_on": "Warnung bei unbekannter Erweiterung ausblenden: Ja",
