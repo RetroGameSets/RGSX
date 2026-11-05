@@ -950,6 +950,7 @@ async def main():
                 "confirm_cancel_download",
                 "reload_games_data",
                 "reset_settings_confirm",
+                "support_dialog",
                 # Menus historique
                 "history_game_options",
                 "history_show_folder",

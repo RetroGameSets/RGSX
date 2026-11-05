@@ -619,6 +619,7 @@ def should_open_pause_menu(menu_state: str | None) -> bool:
         "language_select",
         "confirm_exit",
         "restart_popup",
+        "support_dialog",
         "filter_platforms",
         "folder_browser",
         "folder_browser_new_folder",
