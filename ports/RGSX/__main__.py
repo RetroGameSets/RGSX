@@ -1801,9 +1801,12 @@ async def main():
         logger.debug("dArkOS: EmulationStation refresh delegated to RGSX.sh")
     else:
         # Exécuter la mise à jour de la liste des jeux d'EmulationStation UNIQUEMENT sur Batocera
-        resp = requests.get("http://127.0.0.1:1234/reloadgames", timeout=2)
-        content = (resp.text or "").strip()
-        logger.debug(f"Résultat mise à jour liste des jeux: HTTP {resp.status_code} - {content}")
+        try:
+            resp = requests.get("http://127.0.0.1:1234/reloadgames", timeout=2)
+            content = (resp.text or "").strip()
+            logger.debug(f"Résultat mise à jour liste des jeux: HTTP {resp.status_code} - {content}")
+        except requests.RequestException as e:
+            logger.debug(f"EmulationStation ne répond pas, mise à jour de la liste des jeux ignorée: {e}")
         try:
             result2 = subprocess.run(["batocera-es-swissknife", "--emukill"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             if getattr(result2, "returncode", 1) == 0:
