@@ -269,6 +269,7 @@
     "status_off": "Non",
     "status_present": "Présente",
     "status_missing": "Absente",
+    "status_current": "Actuel",
     "menu_api_keys_status": "Clés API",
     "menu_connection_status": "État de connexion",
     "api_keys_status_title": "Statut des clés API",

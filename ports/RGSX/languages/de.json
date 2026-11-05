@@ -273,6 +273,7 @@
     "status_off": "Aus",
     "status_present": "Vorhanden",
     "status_missing": "Fehlt",
+    "status_current": "Aktuell",
     "menu_api_keys_status": "API-Schlüssel",
     "menu_connection_status": "Verbindungsstatus",
     "api_keys_status_title": "Status der API-Schlüssel",

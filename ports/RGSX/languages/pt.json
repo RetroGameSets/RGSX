@@ -274,6 +274,7 @@
     "status_off": "Não",
     "status_present": "Presente",
     "status_missing": "Ausente",
+    "status_current": "Atual",
     "menu_api_keys_status": "Chaves API",
     "menu_connection_status": "Estado da conexão",
     "api_keys_status_title": "Status das chaves API",

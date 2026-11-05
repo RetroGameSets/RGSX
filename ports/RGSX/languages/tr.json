@@ -272,6 +272,7 @@
     "status_off": "Kapalı",
     "status_present": "Mevcut",
     "status_missing": "Eksik",
+    "status_current": "Mevcut",
     "menu_api_keys_status": "API Anahtarları",
     "menu_connection_status": "Bağlantı durumu",
     "api_keys_status_title": "API Anahtarı Durumu",
