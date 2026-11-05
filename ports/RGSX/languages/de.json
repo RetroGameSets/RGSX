@@ -382,6 +382,7 @@
     "controls_mapping_instruction": "Zum Bestätigen gedrückt halten:",
     "controls_mapping_waiting": "Warte auf eine Taste oder einen Button...",
     "controls_mapping_press": "Drücke eine Taste oder einen Button",
+    "controls_mapping_cancel": "Abbruch in {0} s ohne Eingabe",
     "status_already_present": "Bereits Vorhanden",
     "footer_joystick": "Joystick: {0}",
     "history_game_options_title": "Spiel Optionen",

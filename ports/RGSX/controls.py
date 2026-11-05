@@ -3081,11 +3081,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.controls_help_scroll = 0
                     config.menu_state = "controls_help"
                 elif selected == "remap":
-                    if os.path.exists(config.CONTROLS_CONFIG_PATH):
-                        try:
-                            os.remove(config.CONTROLS_CONFIG_PATH)
-                        except Exception as e:
-                            logger.error(f"Erreur suppression controls_config: {e}")
+                    config.remap_controls = True
                     config.previous_menu_state = "pause_controls_menu"
                     config.menu_state = "controls_mapping"
                 # invert_abxy moved to controls_help submenu (interactive)

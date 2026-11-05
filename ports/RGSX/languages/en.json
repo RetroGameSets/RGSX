@@ -381,6 +381,7 @@
     "controls_mapping_instruction": "Hold to confirm the mapping:",
     "controls_mapping_waiting": "Waiting for a key or button...",
     "controls_mapping_press": "Press a key or a button",
+    "controls_mapping_cancel": "Cancels in {0} s without input",
     "status_already_present": "Already Present",
     "footer_joystick": "Joystick: {0}",
     "history_game_options_title": "Game Options",

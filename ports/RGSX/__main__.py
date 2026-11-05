@@ -1482,8 +1482,10 @@ async def main():
                 # Vérifier si le fichier de contrôles existe déjà
                 controls_file_exists = os.path.exists(config.CONTROLS_CONFIG_PATH)
                 logger.debug(f"Vérification du fichier controls.json: {controls_file_exists} à {config.CONTROLS_CONFIG_PATH}")
+                remap_requested = getattr(config, "remap_controls", False)
+                config.remap_controls = False
                 
-                if controls_file_exists:
+                if controls_file_exists and not remap_requested:
                     # Si le fichier existe déjà, passer directement à l'état loading
                     config.menu_state = "loading"
                     logger.debug("Fichier controls.json existe déjà, passage direct à l'état loading")
@@ -1501,13 +1503,17 @@ async def main():
                     logger.debug("Interface de mappage des contrôles affichée")
                     
                     # Appeler map_controls pour gérer la configuration
-                    success = map_controls(screen)
+                    success = map_controls(screen, can_cancel=remap_requested)
                     logger.debug(f"map_controls terminé, succès={success}")
                     if success:
                         config.controls_config = load_controls_config()
                         # Toujours passer à l'état loading après la configuration des contrôles
                         config.menu_state = "loading"
                         logger.debug("Passage à l'état loading après mappage")
+                        config.needs_redraw = True
+                    elif success is None:
+                        # Abandon: controls.json reste tel quel
+                        config.menu_state = "pause_controls_menu"
                         config.needs_redraw = True
                     else:
                         config.menu_state = "error"

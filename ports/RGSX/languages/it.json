@@ -377,6 +377,7 @@
     "controls_mapping_instruction": "Tieni premuto per confermare l'associazione:",
     "controls_mapping_waiting": "In attesa di un tasto o pulsante...",
     "controls_mapping_press": "Premi un tasto o un pulsante",
+    "controls_mapping_cancel": "Annullamento tra {0} s senza input",
     "status_already_present": "Già Presente",
     "footer_joystick": "Joystick: {0}",
     "history_game_options_title": "Opzioni gioco",

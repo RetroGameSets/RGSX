@@ -383,6 +383,7 @@
     "controls_mapping_instruction": "Mantenha para confirmar o mapeamento:",
     "controls_mapping_waiting": "Aguardando uma tecla ou botão...",
     "controls_mapping_press": "Pressione uma tecla ou um botão",
+    "controls_mapping_cancel": "Cancela em {0} s sem atividade",
     "status_already_present": "Já Presente",
     "footer_joystick": "Joystick: {0}",
     "history_game_options_title": "Opções do jogo",
