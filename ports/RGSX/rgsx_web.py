@@ -21,10 +21,10 @@ import queue
 from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 import config
-from history import load_history, save_history
+from history import load_history, save_history, clear_history, history_lock, reload_history
 from language import load_language
+from network import download_rom, download_from_1fichier, progress_queues
 from utils import queue_interrupted_downloads, load_sources, load_games, get_clean_display_name, format_game_size, parse_torrent_download_url, request_torrent_manifest_refresh, _resolve_platform_image_path, get_platform_image_payload
-from network import download_rom, download_from_1fichier
 from pathlib import Path
 from rgsx_settings import get_language
 from config import Game
@@ -1184,8 +1184,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 
                 # Inclure: statuts terminés + en queue + en cours
                 included_statuses = [
-                    "Download_OK", "Erreur", "error", "Canceled", "Already_Present",  # Terminés
-                    "Queued", "Downloading", "Téléchargement", "Downloading", "Connecting", "Extracting",  # En cours
+                    "Download_OK", "Completed", "Erreur", "Error", "error", "Canceled", "Already_Present",  # Terminés
+                    "Queued", "Downloading", "Téléchargement", "Downloading", "Connecting", "Extracting", "Converting", "Seeding",  # En cours
                 ]
                 # Inclure aussi les statuts "Try X/Y" (tentatives)
                 visible_history = [
@@ -1379,15 +1379,15 @@ class RGSXHandler(BaseHTTPRequestHandler):
         config.download_active = True
         
         # Mettre à jour l'historique: queued -> Downloading
-        from history import load_history, save_history
-        config.history = load_history()
-        for entry in config.history:
-            if entry.get('task_id') == task_id and entry.get('status') == 'Queued':
-                entry['status'] = 'Downloading'
-                entry['message'] = get_translation('download_in_progress')
-                save_history(config.history)
-                logger.info(f"📋 Statut mis à jour de 'queued' à 'Downloading' pour {game_name} (task_id={task_id})")
-                break
+        with history_lock:
+            reload_history(progress_queues)
+            for entry in config.history:
+                if entry.get('task_id') == task_id and entry.get('status') == 'Queued':
+                    entry['status'] = 'Downloading'
+                    entry['message'] = get_translation('download_in_progress')
+                    save_history(config.history)
+                    logger.info(f"📋 Statut mis à jour de 'queued' à 'Downloading' pour {game_name} (task_id={task_id})")
+                    break
         
         if is_1fichier:
             download_func = download_from_1fichier
@@ -1638,7 +1638,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 
                 # save_history réécrit toute la table depuis cette liste : ce processus ne l'a jamais chargée
                 # au démarrage, et l'app peut y avoir ajouté des lignes depuis.
-                config.history = load_history()
+                reload_history(progress_queues)
                 
                 # Déterminer si on doit ajouter à la queue selon le mode et les slots disponibles.
                 max_dl = getattr(config, 'max_simultaneous_downloads', 5)
@@ -1673,8 +1673,9 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             'total_size': 0,
                             'task_id': task_id
                         }
-                        config.history.append(queue_history_entry)
-                        save_history(config.history)
+                        with history_lock:
+                            config.history.append(queue_history_entry)
+                            save_history(config.history)
                         self._send_json({
                             'success': True,
                             'message': f"{game_name} ajouté à la file d'attente",
@@ -1754,10 +1755,10 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         'total_size': 0,
                         'task_id': task_id
                     }
-                    config.history.append(queue_history_entry)
-                    
                     # Sauvegarder l'historique
-                    save_history(config.history)
+                    with history_lock:
+                        config.history.append(queue_history_entry)
+                        save_history(config.history)
                     
                     logger.info(f"📋 {game_name} ajouté à la file d'attente (mode=queue, active={active_count}/{max_dl})")
                     
@@ -1792,8 +1793,9 @@ class RGSXHandler(BaseHTTPRequestHandler):
                         'total_size': 0,
                         'task_id': task_id
                     }
-                    config.history.append(download_history_entry)
-                    save_history(config.history)
+                    with history_lock:
+                        config.history.append(download_history_entry)
+                        save_history(config.history)
                     
                     if is_1fichier:
                         download_func = download_from_1fichier
@@ -1928,13 +1930,15 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     
                     # Mettre à jour l'historique pour annuler les téléchargements en statut "Queued"
                     # Le téléchargement en cours réécrit config.history en se terminant
-                    config.history = history = load_history()
-                    for entry in history:
-                        if entry.get("status") == "Queued":
-                            entry["status"] = "Canceled"
-                            entry["message"] = get_translation('download_canceled')
-                            logger.info(f"Téléchargement en attente annulé : {entry.get('game_name', '?')}")
-                    save_history(history)
+                    with history_lock:
+                        reload_history(progress_queues)
+                        history = config.history
+                        for entry in history:
+                            if entry.get("status") == "Queued":
+                                entry["status"] = "Canceled"
+                                entry["message"] = get_translation('download_canceled')
+                                logger.info(f"Téléchargement en attente annulé : {entry.get('game_name', '?')}")
+                        save_history(history)
                     
                     logger.info(f"📋 Queue vidée ({cleared_count} éléments supprimés)")
                     self._send_json({
@@ -1970,14 +1974,16 @@ class RGSXHandler(BaseHTTPRequestHandler):
                             
                             # Mettre à jour l'historique pour cet élément
                             # Le téléchargement en cours réécrit config.history en se terminant
-                            config.history = history = load_history()
-                            for entry in history:
-                                if entry.get('task_id') == task_id and entry.get('status') == 'Queued':
-                                    entry['status'] = 'Canceled'
-                                    entry['message'] = get_translation('download_canceled')
-                                    logger.info(f"Téléchargement en attente annulé dans l'historique : {entry.get('game_name', '?')}")
-                                    break
-                            save_history(history)
+                            with history_lock:
+                                reload_history(progress_queues)
+                                history = config.history
+                                for entry in history:
+                                    if entry.get('task_id') == task_id and entry.get('status') == 'Queued':
+                                        entry['status'] = 'Canceled'
+                                        entry['message'] = get_translation('download_canceled')
+                                        logger.info(f"Téléchargement en attente annulé dans l'historique : {entry.get('game_name', '?')}")
+                                        break
+                                save_history(history)
                             break
                     
                     if found:
@@ -2153,10 +2159,9 @@ class RGSXHandler(BaseHTTPRequestHandler):
             # Route: Vider l'historique
             elif path == '/api/clear-history':
                 try:
-                    from history import clear_history
-                    
-                    clear_history()
-                    config.history = load_history()  # Garder les téléchargements en cours en mémoire
+                    with history_lock:
+                        clear_history()
+                        reload_history(progress_queues)  # Garder les téléchargements en cours en mémoire
                     
                     self._send_json({
                         'success': True,
