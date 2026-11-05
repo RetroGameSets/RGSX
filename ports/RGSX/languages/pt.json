@@ -223,6 +223,7 @@
     "download_already_extracted": " (já extraído)",
     "download_in_progress": "Download em andamento...",
     "download_queued": "Na fila de download",
+    "download_interrupted": "Interrompido por um reinício, baixe novamente se ainda quiser",
     "download_started": "Download iniciado",
     "network_download_already_queued": "Este download já está em andamento",
     "utils_extracted": "Extraído: {0}",

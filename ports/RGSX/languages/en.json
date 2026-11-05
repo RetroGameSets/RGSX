@@ -220,6 +220,7 @@
     "download_already_extracted": " (already extracted)",
     "download_in_progress": "Download in progress...",
     "download_queued": "Queued for download",
+    "download_interrupted": "Interrupted by a restart, download it again if you still want it",
     "download_started": "Download started",
     "network_download_already_queued": "This download is already in progress",
     "utils_extracted": "Extracted: {0}",

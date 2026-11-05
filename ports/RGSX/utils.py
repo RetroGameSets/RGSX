@@ -31,7 +31,7 @@ import random
 import config
 from history import save_history
 from language import _ 
-from datetime import datetime
+from datetime import datetime, timedelta
 import sys
 import tempfile
 import getpass
@@ -2188,6 +2188,41 @@ def generate_extensions_json_from_es_systems():
     logger.info(f"Extensions combinées totales: {len(result)} systèmes")
     return result
     
+def queue_interrupted_downloads():
+    """Remet dans la file les téléchargements en cours ou en attente à l'arrêt précédent."""
+    from history import load_history
+    config.history = load_history()
+    running = ("Downloading", "Téléchargement", "Connecting", "Extracting", "Converting", "Queued")
+    interrupted = [
+        e for e in config.history
+        if (e.get("status") in running or str(e.get("status")).startswith("Try ")) and e.get("url")
+    ]
+    interrupted.sort(key=lambda e: e.get("timestamp", ""))
+    # Après une longue absence, des centaines de vieilles lignes ne doivent pas repartir d'un coup
+    oldest_resumed = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    resumed = 0
+    for n, entry in enumerate(interrupted):
+        if entry.get("timestamp", "") < oldest_resumed:
+            entry.update(status="Erreur", progress=0, message=_("download_interrupted"))
+            continue
+        check_result = check_extension_before_download(entry["url"], entry["platform"], entry["game_name"])
+        task_id = f"resume_{int(time.time() * 1000)}_{n}"
+        config.download_queue.append({
+            'url': entry["url"],
+            'platform': entry["platform"],
+            'game_name': entry["game_name"],
+            'is_zip_non_supported': bool(check_result and check_result[3]),
+            'is_1fichier': "1fichier.com" in entry["url"],
+            'task_id': task_id,
+            'status': 'Queued'
+        })
+        entry.update(status="Queued", progress=0, message=_("download_queued"), task_id=task_id)
+        resumed += 1
+    if interrupted:
+        save_history(config.history)
+    return resumed
+
+
 def check_extension_before_download(url, platform, game_name):
     """Vérifie l'extension avant de lancer le téléchargement et retourne un tuple de 4 éléments."""
     try:
@@ -2278,7 +2313,7 @@ def is_extension_supported(filename, platform_key, extensions_data):
 
     if not dest_dir:
         logger.warning(f"Aucun dossier 'folder' trouvé pour la plateforme {platform_key}")
-        dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform_key)
+        dest_dir = resolve_platform_folder(platform_key)
     
     dest_folder_name = os.path.basename(dest_dir)
     logger.debug(f"Vérification extension {extension} pour {filename} dans dossier {dest_folder_name}, {len(extensions_data)} systèmes disponibles")
@@ -2303,7 +2338,7 @@ def _get_dest_folder_name(platform_key: str) -> str:
                 dest_dir = os.path.join(config.ROMS_FOLDER, folder)
             break
     if not dest_dir:
-        dest_dir = os.path.join(os.path.dirname(os.path.dirname(config.APP_FOLDER)), platform_key)
+        dest_dir = resolve_platform_folder(platform_key)
     return os.path.basename(dest_dir)
 
 
