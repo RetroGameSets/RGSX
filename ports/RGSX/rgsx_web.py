@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import json
 import urllib.parse
 import urllib.request
@@ -8,6 +8,7 @@ import os
 import sys
 import logging
 import time
+import io
 import threading
 import asyncio
 import shutil
@@ -707,9 +708,62 @@ def _run_game_media_downloads():
         finally:
             _web_game_media_queue.task_done()
 
+class _ClientWriter(io.BufferedIOBase):
+    """Envoie par morceaux : sendall() applique le délai à toute la réponse, ce qui couperait les clients lents."""
+    
+    def __init__(self, connection):
+        self._connection = connection
+    
+    def writable(self):
+        return True
+    
+    def write(self, data):
+        view = memoryview(data)
+        try:
+            for start in range(0, len(view), 65536):
+                self._connection.sendall(view[start:start + 65536])
+        except socket.timeout:
+            # Le message d'erreur qui suit ne doit pas attendre à son tour ce client arrêté
+            self._connection.shutdown(socket.SHUT_RDWR)
+            raise
+        return len(view)
+
+
+# Les routes partagent l'état de l'application : une seule à la fois. Lire le corps et envoyer la réponse se fait hors du verrou.
+_routes_lock = threading.Lock()
+
 
 class RGSXHandler(BaseHTTPRequestHandler):
     """Handler HTTP pour les requêtes RGSX"""
+    
+    # Libère le thread d'un client muet ou arrêté en route
+    timeout = 10
+    
+    def setup(self):
+        super().setup()
+        self.wfile = _ClientWriter(self.connection)
+    
+    def _one_at_a_time(self, handle_route, body_length=0):
+        # La route ne doit jamais attendre le client en tenant le verrou
+        self.rfile = io.BytesIO(self.rfile.read(body_length) if body_length > 0 else b'')
+        client = self.wfile
+        self.wfile = io.BytesIO()
+        try:
+            with _routes_lock:
+                handle_route()
+        finally:
+            response, self.wfile = self.wfile.getvalue(), client
+            self.wfile.write(response)
+    
+    def do_GET(self):
+        self._one_at_a_time(self._handle_get)
+    
+    def do_POST(self):
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+        except ValueError:
+            length = 0
+        self._one_at_a_time(self._handle_post, length)
     
     def log_message(self, format, *args):
         """Override pour logger proprement (désactivé pour réduire verbosité)"""
@@ -895,7 +949,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
         self._set_headers(mime_type, status=200, etag=etag, last_modified=last_modified, extra_headers=cache_headers)
         self.wfile.write(data)
     
-    def do_GET(self):
+    def _handle_get(self):
         """Traite les requêtes GET"""
         # Parser l'URL
         parsed_path = urllib.parse.urlparse(self.path)
@@ -1427,7 +1481,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
         thread = threading.Thread(target=run_download, daemon=True)
         thread.start()
     
-    def do_POST(self):
+    def _handle_post(self):
         """Traite les requêtes POST"""
         parsed_path = urllib.parse.urlparse(self.path)
         path = parsed_path.path
@@ -2618,7 +2672,7 @@ def run_server(host='0.0.0.0', port=5000):
     server_address = (host, port)
     
     # Créer une classe HTTPServer personnalisée qui réutilise le port
-    class ReuseAddrHTTPServer(HTTPServer):
+    class ReuseAddrHTTPServer(ThreadingHTTPServer):
         allow_reuse_address = True
     
     # Tuer les processus existants utilisant le port (plateforme spécifique)
