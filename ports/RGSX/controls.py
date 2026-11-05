@@ -1267,9 +1267,16 @@ def _get_global_search_source_items() -> tuple[list[dict], tuple]:
                 for item in source_items
                 if item.get('game_obj') is not None
             }
-            filtered_games = filter_obj.apply_filters(
-                [item.get('game_obj') for item in source_items if item.get('game_obj') is not None]
-            )
+            games_by_platform = {}
+            for item in source_items:
+                if item.get('game_obj') is not None:
+                    games_by_platform.setdefault(item['platform_id'], []).append(item['game_obj'])
+            # One ROM per game must only merge games of the same console
+            filtered_games = [
+                game
+                for games in games_by_platform.values()
+                for game in filter_obj.apply_filters(games)
+            ]
             source_items = [
                 item_by_game[id(game)]
                 for game in filtered_games
