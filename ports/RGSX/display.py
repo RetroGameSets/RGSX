@@ -7343,10 +7343,29 @@ def draw_filter_priority_config(screen):
         config.selected_priority_index = 0
     
     priority_list = config.game_filter_obj.region_priority.copy()
-    
+
+    # Les régions et le bouton Back défilent dans la zone au-dessus du footer
+    button_height = 50
+    footer_reserved = 82
+    viewport_bottom = config.screen_height - footer_reserved
+    viewport_height = viewport_bottom - start_y
+    content_height = len(priority_list) * line_height + button_height
+    max_scroll = max(0, content_height - viewport_height)
+    selected_top = min(config.selected_priority_index, len(priority_list)) * line_height
+    selected_bottom = selected_top + button_height
+    scroll_offset = max(0, min(getattr(config, 'priority_scroll_offset', 0), max_scroll))
+    if selected_top < scroll_offset:
+        scroll_offset = selected_top
+    elif selected_bottom > scroll_offset + viewport_height:
+        scroll_offset = min(max_scroll, selected_bottom - viewport_height)
+    config.priority_scroll_offset = scroll_offset
+
+    previous_clip = screen.get_clip()
+    screen.set_clip(pygame.Rect(0, start_y, config.screen_width, viewport_height))
+
     # Afficher chaque région avec sa position
     for i, region in enumerate(priority_list):
-        y = start_y + i * line_height
+        y = start_y + i * line_height - scroll_offset
         x = 120
         width = config.screen_width - 240
         height = 50
@@ -7380,12 +7399,10 @@ def draw_filter_priority_config(screen):
             arrows_surface = config.font.render(arrows_text, True, THEME_COLORS["green"])
             screen.blit(arrows_surface, (x + width - 50, y + (height - arrows_surface.get_height()) // 2))
     
-    # Boutons en bas
-    control_bar_estimated_height = 80
+    # Bouton Back à la suite de la liste
     button_width = 300
-    button_height = 50
     button_x = (config.screen_width - button_width) // 2
-    button_y = config.screen_height - control_bar_estimated_height - button_height - 20
+    button_y = start_y + len(priority_list) * line_height - scroll_offset
     
     # Bouton Back
     is_button_selected = config.selected_priority_index >= len(priority_list)
@@ -7399,3 +7416,14 @@ def draw_filter_priority_config(screen):
     text_surface = config.font.render(back_text, True, THEME_COLORS["text"])
     text_rect = text_surface.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
     screen.blit(text_surface, text_rect)
+
+    screen.set_clip(previous_clip)
+
+    if max_scroll > 0:
+        indicator_color = THEME_COLORS["title_text"]
+        if scroll_offset > 0:
+            up_surface = config.small_font.render("^", True, indicator_color)
+            screen.blit(up_surface, up_surface.get_rect(center=(config.screen_width - 18, start_y + 10)))
+        if scroll_offset < max_scroll:
+            down_surface = config.small_font.render("v", True, indicator_color)
+            screen.blit(down_surface, down_surface.get_rect(center=(config.screen_width - 18, viewport_bottom - 10)))
