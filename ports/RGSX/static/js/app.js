@@ -990,19 +990,28 @@
             const name = gameName.toUpperCase();
             const regions = [];
             
-            // Common region patterns - check all, not just first match
-            // Handle both "(USA)" and "(USA, Europe)" formats
-            if (name.includes('USA') || name.includes('US)')) regions.push('USA');
-            if (name.includes('CANADA')) regions.push('Canada');
-            if (name.includes('EUROPE') || name.includes('EU)')) regions.push('Europe');
-            if (name.includes('FRANCE') || name.includes('FR)')) regions.push('France');
-            if (name.includes('GERMANY') || name.includes('DE)')) regions.push('Germany');
-            if (name.includes('JAPAN') || name.includes('JP)') || name.includes('JPN)')) regions.push('Japan');
-            if (name.includes('KOREA') || name.includes('KR)')) regions.push('Korea');
-            if (name.includes('WORLD')) regions.push('World');
+            // Regions are read from the tags or a folder ("Japan/..."), never from the title
+            // ("Musashi" is not USA and "(Arcade)" is not Germany)
+            const tagCodes = new Set();
+            const tags = (name.match(/[(\[][^)\]]+[)\]]/g) || []).map(tag => tag.slice(1, -1))
+                .concat(name.split('/').slice(0, -1));
+            tags.forEach(tag => tag.split(/\s*[,\-]\s*/).forEach(code => tagCodes.add(code.trim())));
+            const hasCode = (...codes) => codes.some(code => tagCodes.has(code));
+            // "(USA) (En,Fr,De)" lists languages: excluding France must not hide that release
+            const lastCodes = tags.map(tag => tag.split(/\s*[,\-]\s*/).pop().trim());
+            
+            if (hasCode('USA', 'US')) regions.push('USA');
+            // "CA" alone: in a language list, "(Es,Ca)" is Catalan
+            if (hasCode('CANADA') || tags.includes('CA')) regions.push('Canada');
+            if (hasCode('EUROPE', 'EU')) regions.push('Europe');
+            if (hasCode('FRANCE') || lastCodes.includes('FR')) regions.push('France');
+            if (hasCode('GERMANY', 'GER') || lastCodes.includes('DE')) regions.push('Germany');
+            if (hasCode('JAPAN', 'JP', 'JPN')) regions.push('Japan');
+            if (hasCode('KOREA', 'KR', 'KOR')) regions.push('Korea');
+            if (hasCode('WORLD')) regions.push('World');
             
             // Check for other regions (excluding the ones above)
-            if (name.match(/\b(AUSTRALIA|ASIA|BRAZIL|CHINA|RUSSIA|SCANDINAVIA|SPAIN|ITALY)\b/)) {
+            if (hasCode('AUSTRALIA', 'ASIA', 'BRAZIL', 'CHINA', 'RUSSIA', 'SCANDINAVIA', 'SPAIN', 'ITALY')) {
                 if (!regions.includes('Other')) regions.push('Other');
             }
             
@@ -1076,19 +1085,11 @@
 
         // Helper: Get region priority for one-rom-per-game (lower = better)
         function getRegionPriority(gameName) {
-            const name = gameName.toUpperCase();
+            const gameRegions = getGameRegions(gameName);
             
             // Find the first matching region in priority order
             for (let i = 0; i < regionPriorityOrder.length; i++) {
-                const region = regionPriorityOrder[i].toUpperCase();
-                if (region === 'USA' && name.includes('USA')) return i;
-                if (region === 'CANADA' && name.includes('CANADA')) return i;
-                if (region === 'WORLD' && name.includes('WORLD')) return i;
-                if (region === 'EUROPE' && (name.includes('EUROPE') || name.includes('EU)'))) return i;
-                if (region === 'FRANCE' && (name.includes('FRANCE') || name.includes('FR)'))) return i;
-                if (region === 'GERMANY' && (name.includes('GERMANY') || name.includes('DE)'))) return i;
-                if (region === 'JAPAN' && (name.includes('JAPAN') || name.includes('JP)') || name.includes('JPN)'))) return i;
-                if (region === 'KOREA' && (name.includes('KOREA') || name.includes('KR)'))) return i;
+                if (gameRegions.includes(regionPriorityOrder[i])) return i;
             }
             
             return regionPriorityOrder.length; // Other regions (lowest priority)
@@ -1226,10 +1227,10 @@
         function applyAllFilters() {
             const searchInput = document.getElementById('game-search');
             const searchTerm = searchInput ? searchInput.value : '';
-            const hideNonRelease = document.getElementById('hide-non-release')?.checked || savedHideNonRelease;
-            const regexMode = document.getElementById('regex-mode')?.checked || savedRegexMode;
+            const hideNonRelease = document.getElementById('hide-non-release')?.checked ?? savedHideNonRelease;
+            const regexMode = document.getElementById('regex-mode')?.checked ?? savedRegexMode;
 
-            const items = document.querySelectorAll('.game-item');
+            const items = gameRows;
             let visibleCount = 0;
             let hiddenByRegion = 0;
             let hiddenByNonRelease = 0;
@@ -1237,17 +1238,19 @@
 
             // Prepare search pattern
             let searchPattern = null;
+            let invalidRegex = false;
             if (searchTerm && regexMode) {
                 try {
                     searchPattern = new RegExp(searchTerm, 'i');
                 } catch (e) {
                     // Invalid regex, fall back to plain text
                     searchPattern = null;
+                    invalidRegex = true;
                 }
             }
 
             items.forEach(item => {
-                const name = item.querySelector('.game-name').textContent;
+                const name = item.name;
                 let visible = true;
 
                 // Apply search filter
@@ -1313,19 +1316,19 @@
                     }
                 }
 
-                item.style.display = visible ? '' : 'none';
+                item.visible = visible;
                 if (visible) visibleCount++;
             });
 
             // Apply one-rom-per-game filter (after other filters)
-            const oneRomPerGame = document.getElementById('one-rom-per-game')?.checked || savedOneRomPerGame;
+            const oneRomPerGame = document.getElementById('one-rom-per-game')?.checked ?? savedOneRomPerGame;
             if (oneRomPerGame) {
                 // Group currently visible games by base name
                 const gameGroups = new Map();
 
                 items.forEach(item => {
-                    if (item.style.display !== 'none') {
-                        const name = item.querySelector('.game-name').textContent;
+                    if (item.visible) {
+                        const name = item.name;
                         const baseName = getBaseGameName(name);
 
                         if (!gameGroups.has(baseName)) {
@@ -1345,7 +1348,7 @@
                         // Hide all except the best one
                         games.forEach((game, idx) => {
                             if (idx > 0) {
-                                game.item.style.display = 'none';
+                                game.item.visible = false;
                                 visibleCount--;
                                 hiddenByDuplicates++;
                             }
@@ -1353,6 +1356,9 @@
                     }
                 });
             }
+
+            const regexError = document.getElementById('regex-error');
+            if (regexError) regexError.style.display = invalidRegex ? '' : 'none';
 
             // Update clear button
             const clearBtn = document.getElementById('clear-games-search');
@@ -1390,7 +1396,34 @@
                 statusDiv.textContent = statusParts.join(' • ');
             }
 
+            const noGamesMessage = document.getElementById('no-games-message');
+            if (noGamesMessage) {
+                noGamesMessage.style.display = visibleCount === 0 && items.length > 0 ? '' : 'none';
+            }
+            renderGameRows();
+
             return visibleCount;
+        }
+
+        // Sur téléphone les filtres repoussent la liste sous l'écran: une fois la saisie finie, on
+        // amène le décompte juste sous le champ de recherche, qui reste collé en haut. Le clavier
+        // à l'écran réduit visualViewport mais pas innerHeight
+        let revealTimeout = null;
+        function revealGameResults() {
+            clearTimeout(revealTimeout);
+            revealTimeout = setTimeout(() => {
+                const status = document.getElementById('filter-status');
+                const input = document.getElementById('game-search');
+                if (!status || !input || !input.value.trim()) return;
+                // Le message d'erreur est juste sous le champ : défiler le cacherait
+                if (document.getElementById('regex-error')?.style.display !== 'none') return;
+                const viewport = window.visualViewport;
+                const visibleBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+                const statusBox = status.getBoundingClientRect();
+                if (statusBox.bottom > visibleBottom) {
+                    window.scrollBy(0, statusBox.top - input.offsetHeight - 8);
+                }
+            }, 500);
         }
 
         // Legacy function for backwards compatibility
@@ -1419,63 +1452,81 @@
             if (header) header.style.display = grid ? 'none' : '';
             if (listButton) listButton.classList.toggle('active', !grid);
             if (gridButton) gridButton.classList.toggle('active', grid);
-            const headerMarkup = header?.outerHTML || '';
-
-            gamesList.innerHTML = headerMarkup + currentGames.map((game, index) => {
+            gameRows = currentGames.map((game, index) => {
                 const name = String(game.name ?? '');
-                const media = currentGameMedia[name] || {};
-                const hasBox = Boolean(media.box2d);
-                const summary = String(media.summary || '');
-                const imageParams = new URLSearchParams({ platform: currentPlatform || '', game: name, kind: 'box' });
-                const image = hasBox
-                    ? `<img class="game-card-box-image" src="/api/game-media/image?${escapeHtml(imageParams)}" alt="" loading="lazy">`
-                    : `<span class="game-card-box-placeholder" aria-hidden="true">🖼</span>`;
-                const summaryPreview = summary
-                    ? escapeHtml(summary) + (summary.length >= 240 ? '…' : '')
-                    : `<span class="game-card-summary-empty">${escapeHtml(t('game_media_not_cached'))}</span>`;
-                const boxButtonLabel = hasBox
-                    ? `🖼 ${escapeHtml(t('game_media_box2d'))}`
-                    : `⬇ ${escapeHtml(t('game_media_box2d'))}`;
-                const summaryButtonLabel = summary
-                    ? `📝 ${escapeHtml(t('game_media_summary'))}`
-                    : `⬇ ${escapeHtml(t('game_media_summary'))}`;
-                const date = game.updated_at ? String(game.updated_at).slice(0, 10) : '-';
-                const itemMarkup = grid
-                    ? `
-                        <button class="game-card-art-button" data-game-media-kind="details" data-game-index="${index}" aria-label="${escapeHtml(t('game_media_open_details'))}: ${escapeHtml(name)}">
-                            ${image}
-                        </button>
-                        <span class="game-name">${escapeHtml(name)}</span>
-                        <div class="game-card-actions">
-                            <span class="game-size">${escapeHtml(game.size || '—')}</span>
-                            <button class="game-card-action-button game-download-action" data-download-mode="now" data-game-index="${index}" title="${escapeHtml(t('web_download'))}">${escapeHtml(t('web_download'))}</button>
-                            <button class="game-card-action-button game-download-action" data-download-mode="queue" data-game-index="${index}" title="${escapeHtml(t('game_card_queue'))}">${escapeHtml(t('game_card_queue'))}</button>
-                        </div>
-                        <p class="game-card-summary">${summaryPreview}</p>`
-                    : `
-                        <span class="game-name">${escapeHtml(name)}</span>
-                        <span class="game-date">${escapeHtml(date)}</span>
-                        <div class="game-card-actions">
-                            <span class="game-size">${escapeHtml(game.size || '—')}</span>
-                            <button class="game-card-action-button game-download-action" data-download-mode="now" data-game-index="${index}" title="${escapeHtml(t('web_download'))}">${escapeHtml(t('web_download'))}</button>
-                            <button class="game-card-action-button game-download-action" data-download-mode="queue" data-game-index="${index}" title="${escapeHtml(t('game_card_queue'))}">${escapeHtml(t('game_card_queue'))}</button>
-                        </div>
-                        <div class="game-media-actions">
-                            <button class="game-media-button" data-game-media-kind="box" data-game-index="${index}" title="${escapeHtml(t('game_media_box2d'))}">${boxButtonLabel}</button>
-                            <button class="game-media-button" data-game-media-kind="summary" data-game-index="${index}" title="${escapeHtml(t('game_media_summary'))}">${summaryButtonLabel}</button>
-                        </div>`;
-                return `
-                    <div class="game-item${grid ? ' game-card' : ''}">${itemMarkup}</div>
-                `;
-            }).join('');
+                const size = game.size || '';
+                return {
+                    game: game,
+                    index: index,
+                    name: name,
+                    lowerName: name.toLowerCase(),
+                    size: size,
+                    sizeBytes: parseSizeToBytes(size),
+                    date: game.updated_at ? String(game.updated_at).slice(0, 10) : '-',
+                    visible: true,
+                    element: null,
+                };
+            });
+            renderGameRows();
+        }
 
-            gamesList.querySelectorAll('[data-game-media-kind]').forEach(button => {
+        function createGameItem(row) {
+            const grid = currentGameView === 'grid';
+            const game = row.game;
+            const index = row.index;
+            const name = String(game.name ?? '');
+            const media = currentGameMedia[name] || {};
+            const hasBox = Boolean(media.box2d);
+            const summary = String(media.summary || '');
+            const imageParams = new URLSearchParams({ platform: currentPlatform || '', game: name, kind: 'box' });
+            const image = hasBox
+                ? `<img class="game-card-box-image" src="/api/game-media/image?${escapeHtml(imageParams)}" alt="" loading="lazy">`
+                : `<span class="game-card-box-placeholder" aria-hidden="true">🖼</span>`;
+            const summaryPreview = summary
+                ? escapeHtml(summary) + (summary.length >= 240 ? '…' : '')
+                : `<span class="game-card-summary-empty">${escapeHtml(t('game_media_not_cached'))}</span>`;
+            const boxButtonLabel = hasBox
+                ? `🖼 ${escapeHtml(t('game_media_box2d'))}`
+                : `⬇ ${escapeHtml(t('game_media_box2d'))}`;
+            const summaryButtonLabel = summary
+                ? `📝 ${escapeHtml(t('game_media_summary'))}`
+                : `⬇ ${escapeHtml(t('game_media_summary'))}`;
+            const date = game.updated_at ? String(game.updated_at).slice(0, 10) : '-';
+            const itemMarkup = grid
+                ? `
+                    <button class="game-card-art-button" data-game-media-kind="details" data-game-index="${index}" aria-label="${escapeHtml(t('game_media_open_details'))}: ${escapeHtml(name)}">
+                        ${image}
+                    </button>
+                    <span class="game-name">${escapeHtml(name)}</span>
+                    <div class="game-card-actions">
+                        <span class="game-size">${escapeHtml(game.size || '—')}</span>
+                        <button class="game-card-action-button game-download-action" data-download-mode="now" data-game-index="${index}" title="${escapeHtml(t('web_download'))}">${escapeHtml(t('web_download'))}</button>
+                        <button class="game-card-action-button game-download-action" data-download-mode="queue" data-game-index="${index}" title="${escapeHtml(t('game_card_queue'))}">${escapeHtml(t('game_card_queue'))}</button>
+                    </div>
+                    <p class="game-card-summary">${summaryPreview}</p>`
+                : `
+                    <span class="game-name">${escapeHtml(name)}</span>
+                    <span class="game-date">${escapeHtml(date)}</span>
+                    <div class="game-card-actions">
+                        <span class="game-size">${escapeHtml(game.size || '—')}</span>
+                        <button class="game-card-action-button game-download-action" data-download-mode="now" data-game-index="${index}" title="${escapeHtml(t('web_download'))}">${escapeHtml(t('web_download'))}</button>
+                        <button class="game-card-action-button game-download-action" data-download-mode="queue" data-game-index="${index}" title="${escapeHtml(t('game_card_queue'))}">${escapeHtml(t('game_card_queue'))}</button>
+                    </div>
+                    <div class="game-media-actions">
+                        <button class="game-media-button" data-game-media-kind="box" data-game-index="${index}" title="${escapeHtml(t('game_media_box2d'))}">${boxButtonLabel}</button>
+                        <button class="game-media-button" data-game-media-kind="summary" data-game-index="${index}" title="${escapeHtml(t('game_media_summary'))}">${summaryButtonLabel}</button>
+                    </div>`;
+            const holder = document.createElement('div');
+            holder.innerHTML = `<div class="game-item${grid ? ' game-card' : ''}">${itemMarkup}</div>`;
+            const item = holder.firstElementChild;
+
+            item.querySelectorAll('[data-game-media-kind]').forEach(button => {
                 button.addEventListener('click', () => {
                     const game = currentGames[Number(button.dataset.gameIndex)];
                     if (game) openGameMedia(currentPlatform, game.name, button.dataset.gameMediaKind);
                 });
             });
-            gamesList.querySelectorAll('.game-download-action').forEach(button => {
+            item.querySelectorAll('.game-download-action').forEach(button => {
                 button.addEventListener('click', () => {
                     const game = currentGames[Number(button.dataset.gameIndex)];
                     if (game) {
@@ -1490,6 +1541,7 @@
                     }
                 });
             });
+            return item;
         }
 
         async function fetchGameMediaCatalog(platform) {
@@ -1649,7 +1701,7 @@
         function sortGames(sortType) {
             currentGameSort = sortType;
             saveGamePreferences();
-            const items = Array.from(document.querySelectorAll('.game-item'));
+            const items = gameRows;
             const gamesList = document.querySelector('.games-list');
 
             if (!gamesList) {
@@ -1658,24 +1710,14 @@
             }
 
             const shouldLogSizeSort = sortType === 'size_asc' || sortType === 'size_desc';
-            const getSizeInBytes = (sizeElem) => {
-                if (!sizeElem) return 0;
-                return parseSizeToBytes(sizeElem.textContent);
-            };
 
             if (shouldLogSizeSort) {
-                const previewBefore = items.slice(0, 5).map(item => {
-                    const sizeText = item.querySelector('.game-size')?.textContent?.trim() || '';
-                    return {
-                        name: item.querySelector('.game-name')?.textContent?.trim() || '',
-                        sizeText,
-                        sizeBytes: getSizeInBytes(item.querySelector('.game-size')),
-                    };
-                });
-                const zeroSizedCount = items.filter(item => {
-                    const sizeElem = item.querySelector('.game-size');
-                    return sizeElem && getSizeInBytes(sizeElem) === 0;
-                }).length;
+                const previewBefore = items.slice(0, 5).map(item => ({
+                    name: item.name,
+                    sizeText: item.size,
+                    sizeBytes: item.sizeBytes,
+                }));
+                const zeroSizedCount = items.filter(item => item.sizeBytes === 0).length;
                 console.debug('[RGSX][sort] Debut tri taille', {
                     sortType,
                     totalItems: items.length,
@@ -1686,10 +1728,8 @@
             
             // Trier les éléments
             items.sort((a, b) => {
-                const nameA = a.querySelector('.game-name').textContent.toLowerCase();
-                const nameB = b.querySelector('.game-name').textContent.toLowerCase();
-                const sizeElemA = a.querySelector('.game-size');
-                const sizeElemB = b.querySelector('.game-size');
+                const nameA = a.lowerName;
+                const nameB = b.lowerName;
                 
                 switch(sortType) {
                     case 'name_asc':
@@ -1697,13 +1737,13 @@
                     case 'name_desc':
                         return nameB.localeCompare(nameA);
                     case 'size_asc':
-                        return getSizeInBytes(sizeElemA) - getSizeInBytes(sizeElemB);
+                        return a.sizeBytes - b.sizeBytes;
                     case 'size_desc':
-                        return getSizeInBytes(sizeElemB) - getSizeInBytes(sizeElemA);
+                        return b.sizeBytes - a.sizeBytes;
                     case 'date_asc':
                     case 'date_desc': {
-                        const dateA = a.querySelector('.game-date')?.textContent.trim() || '';
-                        const dateB = b.querySelector('.game-date')?.textContent.trim() || '';
+                        const dateA = a.date;
+                        const dateB = b.date;
                         const normalizedDateA = dateA === '-' ? '' : dateA;
                         const normalizedDateB = dateB === '-' ? '' : dateB;
                         if (!normalizedDateA) return normalizedDateB ? 1 : nameA.localeCompare(nameB);
@@ -1717,18 +1757,13 @@
             });
             
             // Réafficher les éléments dans l'ordre
-            const header = gamesList.querySelector('.game-list-header');
-            gamesList.innerHTML = '';
-            if (header) gamesList.appendChild(header);
-            items.forEach(item => {
-                gamesList.appendChild(item);
-            });
+            renderGameRows();
 
             if (shouldLogSizeSort) {
                 const previewAfter = items.slice(0, 5).map(item => ({
-                    name: item.querySelector('.game-name')?.textContent?.trim() || '',
-                    sizeText: item.querySelector('.game-size')?.textContent?.trim() || '',
-                    sizeBytes: getSizeInBytes(item.querySelector('.game-size')),
+                    name: item.name,
+                    sizeText: item.size,
+                    sizeBytes: item.sizeBytes,
                 }));
                 console.debug('[RGSX][sort] Fin tri taille', {
                     sortType,
@@ -1742,6 +1777,69 @@
             });
             document.querySelector(`[data-sort="${sortType}"]`)?.classList.add('active');
         }
+        
+        // Une console peut dépasser 12 000 jeux, trop de nœuds pour un téléphone :
+        // seuls les jeux proches de la zone visible sont créés, au fil du défilement
+        const GAME_ROWS_BATCH = 50;
+        const GAME_ROWS_MARGIN_PX = 1200;
+        let gameRows = [];
+        let visibleGameRows = [];
+        let shownGameRows = 0;
+        
+        // Cet espace tient la place des jeux pas encore créés : la barre de défilement et la
+        // touche Fin vont ainsi jusqu'au bout de la liste, pas seulement au dernier jeu créé
+        const gameRowsSpacer = document.createElement('div');
+        gameRowsSpacer.style.overflowAnchor = 'none';
+        gameRowsSpacer.style.gridColumn = '1 / -1';
+        
+        // Bas de la zone visible, depuis le haut de la liste. La liste défile elle-même,
+        // sauf la grille sur téléphone, sans hauteur maximale : c'est alors la page qui défile
+        function gameRowsVisibleBottom(list) {
+            return list.scrollTop + Math.min(list.clientHeight, window.innerHeight - list.getBoundingClientRect().top);
+        }
+        
+        function showMoreGameRows(list, visibleBottom = gameRowsVisibleBottom(list)) {
+            if (!list.offsetParent) return;
+            while (shownGameRows < visibleGameRows.length) {
+                const builtHeight = list.scrollHeight - gameRowsSpacer.offsetHeight;
+                const missingHeight = visibleBottom + GAME_ROWS_MARGIN_PX - builtHeight;
+                if (missingHeight <= 0) break;
+                const batch = shownGameRows ? Math.max(GAME_ROWS_BATCH, Math.ceil(missingHeight * shownGameRows / builtHeight)) : GAME_ROWS_BATCH;
+                const fragment = document.createDocumentFragment();
+                visibleGameRows.slice(shownGameRows, shownGameRows + batch).forEach(row => {
+                    if (!row.element) row.element = createGameItem(row);
+                    fragment.appendChild(row.element);
+                });
+                list.insertBefore(fragment, gameRowsSpacer);
+                shownGameRows = Math.min(shownGameRows + batch, visibleGameRows.length);
+            }
+            // Recalculé même sans nouveau lot : une autre largeur change la hauteur des jeux et le nombre de colonnes
+            const rowHeight = shownGameRows ? (list.scrollHeight - gameRowsSpacer.offsetHeight) / shownGameRows : 0;
+            gameRowsSpacer.style.height = `${(visibleGameRows.length - shownGameRows) * rowHeight}px`;
+        }
+        
+        function renderGameRows() {
+            const list = document.querySelector('.games-list');
+            if (!list) return;
+            const scrollTop = list.scrollTop;
+            const pageY = window.scrollY;
+            const visibleBottom = gameRowsVisibleBottom(list);
+            const header = list.querySelector('.game-list-header');
+            visibleGameRows = gameRows.filter(row => row.visible);
+            shownGameRows = 0;
+            list.innerHTML = '';
+            if (header) list.appendChild(header);
+            gameRowsSpacer.style.height = '0';
+            list.appendChild(gameRowsSpacer);
+            showMoreGameRows(list, visibleBottom);
+            list.scrollTop = scrollTop;
+            window.scrollTo(window.scrollX, pageY);
+        }
+        
+        ['scroll', 'resize'].forEach(type => window.addEventListener(type, () => {
+            const list = document.querySelector('.games-list');
+            if (list) showMoreGameRows(list);
+        }, { passive: true }));
         
         let platformsScrollY = 0;
         
@@ -1858,12 +1956,13 @@
                         <span class="platform-page-game-count">${escapeHtml(gameCountText)}</span>
                         ${platformSourceBadge}
                     </h2>
-                    <div class="search-box">
+                    <div class="search-box" style="position: sticky; top: 0; z-index: 5;">
                         <input type="text" id="game-search" placeholder="🔍 ${searchPlaceholder}"
-                               oninput="applyAllFilters()">
+                               oninput="applyAllFilters(); revealGameResults()">
                         <button class="clear-search" id="clear-games-search" onclick="document.getElementById('game-search').value=''; applyAllFilters();">✕</button>
                         <span class="search-icon">🔍</span>
                     </div>
+                    <p id="regex-error" style="display: none; margin: -12px 0 12px; color: #dc3545;">${t('web_filter_regex_invalid')}</p>
                     <div class="filter-section">
                         <div class="filter-row">
                             <span class="filter-label">${t('web_filter_region')}:</span>
@@ -1903,11 +2002,12 @@
                         <button class="sort-btn" data-sort="date_desc" onclick="sortGames('date_desc')" title="${sortDateDesc}">${sortDateDesc}</button>
                     </div>
                     <div id="filter-status" style="margin-bottom: 8px; font-size: 0.9em; color: #666;"></div>
+                    <p id="no-games-message" style="display: none; margin-bottom: 8px; color: #666;">${t('web_no_results')}</p>
                     <div class="game-view-toggle" role="group" aria-label="${escapeHtml(t('game_media_view'))}">
                         <button id="game-view-list" class="active" onclick="setGameView('list')">${escapeHtml(t('game_media_view_list'))}</button>
                         <button id="game-view-grid" onclick="setGameView('grid')">${escapeHtml(t('game_media_view_grid'))}</button>
                     </div>
-                    <div class="games-list">
+                    <div class="games-list" onscroll="showMoreGameRows(this)">
                         <div class="game-list-header">
                             <span>${t('game_header_name')}</span>
                             <span>${t('game_header_date')}</span>
@@ -3111,9 +3211,9 @@
                     },
                     game_filters: {
                         region_filters: regionFiltersObj,
-                        hide_non_release: document.getElementById('hide-non-release')?.checked || savedHideNonRelease,
-                        one_rom_per_game: document.getElementById('one-rom-per-game')?.checked || savedOneRomPerGame,
-                        regex_mode: document.getElementById('regex-mode')?.checked || savedRegexMode,
+                        hide_non_release: document.getElementById('hide-non-release')?.checked ?? savedHideNonRelease,
+                        one_rom_per_game: document.getElementById('one-rom-per-game')?.checked ?? savedOneRomPerGame,
+                        regex_mode: document.getElementById('regex-mode')?.checked ?? savedRegexMode,
                         region_priority: regionPriorityOrder
                     }
                 };

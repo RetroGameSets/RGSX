@@ -102,35 +102,40 @@ class GameFilters:
                     if 'Other' not in regions:
                         regions.append('Other')
         
-        # Patterns de région complets (mots entiers)
-        if 'USA' in name or 'US)' in name or re.search(r'\bUS\b', name):
+        # Régions nommées dans les tags (parenthèses ou crochets) ou un dossier ("Japan/..."),
+        # jamais dans le titre : "Musashi" ne donne pas USA et "(Arcade)" ne donne pas Germany
+        tags = re.findall(r'[(\[]([^)\]]+)[)\]]', name) + name.split('/')[:-1]
+        tag_codes = {c.strip() for tag in tags
+                     for c in re.split(r'\s*[,\-]\s*', tag)}
+        if tag_codes & {'USA', 'US'}:
             if 'USA' not in regions:
                 regions.append('USA')
-        if 'CANADA' in name or 'CA)' in name:
+        # "CA" seul : dans une liste de langues (Es,Ca), c'est le catalan
+        if 'CANADA' in tag_codes or 'CA' in tags:
             if 'Canada' not in regions:
                 regions.append('Canada')
-        if 'EUROPE' in name or 'EU)' in name or re.search(r'\bEU\b', name):
+        if tag_codes & {'EUROPE', 'EU'}:
             if 'Europe' not in regions:
                 regions.append('Europe')
-        if 'FRANCE' in name or 'FR)' in name:
+        if tag_codes & {'FRANCE', 'FR'}:
             if 'France' not in regions:
                 regions.append('France')
-        if 'GERMANY' in name or 'DE)' in name or 'GER)' in name:
+        if tag_codes & {'GERMANY', 'DE', 'GER'}:
             if 'Germany' not in regions:
                 regions.append('Germany')
-        if 'JAPAN' in name or 'JP)' in name or 'JPN)' in name or re.search(r'\bJP\b', name):
+        if tag_codes & {'JAPAN', 'JP', 'JPN'}:
             if 'Japan' not in regions:
                 regions.append('Japan')
-        if 'KOREA' in name or 'KR)' in name or 'KOR)' in name:
+        if tag_codes & {'KOREA', 'KR', 'KOR'}:
             if 'Korea' not in regions:
                 regions.append('Korea')
-        if 'WORLD' in name:
+        if 'WORLD' in tag_codes:
             if 'World' not in regions:
                 regions.append('World')
         
         # Autres régions
-        if re.search(r'\b(AUSTRALIA|ASIA|BRAZIL|CHINA|RUSSIA|SCANDINAVIA|'
-                     r'SPAIN|ITALY)\b', name):
+        if tag_codes & {'AUSTRALIA', 'ASIA', 'BRAZIL', 'CHINA', 'RUSSIA',
+                        'SCANDINAVIA', 'SPAIN', 'ITALY'}:
             if 'Other' not in regions:
                 regions.append('Other')
         

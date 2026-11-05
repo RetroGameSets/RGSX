@@ -546,6 +546,7 @@
     "web_filter_region": "Region",
     "web_filter_hide_non_release": "Demos/Betas/Protos ausblenden",
     "web_filter_regex_mode": "Regex-Suche aktivieren",
+    "web_filter_regex_invalid": "Ungültiger regulärer Ausdruck",
     "web_filter_one_rom_per_game": "Eine ROM pro Spiel",
     "web_filter_configure_priority": "Regions-Prioritätsreihenfolge konfigurieren",
     "filter_all": "Alle auswählen",

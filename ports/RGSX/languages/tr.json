@@ -546,6 +546,7 @@
     "web_filter_region": "Bölge",
     "web_filter_hide_non_release": "Demo/Beta/Prototipleri gizle",
     "web_filter_regex_mode": "Regex Aramayı Etkinleştir",
+    "web_filter_regex_invalid": "Geçersiz düzenli ifade",
     "web_filter_one_rom_per_game": "Oyun Başına Tek ROM",
     "web_filter_configure_priority": "Bölge öncelik sırasını yapılandır",
     "filter_all": "Tümünü seç",
