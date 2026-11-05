@@ -616,6 +616,17 @@ def should_open_pause_menu(menu_state: str | None) -> bool:
         "screenscraper_input",
         "media_manager",
         "game_info",
+        "language_select",
+        "confirm_exit",
+        "restart_popup",
+        "filter_platforms",
+        "folder_browser",
+        "folder_browser_new_folder",
+        "extension_warning",
+        "error",
+        "history_error_details",
+        "history_show_folder",
+        "text_file_viewer",
     }
 
 
