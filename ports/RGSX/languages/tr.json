@@ -465,6 +465,7 @@
     "web_confirm_cancel": "Bu indirmeyi gerçekten iptal etmek istiyor musunuz?",
     "web_error": "Hata",
     "web_error_unknown": "Bilinmeyen hata",
+    "web_error_server_unreachable": "RGSX sunucusuna ulaşılamıyor. Çalıştığını kontrol edip tekrar deneyin.",
     "web_error_download": "Hata: {0}",
     "web_history_clear": "Geçmişi Temizle",
     "web_history_cleared": "Geçmiş başarıyla temizlendi!",

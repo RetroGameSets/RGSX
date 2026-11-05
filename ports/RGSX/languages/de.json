@@ -463,6 +463,7 @@
     "web_confirm_cancel": "Möchten Sie diesen Download wirklich abbrechen?",
     "web_error": "Fehler",
     "web_error_unknown": "Unbekannter Fehler",
+    "web_error_server_unreachable": "Der RGSX-Server ist nicht erreichbar. Prüfen, ob er läuft, und erneut versuchen.",
     "web_error_download": "Fehler: {0}",
     "web_history_clear": "Verlauf löschen",
     "web_history_cleared": "Verlauf erfolgreich gelöscht!",

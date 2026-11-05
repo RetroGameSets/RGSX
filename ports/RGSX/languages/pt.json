@@ -464,6 +464,7 @@
     "web_confirm_cancel": "Você realmente deseja cancelar este download?",
     "web_error": "Erro",
     "web_error_unknown": "Erro desconhecido",
+    "web_error_server_unreachable": "Não foi possível conectar ao servidor do RGSX. Verifique se ele está em execução e tente de novo.",
     "web_error_download": "Erro: {0}",
     "web_history_clear": "Limpar histórico",
     "web_history_cleared": "Histórico limpo com sucesso!",

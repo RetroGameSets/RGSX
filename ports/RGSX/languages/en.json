@@ -465,6 +465,7 @@
     "web_confirm_cancel": "Do you really want to cancel this download?",
     "web_error": "Error",
     "web_error_unknown": "Unknown error",
+    "web_error_server_unreachable": "Can't reach the RGSX server. Check that it is running, then try again.",
     "web_error_download": "Error: {0}",
     "web_history_clear": "Clear History",
     "web_history_cleared": "History cleared successfully!",

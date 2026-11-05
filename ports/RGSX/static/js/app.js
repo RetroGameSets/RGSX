@@ -1768,10 +1768,26 @@
             if (grid && grid.offsetParent) platformsScrollY = window.scrollY;
         }
         
+        // fetch() échoue avec une TypeError quand le serveur ne répond pas
+        function fetchErrorText(error) {
+            const unreachable = error instanceof TypeError && /fetch|network|load failed/i.test(error.message);
+            return unreachable ? t('web_error_server_unreachable') : `${t('web_error')}: ${error.message}`;
+        }
+        
+        // Si la grille des plateformes était affichée, on la remet avec le message au-dessus
+        function keepPlatformGrid(container, previousView, error) {
+            if (!previousView.some(node => node.classList && node.classList.contains('platform-grid'))) return false;
+            container.replaceChildren(...previousView);
+            container.querySelector('.load-error')?.remove();
+            container.insertAdjacentHTML('afterbegin', `<p class="load-error" style="color:red;">${fetchErrorText(error)}</p>`);
+            return true;
+        }
+        
         // Charger les plateformes
         async function loadPlatforms() {
             const request = ++platformsPageRequest;
             const container = document.getElementById('platforms-content');
+            const previousView = Array.from(container.childNodes);
             container.innerHTML = '<div class="loading">⏳ ' + t('web_loading_platforms') + '</div>';
             
             try {
@@ -1829,8 +1845,8 @@
                 
             } catch (error) {
                 if (request !== platformsPageRequest) return;
-                let errorMsg = t('web_error');
-                container.innerHTML = `<p style="color:red;">${errorMsg}: ${error.message}</p>`;
+                if (keepPlatformGrid(container, previousView, error)) return;
+                container.innerHTML = `<p style="color:red;">${fetchErrorText(error)}</p>`;
             }
         }
         
@@ -1840,6 +1856,7 @@
             const request = ++platformsPageRequest;
             currentPlatform = platform;
             const container = document.getElementById('platforms-content');
+            const previousView = Array.from(container.childNodes);
             container.innerHTML = '<div class="loading">⏳ ' + t('web_loading_games') + '</div>';
             
             // Mettre à jour l'URL et l'historique
@@ -1959,11 +1976,11 @@
                 
             } catch (error) {
                 if (request !== platformsPageRequest) return;
+                if (keepPlatformGrid(container, previousView, error)) return;
                 let backText = t('web_back');
-                let errorMsg = t('web_error');
                 container.innerHTML = `
                     <button class="back-btn" onclick="goBackToPlatforms()">← ${backText}</button>
-                    <p style="color:red;">${errorMsg}: ${error.message}</p>
+                    <p style="color:red;">${fetchErrorText(error)}</p>
                 `;
             }
         }
@@ -2220,7 +2237,7 @@
                     }, 500);
                 }
             } catch (error) {
-                container.innerHTML = `<p style="color:red;">${t('web_error')}: ${error.message}</p>`;
+                container.innerHTML = `<p style="color:red;">${fetchErrorText(error)}</p>`;
             }
         }
         
@@ -2285,7 +2302,7 @@
                 container.innerHTML = html;
                 
             } catch (error) {
-                container.innerHTML = `<p style="color:red;">❌ ${t('web_error')}: ${error.message}</p>`;
+                container.innerHTML = `<p style="color:red;">❌ ${fetchErrorText(error)}</p>`;
             }
         }
         
@@ -2731,7 +2748,7 @@
                     </div>
                 `;
             } catch (error) {
-                container.innerHTML = `<p style="color:red;">${t('web_error')}: ${error.message}</p>`;
+                container.innerHTML = `<p style="color:red;">${fetchErrorText(error)}</p>`;
             }
         }
         
@@ -3078,7 +3095,7 @@
                 document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
                 
             } catch (error) {
-                container.innerHTML = `<p style="color:red;">${t('web_error')}: ${error.message}</p>`;
+                container.innerHTML = `<p style="color:red;">${fetchErrorText(error)}</p>`;
             }
         }
         

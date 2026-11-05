@@ -458,6 +458,7 @@
     "web_confirm_cancel": "Vuoi davvero annullare questo download?",
     "web_error": "Errore",
     "web_error_unknown": "Errore sconosciuto",
+    "web_error_server_unreachable": "Impossibile raggiungere il server RGSX. Controlla che sia in esecuzione e riprova.",
     "web_error_download": "Errore: {0}",
     "web_history_clear": "Cancella cronologia",
     "web_history_cleared": "Cronologia cancellata con successo!",
