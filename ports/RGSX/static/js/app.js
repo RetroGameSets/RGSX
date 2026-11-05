@@ -28,6 +28,8 @@
 
         const savedGamePreferences = readGamePreferences();
         let currentPlatform = null;
+        // La grille et une liste de jeux s'affichent au même endroit : seule la dernière demande compte.
+        let platformsPageRequest = 0;
         let currentGameSort = savedGamePreferences.sort || 'name_asc'; // Type de tri actuel: 'name_asc', 'name_desc', 'size_asc', 'size_desc', 'date_asc', 'date_desc'
         let currentGames = [];  // Stocke les jeux actuels pour le tri
         let currentGameView = savedGamePreferences.view || 'grid';
@@ -660,26 +662,37 @@
 
             // Load saved filters first
             loadSavedFilters();
-            
+        });
+        
+        // Afficher la page demandée par l'adresse (premier affichage ou rechargement)
+        function showPageFromUrl() {
             const path = window.location.pathname;
             
             if (path.startsWith('/platform/')) {
                 const platformName = decodeURIComponent(path.split('/platform/')[1]);
+                window.history.replaceState({ tab: 'platforms', platform: platformName }, '', path);
                 loadGames(platformName, false);
             } else if (path === '/downloads') {
+                window.history.replaceState({ tab: 'downloads' }, '', path);
                 showTab('downloads', false);
+            } else if (path === '/queue') {
+                window.history.replaceState({ tab: 'queue' }, '', path);
+                showTab('queue', false);
             } else if (path === '/history') {
+                window.history.replaceState({ tab: 'history' }, '', path);
                 showTab('history', false);
             } else if (path === '/settings') {
+                window.history.replaceState({ tab: 'settings' }, '', path);
                 showTab('settings', false);
             } else if (path === '/scrap') {
+                window.history.replaceState({ tab: 'scrap' }, '', path);
                 showTab('scrap', false);
             } else {
                 // État initial - définir l'historique sans recharger
                 window.history.replaceState({ tab: 'platforms' }, '', '/');
                 loadPlatforms();
             }
-        });
+        }
         
         // ===== FONCTIONS PRINCIPALES =====
         
@@ -1753,12 +1766,14 @@
         
         // Charger les plateformes
         async function loadPlatforms() {
+            const request = ++platformsPageRequest;
             const container = document.getElementById('platforms-content');
             container.innerHTML = '<div class="loading">⏳ ' + t('web_loading_platforms') + '</div>';
             
             try {
                 const response = await fetch('/api/platforms');
                 const data = await response.json();
+                if (request !== platformsPageRequest) return;
                 
                 if (!data.success) throw new Error(data.error);
                 
@@ -1809,6 +1824,7 @@
                 platformsScrollY = 0;
                 
             } catch (error) {
+                if (request !== platformsPageRequest) return;
                 let errorMsg = t('web_error');
                 container.innerHTML = `<p style="color:red;">${errorMsg}: ${error.message}</p>`;
             }
@@ -1817,6 +1833,7 @@
         // Charger les jeux d'une plateforme
         async function loadGames(platform, updateHistory = true) {
             rememberPlatformsScroll();
+            const request = ++platformsPageRequest;
             currentPlatform = platform;
             const container = document.getElementById('platforms-content');
             container.innerHTML = '<div class="loading">⏳ ' + t('web_loading_games') + '</div>';
@@ -1831,6 +1848,7 @@
             try {
                 const response = await fetch('/api/games/' + encodeURIComponent(platform));
                 const data = await response.json();
+                if (request !== platformsPageRequest) return;
                 
                 if (!data.success) throw new Error(data.error);
                 
@@ -1936,6 +1954,7 @@
                 });
                 
             } catch (error) {
+                if (request !== platformsPageRequest) return;
                 let backText = t('web_back');
                 let errorMsg = t('web_error');
                 container.innerHTML = `
@@ -3440,7 +3459,7 @@
         async function init() {
             await loadTranslations();  // Charger les traductions
             applyTranslations();         // Appliquer les traductions à l'interface
-            loadPlatforms();            // Charger les plateformes
+            showPageFromUrl();
             updateRegionPriorityDisplay(); // Update initial display
             
             // Vérifier les téléchargements complétés toutes les 2 secondes

@@ -965,7 +965,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 return
 
             # Route: Page d'accueil (avec ou sans paramètres pour navigation)
-            if path == '/' or path == '/index.html' or path.startswith('/platform/') or path in ['/downloads', '/history', '/settings', '/scrap']:
+            if path == '/' or path == '/index.html' or path.startswith('/platform/') or path in ['/downloads', '/queue', '/history', '/settings', '/scrap']:
                 self._send_html(self._get_index_html())
             
             # Route: API - Liste des plateformes
