@@ -2723,6 +2723,11 @@ def extract_update(zip_path, dest_dir, source_url):
         # Extraire le ZIP
         skipped_files = []
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            # Un ZIP corrompu doit échouer avant de remplacer le moindre fichier de l'application
+            bad_file = zip_ref.testzip()
+            if bad_file:
+                logger.error(f"ZIP corrompu {source_url}: {bad_file}")
+                return False, _("network_zip_extraction_error").format(source_url, bad_file)
             file_infos = [info for info in zip_ref.infolist() if not info.is_dir()]
             total_bytes = sum(max(0, info.file_size) for info in file_infos)
             extracted_bytes = 0
