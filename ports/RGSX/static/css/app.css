@@ -559,7 +559,7 @@ header p { opacity: 0.9; font-size: 1.1em; }
     transition: background 0.2s;
 }
 .game-item:hover { background: #f0f0f0; }
-.game-name { font-weight: 500; min-width: 0; }
+.game-name { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
 .download-btn-group {
     display: flex;
     justify-content: flex-end;
