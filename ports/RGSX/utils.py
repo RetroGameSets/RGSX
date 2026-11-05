@@ -3376,6 +3376,20 @@ def extract_7z(archive_path, dest_dir, url):
         if result.returncode > 1:
             error_msg = result.stderr.strip() or f"Erreur extraction 7z (code {result.returncode})"
             logger.error(error_msg)
+            # Un jeu à moitié extrait passerait pour un jeu présent
+            dest_root = os.path.abspath(dest_dir)
+            for name, size in listed_files:
+                file_path = os.path.abspath(os.path.join(dest_root, name))
+                if name.replace("\\", "/").split("/")[0] in before_items or not file_path.startswith(dest_root + os.sep):
+                    continue
+                try:
+                    os.remove(file_path)
+                    parent_dir = os.path.dirname(file_path)
+                    while parent_dir != dest_root:
+                        os.rmdir(parent_dir)
+                        parent_dir = os.path.dirname(parent_dir)
+                except OSError:
+                    pass
             # Comme pour RAR : gardée, une nouvelle tentative la verrait comme "déjà présente" sans l'extraire.
             try:
                 os.remove(archive_path)

@@ -160,6 +160,14 @@ def _is_ps3_redump_target(platform_folder, platform) -> bool:
         return False
 
 
+def _extraction_required(is_zip_non_supported, platform_folder, platform) -> bool:
+    # PS3 Redump : déchiffrement et extraction ISO obligatoires, quel que soit le réglage
+    if _is_ps3_redump_target(platform_folder, platform):
+        return True
+    from rgsx_settings import get_auto_extract
+    return get_auto_extract() and (is_zip_non_supported or platform_folder == "bios" or platform in {"BIOS", "- BIOS by TMCTV -", "- BIOS"})
+
+
 def _postprocess_downloaded_file(dest_path: str, dest_dir: str, url: str, game_name: str, is_ps3_target: bool):
     extension = os.path.splitext(dest_path)[1].lower()
     is_vimm_source = 'vimm.net' in str(url or '').lower()
@@ -1947,17 +1955,18 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
                 logger.debug(f"1fichier: Direct link validated via HEAD: {direct_link}")
                 break
             except Exception as he:
-                # HEAD may be blocked; try a quick GET without streaming
+                # HEAD may be blocked; try a quick GET, reading only the start: this may be the whole game
                 try:
                     logger.debug(f"1fichier: HEAD failed ({he}), trying quick GET for candidate {candidate}")
-                    rtest = session.get(candidate, allow_redirects=True, timeout=10)
-                    if rtest.status_code >= 400:
-                        logger.debug(f"1fichier: quick GET returned status {rtest.status_code} for {candidate}, skipping")
-                        continue
-                    ctype = rtest.headers.get('content-type', '')
-                    if 'text/html' in ctype.lower() or '<html' in (rtest.text or '').lower():
-                        logger.debug(f"1fichier: quick GET appears to be HTML/landing for {candidate}, skipping")
-                        continue
+                    with session.get(candidate, allow_redirects=True, timeout=10, stream=True) as rtest:
+                        if rtest.status_code >= 400:
+                            logger.debug(f"1fichier: quick GET returned status {rtest.status_code} for {candidate}, skipping")
+                            continue
+                        ctype = rtest.headers.get('content-type', '')
+                        start = next(rtest.iter_content(chunk_size=4096), b'')
+                        if 'text/html' in ctype.lower() or b'<html' in start.lower():
+                            logger.debug(f"1fichier: quick GET appears to be HTML/landing for {candidate}, skipping")
+                            continue
                     direct_link = candidate
                     logger.debug(f"1fichier: Direct link validated via quick GET: {direct_link}")
                     break
@@ -2003,11 +2012,13 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
             if not has_space:
                 return (False, None, low_space_message)
             
+            canceled = False
             with open(filepath, 'wb') as f:
                 downloaded = 0
                 for chunk in resp.iter_content(chunk_size=128*1024):
                     if cancel_event and cancel_event.is_set():
-                        return (False, None, _("download_canceled"))
+                        canceled = True
+                        break
                     
                     f.write(chunk)
                     downloaded += len(chunk)
@@ -2015,6 +2026,9 @@ def download_1fichier_free_mode(url, dest_dir, session, log_callback=None, progr
                     if total:
                         pct = downloaded / total * 100
                         _progress(filename, downloaded, total, pct)
+            if canceled:
+                os.remove(filepath)
+                return (False, None, _("download_canceled"))
         
         _log(_("free_mode_completed").format(filepath))
         return (True, filepath, None)
@@ -3153,7 +3167,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             
             cancel_ev = cancel_events.get(task_id)
             # Use symlink path if enabled
-            from rgsx_settings import apply_symlink_path, get_platform_custom_path, get_auto_extract
+            from rgsx_settings import apply_symlink_path, get_platform_custom_path
             
             # Vérifier si un dossier personnalisé est configuré pour cette plateforme
             custom_path = get_platform_custom_path(platform)
@@ -3341,6 +3355,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 
                 # Vérifier si le fichier existe déjà (exact ou avec autre extension)
                 file_found = False
+                verify_existing_size = False
                 if os.path.exists(dest_path):
                     logger.info(f"Le fichier {dest_path} existe déjà, vérification de la taille...")
                     
@@ -3404,14 +3419,17 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             with urls_lock:
                                 urls_in_progress.discard(original_history_url)
                             return
-                    elif is_zip_non_supported and get_auto_extract() and os.path.splitext(dest_path)[1].lower() in ('.zip', '.7z', '.rar'):
-                        # Archive qui aurait dû être extraite puis supprimée : reste d'une extraction ratée, on télécharge à nouveau
+                    elif _extraction_required(is_zip_non_supported, platform_folder, platform) and os.path.splitext(dest_path)[1].lower() in ('.zip', '.7z', '.rar'):
+                        # Archive qui aurait dû être extraite puis supprimée: c'est un reste d'un échec, on télécharge à nouveau
                         logger.info(f"Le fichier {dest_path} existe mais n'a pas été extrait, nouveau téléchargement")
                     elif os.path.splitext(dest_path)[1].lower() == '.iso' and _is_ps3_redump_target(platform_folder, platform):
                         # L'ISO PS3 est supprimé après conversion : s'il est là, la conversion n'a pas abouti
                         logger.info(f"L'ISO {dest_path} existe mais n'a pas été converti, nouveau téléchargement")
+                    elif remote_size is None:
+                        # Certaines sources refusent HEAD : la taille locale est comparée à celle de la réponse GET
+                        verify_existing_size = True
                     else:
-                        # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
+                        # Les tailles correspondent, considérer comme déjà téléchargé
                         logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
                         result[0] = True
                         result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
@@ -3488,8 +3506,9 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                                             logger.warning(f"Taille mismatch (extension différente)! Local: {local_size}, Remote: {remote_size} - re-téléchargement")
                                             # Continuer le téléchargement normal
                                             break
-                                        elif _is_lolroms_url(url):
-                                            logger.info(f"Fichier lolroms avec extension différente non vérifiable, re-téléchargement forcé: {existing_path}")
+                                        # Un dossier est un jeu installé (.pc, .ps3...) : le remplacer effacerait ce que le joueur y a ajouté
+                                        elif (remote_size is None and not os.path.isdir(existing_path)) or _is_lolroms_url(url):
+                                            logger.info(f"Fichier avec extension différente non vérifiable, re-téléchargement forcé: {existing_path}")
                                             break
                                         else:
                                             # Les tailles correspondent, fichier complet
@@ -3844,6 +3863,36 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             f"Vimm returned an HTML page instead of an archive (content-type={response_content_type})"
                         )
 
+                    # Une page HTML ne doit pas écraser un fichier resté sur le disque, il est peut-être complet
+                    if 'text/html' in response_content_type and os.path.exists(dest_path):
+                        raise requests.HTTPError(f"Source returned an HTML page instead of the file (content-type={response_content_type})")
+
+                    if verify_existing_size:
+                        existing_total_size = int(response.headers.get('content-length', 0) or 0)
+                        if existing_total_size and os.path.getsize(dest_path) == existing_total_size:
+                            response.close()
+                            logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
+                            result[0] = True
+                            result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                            for entry in config.history:
+                                if entry.get("url") == original_history_url:
+                                    entry["status"] = "Download_OK"
+                                    entry["progress"] = 100
+                                    entry["message"] = result[1]
+                                    _save_history_with_feedback("download_rom:file_already_present")
+                                    break
+                            try:
+                                show_toast(result[1])
+                            except Exception as e:
+                                logger.debug(f"Impossible d'afficher le toast: {e}")
+                            with urls_lock:
+                                urls_in_progress.discard(original_history_url)
+                            try:
+                                notify_download_finished()
+                            except Exception:
+                                pass
+                            return result[0], result[1]
+
                     if url in config.download_progress:
                         config.download_progress[url]["status"] = "Downloading"
                         config.needs_redraw = True
@@ -3939,6 +3988,15 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             logger.warning(
                                 f"Archive partiellement incomplète mais acceptée malgré l'écart de taille: {reason}"
                             )
+                    # Le type annoncé seul ne suffit pas : certains hôtes servent de vrais fichiers en text/html
+                    elif (
+                        response is not None
+                        and 'html' in response.headers.get('content-type', '').lower()
+                        and archive_ext not in {'.html', '.htm'}
+                        and _looks_like_html_or_challenge(dest_path)
+                    ):
+                        _safe_remove_file(dest_path)
+                        raise requests.HTTPError(_("network_html_instead_of_game"))
 
                     if downloaded > 0 and downloaded != last_downloaded:
                         current_time = time.time()
@@ -3958,26 +4016,8 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
             try_chmod(dest_path, 0o644)
             logger.info(f"Téléchargement terminé: {dest_path}")
             
-            # Vérifier si l'extraction automatique est activée dans les paramètres
-            from rgsx_settings import get_auto_extract
-            auto_extract_enabled = get_auto_extract()
-            
-            # Forcer extraction si plateforme BIOS même si le pré-check ne l'avait pas marqué
-            force_extract = is_zip_non_supported and auto_extract_enabled
-            if not force_extract and auto_extract_enabled:
-                try:
-                    bios_like = {"BIOS", "- BIOS by TMCTV -", "- BIOS"}
-                    if platform_folder == "bios" or platform in bios_like:
-                        force_extract = True
-                        logger.debug("Extraction forcée activée pour BIOS")
-                except Exception:
-                    pass
-            
-            # Forcer extraction pour PS3 Redump (déchiffrement et extraction ISO obligatoire)
             is_ps3_target = _is_ps3_redump_target(platform_folder, platform)
-            if not force_extract and is_ps3_target:
-                force_extract = True
-                logger.debug("Extraction forcée activée pour PS3 Redump (déchiffrement ISO)")
+            force_extract = _extraction_required(is_zip_non_supported, platform_folder, platform)
 
             if force_extract:
                 logger.debug(f"Extraction automatique nécessaire pour {dest_path}")
@@ -4108,7 +4148,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             # Mettre à jour l'historique
                         if isinstance(config.history, list):
                             for entry in config.history:
-                                if "url" in entry and entry["url"] == original_history_url and entry["status"] != "Canceled":
+                                if "url" in entry and entry["url"] == original_history_url and entry["status"] not in ("Canceled", "Extracting"):
                                     entry["progress"] = progress_percent
                                     entry["downloaded_size"] = downloaded
                                     entry["total_size"] = total_size
@@ -4420,7 +4460,16 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 logger.error(f"Pas de permission d'écriture dans {dest_dir}")
                 raise PermissionError(f"Pas de permission d'écriture dans {dest_dir}")
 
+            def _left_before_postprocessing(path):
+                # L'archive et l'ISO PS3 sont supprimés une fois traités : s'ils sont là, le traitement n'a pas abouti
+                from rgsx_settings import get_auto_extract as auto_extract
+                extension = os.path.splitext(path)[1].lower()
+                if not auto_extract():
+                    return False
+                return (is_zip_non_supported and extension in ('.zip', '.7z', '.rar')) or (extension == '.iso' and _is_ps3_redump_target(platform_folder, platform))
+
             final_url = None
+            verify_existing_size = False
             filename = game_name
             onefichier_error_message = None
             provider_download_session = requests.Session()
@@ -4535,6 +4584,8 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         result[0] = False
                                         result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
                                         return
+                                elif _left_before_postprocessing(dest_path):
+                                    logger.info(f"Le fichier {dest_path} existe mais n'a pas été extrait, nouveau téléchargement")
                                 else:
                                     logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
                                     result[0] = True
@@ -4650,7 +4701,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         logger.debug("Requête AllDebrid link/unlock en cours")
                         response = requests.get("https://api.alldebrid.com/v4/link/unlock", params=params, timeout=30)
                         logger.debug(f"Réponse AllDebrid reçue, code: {response.status_code}")
-                        response.raise_for_status()
+                        # Les refus (clé invalide en 401, etc.) arrivent avec leur message en JSON
                         ad_json = response.json()
                         if ad_json.get('status') == 'success':
                             data = ad_json.get('data', {})
@@ -4662,6 +4713,9 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                 _set_provider_in_history(provider_used)
                         else:
                             logger.warning(f"AllDebrid status != success: {ad_json}")
+                            ad_error = ad_json.get('error')
+                            result[0] = False
+                            result[1] = f"AD: {(ad_error.get('message') if isinstance(ad_error, dict) else None) or ad_json.get('status')}"
                     except Exception as e:
                         logger.error(f"Erreur AllDebrid fallback: {e}")
                 # Tentative Debrid-Link si pas de final_url
@@ -5033,6 +5087,13 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                 pass
                     except Exception as e:
                         logger.error(f"Exception TorBox fallback: {e}")
+                if not final_url and (config.API_KEY_1FICHIER or config.API_KEY_ALLDEBRID or config.API_KEY_DEBRIDLINK or config.API_KEY_REALDEBRID or config.API_KEY_TORBOX):
+                    # Une clé refusée ne doit pas basculer sans rien dire vers le mode gratuit et son attente
+                    logger.error("Aucune URL obtenue avec les clés API, mode gratuit non tenté")
+                    result[0] = False
+                    if result[1] is None:
+                        result[1] = _("network_api_error").format("No provider available") if _ else "No provider available"
+                    return
                 if not final_url:
                     # NOUVEAU: Fallback mode gratuit 1fichier si aucune clé API disponible
                     logger.warning("Aucune URL directe obtenue via API - Tentative mode gratuit 1fichier")
@@ -5108,42 +5169,27 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         
                         if success:
                             logger.info(f"Téléchargement gratuit réussi: {filepath}")
-                            result[0] = True
-                            result[1] = _("network_download_ok").format(game_name) if _ else f"Download successful: {game_name}"
                             provider_used = 'FREE'
                             _set_provider_in_history(provider_used)
-                            
-                            # Mettre à jour l'historique
-                            if isinstance(config.history, list):
-                                for entry in config.history:
-                                    if "url" in entry and entry["url"] == url:
-                                        entry["status"] = "Completed"
-                                        entry["progress"] = 100
-                                        entry["message"] = result[1]
-                                        entry["provider"] = "FREE"
-                                        entry["provider_prefix"] = "FREE:"
-                                        _save_history_with_feedback("download_1fichier:free_success")
-                                        config.needs_redraw = True
-                                        break
-                            
-                            # Traiter le fichier (extraction si nécessaire)
-                            if not is_zip_non_supported:
-                                try:
-                                    if filepath.lower().endswith('.zip'):
-                                        logger.info(f"Extraction ZIP: {filepath}")
-                                        extract_zip(filepath, dest_dir, url)
-                                        logger.info("ZIP extrait")
-                                    elif filepath.lower().endswith('.rar'):
-                                        logger.info(f"Extraction RAR: {filepath}")
-                                        extract_rar(filepath, dest_dir, url)
-                                        logger.info("RAR extrait")
-                                    elif filepath.lower().endswith('.7z'):
-                                        logger.info(f"Extraction 7z: {filepath}")
-                                        extract_7z(filepath, dest_dir, url)
-                                        logger.info("7z extrait")
-                                except Exception as e:
-                                    logger.error(f"Erreur extraction: {e}")
-                            
+
+                            # Même règle d'extraction que pour les autres fournisseurs ; le statut final est posé par la boucle de progression
+                            from rgsx_settings import get_auto_extract
+                            is_ps3_target = _is_ps3_redump_target(platform_folder, platform)
+                            if get_auto_extract() and (is_zip_non_supported or is_ps3_target):
+                                if isinstance(config.history, list):
+                                    for entry in config.history:
+                                        if "url" in entry and entry["url"] == url and entry["status"] in ["Téléchargement", "Downloading"]:
+                                            entry["progress"] = 0
+                                            entry["status"] = "Extracting"
+                                            entry["message"] = _("network_preparing_extraction")
+                                            _save_history_with_feedback("download_1fichier:free_extracting")
+                                            config.needs_redraw = True
+                                            break
+                                result[0], result[1] = _postprocess_downloaded_file(filepath, dest_dir, url, game_name, is_ps3_target)
+                            else:
+                                try_chmod(filepath, 0o644)
+                                result[0] = True
+                                result[1] = _("network_download_ok").format(game_name)
                             return
                         else:
                             logger.error(f"Échec téléchargement gratuit: {error_msg}")
@@ -5185,6 +5231,7 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 
                 # Vérifier si le fichier existe déjà (exact ou avec autre extension)
                 file_found = False
+                from rgsx_settings import get_auto_extract
                 if os.path.exists(dest_path):
                     logger.info(f"Le fichier {dest_path} existe déjà, vérification de la taille...")
                     
@@ -5210,8 +5257,14 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                             result[1] = f"Erreur suppression fichier incomplet: {str(e)}"
                             return
                         # Continuer le téléchargement normal (ne pas faire return)
+                    elif _left_before_postprocessing(dest_path):
+                        # Archive qui aurait dû être extraite puis supprimée: c'est un reste d'un échec, on télécharge à nouveau
+                        logger.info(f"Le fichier {dest_path} existe mais n'a pas été extrait, nouveau téléchargement")
+                    elif remote_size is None:
+                        # Pas de HEAD avec les débrideurs : la taille locale est comparée à celle de la réponse GET
+                        verify_existing_size = True
                     else:
-                        # Les tailles correspondent ou on ne peut pas vérifier, considérer comme déjà téléchargé
+                        # Les tailles correspondent, considérer comme déjà téléchargé
                         logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
                         result[0] = True
                         result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
@@ -5243,8 +5296,9 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                                         local_size = os.path.getsize(existing_path)
                                         logger.debug(f"Taille du fichier local (extension différente): {local_size} octets")
                                         
-                                        # Comparer les tailles si on a obtenu la taille distante
-                                        if remote_size is not None and local_size != remote_size:
+                                        # Sans taille distante, ce fichier peut être une sauvegarde ou un fichier partiel.
+                                        # Un dossier est un jeu installé (.pc, .ps3...) : le remplacer effacerait ce que le joueur y a ajouté
+                                        if (remote_size is None and not os.path.isdir(existing_path)) or (remote_size is not None and local_size != remote_size):
                                             logger.warning(f"Taille mismatch (extension différente)! Local: {local_size}, Remote: {remote_size} - re-téléchargement")
                                             # Continuer le téléchargement normal
                                             break
@@ -5303,6 +5357,20 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                         response.raise_for_status()
                         total_size = int(response.headers.get('content-length', 0))
                         logger.debug(f"Taille totale: {total_size} octets")
+
+                        # Une page HTML ne doit pas écraser un fichier peut-être complet
+                        if verify_existing_size and 'text/html' in response.headers.get('content-type', '').lower():
+                            raise requests.HTTPError(f"Source returned an HTML page instead of the file ({dest_path})")
+
+                        if verify_existing_size and total_size and os.path.exists(dest_path) and os.path.getsize(dest_path) == total_size:
+                            logger.info(f"Le fichier {dest_path} existe déjà et la taille est correcte, téléchargement ignoré")
+                            result[0] = True
+                            result[1] = _("network_download_ok").format(game_name) + _("download_already_present")
+                            try:
+                                show_toast(result[1])
+                            except Exception as e:
+                                logger.debug(f"Impossible d'afficher le toast: {e}")
+                            return result[0], result[1]
 
                         has_space, low_space_message = _ensure_sufficient_disk_space(dest_dir, total_size)
                         if not has_space:
@@ -5394,6 +5462,15 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                     # Si annulé, ne pas continuer avec extraction
                     if download_canceled:
                         return
+
+                    # Le type annoncé seul ne suffit pas : certains hôtes servent de vrais fichiers en text/html
+                    if (
+                        'html' in response.headers.get('content-type', '').lower()
+                        and os.path.splitext(dest_path)[1].lower() not in {'.html', '.htm'}
+                        and _looks_like_html_or_challenge(dest_path)
+                    ):
+                        _safe_remove_file(dest_path)
+                        raise requests.HTTPError(f"Downloaded an HTML page instead of the file ({dest_path})")
                     
                     # Vérifier si l'extraction automatique est activée dans les paramètres
                     from rgsx_settings import get_auto_extract

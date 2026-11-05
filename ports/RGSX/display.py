@@ -6341,7 +6341,7 @@ def draw_history_game_options(screen):
         option_labels.append(_("history_option_force_download"))
         options.append("remove_from_queue")
         option_labels.append(_("history_option_remove_from_queue"))
-    elif status in ["Downloading", "Téléchargement", "Extracting", "Paused"]:
+    elif status in ["Downloading", "Téléchargement", "Paused"]:
         # Téléchargement en cours ou en pause
         options.append("pause_resume_download")
         # Afficher le bon label selon l'état actuel

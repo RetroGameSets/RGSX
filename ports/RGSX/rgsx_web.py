@@ -1847,23 +1847,43 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     return
                 
                 try:
-                    from network import request_cancel
+                    from network import request_cancel, cancel_events
                     
                     # Trouver le task_id correspondant à l'URL dans l'historique
                     history = load_history() or []
                     task_id = None
                     cancel_success = False
+                    refusal = 'web_cancel_not_running'
                     
                     for entry in history:
-                        if entry.get('url') == url and entry.get('status') in ['Downloading', 'Téléchargement', 'Downloading', 'Connecting']:
-                            # Mettre à jour le statut dans l'historique
-                            entry['status'] = 'Canceled'
-                            entry['progress'] = 0
-                            entry['message'] = get_translation('web_download_canceled')
-                            
-                            # Récupérer le task_id depuis l'entrée (il a été sauvegardé lors du démarrage du téléchargement)
-                            task_id = entry.get('task_id')
+                        if entry.get('url') == url and entry.get('status') in ['Downloading', 'Téléchargement', 'Downloading', 'Connecting', 'Extracting']:
+                            row_task_id = entry.get('task_id')
+                            running_here = row_task_id in cancel_events
+                            # L'app de l'appareil est un autre processus : ses cancel_events ne sont pas accessibles d'ici.
+                            # Sous dArkOS, le service web est headless mais l'app peut tourner à côté
+                            if not running_here and (not config.HEADLESS or config.IS_DARKOS) and not str(row_task_id).startswith('web_'):
+                                refusal = 'web_cancel_on_device'
+                            # L'extraction ne s'interrompt pas : le jeu finirait installé sous le statut "Canceled"
+                            elif running_here and entry.get('status') == 'Extracting':
+                                refusal = 'web_cancel_unpacking'
+                            else:
+                                refusal = None
+                                # Mettre à jour le statut dans l'historique
+                                entry['status'] = 'Canceled'
+                                entry['progress'] = 0
+                                entry['message'] = get_translation('web_download_canceled')
+                                
+                                # Récupérer le task_id depuis l'entrée (il a été sauvegardé lors du démarrage du téléchargement)
+                                task_id = row_task_id
                             break
+                    
+                    if refusal:
+                        logger.warning(f"Annulation refusée pour {url}: {refusal}")
+                        self._send_json({
+                            'success': False,
+                            'error': get_translation(refusal)
+                        }, status=409)
+                        return
                     
                     if task_id:
                         # Le thread écrit son statut final depuis config.history : sans ceci, "Canceled" devient "Erreur"
