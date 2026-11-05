@@ -4767,7 +4767,8 @@ def draw_pause_api_keys_status(screen):
     row_height = config.small_font.get_height() + 14
     header_height = 60
     inner_rows = len(providers)
-    menu_width = int(config.screen_width * 0.60)
+    # Les noms de fichiers de clés ne tiennent pas dans 60 % d'un écran peu haut, même large (854x480)
+    menu_width = int(config.screen_width * (0.94 if config.screen_height <= 600 else 0.60))
     menu_height = header_height + inner_rows * row_height + 80
     menu_x = (config.screen_width - menu_width)//2
     menu_y = (config.screen_height - menu_height)//2
@@ -4915,6 +4916,11 @@ def draw_pause_connection_status(screen):
     menu_height = title_height + content_height + footer_height
     menu_x = (config.screen_width - menu_width) // 2
     menu_y = (config.screen_height - menu_height) // 2
+    # Au-dessus du footer de l'écran, la liste défile quand le cadre est trop haut
+    max_menu_height = config.screen_height - 80
+    if menu_height > max_menu_height:
+        menu_height = max_menu_height
+        menu_y = (config.screen_height - 70 - menu_height) // 2
 
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (menu_x, menu_y, menu_width, menu_height), border_radius=22)
     pygame.draw.rect(screen, THEME_COLORS["border"], (menu_x, menu_y, menu_width, menu_height), 2, border_radius=22)
@@ -4927,7 +4933,15 @@ def draw_pause_connection_status(screen):
     col_site_x = menu_x + 40
     col_status_x = menu_x + int(menu_width * 0.70)
 
-    y = menu_y + title_height - 5
+    list_top = menu_y + title_height - 5
+    list_bottom = menu_y + menu_height - footer_height
+    max_scroll = max(0, content_height - (list_bottom - list_top))
+    scroll_offset = max(0, min(getattr(config, 'connection_status_scroll', 0), max_scroll))
+    config.connection_status_scroll = scroll_offset
+    previous_clip = screen.get_clip()
+    screen.set_clip(pygame.Rect(menu_x, list_top, menu_width, list_bottom - list_top))
+
+    y = list_top - scroll_offset
     for row_type, data in rows:
         if row_type == "header":
             header_text = data
@@ -4969,6 +4983,17 @@ def draw_pause_connection_status(screen):
         sep_y = y + row_height - 8
         pygame.draw.line(screen, THEME_COLORS["border"], (menu_x + 25, sep_y), (menu_x + menu_width - 25, sep_y), 1)
         y += row_height
+
+    screen.set_clip(previous_clip)
+
+    if max_scroll > 0:
+        indicator_color = THEME_COLORS["title_text"]
+        if scroll_offset > 0:
+            up_surface = config.small_font.render("^", True, indicator_color)
+            screen.blit(up_surface, up_surface.get_rect(center=(menu_x + menu_width - 18, list_top + 10)))
+        if scroll_offset < max_scroll:
+            down_surface = config.small_font.render("v", True, indicator_color)
+            screen.blit(down_surface, down_surface.get_rect(center=(menu_x + menu_width - 18, list_bottom - 10)))
 
     # Footer hint
     hint_font = config.tiny_font if hasattr(config, "tiny_font") else config.small_font
@@ -5359,7 +5384,8 @@ def draw_controls_help(screen, previous_state):
     padding = 24
     inter_col_spacing = 48
     max_panel_width = int(config.screen_width * 0.9)
-    max_panel_height = int(config.screen_height * 0.9)
+    footer_reserved = 70
+    max_panel_height = min(int(config.screen_height * 0.9), config.screen_height - footer_reserved - 10)
 
     # Découpage en 2 colonnes (équilibré)
     categories_list = list(control_categories.items())
@@ -5444,7 +5470,7 @@ def draw_controls_help(screen, previous_state):
         enable_clip = False
 
     panel_x = (config.screen_width - panel_width) // 2
-    panel_y = (config.screen_height - panel_height) // 2
+    panel_y = max(10, min((config.screen_height - panel_height) // 2, config.screen_height - footer_reserved - panel_height))
 
     # Fond panel
     pygame.draw.rect(screen, THEME_COLORS["button_idle"], (panel_x, panel_y, panel_width, panel_height), border_radius=16)
@@ -5459,15 +5485,21 @@ def draw_controls_help(screen, previous_state):
     col1_x = panel_x + padding
     col2_x = panel_x + panel_width - padding - col2_w
 
+    # Les colonnes défilent au-dessus de la ligne du style de manette quand le cadre est tronqué
+    view_height = panel_height - (col_top - panel_y) - padding - extra_bottom_space
+    max_scroll = max(0, content_height - view_height) if enable_clip else 0
+    scroll_offset = max(0, min(getattr(config, 'controls_help_scroll', 0), max_scroll))
+    config.controls_help_scroll = scroll_offset
+
     # Clip si nécessaire
     prev_clip = None
     if enable_clip:
         prev_clip = screen.get_clip()
-        clip_rect = pygame.Rect(panel_x + padding, col_top, panel_width - 2 * padding, panel_height - (col_top - panel_y) - padding)
+        clip_rect = pygame.Rect(panel_x + padding, col_top, panel_width - 2 * padding, view_height)
         screen.set_clip(clip_rect)
 
     # Dessin colonne 1
-    y1 = col_top
+    y1 = col_top - scroll_offset
     last_section = False
     for is_section, surf in col1_wrapped:
         if is_section:
@@ -5478,7 +5510,7 @@ def draw_controls_help(screen, previous_state):
         y1 += surf.get_height() + (section_spacing if is_section else line_spacing)
 
     # Dessin colonne 2
-    y2 = col_top
+    y2 = col_top - scroll_offset
     for is_section, surf in col2_wrapped:
         if y2 + surf.get_height() > panel_y + panel_height - padding:
             break
@@ -5487,6 +5519,15 @@ def draw_controls_help(screen, previous_state):
 
     if enable_clip and prev_clip is not None:
         screen.set_clip(prev_clip)
+
+    if max_scroll > 0:
+        indicator_color = THEME_COLORS["title_text"]
+        if scroll_offset > 0:
+            up_surface = config.small_font.render("^", True, indicator_color)
+            screen.blit(up_surface, up_surface.get_rect(center=(panel_x + panel_width - 18, col_top + 10)))
+        if scroll_offset < max_scroll:
+            down_surface = config.small_font.render("v", True, indicator_color)
+            screen.blit(down_surface, down_surface.get_rect(center=(panel_x + panel_width - 18, col_top + view_height - 10)))
 
     # Footer: controller style selector display
     try:
@@ -6890,9 +6931,27 @@ def draw_filter_menu_choice(screen):
     # Largeur du bouton basée sur le texte le plus long + marges
     button_width = min(int(config.screen_width * 0.84), max(int(config.screen_width * 0.52), max_text_width + 60))
     menu_y = layout['start_y']
-    
+
+    # Les options défilent dans la zone au-dessus du footer quand elles ne tiennent pas
+    row_pitch = button_height + button_spacing
+    viewport_bottom = config.screen_height - 52
+    viewport_height = viewport_bottom - menu_y
+    content_height = len(options) * row_pitch - button_spacing
+    max_scroll = max(0, content_height - viewport_height)
+    selected_top = config.selected_filter_choice * row_pitch
+    selected_bottom = selected_top + button_height
+    scroll_offset = max(0, min(getattr(config, 'filter_menu_scroll', 0), max_scroll))
+    if selected_top < scroll_offset:
+        scroll_offset = selected_top
+    elif selected_bottom > scroll_offset + viewport_height:
+        scroll_offset = min(max_scroll, selected_bottom - viewport_height)
+    config.filter_menu_scroll = scroll_offset
+
+    previous_clip = screen.get_clip()
+    screen.set_clip(pygame.Rect(0, menu_y, config.screen_width, viewport_height))
+
     for i, option in enumerate(options):
-        y = menu_y + i * (button_height + button_spacing)
+        y = menu_y + i * row_pitch - scroll_offset
         x = (config.screen_width - button_width) // 2
         
         # Couleur selon sélection
@@ -6914,6 +6973,17 @@ def draw_filter_menu_choice(screen):
         
         text_rect = text_surface.get_rect(center=(config.screen_width // 2, y + button_height // 2))
         screen.blit(text_surface, text_rect)
+
+    screen.set_clip(previous_clip)
+
+    if max_scroll > 0:
+        indicator_color = THEME_COLORS["title_text"]
+        if scroll_offset > 0:
+            up_surface = config.small_font.render("^", True, indicator_color)
+            screen.blit(up_surface, up_surface.get_rect(center=(config.screen_width - 18, menu_y + 10)))
+        if scroll_offset < max_scroll:
+            down_surface = config.small_font.render("v", True, indicator_color)
+            screen.blit(down_surface, down_surface.get_rect(center=(config.screen_width - 18, viewport_bottom - 10)))
 
 
 def draw_global_sort_menu(screen):
@@ -6946,8 +7016,26 @@ def draw_global_sort_menu(screen):
     button_width = min(int(config.screen_width * 0.86), max(int(config.screen_width * 0.56), max_text_width + 60))
     menu_y = layout['start_y']
 
+    # Les options défilent dans la zone au-dessus du footer quand elles ne tiennent pas
+    row_pitch = button_height + button_spacing
+    viewport_bottom = config.screen_height - 70
+    viewport_height = viewport_bottom - menu_y
+    content_height = len(options) * row_pitch - button_spacing
+    max_scroll = max(0, content_height - viewport_height)
+    selected_top = getattr(config, 'global_sort_selected', 0) * row_pitch
+    selected_bottom = selected_top + button_height
+    scroll_offset = max(0, min(getattr(config, 'global_sort_scroll', 0), max_scroll))
+    if selected_top < scroll_offset:
+        scroll_offset = selected_top
+    elif selected_bottom > scroll_offset + viewport_height:
+        scroll_offset = min(max_scroll, selected_bottom - viewport_height)
+    config.global_sort_scroll = scroll_offset
+
+    previous_clip = screen.get_clip()
+    screen.set_clip(pygame.Rect(0, menu_y, config.screen_width, viewport_height))
+
     for i, option in enumerate(options):
-        y = menu_y + i * (button_height + button_spacing)
+        y = menu_y + i * row_pitch - scroll_offset
         x = (config.screen_width - button_width) // 2
         if i == getattr(config, 'global_sort_selected', 0):
             color = THEME_COLORS["button_selected"]
@@ -6961,6 +7049,17 @@ def draw_global_sort_menu(screen):
         text_surface = display_option_font.render(display_option, True, THEME_COLORS["text"])
         text_rect = text_surface.get_rect(center=(config.screen_width // 2, y + button_height // 2))
         screen.blit(text_surface, text_rect)
+
+    screen.set_clip(previous_clip)
+
+    if max_scroll > 0:
+        indicator_color = THEME_COLORS["title_text"]
+        if scroll_offset > 0:
+            up_surface = config.small_font.render("^", True, indicator_color)
+            screen.blit(up_surface, up_surface.get_rect(center=(config.screen_width - 18, menu_y + 10)))
+        if scroll_offset < max_scroll:
+            down_surface = config.small_font.render("v", True, indicator_color)
+            screen.blit(down_surface, down_surface.get_rect(center=(config.screen_width - 18, viewport_bottom - 10)))
 
 
 def draw_filter_advanced(screen):

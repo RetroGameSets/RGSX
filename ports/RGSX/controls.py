@@ -3064,6 +3064,7 @@ def handle_controls(event, sources, joystick, screen):
                 selected = options[sel]["key"]
                 if selected == "help":
                     config.previous_menu_state = "pause_controls_menu"
+                    config.controls_help_scroll = 0
                     config.menu_state = "controls_help"
                 elif selected == "remap":
                     if os.path.exists(config.CONTROLS_CONFIG_PATH):
@@ -3086,8 +3087,12 @@ def handle_controls(event, sources, joystick, screen):
         
         # Menu Aide Contrôles (affichage interactif du style manette)
         elif config.menu_state == "controls_help":
+            if is_input_matched(event, "up") or is_input_matched(event, "down"):
+                row_step = config.small_font.get_height() + 8
+                config.controls_help_scroll = max(0, getattr(config, 'controls_help_scroll', 0) + (row_step if is_input_matched(event, "down") else -row_step))
+                config.needs_redraw = True
             # Left/Right change controller style immediately
-            if is_input_matched(event, "left") or is_input_matched(event, "right"):
+            elif is_input_matched(event, "left") or is_input_matched(event, "right"):
                 try:
                     from rgsx_settings import set_nintendo_layout, get_nintendo_layout
                     # Toggle style
@@ -3623,6 +3628,7 @@ def handle_controls(event, sources, joystick, screen):
                 # Option Connection Status
                 elif sel == connection_status_index and is_input_matched(event, "confirm"):
                     start_connection_status_check(force=True)
+                    config.connection_status_scroll = 0
                     config.menu_state = "pause_connection_status"
                     config.needs_redraw = True
                 # Options ScreenScraper account: edit with the virtual keyboard
@@ -3643,7 +3649,11 @@ def handle_controls(event, sources, joystick, screen):
                 config.needs_redraw = True
 
         elif config.menu_state == "pause_connection_status":
-            if is_input_matched(event, "cancel") or is_input_matched(event, "confirm") or is_input_matched(event, "start"):
+            if is_input_matched(event, "up") or is_input_matched(event, "down"):
+                row_step = config.small_font.get_height() + 14
+                config.connection_status_scroll = max(0, getattr(config, 'connection_status_scroll', 0) + (row_step if is_input_matched(event, "down") else -row_step))
+                config.needs_redraw = True
+            elif is_input_matched(event, "cancel") or is_input_matched(event, "confirm") or is_input_matched(event, "start"):
                 config.menu_state = "pause_settings_menu"
                 config.last_state_change_time = pygame.time.get_ticks()
                 config.needs_redraw = True
