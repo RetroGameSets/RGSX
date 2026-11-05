@@ -6295,7 +6295,8 @@ def draw_toast(screen):
     
     text_lines = message.split('\n')
     wrapped_lines = []
-    max_width = int(config.screen_width * (0.25 if media_notification else 0.3))
+    # 30% de la largeur, mais pas moins de 360 px (colonne illisible sur petit écran)
+    max_width = max(int(config.screen_width * (0.25 if media_notification else 0.3)), min(360, config.screen_width - 40))
     
     for line in text_lines:
         if line.strip() == "":

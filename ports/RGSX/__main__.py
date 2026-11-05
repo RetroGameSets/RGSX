@@ -746,6 +746,10 @@ async def main():
                 last_redraw_time = current_time
                 # logger.debug("Forcing redraw in history state due to active download")
 
+        # Redessiner tant qu'un toast est affiché, sinon il reste à l'écran après sa durée
+        if getattr(config, 'toast_message', ''):
+            config.needs_redraw = True
+
         # Gestion de la fin du popup
         if config.menu_state == "restart_popup" and config.popup_timer > 0:
             config.popup_timer -= (current_time - config.last_frame_time)
