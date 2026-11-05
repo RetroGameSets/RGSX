@@ -990,19 +990,28 @@
             const name = gameName.toUpperCase();
             const regions = [];
             
-            // Common region patterns - check all, not just first match
-            // Handle both "(USA)" and "(USA, Europe)" formats
-            if (name.includes('USA') || name.includes('US)')) regions.push('USA');
-            if (name.includes('CANADA')) regions.push('Canada');
-            if (name.includes('EUROPE') || name.includes('EU)')) regions.push('Europe');
-            if (name.includes('FRANCE') || name.includes('FR)')) regions.push('France');
-            if (name.includes('GERMANY') || name.includes('DE)')) regions.push('Germany');
-            if (name.includes('JAPAN') || name.includes('JP)') || name.includes('JPN)')) regions.push('Japan');
-            if (name.includes('KOREA') || name.includes('KR)')) regions.push('Korea');
-            if (name.includes('WORLD')) regions.push('World');
+            // Regions are read from the tags or a folder ("Japan/..."), never from the title
+            // ("Musashi" is not USA and "(Arcade)" is not Germany)
+            const tagCodes = new Set();
+            const tags = (name.match(/[(\[][^)\]]+[)\]]/g) || []).map(tag => tag.slice(1, -1))
+                .concat(name.split('/').slice(0, -1));
+            tags.forEach(tag => tag.split(/\s*[,\-]\s*/).forEach(code => tagCodes.add(code.trim())));
+            const hasCode = (...codes) => codes.some(code => tagCodes.has(code));
+            // "(USA) (En,Fr,De)" lists languages: excluding France must not hide that release
+            const lastCodes = tags.map(tag => tag.split(/\s*[,\-]\s*/).pop().trim());
+            
+            if (hasCode('USA', 'US')) regions.push('USA');
+            // "CA" alone: in a language list, "(Es,Ca)" is Catalan
+            if (hasCode('CANADA') || tags.includes('CA')) regions.push('Canada');
+            if (hasCode('EUROPE', 'EU')) regions.push('Europe');
+            if (hasCode('FRANCE') || lastCodes.includes('FR')) regions.push('France');
+            if (hasCode('GERMANY', 'GER') || lastCodes.includes('DE')) regions.push('Germany');
+            if (hasCode('JAPAN', 'JP', 'JPN')) regions.push('Japan');
+            if (hasCode('KOREA', 'KR', 'KOR')) regions.push('Korea');
+            if (hasCode('WORLD')) regions.push('World');
             
             // Check for other regions (excluding the ones above)
-            if (name.match(/\b(AUSTRALIA|ASIA|BRAZIL|CHINA|RUSSIA|SCANDINAVIA|SPAIN|ITALY)\b/)) {
+            if (hasCode('AUSTRALIA', 'ASIA', 'BRAZIL', 'CHINA', 'RUSSIA', 'SCANDINAVIA', 'SPAIN', 'ITALY')) {
                 if (!regions.includes('Other')) regions.push('Other');
             }
             
@@ -1076,19 +1085,11 @@
 
         // Helper: Get region priority for one-rom-per-game (lower = better)
         function getRegionPriority(gameName) {
-            const name = gameName.toUpperCase();
+            const gameRegions = getGameRegions(gameName);
             
             // Find the first matching region in priority order
             for (let i = 0; i < regionPriorityOrder.length; i++) {
-                const region = regionPriorityOrder[i].toUpperCase();
-                if (region === 'USA' && name.includes('USA')) return i;
-                if (region === 'CANADA' && name.includes('CANADA')) return i;
-                if (region === 'WORLD' && name.includes('WORLD')) return i;
-                if (region === 'EUROPE' && (name.includes('EUROPE') || name.includes('EU)'))) return i;
-                if (region === 'FRANCE' && (name.includes('FRANCE') || name.includes('FR)'))) return i;
-                if (region === 'GERMANY' && (name.includes('GERMANY') || name.includes('DE)'))) return i;
-                if (region === 'JAPAN' && (name.includes('JAPAN') || name.includes('JP)') || name.includes('JPN)'))) return i;
-                if (region === 'KOREA' && (name.includes('KOREA') || name.includes('KR)'))) return i;
+                if (gameRegions.includes(regionPriorityOrder[i])) return i;
             }
             
             return regionPriorityOrder.length; // Other regions (lowest priority)
