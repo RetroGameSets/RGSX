@@ -3455,6 +3455,9 @@
                 };
                 
             } catch (error) {
+                // Repartir du champ au prochain clic, sinon le chemin invalide est rejoué
+                currentBrowsePath = '';
+                browseInitialized = false;
                 alert('❌ ' + t('web_error_browse', error.message));
             }
         }
