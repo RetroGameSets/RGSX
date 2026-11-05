@@ -220,6 +220,7 @@
     "download_already_extracted": " (zaten çıkarılmış)",
     "download_in_progress": "İndirme devam ediyor...",
     "download_queued": "İndirme kuyruğuna eklendi",
+    "download_interrupted": "Yeniden başlatma nedeniyle kesildi, hâlâ istiyorsanız yeniden indirin",
     "download_started": "İndirme başladı",
     "network_download_already_queued": "Bu indirme zaten devam ediyor",
     "utils_extracted": "Çıkarıldı: {0}",

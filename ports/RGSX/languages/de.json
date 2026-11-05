@@ -245,6 +245,7 @@
     "download_already_extracted": " (bereits extrahiert)",
     "download_in_progress": "Download läuft...",
     "download_queued": "In Download-Warteschlange",
+    "download_interrupted": "Durch einen Neustart unterbrochen, bei Bedarf erneut herunterladen",
     "download_started": "Download gestartet",
     "utils_corrupt_zip": "Beschädigtes ZIP-Archiv: {0}",
     "utils_permission_denied": "Berechtigung während der Extraktion verweigert: {0}",
