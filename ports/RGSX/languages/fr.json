@@ -465,6 +465,7 @@
     "web_confirm_cancel": "Voulez-vous vraiment annuler ce téléchargement ?",
     "web_error": "Erreur",
     "web_error_unknown": "Erreur inconnue",
+    "web_error_server_unreachable": "Impossible de joindre le serveur RGSX. Vérifiez qu'il est lancé, puis réessayez.",
     "web_error_download": "Erreur : {0}",
     "web_history_clear": "Vider l'historique",
     "web_history_cleared": "Historique vidé avec succès !",

@@ -28,6 +28,8 @@
 
         const savedGamePreferences = readGamePreferences();
         let currentPlatform = null;
+        // La grille et une liste de jeux s'affichent au même endroit : seule la dernière demande compte.
+        let platformsPageRequest = 0;
         let currentGameSort = savedGamePreferences.sort || 'name_asc'; // Type de tri actuel: 'name_asc', 'name_desc', 'size_asc', 'size_desc', 'date_asc', 'date_desc'
         let currentGames = [];  // Stocke les jeux actuels pour le tri
         let currentGameView = savedGamePreferences.view || 'grid';
@@ -561,7 +563,11 @@
             // Si pas de mise à jour depuis 30 secondes et qu'on est sur l'onglet téléchargements
             const downloadsTab = document.getElementById('downloads-content');
             if (downloadsTab && downloadsTab.style.display !== 'none') {
-                if (timeSinceLastUpdate > 30000) {
+                // Sans téléchargement en cours il n'y a pas de rafraîchissement : on regarde
+                // seulement si un téléchargement a démarré ailleurs
+                if (!progressInterval) {
+                    loadProgress();
+                } else if (timeSinceLastUpdate > 30000) {
                     console.warn('[AUTO-REFRESH] Aucune mise à jour depuis 30s, rafraîchissement...');
                     location.reload();
                 }
@@ -660,26 +666,37 @@
 
             // Load saved filters first
             loadSavedFilters();
-            
+        });
+        
+        // Afficher la page demandée par l'adresse (premier affichage ou rechargement)
+        function showPageFromUrl() {
             const path = window.location.pathname;
             
             if (path.startsWith('/platform/')) {
                 const platformName = decodeURIComponent(path.split('/platform/')[1]);
+                window.history.replaceState({ tab: 'platforms', platform: platformName }, '', path);
                 loadGames(platformName, false);
             } else if (path === '/downloads') {
+                window.history.replaceState({ tab: 'downloads' }, '', path);
                 showTab('downloads', false);
+            } else if (path === '/queue') {
+                window.history.replaceState({ tab: 'queue' }, '', path);
+                showTab('queue', false);
             } else if (path === '/history') {
+                window.history.replaceState({ tab: 'history' }, '', path);
                 showTab('history', false);
             } else if (path === '/settings') {
+                window.history.replaceState({ tab: 'settings' }, '', path);
                 showTab('settings', false);
             } else if (path === '/scrap') {
+                window.history.replaceState({ tab: 'scrap' }, '', path);
                 showTab('scrap', false);
             } else {
                 // État initial - définir l'historique sans recharger
                 window.history.replaceState({ tab: 'platforms' }, '', '/');
                 loadPlatforms();
             }
-        });
+        }
         
         // ===== FONCTIONS PRINCIPALES =====
         
@@ -1751,14 +1768,32 @@
             if (grid && grid.offsetParent) platformsScrollY = window.scrollY;
         }
         
+        // fetch() échoue avec une TypeError quand le serveur ne répond pas
+        function fetchErrorText(error) {
+            const unreachable = error instanceof TypeError && /fetch|network|load failed/i.test(error.message);
+            return unreachable ? t('web_error_server_unreachable') : `${t('web_error')}: ${error.message}`;
+        }
+        
+        // Si la grille des plateformes était affichée, on la remet avec le message au-dessus
+        function keepPlatformGrid(container, previousView, error) {
+            if (!previousView.some(node => node.classList && node.classList.contains('platform-grid'))) return false;
+            container.replaceChildren(...previousView);
+            container.querySelector('.load-error')?.remove();
+            container.insertAdjacentHTML('afterbegin', `<p class="load-error" style="color:red;">${fetchErrorText(error)}</p>`);
+            return true;
+        }
+        
         // Charger les plateformes
         async function loadPlatforms() {
+            const request = ++platformsPageRequest;
             const container = document.getElementById('platforms-content');
+            const previousView = Array.from(container.childNodes);
             container.innerHTML = '<div class="loading">⏳ ' + t('web_loading_platforms') + '</div>';
             
             try {
                 const response = await fetch('/api/platforms');
                 const data = await response.json();
+                if (request !== platformsPageRequest) return;
                 
                 if (!data.success) throw new Error(data.error);
                 
@@ -1809,16 +1844,19 @@
                 platformsScrollY = 0;
                 
             } catch (error) {
-                let errorMsg = t('web_error');
-                container.innerHTML = `<p style="color:red;">${errorMsg}: ${error.message}</p>`;
+                if (request !== platformsPageRequest) return;
+                if (keepPlatformGrid(container, previousView, error)) return;
+                container.innerHTML = `<p style="color:red;">${fetchErrorText(error)}</p>`;
             }
         }
         
         // Charger les jeux d'une plateforme
         async function loadGames(platform, updateHistory = true) {
             rememberPlatformsScroll();
+            const request = ++platformsPageRequest;
             currentPlatform = platform;
             const container = document.getElementById('platforms-content');
+            const previousView = Array.from(container.childNodes);
             container.innerHTML = '<div class="loading">⏳ ' + t('web_loading_games') + '</div>';
             
             // Mettre à jour l'URL et l'historique
@@ -1831,6 +1869,7 @@
             try {
                 const response = await fetch('/api/games/' + encodeURIComponent(platform));
                 const data = await response.json();
+                if (request !== platformsPageRequest) return;
                 
                 if (!data.success) throw new Error(data.error);
                 
@@ -1936,11 +1975,12 @@
                 });
                 
             } catch (error) {
+                if (request !== platformsPageRequest) return;
+                if (keepPlatformGrid(container, previousView, error)) return;
                 let backText = t('web_back');
-                let errorMsg = t('web_error');
                 container.innerHTML = `
                     <button class="back-btn" onclick="goBackToPlatforms()">← ${backText}</button>
-                    <p style="color:red;">${errorMsg}: ${error.message}</p>
+                    <p style="color:red;">${fetchErrorText(error)}</p>
                 `;
             }
         }
@@ -2197,7 +2237,7 @@
                     }, 500);
                 }
             } catch (error) {
-                container.innerHTML = `<p style="color:red;">${t('web_error')}: ${error.message}</p>`;
+                container.innerHTML = `<p style="color:red;">${fetchErrorText(error)}</p>`;
             }
         }
         
@@ -2262,7 +2302,7 @@
                 container.innerHTML = html;
                 
             } catch (error) {
-                container.innerHTML = `<p style="color:red;">❌ ${t('web_error')}: ${error.message}</p>`;
+                container.innerHTML = `<p style="color:red;">❌ ${fetchErrorText(error)}</p>`;
             }
         }
         
@@ -2708,7 +2748,7 @@
                     </div>
                 `;
             } catch (error) {
-                container.innerHTML = `<p style="color:red;">${t('web_error')}: ${error.message}</p>`;
+                container.innerHTML = `<p style="color:red;">${fetchErrorText(error)}</p>`;
             }
         }
         
@@ -3055,7 +3095,7 @@
                 document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
                 
             } catch (error) {
-                container.innerHTML = `<p style="color:red;">${t('web_error')}: ${error.message}</p>`;
+                container.innerHTML = `<p style="color:red;">${fetchErrorText(error)}</p>`;
             }
         }
         
@@ -3432,6 +3472,9 @@
                 };
                 
             } catch (error) {
+                // Repartir du champ au prochain clic, sinon le chemin invalide est rejoué
+                currentBrowsePath = '';
+                browseInitialized = false;
                 alert('❌ ' + t('web_error_browse', error.message));
             }
         }
@@ -3440,7 +3483,7 @@
         async function init() {
             await loadTranslations();  // Charger les traductions
             applyTranslations();         // Appliquer les traductions à l'interface
-            loadPlatforms();            // Charger les plateformes
+            showPageFromUrl();
             updateRegionPriorityDisplay(); // Update initial display
             
             // Vérifier les téléchargements complétés toutes les 2 secondes
