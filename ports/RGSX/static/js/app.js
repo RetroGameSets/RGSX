@@ -1390,9 +1390,32 @@
                 statusDiv.textContent = statusParts.join(' • ');
             }
 
+            const noGamesMessage = document.getElementById('no-games-message');
+            if (noGamesMessage) {
+                noGamesMessage.style.display = visibleCount === 0 && items.length > 0 ? '' : 'none';
+            }
             renderGameRows();
 
             return visibleCount;
+        }
+
+        // Sur téléphone les filtres repoussent la liste sous l'écran: une fois la saisie finie, on
+        // amène le décompte juste sous le champ de recherche, qui reste collé en haut. Le clavier
+        // à l'écran réduit visualViewport mais pas innerHeight
+        let revealTimeout = null;
+        function revealGameResults() {
+            clearTimeout(revealTimeout);
+            revealTimeout = setTimeout(() => {
+                const status = document.getElementById('filter-status');
+                const input = document.getElementById('game-search');
+                if (!status || !input || !input.value.trim()) return;
+                const viewport = window.visualViewport;
+                const visibleBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+                const statusBox = status.getBoundingClientRect();
+                if (statusBox.bottom > visibleBottom) {
+                    window.scrollBy(0, statusBox.top - input.offsetHeight - 8);
+                }
+            }, 500);
         }
 
         // Legacy function for backwards compatibility
@@ -1925,9 +1948,9 @@
                         <span class="platform-page-game-count">${escapeHtml(gameCountText)}</span>
                         ${platformSourceBadge}
                     </h2>
-                    <div class="search-box">
+                    <div class="search-box" style="position: sticky; top: 0; z-index: 5;">
                         <input type="text" id="game-search" placeholder="🔍 ${searchPlaceholder}"
-                               oninput="applyAllFilters()">
+                               oninput="applyAllFilters(); revealGameResults()">
                         <button class="clear-search" id="clear-games-search" onclick="document.getElementById('game-search').value=''; applyAllFilters();">✕</button>
                         <span class="search-icon">🔍</span>
                     </div>
@@ -1970,6 +1993,7 @@
                         <button class="sort-btn" data-sort="date_desc" onclick="sortGames('date_desc')" title="${sortDateDesc}">${sortDateDesc}</button>
                     </div>
                     <div id="filter-status" style="margin-bottom: 8px; font-size: 0.9em; color: #666;"></div>
+                    <p id="no-games-message" style="display: none; margin-bottom: 8px; color: #666;">${t('web_no_results')}</p>
                     <div class="game-view-toggle" role="group" aria-label="${escapeHtml(t('game_media_view'))}">
                         <button id="game-view-list" class="active" onclick="setGameView('list')">${escapeHtml(t('game_media_view_list'))}</button>
                         <button id="game-view-grid" onclick="setGameView('grid')">${escapeHtml(t('game_media_view_grid'))}</button>
