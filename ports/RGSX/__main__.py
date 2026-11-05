@@ -1781,7 +1781,7 @@ async def main():
         logger.debug(f"Mise à jour liste des jeux ignorée sur {config.OPERATING_SYSTEM}")
         try:
             result = subprocess.run(["taskkill", "/f", "/im", "emulatorLauncher.exe"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            result2 = subprocess.run(["taskkill", "/f", "/im", "python.exe"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            result2 = subprocess.run(["taskkill", "/f", "/pid", str(os.getpid())], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             if getattr(result, "returncode", 1) == 0:
                 logger.debug("Quitté avec succès: emulatorLauncher.exe")
                 print(f"Arret Emulatorlauncher ok")
