@@ -281,7 +281,7 @@ def handle_language_menu_events(event, screen):
                 elif config.previous_menu_state == "pause_menu":
                     # Si on vient du menu pause, retourner au menu pause avec un message
                     config.menu_state = "restart_popup"
-                    config.popup_message = _("language_changed").format(lang_code)
+                    config.popup_message = _("language_changed").format(get_language_name(lang_code))
                     config.popup_timer = 2000  # 2 secondes
                     config.previous_menu_state = "platform"  # Pour revenir à l'écran principal après le popup
                     logger.debug("Message de confirmation de changement de langue affiché, retour au menu pause")

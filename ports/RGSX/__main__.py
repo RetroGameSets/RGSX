@@ -1213,9 +1213,9 @@ async def main():
                         config.pending_download = None
                         # Afficher un toast au lieu de changer de page
                         if success:
-                            toast_msg = f"[OK] {game_name}\n{_('download_completed') if _ else 'Download completed'}"
+                            toast_msg = f"[OK] {game_name}\n{_('history_status_completed')}"
                         else:
-                            toast_body = message or (_('download_failed') if _ else 'Download failed')
+                            toast_body = message or (_('web_history_status_error'))
                             toast_msg = f"[ERROR] {game_name}\n{toast_body}"
                         show_toast(toast_msg, 3000)
                         config.needs_redraw = True
@@ -1238,7 +1238,7 @@ async def main():
                         config.download_progress.clear()
                         config.pending_download = None
                         # Afficher un toast au lieu de changer de page
-                        toast_body = message or (_('download_failed') if _ else 'Download failed')
+                        toast_body = message or (_('web_history_status_error'))
                         toast_msg = f"[ERROR] {game_name}\n{toast_body}"
                         show_toast(toast_msg, 3000)
                         config.needs_redraw = True
@@ -1276,9 +1276,9 @@ async def main():
                             config.pending_download = None
                             # Afficher un toast au lieu de changer de page
                             if success:
-                                toast_msg = f"[OK] {game_name}\n{_('download_completed') if _ else 'Download completed'}"
+                                toast_msg = f"[OK] {game_name}\n{_('history_status_completed')}"
                             else:
-                                toast_body = message or (_('download_failed') if _ else 'Download failed')
+                                toast_body = message or (_('web_history_status_error'))
                                 toast_msg = f"[ERROR] {game_name}\n{toast_body}"
                             show_toast(toast_msg, 3000)
                             config.needs_redraw = True
@@ -1781,7 +1781,7 @@ async def main():
         logger.debug(f"Mise à jour liste des jeux ignorée sur {config.OPERATING_SYSTEM}")
         try:
             result = subprocess.run(["taskkill", "/f", "/im", "emulatorLauncher.exe"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            result2 = subprocess.run(["taskkill", "/f", "/im", "python.exe"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            result2 = subprocess.run(["taskkill", "/f", "/pid", str(os.getpid())], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             if getattr(result, "returncode", 1) == 0:
                 logger.debug("Quitté avec succès: emulatorLauncher.exe")
                 print(f"Arret Emulatorlauncher ok")
@@ -1801,9 +1801,12 @@ async def main():
         logger.debug("dArkOS: EmulationStation refresh delegated to RGSX.sh")
     else:
         # Exécuter la mise à jour de la liste des jeux d'EmulationStation UNIQUEMENT sur Batocera
-        resp = requests.get("http://127.0.0.1:1234/reloadgames", timeout=2)
-        content = (resp.text or "").strip()
-        logger.debug(f"Résultat mise à jour liste des jeux: HTTP {resp.status_code} - {content}")
+        try:
+            resp = requests.get("http://127.0.0.1:1234/reloadgames", timeout=2)
+            content = (resp.text or "").strip()
+            logger.debug(f"Résultat mise à jour liste des jeux: HTTP {resp.status_code} - {content}")
+        except requests.RequestException as e:
+            logger.debug(f"EmulationStation ne répond pas, mise à jour de la liste des jeux ignorée: {e}")
         try:
             result2 = subprocess.run(["batocera-es-swissknife", "--emukill"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             if getattr(result2, "returncode", 1) == 0:

@@ -1363,7 +1363,7 @@
             // Update filter status
             const statusDiv = document.getElementById('filter-status');
             if (statusDiv) {
-                let statusParts = [`Showing ${visibleCount} of ${items.length} games`];
+                let statusParts = [t('web_filter_showing', visibleCount, items.length)];
 
                 if (regionFilters.size > 0) {
                     const included = Array.from(regionFilters.entries())
@@ -1374,18 +1374,18 @@
                         .map(([region, _]) => region);
 
                     if (included.length > 0) {
-                        statusParts.push(`Including: ${included.join(', ')}`);
+                        statusParts.push(t('web_filter_including', included.join(', ')));
                     }
                     if (excluded.length > 0) {
-                        statusParts.push(`Excluding: ${excluded.join(', ')}`);
+                        statusParts.push(t('web_filter_excluding', excluded.join(', ')));
                     }
                 }
 
                 if (hideNonRelease) {
-                    statusParts.push(`Hiding demos/betas/protos`);
+                    statusParts.push(t('web_filter_hiding_non_release'));
                 }
                 if (regexMode && searchTerm) {
-                    statusParts.push(`Regex mode`);
+                    statusParts.push(t('web_filter_regex_active'));
                 }
                 statusDiv.textContent = statusParts.join(' • ');
             }
@@ -2617,6 +2617,7 @@
                 // Pré-charger les traductions
                 const platformLabel = t('web_history_platform');
                 const sizeLabel = t('web_history_size');
+                const dateLabel = t('web_history_date');
                 const statusCompleted = t('web_history_status_completed');
                 const statusError = t('web_history_status_error');
                 const statusCanceled = t('history_status_canceled');
@@ -2688,7 +2689,7 @@
                                         💾 ${sizeLabel}: ${sizeFormatted}
                                     </div>
                                     <div style="margin-top: 3px; font-size: 0.85em; color: #666;">
-                                        📅 Date: ${escapeHtml(timestamp)}
+                                        📅 ${dateLabel}: ${escapeHtml(timestamp)}
                                     </div>
                                 </div>
                                 <div style="text-align: right; min-width: 100px;">
