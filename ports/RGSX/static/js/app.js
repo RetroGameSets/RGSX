@@ -563,7 +563,11 @@
             // Si pas de mise à jour depuis 30 secondes et qu'on est sur l'onglet téléchargements
             const downloadsTab = document.getElementById('downloads-content');
             if (downloadsTab && downloadsTab.style.display !== 'none') {
-                if (timeSinceLastUpdate > 30000) {
+                // Sans téléchargement en cours il n'y a pas de rafraîchissement : on regarde
+                // seulement si un téléchargement a démarré ailleurs
+                if (!progressInterval) {
+                    loadProgress();
+                } else if (timeSinceLastUpdate > 30000) {
                     console.warn('[AUTO-REFRESH] Aucune mise à jour depuis 30s, rafraîchissement...');
                     location.reload();
                 }
