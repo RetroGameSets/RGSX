@@ -404,6 +404,24 @@ def _open_platform_source(screen, source_index: int) -> bool:
     return True
 
 
+def _reload_sources_keeping_open_platform() -> None:
+    open_platform = None
+    if 0 <= config.current_platform < len(config.platforms):
+        open_platform = config.platforms[config.current_platform]
+    load_sources()
+    if open_platform in config.platforms:
+        config.current_platform = config.platforms.index(open_platform)
+        return
+    config.current_platform = 0
+    # The pause menu, or the filter screens it came from, would lead back to the list of a console that is gone
+    if getattr(config, "pause_origin_state", None) != "platform_search":
+        config.pause_origin_state = "platform"
+    if config.previous_menu_state == "game":
+        config.previous_menu_state = "platform"
+    if getattr(config, "global_search_return_state", None) == "game":
+        config.global_search_return_state = "platform"
+
+
 def _is_windows_os() -> bool:
     return str(getattr(config, 'OPERATING_SYSTEM', '') or '').lower() == "windows" or os.name == 'nt'
 
@@ -3385,7 +3403,7 @@ def handle_controls(event, sources, joystick, screen):
                     try:
                         current = get_show_unsupported_platforms()
                         new_val = set_show_unsupported_platforms(not current)
-                        load_sources()
+                        _reload_sources_keeping_open_platform()
                         config.popup_message = _("menu_show_unsupported_enabled") if new_val else _("menu_show_unsupported_disabled")
                         config.popup_timer = 3000
                         config.needs_redraw = True
@@ -4728,7 +4746,7 @@ def handle_controls(event, sources, joystick, screen):
                 hidden_list = sorted({name for name, is_hidden in hidden_map_local.items() if is_hidden}, key=lambda s: str(s).lower())
                 settings_local["hidden_platforms"] = hidden_list
                 save_rgsx_settings(settings_local)
-                load_sources()
+                _reload_sources_keeping_open_platform()
                 try:
                     systems_per_page = config.GRID_COLS * config.GRID_ROWS
                     platform_group_count = len(getattr(config, "platform_groups", []) or config.platforms)
