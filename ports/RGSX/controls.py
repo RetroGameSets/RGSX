@@ -381,6 +381,8 @@ def _open_platform_source(screen, source_index: int) -> bool:
 
     config.current_platform = platform_index
     config.games = load_games(platform_id)
+    config.search_mode = False
+    config.search_query = ""
 
     # Apply saved filters automatically if any
     if config.game_filter_obj and config.game_filter_obj.is_active():
