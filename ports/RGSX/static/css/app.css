@@ -916,6 +916,7 @@ header p { opacity: 0.9; font-size: 1.1em; }
     border-left: 4px solid #667eea;
 }
 .info-item strong { display: block; margin-bottom: 5px; color: #667eea; }
+.info-item, .history-item { overflow-wrap: anywhere; }
 
 .media-scrap { color: #172033; }
 .media-scrap h2 { margin-top: 0; margin-bottom: 16px; }
