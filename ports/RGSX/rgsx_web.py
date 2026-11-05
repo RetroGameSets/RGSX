@@ -920,6 +920,8 @@ class RGSXHandler(BaseHTTPRequestHandler):
                 from rgsx_settings import load_rgsx_settings, get_show_unsupported_platforms
                 settings = load_rgsx_settings()
                 show_unsupported = get_show_unsupported_platforms(settings)
+                # L'app sur l'appareil enregistre ses choix dans les settings : c'est un autre processus
+                hidden_platforms.update(settings.get('hidden_platforms', []))
 
                 if not show_unsupported:
                     # Masquer les plateformes dont le dossier ROM n'existe pas
@@ -978,6 +980,7 @@ class RGSXHandler(BaseHTTPRequestHandler):
                     from rgsx_settings import load_rgsx_settings, get_show_unsupported_platforms
                     settings = load_rgsx_settings()
                     show_unsupported = get_show_unsupported_platforms(settings)
+                    hidden_platforms.update(settings.get('hidden_platforms', []))
                     
                     if not show_unsupported:
                         # Masquer les plateformes dont le dossier ROM n'existe pas
