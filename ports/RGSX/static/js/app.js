@@ -1237,12 +1237,14 @@
 
             // Prepare search pattern
             let searchPattern = null;
+            let invalidRegex = false;
             if (searchTerm && regexMode) {
                 try {
                     searchPattern = new RegExp(searchTerm, 'i');
                 } catch (e) {
                     // Invalid regex, fall back to plain text
                     searchPattern = null;
+                    invalidRegex = true;
                 }
             }
 
@@ -1354,6 +1356,9 @@
                 });
             }
 
+            const regexError = document.getElementById('regex-error');
+            if (regexError) regexError.style.display = invalidRegex ? '' : 'none';
+
             // Update clear button
             const clearBtn = document.getElementById('clear-games-search');
             if (clearBtn) {
@@ -1409,6 +1414,8 @@
                 const status = document.getElementById('filter-status');
                 const input = document.getElementById('game-search');
                 if (!status || !input || !input.value.trim()) return;
+                // Le message d'erreur est juste sous le champ : défiler le cacherait
+                if (document.getElementById('regex-error')?.style.display !== 'none') return;
                 const viewport = window.visualViewport;
                 const visibleBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
                 const statusBox = status.getBoundingClientRect();
@@ -1954,6 +1961,7 @@
                         <button class="clear-search" id="clear-games-search" onclick="document.getElementById('game-search').value=''; applyAllFilters();">✕</button>
                         <span class="search-icon">🔍</span>
                     </div>
+                    <p id="regex-error" style="display: none; margin: -12px 0 12px; color: #dc3545;">${t('web_filter_regex_invalid')}</p>
                     <div class="filter-section">
                         <div class="filter-row">
                             <span class="filter-label">${t('web_filter_region')}:</span>
