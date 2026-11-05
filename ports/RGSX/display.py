@@ -1080,7 +1080,7 @@ def get_control_display(action, default):
     """Récupère le nom d'affichage d'une action depuis controls_config."""
     keyboard_defaults = {
         "confirm": "Enter",
-        "cancel": "Esc/Echap",
+        "cancel": _("key_escape"),
         "left": "←",
         "right": "→",
         "up": "↑",
@@ -1092,7 +1092,7 @@ def get_control_display(action, default):
         "page_down": "Page-",
         "filter": "F",
         "delete": "Backspace",
-        "space": "Espace",
+        "space": _("key_space"),
     }
     keyboard_default = keyboard_defaults.get(action)
     if not config.controls_config:
@@ -1104,7 +1104,13 @@ def get_control_display(action, default):
 
     if getattr(config, 'keyboard', False) and control_type != 'key' and keyboard_default:
         return keyboard_default
-    
+
+    # Échap et Espace suivent la langue, même si controls.json contient un autre libellé
+    if control_type == 'key':
+        translated_key = {pygame.K_ESCAPE: _("key_escape"), pygame.K_SPACE: _("key_space")}.get(control_config.get('key'))
+        if translated_key:
+            return translated_key
+
     # Si un libellé personnalisé est défini dans controls.json, on le privilégie
     custom_label = control_config.get('display')
     if isinstance(custom_label, str) and custom_label.strip():
@@ -3203,7 +3209,7 @@ def draw_history_list(screen):
             status_text = str(status_text or "")
             if provider_prefix and not status_text.startswith(provider_prefix):
                 status_text = f"{provider_prefix} {status_text}"
-        elif status == "Download_OK":
+        elif status in ("Download_OK", "Completed"):
             # Completed: no provider prefix (per requirement)
             status_text = _("history_status_completed")
             status_text = str(status_text or "")
@@ -3228,6 +3234,12 @@ def draw_history_list(screen):
                 status_text = f"{provider_prefix} {status_text}"
         elif status == "Canceled":
             status_text = _("history_status_canceled")
+            status_text = str(status_text or "")
+        elif status == "Queued":
+            status_text = _("download_queued")
+            status_text = str(status_text or "")
+        elif status == "Converting":
+            status_text = _("web_history_status_converting")
             status_text = str(status_text or "")
         else:
             status_text = str(status or "")

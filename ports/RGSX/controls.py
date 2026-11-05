@@ -28,7 +28,7 @@ from utils import (
     sort_games_list,
 )
 from history import load_history, clear_history, add_to_history, save_history, scan_roms_for_downloaded_games, reload_history, history_lock
-from language import _, get_available_languages, set_language  
+from language import _, get_available_languages, get_language_name, set_language  
 from rgsx_settings import (
     DISPLAY_GRID_LAYOUTS, get_allow_unknown_extensions, set_display_grid, get_font_family, set_font_family,
     get_show_unsupported_platforms, set_show_unsupported_platforms,
@@ -4253,7 +4253,7 @@ def handle_controls(event, sources, joystick, screen):
                     config.current_language = lang_code
                     # Afficher un message de confirmation
                     config.menu_state = "restart_popup"
-                    config.popup_message = _("language_changed").format(lang_code)
+                    config.popup_message = _("language_changed").format(get_language_name(lang_code))
                     config.popup_timer = 2000  # 2 secondes
                 else:
                     # Retour au menu pause en cas d'erreur
