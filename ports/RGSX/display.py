@@ -2193,7 +2193,7 @@ def draw_game_list(screen):
 
     if not games:
         logger.debug("Aucune liste de jeux disponible")
-        message = _("game_no_games")
+        message = _("global_search_no_results").format(config.search_query) if config.search_query else _("game_no_games")
         lines = wrap_text(message, config.font, config.screen_width - 80)
         line_height = config.font.get_height() + 5
         text_height = len(lines) * line_height
@@ -2205,6 +2205,26 @@ def draw_game_list(screen):
         rect_y = (config.screen_height - rect_height) // 2
 
         screen.blit(OVERLAY, (0, 0))
+
+        # Garder le texte de recherche ou de filtre visible quand il ne donne aucun résultat
+        if config.search_mode:
+            header_text = _("game_search").format(config.search_query + "_")
+        elif config.filter_active and config.search_query:
+            header_text = _("game_filter").format(config.search_query)
+        else:
+            header_text = ""
+        if header_text:
+            header_font, header_text = fit_font(header_text, 48, config.screen_width - 100)
+            header_surface = header_font.render(header_text, True, THEME_COLORS["text"])
+            header_rect = header_surface.get_rect(center=(config.screen_width // 2, header_surface.get_height() // 2 + 20))
+            header_box = header_rect.inflate(60, 30)
+            header_box.topleft = ((config.screen_width - header_box.width) // 2, 10)
+            pygame.draw.rect(screen, THEME_COLORS["button_idle"], header_box, border_radius=12)
+            pygame.draw.rect(screen, THEME_COLORS["border"], header_box, 2, border_radius=12)
+            screen.blit(header_surface, header_rect)
+            # Le clavier virtuel couvre le centre de l'écran: le message passe entre l'en-tête et le clavier
+            if config.search_mode and getattr(config, 'joystick', False):
+                rect_y = max(header_box.bottom + 8, (header_box.bottom + get_search_keyboard_layout()[0].top - rect_height) // 2)
         pygame.draw.rect(screen, THEME_COLORS["button_idle"], (rect_x, rect_y, rect_width, rect_height), border_radius=12)
         pygame.draw.rect(screen, THEME_COLORS["border"], (rect_x, rect_y, rect_width, rect_height), 2, border_radius=12)
 
