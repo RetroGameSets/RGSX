@@ -4367,7 +4367,7 @@ def handle_controls(event, sources, joystick, screen):
         # Filtrage avancé
         elif config.menu_state == "filter_advanced":
             from game_filters import GameFilters
-            from rgsx_settings import save_game_filters
+            from rgsx_settings import save_game_filters, load_game_filters
             
             # Initialiser le filtre si nécessaire
             if not hasattr(config, 'game_filter_obj'):
@@ -4532,6 +4532,7 @@ def handle_controls(event, sources, joystick, screen):
                     
                     elif button_idx == 2:
                         # Back
+                        config.game_filter_obj.load_from_dict(load_game_filters())
                         scope = getattr(config, 'filter_target_scope', 'local')
                         if scope == 'global':
                             config.menu_state = "filter_menu_choice"
@@ -4543,6 +4544,7 @@ def handle_controls(event, sources, joystick, screen):
                         logger.debug("Retour sans appliquer les filtres")
             
             elif is_input_matched(event, "cancel"):
+                config.game_filter_obj.load_from_dict(load_game_filters())
                 scope = getattr(config, 'filter_target_scope', 'local')
                 if scope == 'global':
                     config.menu_state = "filter_menu_choice"
@@ -4556,7 +4558,7 @@ def handle_controls(event, sources, joystick, screen):
         # Configuration priorité régions
         elif config.menu_state == "filter_priority_config":
             from game_filters import GameFilters
-            from rgsx_settings import save_game_filters
+            from rgsx_settings import save_game_filters, load_game_filters
             
             if not hasattr(config, 'game_filter_obj'):
                 config.game_filter_obj = GameFilters()
@@ -4576,7 +4578,10 @@ def handle_controls(event, sources, joystick, screen):
             elif is_input_matched(event, "confirm"):
                 if config.selected_priority_index >= len(priority_list):
                     # Bouton Back : retour au menu filtrage avancé
-                    save_game_filters(config.game_filter_obj.to_dict())
+                    # Seul l'ordre est validé ici : les régions cochées attendent Apply
+                    saved_filters = load_game_filters()
+                    saved_filters['region_priority'] = priority_list
+                    save_game_filters(saved_filters)
                     config.menu_state = "filter_advanced"
                     config.needs_redraw = True
                     logger.debug("Retour au filtrage avancé")
