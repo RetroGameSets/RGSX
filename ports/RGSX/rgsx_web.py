@@ -18,12 +18,13 @@ import copy
 import hashlib
 import mimetypes
 import queue
+import signal
 from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 import config
 from history import load_history, save_history, clear_history, history_lock, reload_history
 from language import load_language
-from network import download_rom, download_from_1fichier, progress_queues
+from network import download_rom, download_from_1fichier, progress_queues, shutdown_downloads
 from utils import queue_interrupted_downloads, load_sources, load_games, get_clean_display_name, format_game_size, parse_torrent_download_url, request_torrent_manifest_refresh, _resolve_platform_image_path, get_platform_image_payload
 from pathlib import Path
 from rgsx_settings import get_language
@@ -80,6 +81,14 @@ games_cache = {}
 
 watchdog_observer = None
 watchdog_started = False
+
+
+class _TerminationRequested(BaseException):
+    """Sort de serve_forever même au milieu d'une requête (BaseException : handle_error ne l'attrape pas)."""
+
+
+def _handle_sigterm(_signum, _frame):
+    raise _TerminationRequested()
 
 
 def _now_utc() -> datetime:
@@ -2695,13 +2704,16 @@ def run_server(host='0.0.0.0', port=5000):
     for handler in logging.root.handlers:
         handler.flush()
     
+    # docker stop envoie SIGTERM : sans handler, un processus PID 1 l'ignore et se fait tuer après le délai
+    signal.signal(signal.SIGTERM, _handle_sigterm)
     try:
         httpd.serve_forever()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, _TerminationRequested):
         logger.info("\n🛑 Arrêt du serveur...")
         for handler in logging.root.handlers:
             handler.flush()
-        httpd.shutdown()
+        shutdown_downloads()
+        httpd.server_close()
         logger.info("✅ Serveur arrêté proprement")
         for handler in logging.root.handlers:
             handler.flush()
