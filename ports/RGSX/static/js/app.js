@@ -1226,8 +1226,8 @@
         function applyAllFilters() {
             const searchInput = document.getElementById('game-search');
             const searchTerm = searchInput ? searchInput.value : '';
-            const hideNonRelease = document.getElementById('hide-non-release')?.checked || savedHideNonRelease;
-            const regexMode = document.getElementById('regex-mode')?.checked || savedRegexMode;
+            const hideNonRelease = document.getElementById('hide-non-release')?.checked ?? savedHideNonRelease;
+            const regexMode = document.getElementById('regex-mode')?.checked ?? savedRegexMode;
 
             const items = document.querySelectorAll('.game-item');
             let visibleCount = 0;
@@ -1318,7 +1318,7 @@
             });
 
             // Apply one-rom-per-game filter (after other filters)
-            const oneRomPerGame = document.getElementById('one-rom-per-game')?.checked || savedOneRomPerGame;
+            const oneRomPerGame = document.getElementById('one-rom-per-game')?.checked ?? savedOneRomPerGame;
             if (oneRomPerGame) {
                 // Group currently visible games by base name
                 const gameGroups = new Map();
@@ -3111,9 +3111,9 @@
                     },
                     game_filters: {
                         region_filters: regionFiltersObj,
-                        hide_non_release: document.getElementById('hide-non-release')?.checked || savedHideNonRelease,
-                        one_rom_per_game: document.getElementById('one-rom-per-game')?.checked || savedOneRomPerGame,
-                        regex_mode: document.getElementById('regex-mode')?.checked || savedRegexMode,
+                        hide_non_release: document.getElementById('hide-non-release')?.checked ?? savedHideNonRelease,
+                        one_rom_per_game: document.getElementById('one-rom-per-game')?.checked ?? savedOneRomPerGame,
+                        regex_mode: document.getElementById('regex-mode')?.checked ?? savedRegexMode,
                         region_priority: regionPriorityOrder
                     }
                 };
