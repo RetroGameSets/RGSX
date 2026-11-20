@@ -151,7 +151,7 @@ Lors du premier lancement après la migration depuis l'ancien stockage JSON, RGS
 > - `AllDebridAPI.txt` – fallback AllDebrid (optionnel)
 > - `DebridLinkAPI.txt` – fallback Debrid-Link (optionnel)
 > - `RealDebridAPI.txt` – fallback Real-Debrid (optionnel)
-> - `TorBoxAPI.txt` – fallback TorBox (optionnel)
+> - `TorBoxAPI.txt` – TorBox (optionnel) : fallback 1Fichier ; si présente, les téléchargements archive.org/HTTP et torrent passent par TorBox puis son CDN (retour au direct/qBittorrent si TorBox échoue)
 > 
 > **Chaque fichier doit contenir UNIQUEMENT la clé, sans texte supplémentaire.**
 
