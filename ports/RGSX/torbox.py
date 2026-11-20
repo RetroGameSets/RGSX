@@ -31,6 +31,10 @@ ERROR_MESSAGES = {
     "DOWNLOAD_SERVER_ERROR": "TB: Download server error",
 }
 
+# Limite du plan le plus élevé (Pro) d'après la table d'erreurs DOWNLOAD_TOO_LARGE de la doc.
+# TorBox ajoute toujours le torrent entier : au-delà, aucun plan ne peut l'accepter.
+MAX_PLAN_DOWNLOAD_BYTES = 536870912000
+
 # Etats TorBox indiquant un échec définitif côté serveur
 _FAILED_STATES = ("error", "failed", "missingfiles")
 

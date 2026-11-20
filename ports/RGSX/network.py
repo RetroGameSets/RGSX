@@ -1044,7 +1044,13 @@ def _set_history_provider(history_url: str, prefix: str | None) -> None:
 
 
 def _resolve_torbox_web_link(session, url: str) -> str:
-    """TorBox refuse les liens de redirection : on lui donne l'URL finale (ex: ia*.archive.org)."""
+    """TorBox refuse les liens de redirection : on lui donne l'URL finale.
+
+    archive.org est un hébergeur pris en charge par TorBox : on garde l'URL canonique
+    plutôt que le serveur dn*/ia* temporaire vers lequel elle redirige.
+    """
+    if _archive_org_identifier(url):
+        return url
     try:
         resp = session.head(url, timeout=15, allow_redirects=True)
         if resp.status_code < 400 and resp.url:
@@ -1052,6 +1058,50 @@ def _resolve_torbox_web_link(session, url: str) -> str:
     except Exception as e:
         logger.debug(f"TorBox: résolution des redirections impossible pour {url}: {e}")
     return url
+
+
+def _archive_org_identifier(url: str) -> str | None:
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except Exception:
+        return None
+    host = (parsed.netloc or '').lower()
+    if not (host == 'archive.org' or host.endswith('.archive.org')) or '/download/' not in parsed.path:
+        return None
+    identifier = parsed.path.split('/download/', 1)[1].split('/', 1)[0]
+    return urllib.parse.unquote(identifier) or None
+
+
+def _archive_org_requires_login(url: str) -> bool:
+    identifier = _archive_org_identifier(url)
+    if not identifier:
+        return False
+    try:
+        resp = requests.get(f"https://archive.org/metadata/{urllib.parse.quote(identifier)}/metadata", timeout=15)
+        meta = (resp.json() or {}).get('result') or {}
+    except Exception as e:
+        logger.debug(f"TorBox: metadata archive.org indisponible pour {identifier}: {e}")
+        return False
+    restricted = str(meta.get('access-restricted-item') or '').lower() == 'true'
+    collections = meta.get('collection') or []
+    if isinstance(collections, str):
+        collections = [collections]
+    return restricted or 'loggedin' in collections
+
+
+def _torrent_total_size(torrent_bytes: bytes) -> int:
+    from utils import _bdecode
+    try:
+        root, _end = _bdecode(torrent_bytes)
+        info = root.get(b"info") if isinstance(root, dict) else None
+        if not isinstance(info, dict):
+            return 0
+        files = info.get(b"files")
+        if isinstance(files, list):
+            return sum(int(f.get(b"length") or 0) for f in files if isinstance(f, dict))
+        return int(info.get(b"length") or 0)
+    except Exception:
+        return 0
 
 
 def _download_via_torbox(kind: str, source: str, dest_path: str, dest_dir: str, task_id, cancel_ev,
@@ -1085,8 +1135,14 @@ def _download_via_torbox(kind: str, source: str, dest_path: str, dest_dir: str, 
         progress_queue_obj.put((task_id, 0, expected_size, 0.0, 0, 0, "torbox_remote"))
     try:
         if kind == "torrent":
-            torrent_resp = requests.get(source, timeout=30, headers=qbittorrent_backend._build_torrent_headers())
+            torrent_resp = requests.get(source, timeout=60, headers=qbittorrent_backend._build_torrent_headers())
             torrent_resp.raise_for_status()
+            torrent_size = _torrent_total_size(torrent_resp.content)
+            if torrent_size > torbox.MAX_PLAN_DOWNLOAD_BYTES:
+                raise torbox.TorBoxError(
+                    f"TB: torrent is {_format_size(torrent_size)} in total; TorBox adds whole torrents and its largest plan allows {_format_size(torbox.MAX_PLAN_DOWNLOAD_BYTES)}",
+                    "DOWNLOAD_TOO_LARGE",
+                )
             relative_path = str((torrent_meta or {}).get("relative_path") or "")
             resolved = torbox.resolve_torrent(
                 torrent_resp.content, api_key,
@@ -1097,6 +1153,8 @@ def _download_via_torbox(kind: str, source: str, dest_path: str, dest_dir: str, 
                 status_callback=on_status,
             )
         else:
+            if _archive_org_requires_login(source):
+                raise torbox.TorBoxError("TB: archive.org item requires login, which TorBox does not support", "LOGIN_REQUIRED")
             resolved = torbox.resolve_web_download(source, api_key, cancel_event=cancel_ev, status_callback=on_status)
 
         logger.info(f"TorBox: fichier prêt, téléchargement depuis le CDN TorBox ({resolved.get('name')})")
@@ -1139,6 +1197,20 @@ def _download_via_torbox(kind: str, source: str, dest_path: str, dest_dir: str, 
             return "canceled"
         logger.warning(f"TorBox indisponible pour {original_history_url}, téléchargement classique: {e}")
         _set_history_provider(original_history_url, None)
+        reason = str(e)
+        if reason.startswith("TB: "):
+            reason = reason[4:]
+        fallback = "qBittorrent" if kind == "torrent" else "direct download"
+        try:
+            show_toast(f"TorBox skipped: {reason}. Using {fallback}.", 6000)
+        except Exception:
+            pass
+        if isinstance(config.history, list):
+            for entry in config.history:
+                if entry.get("url") == original_history_url:
+                    entry["torbox_skipped_reason"] = reason
+                    _save_history_with_feedback("torbox:skipped")
+                    break
         if progress_queue_obj is not None:
             progress_queue_obj.put((task_id, 0, expected_size, 0.0, 0, 0, "connecting"))
         return "skipped"
@@ -3251,6 +3323,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                         entry["display_name"] = get_clean_display_name(game_name, platform)
                         entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         entry["task_id"] = task_id
+                        entry.pop("torbox_skipped_reason", None)
                         if int(entry.get("total_size", 0) or 0) <= 0 and known_total_size > 0:
                             entry["total_size"] = known_total_size
                         break
