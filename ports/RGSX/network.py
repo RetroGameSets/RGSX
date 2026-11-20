@@ -1020,6 +1020,130 @@ def _try_archive_org_alternate_urls(session, archive_alt_urls: list[str], active
     return None, active_url, None
 
 
+def _get_torbox_api_key() -> str:
+    try:
+        return str(load_api_keys().get('torbox') or '').strip()
+    except Exception:
+        return str(getattr(config, 'API_KEY_TORBOX', '') or '').strip()
+
+
+def _set_history_provider(history_url: str, prefix: str | None) -> None:
+    if not isinstance(config.history, list):
+        return
+    for entry in config.history:
+        if entry.get("url") == history_url:
+            if prefix:
+                entry["provider"] = prefix
+                entry["provider_prefix"] = f"{prefix}:"
+            else:
+                entry.pop("provider", None)
+                entry.pop("provider_prefix", None)
+            _save_history_with_feedback("torbox:set_provider")
+            config.needs_redraw = True
+            break
+
+
+def _resolve_torbox_web_link(session, url: str) -> str:
+    """TorBox refuse les liens de redirection : on lui donne l'URL finale (ex: ia*.archive.org)."""
+    try:
+        resp = session.head(url, timeout=15, allow_redirects=True)
+        if resp.status_code < 400 and resp.url:
+            return resp.url
+    except Exception as e:
+        logger.debug(f"TorBox: résolution des redirections impossible pour {url}: {e}")
+    return url
+
+
+def _download_via_torbox(kind: str, source: str, dest_path: str, dest_dir: str, task_id, cancel_ev,
+                         original_history_url: str, progress_key: str, torrent_meta: dict | None = None,
+                         fallback_total_size: int = 0) -> str:
+    """Télécharge via TorBox (web download ou torrent) puis depuis le CDN TorBox.
+
+    Renvoie "done" si le fichier est en place, "canceled" si l'utilisateur a annulé,
+    "skipped" si TorBox n'est pas configuré ou a échoué (le téléchargement classique prend le relais).
+    """
+    api_key = _get_torbox_api_key()
+    if not api_key:
+        return "skipped"
+
+    import torbox
+    progress_queue_obj = progress_queues.get(task_id)
+    expected_size = int((torrent_meta or {}).get("size_bytes") or fallback_total_size or 0)
+
+    def on_status(item):
+        size = int(item.get("size") or 0) or expected_size
+        progress = float(item.get("progress") or 0)
+        if progress > 1:
+            progress /= 100.0
+        speed = float(item.get("download_speed") or 0) / (1024 * 1024)
+        if progress_queue_obj is not None:
+            progress_queue_obj.put((task_id, int(size * min(progress, 1.0)), size, speed,
+                                    int(item.get("seeds") or 0), int(item.get("peers") or 0), "torbox_remote"))
+
+    _set_history_provider(original_history_url, "TB")
+    if progress_queue_obj is not None:
+        progress_queue_obj.put((task_id, 0, expected_size, 0.0, 0, 0, "torbox_remote"))
+    try:
+        if kind == "torrent":
+            torrent_resp = requests.get(source, timeout=30, headers=qbittorrent_backend._build_torrent_headers())
+            torrent_resp.raise_for_status()
+            relative_path = str((torrent_meta or {}).get("relative_path") or "")
+            resolved = torbox.resolve_torrent(
+                torrent_resp.content, api_key,
+                relative_path=relative_path,
+                size_bytes=expected_size,
+                name=os.path.splitext(os.path.basename(relative_path) or os.path.basename(dest_path))[0],
+                cancel_event=cancel_ev,
+                status_callback=on_status,
+            )
+        else:
+            resolved = torbox.resolve_web_download(source, api_key, cancel_event=cancel_ev, status_callback=on_status)
+
+        logger.info(f"TorBox: fichier prêt, téléchargement depuis le CDN TorBox ({resolved.get('name')})")
+        total_hint = int(resolved.get("size") or 0) or expected_size
+        has_space, low_space_message = _ensure_sufficient_disk_space(dest_dir, total_hint)
+        if not has_space:
+            raise InsufficientDiskSpaceError(low_space_message)
+        if progress_key in config.download_progress:
+            config.download_progress[progress_key]["status"] = "Downloading"
+        with requests.get(resolved["url"], stream=True, timeout=(30, 120), allow_redirects=True) as response:
+            response.raise_for_status()
+            try:
+                transfer = _stream_response_to_path(response, dest_path, task_id, cancel_ev, progress_queue_obj, fallback_total_size=total_hint)
+            except PermissionError:
+                raise
+            except Exception:
+                _safe_remove_file(dest_path)
+                raise
+        if transfer["download_canceled"]:
+            return "canceled"
+        downloaded = int(transfer["downloaded"])
+        total_size = int(transfer["total_size"])
+        if downloaded <= 0 or (total_size > 0 and downloaded < total_size) or not _matches_expected_archive_signature(dest_path):
+            _safe_remove_file(dest_path)
+            raise torbox.TorBoxError(f"TB: Incomplete or invalid file from CDN ({downloaded}/{total_size} bytes)")
+        if isinstance(config.history, list):
+            for entry in config.history:
+                if entry.get("url") == original_history_url:
+                    entry["total_size"] = total_size or downloaded
+                    _save_history_with_feedback("torbox:total_size")
+                    break
+        logger.info(f"Téléchargement via TorBox terminé: {dest_path}")
+        return "done"
+    except torbox.TorBoxCanceled:
+        return "canceled"
+    except InsufficientDiskSpaceError:
+        raise
+    except Exception as e:
+        if cancel_ev is not None and cancel_ev.is_set():
+            return "canceled"
+        logger.warning(f"TorBox indisponible pour {original_history_url}, téléchargement classique: {e}")
+        _set_history_provider(original_history_url, None)
+        if progress_queue_obj is not None:
+            progress_queue_obj.put((task_id, 0, expected_size, 0.0, 0, 0, "connecting"))
+        return "skipped"
+
+
 def _is_lolroms_url(url: str | None) -> bool:
     if not url or not isinstance(url, str):
         return False
@@ -3196,8 +3320,6 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
 
             torrent_meta = parse_torrent_download_url(url)
             if torrent_meta is not None:
-                if _is_arm_device():
-                    raise RuntimeError("Les téléchargements torrent ne sont pas encore disponibles sur les appareils ARM pour le moment.")
                 if url not in config.download_progress:
                     config.download_progress[url] = {
                         "downloaded_size": 0,
@@ -3244,24 +3366,37 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                 if not has_space:
                     raise InsufficientDiskSpaceError(low_space_message)
 
-                if not _should_prefer_qbittorrent_backend():
-                    raise qbittorrent_backend.BackendUnavailableError("qBittorrent introuvable, non démarré ou non disponible")
-
-                logger.info("Téléchargement torrent via qBittorrent")
-                success, message = qbittorrent_backend.download_torrent_via_qbittorrent(
-                    torrent_meta,
-                    dest_dir,
-                    dest_path,
-                    task_id,
-                    cancel_ev,
-                    progress_queues[task_id],
-                    original_history_url,
-                    pause_ev=pause_events.setdefault(task_id, threading.Event()),
+                torbox_status = _download_via_torbox(
+                    "torrent", str(torrent_meta.get("source_url") or ""), dest_path, dest_dir, task_id, cancel_ev,
+                    original_history_url, url, torrent_meta=torrent_meta,
                 )
-                result[0] = success
-                result[1] = message
+                if torbox_status == "canceled":
+                    try:
+                        notify_download_finished()
+                    except Exception:
+                        pass
+                    return
+                if torbox_status != "done":
+                    if _is_arm_device():
+                        raise RuntimeError("Les téléchargements torrent ne sont pas encore disponibles sur les appareils ARM pour le moment.")
+                    if not _should_prefer_qbittorrent_backend():
+                        raise qbittorrent_backend.BackendUnavailableError("qBittorrent introuvable, non démarré ou non disponible")
 
-                if success and os.path.exists(dest_path):
+                    logger.info("Téléchargement torrent via qBittorrent")
+                    success, message = qbittorrent_backend.download_torrent_via_qbittorrent(
+                        torrent_meta,
+                        dest_dir,
+                        dest_path,
+                        task_id,
+                        cancel_ev,
+                        progress_queues[task_id],
+                        original_history_url,
+                        pause_ev=pause_events.setdefault(task_id, threading.Event()),
+                    )
+                    result[0] = success
+                    result[1] = message
+
+                if (torbox_status == "done" or result[0]) and os.path.exists(dest_path):
                     try_chmod(dest_path, 0o644)
                 logger.debug(f"Téléchargement torrent terminé: {dest_path}")
             else:
@@ -3526,7 +3661,32 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             logger.debug(f"Erreur lors de la vérification des fichiers existants: {e}")
             
                 external_lolroms_downloaded = False
+                downloaded_via_torbox = False
                 total_size = 0
+
+                # lolroms et vimm exigent une session navigateur / un referer que TorBox ne peut pas fournir
+                if not _is_lolroms_url(url) and 'vimm.net' not in original_history_url and url.lower().startswith(('http://', 'https://')) and _get_torbox_api_key():
+                    if url not in config.download_progress:
+                        config.download_progress[url] = {
+                            "downloaded_size": 0,
+                            "total_size": known_total_size,
+                            "status": "TorBox",
+                            "progress_percent": 0,
+                            "speed": 0,
+                            "game_name": game_name,
+                            "platform": platform
+                        }
+                    torbox_status = _download_via_torbox(
+                        "web", _resolve_torbox_web_link(session, url), dest_path, dest_dir, task_id, cancel_ev,
+                        original_history_url, url, fallback_total_size=known_total_size,
+                    )
+                    if torbox_status == "canceled":
+                        try:
+                            notify_download_finished()
+                        except Exception:
+                            pass
+                        return
+                    downloaded_via_torbox = torbox_status == "done"
 
                 if _is_lolroms_url(url):
                     if url not in config.download_progress:
@@ -3574,7 +3734,7 @@ async def download_rom(url, platform, game_name, is_zip_non_supported=False, tas
                             config.needs_redraw = True
                         logger.warning(f"lolroms external tool failed, fallback requests: {ext_err}")
 
-                if not external_lolroms_downloaded:
+                if not external_lolroms_downloaded and not downloaded_via_torbox:
                     download_headers = headers.copy()
                     download_headers['Accept'] = 'application/octet-stream, */*'
                     # Utiliser le referer spécial pour vimm.net si défini
@@ -4856,181 +5016,27 @@ async def download_from_1fichier(url, platform, game_name, is_zip_non_supported=
                 # Tentative TorBox si pas de final_url
                 if not final_url and getattr(config, 'API_KEY_TORBOX', ''):
                     logger.debug("Tentative fallback TorBox (webdl/createwebdownload)")
+                    import torbox
                     try:
-                        import hashlib as _hashlib
-                        tb_key = config.API_KEY_TORBOX
-                        headers_tb = {"Authorization": f"Bearer {tb_key}"}
-
-                        TORBOX_ERROR_MAP = {
-                            "BAD_TOKEN": "TB: Invalid API key",
-                            "AUTH_ERROR": "TB: Authentication error",
-                            "NO_AUTH": "TB: No credentials provided",
-                            "PLAN_RESTRICTED_FEATURE": "TB: Plan upgrade required",
-                            "DOWNLOAD_TOO_LARGE": "TB: Download too large for plan",
-                            "MONTHLY_LIMIT": "TB: Monthly limit reached",
-                            "COOLDOWN_LIMIT": "TB: Download cooldown active",
-                            "ACTIVE_LIMIT": "TB: Max active downloads reached",
-                            "LINK_OFFLINE": "TB: Link offline or inaccessible",
-                            "ITEM_NOT_FOUND": "TB: Item not found",
-                            "NO_SERVERS_AVAILABLE_ERROR": "TB: No servers available",
-                            "DOWNLOAD_SERVER_ERROR": "TB: Download server error",
-                        }
-
-                        error_message = None
-                        error_message_raw = None
-                        tb_webdl_id = None
-
-                        # Étape 0: Vérifier le cache (lien déjà disponible instantanément)
-                        link_hash = _hashlib.md5(link.encode()).hexdigest()
+                        tb_resolved = torbox.resolve_web_download(link, config.API_KEY_TORBOX, cancel_event=cancel_events.get(task_id), timeout=300, poll_interval=3)
+                        final_url = tb_resolved["url"]
+                        filename = tb_resolved.get("name") or filename or game_name
+                        logger.debug("Débridage réussi via TorBox")
+                        provider_used = 'TB'
+                        _set_provider_in_history(provider_used)
+                    except torbox.TorBoxError as tb_e:
+                        error_message = str(tb_e)
+                        logger.warning(f"TorBox fallback échec: {error_message}")
+                        if provider_used is None:
+                            provider_used = 'TB'
+                            _set_provider_in_history(provider_used)
+                        result[0] = False
+                        result[1] = error_message
                         try:
-                            tb_cache_resp = requests.get(
-                                "https://api.torbox.app/v1/api/webdl/checkcached",
-                                params={"hash": link_hash, "format": "list"},
-                                headers=headers_tb,
-                                timeout=15
-                            )
-                            tb_cache_json = tb_cache_resp.json()
-                            if tb_cache_json.get('success') and tb_cache_json.get('data'):
-                                logger.debug("TorBox: lien trouvé en cache, téléchargement immédiat possible")
-                        except Exception as cache_e:
-                            logger.debug(f"TorBox checkcached error (non-fatal): {cache_e}")
-
-                        # Étape 1: Créer le web download
-                        tb_create_resp = requests.post(
-                            "https://api.torbox.app/v1/api/webdl/createwebdownload",
-                            data={"link": link},
-                            headers=headers_tb,
-                            timeout=30
-                        )
-                        tb_create_status = tb_create_resp.status_code
-                        raw_text_tb = None
-                        tb_create_json = None
-                        try:
-                            raw_text_tb = tb_create_resp.text
+                            if isinstance(result, list):
+                                result.append({"raw_error_torbox": tb_e.code or error_message})
                         except Exception:
                             pass
-                        try:
-                            tb_create_json = tb_create_resp.json()
-                        except Exception:
-                            tb_create_json = None
-                        logger.debug(f"Réponse TorBox createwebdownload code={tb_create_status} body_snippet={(raw_text_tb[:120] + '...') if raw_text_tb and len(raw_text_tb) > 120 else raw_text_tb}")
-
-                        if tb_create_json and isinstance(tb_create_json, dict):
-                            if tb_create_json.get('success') is True:
-                                tb_data = tb_create_json.get('data', {})
-                                if isinstance(tb_data, dict):
-                                    tb_webdl_id = tb_data.get('webdl_id') or tb_data.get('id')
-                                    tb_hash = tb_data.get('hash', '')
-                            elif tb_create_json.get('error') == 'DUPLICATE_ITEM':
-                                # Le lien a déjà été soumis, récupérer l'ID existant
-                                logger.debug("TorBox: DUPLICATE_ITEM - récupération du download existant")
-                                tb_dup_data = tb_create_json.get('data', {})
-                                if isinstance(tb_dup_data, dict):
-                                    tb_webdl_id = tb_dup_data.get('webdl_id') or tb_dup_data.get('id')
-                                if not tb_webdl_id:
-                                    # Chercher dans la liste par hash
-                                    try:
-                                        tb_find_resp = requests.get(
-                                            "https://api.torbox.app/v1/api/webdl/mylist",
-                                            headers=headers_tb,
-                                            timeout=30
-                                        )
-                                        tb_find_json = tb_find_resp.json()
-                                        if tb_find_json.get('success') and tb_find_json.get('data'):
-                                            tb_find_list = tb_find_json['data']
-                                            if isinstance(tb_find_list, list):
-                                                for item in tb_find_list:
-                                                    if item.get('hash') == link_hash or item.get('original_url') == link:
-                                                        tb_webdl_id = item.get('id')
-                                                        break
-                                    except Exception as find_e:
-                                        logger.debug(f"TorBox find existing error: {find_e}")
-                            else:
-                                tb_err_code = tb_create_json.get('error', '')
-                                error_message = TORBOX_ERROR_MAP.get(tb_err_code, f"TB: {tb_create_json.get('detail', tb_err_code)}")
-                                error_message_raw = str(tb_err_code)
-
-                        if tb_webdl_id is not None and not error_message:
-                            # Étape 2: Attendre que le téléchargement soit prêt (polling)
-                            max_wait = 120  # secondes max d'attente
-                            poll_interval = 3  # secondes entre chaque vérification
-                            start_wait = time.time()
-                            tb_ready = False
-
-                            while time.time() - start_wait < max_wait:
-                                try:
-                                    tb_list_resp = requests.get(
-                                        "https://api.torbox.app/v1/api/webdl/mylist",
-                                        params={"id": tb_webdl_id},
-                                        headers=headers_tb,
-                                        timeout=30
-                                    )
-                                    tb_list_json = tb_list_resp.json()
-                                    if tb_list_json.get('success') and tb_list_json.get('data'):
-                                        tb_item = tb_list_json['data']
-                                        if isinstance(tb_item, list):
-                                            tb_item = tb_item[0] if tb_item else {}
-                                        tb_dl_state = tb_item.get('download_state', '')
-                                        tb_dl_finished = tb_item.get('download_finished', False)
-                                        logger.debug(f"TorBox webdl status: download_state={tb_dl_state}, finished={tb_dl_finished}")
-                                        if tb_dl_state in ('cached', 'completed', 'uploading', 'done') or tb_dl_finished:
-                                            tb_ready = True
-                                            filename = tb_item.get('name') or tb_item.get('original_name') or filename or game_name
-                                            break
-                                        elif tb_dl_state in ('error', 'failed', 'stalled'):
-                                            error_message = f"TB: Download failed ({tb_dl_state})"
-                                            break
-                                except Exception as poll_e:
-                                    logger.debug(f"TorBox poll error: {poll_e}")
-                                time.sleep(poll_interval)
-
-                            if tb_ready:
-                                # Étape 3: Demander le lien de téléchargement
-                                try:
-                                    tb_dl_resp = requests.get(
-                                        "https://api.torbox.app/v1/api/webdl/requestdl",
-                                        params={"token": tb_key, "web_id": tb_webdl_id, "file_id": 0},
-                                        timeout=30
-                                    )
-                                    tb_dl_json = tb_dl_resp.json()
-                                    if tb_dl_json.get('success') and tb_dl_json.get('data'):
-                                        final_url = tb_dl_json['data']
-                                        logger.debug("Débridage réussi via TorBox")
-                                        provider_used = 'TB'
-                                        _set_provider_in_history(provider_used)
-                                    else:
-                                        tb_err = tb_dl_json.get('error', '')
-                                        error_message = TORBOX_ERROR_MAP.get(tb_err, f"TB: {tb_dl_json.get('detail', tb_err)}")
-                                        error_message_raw = str(tb_err)
-                                except Exception as dl_e:
-                                    logger.error(f"TorBox requestdl error: {dl_e}")
-                            elif not error_message:
-                                error_message = "TB: Download not ready (timeout)"
-                        elif not error_message:
-                            if tb_webdl_id is None:
-                                if tb_create_status == 403:
-                                    error_message = "TB: Authentication failed (403)"
-                                elif tb_create_status == 429:
-                                    error_message = "TB: Rate limited (429)"
-                                elif tb_create_status >= 500:
-                                    error_message = f"TB: Server error ({tb_create_status})"
-                                elif tb_create_status != 200:
-                                    error_message = f"TB: Unexpected status ({tb_create_status})"
-                                else:
-                                    error_message = "TB: No webdl_id returned"
-
-                        if not final_url and error_message:
-                            logger.warning(f"TorBox fallback échec: {error_message}")
-                            if provider_used is None:
-                                provider_used = 'TB'
-                                _set_provider_in_history(provider_used)
-                            result[0] = False
-                            result[1] = error_message
-                            try:
-                                if isinstance(result, list):
-                                    result.append({"raw_error_torbox": error_message_raw or error_message})
-                            except Exception:
-                                pass
                     except Exception as e:
                         logger.error(f"Exception TorBox fallback: {e}")
                 if not final_url:

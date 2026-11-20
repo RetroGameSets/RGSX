@@ -148,7 +148,7 @@ Eski JSON tabanlı depolamadan yükseltme sonrası ilk açılışta RGSX; indirm
 > - `AllDebridAPI.txt` – AllDebrid yedeği (isteğe bağlı)
 > - `DebridLinkAPI.txt` – Debrid-Link yedeği (isteğe bağlı)
 > - `RealDebridAPI.txt` – Real-Debrid yedeği (isteğe bağlı)
-> - `TorBoxAPI.txt` – TorBox yedeği (isteğe bağlı)
+> - `TorBoxAPI.txt` – TorBox (isteğe bağlı): 1Fichier yedeği; ayarlıysa archive.org/HTTP ve torrent indirmeleri TorBox üzerinden CDN ile alınır (TorBox başarısız olursa doğrudan/qBittorrent kullanılır)
 > 
 > **Her dosya YALNIZCA anahtarı içermelidir, başka metin olmamalıdır.**
 

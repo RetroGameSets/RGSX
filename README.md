@@ -148,7 +148,7 @@ On the first launch after upgrading from the former JSON-based storage, RGSX imp
 > - `AllDebridAPI.txt` – AllDebrid fallback (optional)
 > - `DebridLinkAPI.txt` – Debrid-Link fallback (optional)
 > - `RealDebridAPI.txt` – Real-Debrid fallback (optional)
-> - `TorBoxAPI.txt` – TorBox fallback (optional)
+> - `TorBoxAPI.txt` – TorBox (optional): 1Fichier fallback, and when set, archive.org/HTTP and torrent downloads are sent to TorBox and fetched from its CDN (falls back to direct/qBittorrent if TorBox fails)
 > 
 > **Each file must contain ONLY the key, no extra text.**
 
