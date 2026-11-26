@@ -12,7 +12,7 @@ if [[ -d "${VENDOR_DIR}" ]]; then
 fi
 
 detect_platform() {
-	if [[ -f /etc/rocknix-release || -f /etc/rocknix-os-release ]]; then
+	if [[ -f /etc/rocknix-release || -f /etc/rocknix-os-release ]] || command -v rocknix-info >/dev/null 2>&1 ; then
 		echo rocknix
 		return
 	fi
@@ -43,16 +43,13 @@ case "${PLATFORM}" in
 			# shellcheck source=/dev/null
 			source /etc/profile 2>/dev/null || true
 		fi
-		# Add entware site-packages if present
-		for sp in /storage/.opt/lib/python*/site-packages; do
-			if [[ -d "${sp}" ]]; then
-				export PYTHONPATH="${sp}${PYTHONPATH:+:${PYTHONPATH}}"
-				echo "[RGSX] PYTHONPATH extended: ${sp}" >>"${LOGFILE}"
-				break
-			fi
-		done
-
-		# Verify required Python modules on Rocknix (pygame, requests, optional pymysql)
+		
+		if ! python3 -m pip --version >>"${LOGFILE}" 2>&1; then
+			python3 -m ensurepip >>"${LOGFILE}" 2>&1 ||
+				echo "[RGSX][WARN] ensurepip failed; continuing" >>"${LOGFILE}"
+		fi
+		
+		# Verify required Python modules on Rocknix (pygame from pygame-ce, requests, optional pymysql)
 		if command -v python3 >/dev/null 2>&1; then
 			missing=""
 			modules=(pygame requests pymysql)
@@ -63,15 +60,6 @@ case "${PLATFORM}" in
 			done
 
 			if [[ -n "${missing// /}" ]]; then
-				echo "[RGSX] Missing python modules:${missing}" >>"${LOGFILE}"
-				# Try opkg for requests first (available in entware)
-				if command -v opkg >/dev/null 2>&1; then
-					if echo "${missing}" | grep -qw "requests"; then
-						opkg update >/dev/null 2>&1 || true
-						opkg install python3-requests >>"${LOGFILE}" 2>&1 || true
-					fi
-				fi
-
 				# Install remaining via pip (prefer binary wheels)
 				to_install=()
 				for mod in ${missing}; do
@@ -81,15 +69,21 @@ case "${PLATFORM}" in
 							continue
 						fi
 					fi
-					to_install+=("${mod}")
+					if [[ "${mod}" == "pygame" ]]; then
+						to_install+=("pygame-ce")
+					else
+						to_install+=("${mod}")
+					fi
 				done
 				if [[ ${#to_install[@]} -gt 0 ]]; then
 					echo "[RGSX] Installing python modules via pip: ${to_install[*]}" >>"${LOGFILE}"
-					python3 -m pip install --disable-pip-version-check --upgrade pip setuptools wheel >>"${LOGFILE}" 2>&1 || true
-					if ! python3 -m pip install --disable-pip-version-check --prefer-binary "${to_install[@]}" >>"${LOGFILE}" 2>&1; then
-						python3 -m pip install --disable-pip-version-check --only-binary :all: "${to_install[@]}" >>"${LOGFILE}" 2>&1 || true
+					python3 -m pip install --disable-pip-version-check --no-compile --upgrade pip setuptools wheel >>"${LOGFILE}" 2>&1 || true
+					if ! python3 -m pip install --disable-pip-version-check --no-compile --prefer-binary "${to_install[@]}" >>"${LOGFILE}" 2>&1; then
+						python3 -m pip install --disable-pip-version-check --no-compile --only-binary :all: "${to_install[@]}" >>"${LOGFILE}" 2>&1 || true
 					fi
 				fi
+			else
+				echo "[RGSX] All modules found" >>"${LOGFILE}"
 			fi
 		fi
 		;;
